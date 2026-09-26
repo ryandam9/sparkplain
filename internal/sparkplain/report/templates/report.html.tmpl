@@ -1,0 +1,373 @@
+{{- $r := .R -}}{{- $a := $r.Application -}}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="{{$r.Tool}}">
+<title>{{if $a.Name}}{{$a.Name}}{{else}}{{$a.ID}}{{end}} · sparkplain</title>
+<style>{{.CSS}}</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand"><b>sparkplain</b> report · {{$r.Tool}} · generated {{time $r.GeneratedAt "dt"}}</div>
+    <button type="button" class="themebtn" id="themebtn" hidden>Light / dark</button>
+  </div>
+
+  <header class="head">
+    <h1>{{if $a.Name}}{{$a.Name}}{{else}}Spark application{{end}} <span class="status {{statusClass $a.Status}}">{{statusLabel $a.Status}}</span></h1>
+    <div class="idline">
+      <span>App <b class="mono">{{if $a.ID}}{{$a.ID}}{{else}}unknown{{end}}</b>{{if $a.AttemptID}} · attempt {{$a.AttemptID}}{{end}}</span>
+      {{if $a.SparkVersion}}<span><b>Spark {{$a.SparkVersion}}</b>{{if $a.Master}} · {{$a.Master}}{{end}}{{if $a.DeployMode}} · {{$a.DeployMode}} mode{{end}}</span>{{end}}
+      {{if $a.User}}<span>User <b>{{$a.User}}</b></span>{{end}}
+      {{if not $a.Start.IsZero}}<span><b class="num">{{time $a.Start "dt"}} → {{if $a.End.IsZero}}still running{{else}}{{time $a.End "hms"}}{{end}}</b> <span class="tzlabel">{{.Zone}}</span></span>{{end}}
+    </div>
+    <div class="mode">
+      {{with $r.EventLog}}<strong>Event log: {{if $r.EventLog.Truncated}}partly read{{else}}read{{end}}.</strong>
+      <span>Layout: {{.Layout}}, codec {{.Codec}}, {{len .Files}} file{{if ne (len .Files) 1}}s{{end}}, {{num .Events}} events. This version of sparkplain reads the event log only; container logs and AWS APIs come in later phases. {{$.Complete}} sections are complete, {{$.Partial}} partial, {{$.Needs}} need data this version cannot read yet. Exit code {{$r.ExitCode}}{{if eq $r.ExitCode 3}} (partial){{end}}.</span>
+      {{else}}<strong>Event log: not read.</strong> <span>Every section below needs it. The Sources panel says what went wrong. Exit code {{$r.ExitCode}}.</span>{{end}}
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="toc" aria-label="Sections">
+      <a href="#summary">What happened <span class="dot full"></span></a>
+      <a href="#coverage">What this report covers <span class="dot full"></span></a>
+      <a href="#findings">Findings <span class="dot full"></span></a>
+      <a href="#timeline">Timeline <span class="dot {{cov $r.Timeline.Coverage}}"></span></a>
+      <a href="#nodes">Cluster and nodes <span class="dot {{cov $r.Nodes.Coverage}}"></span></a>
+      <a href="#executors">Executors <span class="dot {{cov $r.Executors.Coverage}}"></span></a>
+      <a href="#memory">Memory <span class="dot {{cov $r.Memory.Coverage}}"></span></a>
+      <a href="#cpu">CPU <span class="dot {{cov $r.CPU.Coverage}}"></span></a>
+      <a href="#io">Storage and I/O <span class="dot {{cov $r.IO.Coverage}}"></span></a>
+      <a href="#stages">Jobs and stages <span class="dot {{cov $r.Jobs.Coverage}}"></span></a>
+      <a href="#sql">SQL queries <span class="dot {{cov $r.Jobs.Coverage}}"></span></a>
+      <a href="#config">Configuration <span class="dot {{cov $r.Config.Coverage}}"></span></a>
+      <a href="#access">Identity and access <span class="dot {{cov $r.Identity.Coverage}}"></span></a>
+      <a href="#sources">Sources <span class="dot full"></span></a>
+    </nav>
+
+    <main>
+      <section id="summary">
+        <div class="story">
+          <h2>What happened</h2>
+          {{range $r.Summary.Sentences}}<p>{{.}}</p>{{end}}
+        </div>
+        {{if $r.Summary.KPIs}}<div class="kpis">
+          {{range $r.Summary.KPIs}}<div class="kpi"><span class="l">{{.Label}}</span><span class="v{{if .Tone}} {{.Tone}}{{end}}">{{.Value}}{{if .Unit}} <small>{{.Unit}}</small>{{end}}</span><span class="x">{{.Explain}}</span></div>
+          {{end}}
+        </div>{{end}}
+      </section>
+
+      <section id="coverage">
+        <div class="sechead"><h2>What this report covers</h2></div>
+        <p class="lede">Every section appears, even when its data is missing. Each one says where its data came from and what it can't show yet.</p>
+        <div class="tbl"><table>
+          <thead><tr><th>Section</th><th>Status</th><th>Shown</th><th>Not shown yet</th></tr></thead>
+          <tbody>{{range $r.Coverage}}<tr><td><a href="#{{.ID}}">{{.Title}}</a></td><td><span class="pill {{cov .Coverage}}">{{covLabel .Coverage}}</span></td><td>{{.Shown}}</td><td>{{if .Missing}}{{join .Missing "; "}}{{else}}—{{end}}</td></tr>
+          {{end}}</tbody>
+        </table></div>
+      </section>
+
+      <section id="findings">
+        <div class="sechead"><h2>Findings</h2><span class="note">{{.Crit}} critical · {{.Warn}} warning · {{.Info}} info. Ranked by severity; each points to the log line it came from.</span></div>
+        {{if $r.Findings}}<div class="findings">
+          {{range $r.Findings}}<article class="finding {{sev .Severity}}"><div class="stripe"></div><div class="body">
+            <div class="t"><span class="pill {{sevPill .Severity}}">{{sevLabel .Severity}}</span><h3>{{.Title}}</h3></div>
+            <p>{{.Explanation}}</p>
+            {{range .Evidence}}<p class="ev">{{if .Source.File}}{{src .Source}} {{end}}{{.Text}}</p>{{end}}
+            {{if .Fix}}<p class="fix">{{.Fix}}</p>{{end}}
+          </div></article>
+          {{end}}
+        </div>{{else}}<p class="note">No rule found anything to report.</p>{{end}}
+      </section>
+
+      <section id="timeline">
+        <div class="sechead"><h2>Timeline</h2><span class="pill {{cov $r.Timeline.Coverage}}">{{covLabel $r.Timeline.Coverage}}</span></div>
+        {{if $r.Timeline.ExecutorSeries}}
+        <p class="lede">Executors running over time, rebuilt from when Spark added and removed each one. Markers show executors that died, failed jobs and retried stages; hover for details.</p>
+        <div class="chart">
+          {{execChart $r}}
+          <div class="legend">
+            <span><i class="sw" style="background:var(--accent);opacity:.35"></i>Executors running</span>
+            <span><svg width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="4.5" fill="var(--crit)"/></svg>Executor killed or lost</span>
+            <span><svg width="12" height="12" aria-hidden="true"><rect x="1" y="1" width="10" height="10" fill="var(--crit)"/></svg>Job failed</span>
+            <span><svg width="12" height="12" aria-hidden="true"><rect x="2" y="2" width="8" height="8" transform="rotate(45 6 6)" fill="var(--warn)"/></svg>Stage retried</span>
+          </div>
+        </div>
+        <h3>Jobs</h3>
+        <p class="note">Each bar is a job, from submission to completion; the thin lines under it are its stages. {{if gt (len $r.Timeline.Jobs) 80}}Showing the 80 longest of {{len $r.Timeline.Jobs}} jobs.{{end}}</p>
+        <div class="chart">
+          {{gantt $r}}
+          <div class="legend">
+            <span><i class="sw" style="background:var(--accent)"></i>Succeeded</span>
+            <span><i class="sw" style="background:var(--crit)"></i>Failed</span>
+            <span><i class="sw" style="background:var(--na)"></i>Running when the log ends</span>
+          </div>
+        </div>
+        <div class="tbl scroll"><table>
+          <thead><tr><th>Time (<span class="tzlabel">{{.Zone}}</span>)</th><th>Event</th><th>Source</th></tr></thead>
+          <tbody class="num">{{range $r.Timeline.Events}}<tr><td>{{time .Time "hms"}}</td><td>{{.Text}}</td><td class="srcref">{{src .Source}}</td></tr>
+          {{end}}</tbody>
+        </table></div>
+        {{else}}<div class="missing"><h3>Needs the event log</h3><ul><li>Executors over time</li><li>Every job on a timeline</li></ul></div>{{end}}
+      </section>
+
+      <section id="nodes">
+        <div class="sechead"><h2>Cluster and nodes</h2><span class="pill {{cov $r.Nodes.Coverage}}">{{covLabel $r.Nodes.Coverage}}</span></div>
+        {{if $r.Nodes.Lede}}<p class="lede">{{$r.Nodes.Lede}}</p>{{end}}
+        {{if $r.Nodes.Hosts}}<div class="tbl"><table>
+          <thead><tr><th data-sort="text">Host</th><th data-sort="text">Role</th><th class="num" data-sort="num">Executors</th><th class="num" data-sort="num">Cores</th><th class="num" data-sort="num">Tasks</th><th class="num" data-sort="num">Failed</th><th class="num" data-sort="num">Lost</th><th data-sort="num">CPU share</th><th data-sort="num">Cores busy</th><th class="num" data-sort="num">Peak heap</th></tr></thead>
+          <tbody>{{range $r.Nodes.Hosts}}<tr{{if gt .Lost 0}} class="lost"{{end}}>
+            <td><span class="mono">{{.Name}}</span>{{if .Source.File}}<span class="sub srcref">{{src .Source}}</span>{{end}}</td>
+            <td>{{if and .Driver (gt (len .Executors) 0)}}Driver + executors{{else if .Driver}}Driver{{else}}Executors{{end}}</td>
+            <td class="num" data-v="{{len .Executors}}">{{len .Executors}}</td><td class="num">{{.Cores}}</td>
+            <td class="num" data-v="{{.Tasks.Tasks}}">{{num .Tasks.Tasks}}</td>
+            <td class="num" data-v="{{.Tasks.Failed}}">{{if gt .Tasks.Failed 0}}<span class="bad">{{num .Tasks.Failed}}</span>{{else}}0{{end}}</td>
+            <td class="num" data-v="{{.Lost}}">{{if gt .Lost 0}}<span class="bad">{{.Lost}}</span>{{else}}0{{end}}</td>
+            <td data-v="{{sharev .CPUShare}}">{{if .Tasks.RunTimeMs}}{{share .CPUShare}}{{else}}—{{end}}</td>
+            <td data-v="{{sharev .AllocatedCore}}">{{if .Tasks.RunTimeMs}}{{share .AllocatedCore}}{{else}}—{{end}}</td>
+            <td class="num" data-v="{{.PeakHeap}}">{{if .PeakHeap}}{{bytes .PeakHeap}}{{else}}—{{end}}</td></tr>
+          {{end}}</tbody>
+        </table></div>
+        <p class="explain"><b>CPU share</b> is task CPU time divided by task run time: how much of the time tasks were computing rather than waiting. <b>Cores busy</b> is task run time divided by the core time the executors held: how much of what YARN gave them was used.</p>{{end}}
+        {{if $r.Nodes.Missing}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $r.Nodes.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+      </section>
+
+      <section id="executors">
+        <div class="sechead"><h2>Executors</h2><span class="pill {{cov $r.Executors.Coverage}}">{{covLabel $r.Executors.Coverage}}</span></div>
+        {{$e := $r.Executors}}{{if $e.Executors}}
+        <div class="facts">
+          <div class="fact"><span class="l">Started</span><span class="v num">{{$e.Started}} executors{{if $e.Driver}} + 1 driver{{end}}</span><span class="x">Worker processes Spark launched during the run.</span></div>
+          <div class="fact"><span class="l">Most running at once</span><span class="v num">{{$e.Peak}}{{if not $e.PeakAt.IsZero}}, first at {{time $e.PeakAt "hms"}}{{end}}</span><span class="x">Dynamic allocation: {{$e.DynamicAlloc}}.</span></div>
+          <div class="fact"><span class="l">How they ended</span><span class="v num">{{range $i, $c := $e.EndedBy}}{{if $i}} · {{end}}{{$c.N}} {{$c.Label}}{{end}}</span><span class="x">From the removal reason Spark logged for each executor.</span></div>
+          <div class="fact"><span class="l">Size</span><span class="v num">{{$e.Cores}} cores · {{bytes $r.Memory.Config.ContainerBytes}}</span><span class="x">Each core runs one task at a time. Memory is the YARN container: heap plus overhead.</span></div>
+        </div>
+        <div class="tbl scroll"><table>
+          <thead><tr><th data-sort="num">ID</th><th data-sort="text">Host</th><th class="num" data-sort="num">Cores</th><th data-sort="text">Started</th><th class="num" data-sort="num">Lifetime</th><th data-sort="text">Ended</th><th class="num" data-sort="num">Tasks</th><th class="num" data-sort="num">Failed</th><th data-sort="num">CPU share</th><th data-sort="num">GC</th><th class="num" data-sort="num">Input</th><th class="num" data-sort="num">Shuffle read</th><th class="num" data-sort="num">Shuffle write</th><th class="num" data-sort="num">Peak heap</th></tr></thead>
+          <tbody>{{range $e.Executors}}<tr{{if removalBad .RemovalKind}} class="lost"{{end}}>
+            <td data-v="{{.ID}}" class="mono">{{.ID}}</td><td class="mono">{{.Host}}</td><td class="num">{{.Cores}}</td>
+            <td>{{time .Added "hms"}}</td>
+            <td class="num">{{if .Removed.IsZero}}{{span .Added $r.Timeline.End}}{{else}}{{span .Added .Removed}}{{end}}</td>
+            <td>{{if removalBad .RemovalKind}}<span class="bad">{{removal .RemovalKind}}</span>{{else}}{{removal .RemovalKind}}{{end}}{{if .RemovedReason}}<span class="sub">{{short .RemovedReason 160}}</span><span class="sub srcref">{{src .RemovedSource}}</span>{{end}}</td>
+            <td class="num" data-v="{{.Tasks.Tasks}}">{{num .Tasks.Tasks}}</td>
+            <td class="num" data-v="{{.Tasks.Failed}}">{{if gt .Tasks.Failed 0}}<span class="bad">{{num .Tasks.Failed}}</span>{{else}}0{{end}}</td>
+            <td data-v="{{sharev (cpuShare .Tasks)}}">{{if .Tasks.RunTimeMs}}{{pct (cpuShare .Tasks)}}{{else}}—{{end}}</td>
+            <td data-v="{{sharev (ratio .Tasks.GCTimeMs .Tasks.RunTimeMs)}}">{{if .Tasks.RunTimeMs}}{{if gcBad (ratio .Tasks.GCTimeMs .Tasks.RunTimeMs)}}<span class="warnv">{{pct (ratio .Tasks.GCTimeMs .Tasks.RunTimeMs)}}</span>{{else}}{{pct (ratio .Tasks.GCTimeMs .Tasks.RunTimeMs)}}{{end}}{{else}}—{{end}}</td>
+            <td class="num" data-v="{{.Tasks.InputBytes}}">{{bytes .Tasks.InputBytes}}</td>
+            <td class="num" data-v="{{.Tasks.ShuffleReadBytes}}">{{bytes .Tasks.ShuffleReadBytes}}</td>
+            <td class="num" data-v="{{.Tasks.ShuffleWriteBytes}}">{{bytes .Tasks.ShuffleWriteBytes}}</td>
+            <td class="num" data-v="{{.Peak.JVMHeap}}">{{if .Peak.JVMHeap}}{{bytes .Peak.JVMHeap}}{{else}}—{{end}}</td></tr>
+          {{end}}</tbody>
+        </table></div>
+        <p class="explain"><b>CPU share</b>: task CPU time over task run time. <b>GC</b>: share of task run time spent in garbage collection (over 10% is flagged). <b>Input</b>: bytes read from files and tables. <b>Shuffle</b>: data exchanged between executors. <b>Peak heap</b>: highest sampled Java heap use.</p>
+        {{else}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $e.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+      </section>
+
+      <section id="memory">
+        <div class="sechead"><h2>Memory</h2><span class="pill {{cov $r.Memory.Coverage}}">{{covLabel $r.Memory.Coverage}}</span></div>
+        {{$m := $r.Memory}}{{if $m.Lede}}<p class="lede">{{$m.Lede}}</p>
+        <div class="facts">
+          <div class="fact"><span class="l">Heap</span><span class="v num">{{bytes $m.Config.HeapBytes}}</span><span class="x">From {{$m.Config.HeapFrom}}. The Java heap holds Spark's data and your code's objects.</span></div>
+          <div class="fact"><span class="l">Overhead</span><span class="v num">{{bytes $m.Config.OverheadBytes}}</span><span class="x">From {{$m.Config.OverheadFrom}}. Memory outside the heap: thread stacks, network buffers, Python workers.</span></div>
+          <div class="fact"><span class="l">Heap per running task</span><span class="v num">{{if $m.Config.Cores}}{{bytes (divBytes $m.Config.HeapBytes $m.Config.Cores)}}{{else}}—{{end}}</span><span class="x">Heap divided by {{$m.Config.Cores}} cores, since each core runs one task at a time.</span></div>
+          <div class="fact"><span class="l">Spark's working memory</span><span class="v num">{{bytes $m.Config.UnifiedBytes}}</span><span class="x">(heap − 300 MiB) × spark.memory.fraction ({{$m.Config.MemoryFraction}}). Shuffles, joins and cache share it; when it runs out, data spills to disk.</span></div>
+          <div class="fact"><span class="l">Spilled to disk</span><span class="v num">{{bytes $m.TotalDiskSpill}}</span><span class="x">{{bytes $m.TotalMemSpill}} of in-memory data was written out as {{bytes $m.TotalDiskSpill}} on disk because it did not fit.</span></div>
+          <div class="fact"><span class="l">Garbage collection</span><span class="v num">{{pct $m.GCShare}} of task time</span><span class="x">Time the JVM spent reclaiming memory instead of running tasks. Above 10% is a warning sign.</span></div>
+        </div>
+        <h3>Peak heap against the configured heap</h3>
+        <div class="chart">{{memChart $r}}
+          <div class="legend"><span><i class="sw" style="background:var(--surface-2);border:1px solid var(--line)"></i>Configured heap</span><span><i class="sw" style="background:var(--accent)"></i>Peak heap used</span><span><i class="sw" style="background:var(--crit)"></i>Over 90% of the heap</span></div>
+        </div>
+        <p class="explain"><b>These are peaks, not continuous readings.</b> Spark samples executor memory on heartbeats and at the end of each task, so short spikes can be missed.{{if not $m.RSSKnown}} Whole-process memory (RSS, including Python) was not recorded; set spark.executor.processTreeMetrics.enabled=true to get it.{{end}}</p>
+        <div class="tbl scroll"><table>
+          <thead><tr><th data-sort="num">Executor</th><th data-sort="text">Host</th><th class="num" data-sort="num">Peak heap</th><th class="num" data-sort="num">Off-heap</th><th class="num" data-sort="num">Execution</th><th class="num" data-sort="num">Storage</th><th class="num" data-sort="num">Process RSS</th><th data-sort="num">GC</th></tr></thead>
+          <tbody>{{if $m.Driver}}{{with $m.Driver}}<tr><td class="mono">driver</td><td class="mono">{{.Host}}</td><td class="num" data-v="{{.PeakHeap}}">{{bytes .PeakHeap}} <span class="sub">of {{bytes .HeapBytes}}</span></td><td class="num" data-v="{{.PeakOffHeap}}">{{bytes .PeakOffHeap}}</td><td class="num">—</td><td class="num">—</td><td class="num" data-v="{{.PeakRSS}}">{{if .PeakRSS}}{{bytes .PeakRSS}}{{else}}—{{end}}</td><td>—</td></tr>{{end}}{{end}}
+          {{range $m.Executors}}<tr><td class="mono" data-v="{{.ID}}">{{.ID}}</td><td class="mono">{{.Host}}</td>
+            <td class="num" data-v="{{.PeakHeap}}">{{if .PeakHeap}}{{bytes .PeakHeap}}{{else}}—{{end}} <span class="sub">of {{bytes .HeapBytes}}</span></td>
+            <td class="num" data-v="{{.PeakOffHeap}}">{{bytes .PeakOffHeap}}</td>
+            <td class="num" data-v="{{.PeakExecution}}">{{bytes .PeakExecution}}</td>
+            <td class="num" data-v="{{.PeakStorage}}">{{bytes .PeakStorage}}</td>
+            <td class="num" data-v="{{.PeakRSS}}">{{if .PeakRSS}}{{bytes .PeakRSS}}{{else}}—{{end}}</td>
+            <td data-v="{{sharev .GCShare}}">{{if gcBad .GCShare}}<span class="warnv">{{pct .GCShare}}</span>{{else}}{{pct .GCShare}}{{end}}</td></tr>
+          {{end}}</tbody>
+        </table></div>
+        <p class="explain"><b>Off-heap</b>: JVM memory outside the heap (metaspace, code cache). <b>Execution</b> and <b>Storage</b>: the parts of Spark's working memory used for shuffles and joins, and for cached data. <b>Process RSS</b>: memory the whole executor process tree used, as the operating system sees it.</p>
+        {{if $m.Spill}}<h3>Stages that spilled</h3>
+        <div class="tbl"><table>
+          <thead><tr><th data-sort="num">Stage</th><th>Name</th><th class="num" data-sort="num">Spill (memory)</th><th class="num" data-sort="num">Spill (disk)</th><th class="num" data-sort="num">Shuffle write</th><th>Source</th></tr></thead>
+          <tbody>{{range $m.Spill}}<tr><td class="num" data-v="{{.StageID}}">{{.StageID}}{{if .Attempt}}.{{.Attempt}}{{end}}</td><td>{{.Name}}</td><td class="num" data-v="{{.MemoryBytes}}">{{bytes .MemoryBytes}}</td><td class="num" data-v="{{.DiskBytes}}">{{bytes .DiskBytes}}</td><td class="num" data-v="{{.ShuffleWrite}}">{{bytes .ShuffleWrite}}</td><td class="srcref">{{src .Source}}</td></tr>
+          {{end}}</tbody>
+        </table></div>
+        <p class="explain"><b>Spill (memory)</b> is the size of the data while it was in memory; <b>spill (disk)</b> is its size once written, usually smaller because it is serialised and compressed.</p>{{end}}
+        {{end}}
+        {{if $m.Missing}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $m.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+      </section>
+
+      <section id="cpu">
+        <div class="sechead"><h2>CPU</h2><span class="pill {{cov $r.CPU.Coverage}}">{{covLabel $r.CPU.Coverage}}</span></div>
+        {{$c := $r.CPU}}{{if $c.RunMs}}
+        <div class="facts">
+          <div class="fact"><span class="l">CPU time used</span><span class="v num">{{dur $c.CPUMs}} of {{dur $c.RunMs}} run time</span><span class="x">{{pct $c.Share}}. Tasks spent the rest waiting on I/O, shuffle fetches, garbage collection or Python workers.</span></div>
+          <div class="fact"><span class="l">Executor cores busy</span><span class="v num">{{pct $c.BusyShare}}</span><span class="x">Task run time ({{dur $c.RunMs}}) out of the core time executors held ({{dur $c.AllocatedCoreMs}}).</span></div>
+        </div>
+        <h3>Stages with the most task time</h3>
+        <div class="tbl"><table>
+          <thead><tr><th data-sort="num">Stage</th><th>Name</th><th class="num" data-sort="num">Run time</th><th class="num" data-sort="num">CPU time</th><th data-sort="num">CPU share</th></tr></thead>
+          <tbody>{{range $c.Stages}}<tr><td data-v="{{.ID}}">{{.ID}}</td><td>{{.Label}}<span class="sub srcref">{{src .Source}}</span></td><td class="num" data-v="{{.RunMs}}">{{dur .RunMs}}</td><td class="num" data-v="{{.CPUMs}}">{{dur .CPUMs}}</td><td data-v="{{sharev .Share}}">{{share .Share}}</td></tr>
+          {{end}}</tbody>
+        </table></div>
+        <p class="explain"><b>Run time</b> adds up every task's time in the stage, so it can exceed the stage's wall-clock time. {{if hasPrefix $r.Application.Master "yarn"}}{{end}}Spark measures CPU time on the JVM task thread only; work done in Python UDFs is not counted.</p>
+        {{end}}
+        {{if $c.Missing}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $c.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+      </section>
+
+      <section id="io">
+        <div class="sechead"><h2>Storage and I/O</h2><span class="pill {{cov $r.IO.Coverage}}">{{covLabel $r.IO.Coverage}}</span></div>
+        {{$io := $r.IO}}{{if $r.EventLog}}
+        <div class="facts">
+          <div class="fact"><span class="l">Read</span><span class="v num">{{bytes $io.Totals.InputBytes}} · {{num $io.Totals.InputRecords}} rows</span><span class="x">From files and tables. Cached data read back is not counted here.</span></div>
+          <div class="fact"><span class="l">Written</span><span class="v num">{{bytes $io.Totals.OutputBytes}} · {{num $io.Totals.OutputRecords}} rows</span><span class="x">To files and tables.</span></div>
+          <div class="fact"><span class="l">Shuffled</span><span class="v num">{{bytes $io.Totals.ShuffleWriteBytes}} written · {{bytes $io.Totals.ShuffleReadBytes}} read</span><span class="x">Data exchanged between executors for joins, groupings and repartitions. {{bytes $io.Totals.ShuffleRemoteBytes}} came over the network.</span></div>
+          <div class="fact"><span class="l">Waiting for shuffle data</span><span class="v num">{{dur $io.Totals.ShuffleFetchWaitMs}}</span><span class="x">Task time spent waiting for shuffle blocks from other executors.</span></div>
+        </div>
+        {{if $io.Data}}<h3>Tables and paths</h3>
+        <div class="tbl"><table>
+          <thead><tr><th data-sort="text">Access</th><th data-sort="text">What</th><th data-sort="text">Name</th><th>Format</th><th>Found in</th></tr></thead>
+          <tbody>{{range $io.Data}}<tr><td>{{.Access}}</td><td>{{.Kind}}</td><td class="mono">{{.Name}}</td><td>{{.Format}}</td><td class="srcref">{{src .Source}}</td></tr>
+          {{end}}</tbody>
+        </table></div>
+        <p class="explain">From SQL physical plans and catalog events. Reads and writes done with RDD code, or inside Python, do not appear in plans.</p>{{end}}
+        {{if $io.Stages}}<h3>Stages that moved the most data</h3>
+        <div class="tbl scroll"><table>
+          <thead><tr><th data-sort="num">Stage</th><th>Name</th><th class="num" data-sort="num">Input</th><th class="num" data-sort="num">Output</th><th class="num" data-sort="num">Shuffle read</th><th class="num" data-sort="num">Shuffle write</th><th class="num" data-sort="num">Spill (disk)</th></tr></thead>
+          <tbody>{{range $io.Stages}}<tr><td data-v="{{.StageID}}">{{.StageID}}{{if .Attempt}}.{{.Attempt}}{{end}}</td><td>{{.Name}}<span class="sub srcref">{{src .Source}}</span></td>
+            <td class="num" data-v="{{.Totals.InputBytes}}">{{bytes .Totals.InputBytes}}<span class="sub">{{num .Totals.InputRecords}} rows</span></td>
+            <td class="num" data-v="{{.Totals.OutputBytes}}">{{bytes .Totals.OutputBytes}}<span class="sub">{{num .Totals.OutputRecords}} rows</span></td>
+            <td class="num" data-v="{{.Totals.ShuffleReadBytes}}">{{bytes .Totals.ShuffleReadBytes}}</td>
+            <td class="num" data-v="{{.Totals.ShuffleWriteBytes}}">{{bytes .Totals.ShuffleWriteBytes}}</td>
+            <td class="num" data-v="{{.Totals.DiskSpillBytes}}">{{bytes .Totals.DiskSpillBytes}}</td></tr>
+          {{end}}</tbody>
+        </table></div>{{end}}
+        <h3>Cached data</h3>
+        {{if $io.Cached}}<div class="tbl"><table>
+          <thead><tr><th>RDD</th><th>What was cached</th><th>Kept in</th><th class="num">Partitions</th><th class="num">Size</th><th>Released</th></tr></thead>
+          <tbody>{{range $io.Cached}}<tr><td>{{.ID}}</td><td><span class="mono">{{short .Name 160}}</span><span class="sub srcref">{{src .Source}}</span></td><td>{{.StorageLevel}}</td><td class="num">{{.Partitions}}</td><td class="num">{{if .SizeKnown}}{{bytes .MemoryBytes}} memory · {{bytes .DiskBytes}} disk{{else}}not logged{{end}}</td><td>{{if .Unpersisted}}yes{{else}}no{{end}}</td></tr>
+          {{end}}</tbody>
+        </table></div>{{else}}<p class="note">Nothing was cached (persist() or cache()) in this run.</p>{{end}}
+        {{end}}
+        {{if $io.Missing}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $io.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+      </section>
+
+      <section id="stages">
+        <div class="sechead"><h2>Jobs and stages</h2><span class="pill {{cov $r.Jobs.Coverage}}">{{covLabel $r.Jobs.Coverage}}</span></div>
+        {{$j := $r.Jobs}}{{if $r.EventLog}}
+        <p class="lede">A job is one action in the code (such as count, collect or write). Spark splits each job into stages at every shuffle, and each stage into one task per partition. {{numi (len $j.Jobs)}} jobs ran, {{$j.Failed}} failed; {{numi (len $j.Stages)}} stage attempts, {{num .Tasks}} tasks.</p>
+        {{if gt (len $j.CriticalPath) 1}}<p class="explain"><b>Critical path:</b> the longest job was job {{$j.CriticalJob}}; within it, the slowest chain of dependent stages was {{ints $j.CriticalPath}}. Speeding up other stages would not shorten that job.</p>{{end}}
+        <h3>Jobs</h3>
+        <div class="tbl scroll"><table>
+          <thead><tr><th data-sort="num">Job</th><th data-sort="text">What</th><th data-sort="text">Status</th><th data-sort="text">Started</th><th class="num" data-sort="num">Duration</th><th class="num" data-sort="num">Stages</th><th data-sort="num">SQL</th></tr></thead>
+          <tbody>{{range $j.Jobs}}<tr><td data-v="{{.ID}}">{{.ID}}</td>
+            <td>{{if .Description}}{{.Description}}<span class="sub mono">{{.Name}}</span>{{else}}<span class="mono">{{.Name}}</span>{{end}}{{if .Failure}}<span class="sub bad">{{short .Failure 300}}</span>{{end}}</td>
+            <td><span class="pill {{if eq .Status "succeeded"}}full{{else if eq .Status "failed"}}crit{{else}}none{{end}}">{{statusLabel .Status}}</span></td>
+            <td>{{time .Submitted "hms"}}</td><td class="num" data-v="{{jobDur .}}">{{dur (jobDur .)}}</td><td class="num">{{len .StageIDs}}</td><td data-v="{{if .SQLExecutionID}}{{.SQLExecutionID}}{{end}}">{{with .SQLExecutionID}}<a href="#sql-{{.}}">{{.}}</a>{{end}}</td></tr>
+          {{end}}</tbody>
+        </table></div>
+        <h3>Stages</h3>
+        <div class="tbl scroll"><table>
+          <thead><tr><th data-sort="num">Stage</th><th data-sort="text">Name</th><th data-sort="text">Status</th><th class="num" data-sort="num">Duration</th><th class="num" data-sort="num">Tasks</th><th class="num" data-sort="num">Median task</th><th class="num" data-sort="num">p95</th><th class="num" data-sort="num">Slowest</th><th class="num" data-sort="num">Skew</th><th class="num" data-sort="num">Spill (disk)</th><th class="num" data-sort="num">Failed tasks</th></tr></thead>
+          <tbody>{{range $j.Stages}}<tr><td data-v="{{.ID}}">{{.ID}}{{if .Attempt}}.{{.Attempt}}{{end}}</td>
+            <td>{{.Name}}{{if .JobIDs}}<span class="sub">job {{ints .JobIDs}}</span>{{end}}{{if .FailureReason}}<span class="sub bad">{{short .FailureReason 300}}</span>{{end}}</td>
+            <td><span class="pill {{if eq .Status "succeeded"}}full{{else if eq .Status "failed"}}crit{{else}}none{{end}}">{{statusLabel .Status}}</span></td>
+            <td class="num" data-v="{{stageDur .}}">{{if stageDur .}}{{dur (stageDur .)}}{{else}}—{{end}}</td>
+            <td class="num" data-v="{{.Totals.Tasks}}">{{num .Totals.Tasks}}</td>
+            <td class="num" data-v="{{.TaskDuration.P50}}">{{if .TaskDuration.Count}}{{dur .TaskDuration.P50}}{{else}}—{{end}}</td>
+            <td class="num" data-v="{{.TaskDuration.P95}}">{{if .TaskDuration.Count}}{{dur .TaskDuration.P95}}{{else}}—{{end}}</td>
+            <td class="num" data-v="{{.TaskDuration.Max}}">{{if .Slowest}}{{dur .TaskDuration.Max}}<span class="sub srcref">{{src .Slowest.Source}}</span>{{else}}—{{end}}</td>
+            <td class="num" data-v="{{skewv .TaskDuration}}">{{skewx .TaskDuration}}</td>
+            <td class="num" data-v="{{.Totals.DiskSpillBytes}}">{{if .Totals.DiskSpillBytes}}{{bytes .Totals.DiskSpillBytes}}{{else}}—{{end}}</td>
+            <td class="num" data-v="{{.Totals.Failed}}">{{if gt .Totals.Failed 0}}<span class="bad">{{num .Totals.Failed}}</span>{{else}}0{{end}}</td></tr>
+          {{end}}</tbody>
+        </table></div>
+        <p class="explain"><b>Median task</b> and <b>p95</b>: half the tasks finished faster than the median, 95% faster than p95 (successful tasks only). <b>Skew</b>: the slowest task's time over the median. Above {{printf "%.0f" 5.0}}× one partition is much bigger than the rest. Skipped stages reused earlier shuffle output and did no work.</p>
+        {{range $j.Stages}}{{if .Failures}}<details><summary>Stage {{.ID}}{{if .Attempt}}.{{.Attempt}}{{end}}: {{numi (len .Failures)}} kind{{if gt (len .Failures) 1}}s{{end}} of task failure</summary><div class="inner">
+          <div class="tbl"><table><thead><tr><th class="num">Count</th><th>Reason</th><th>Executors</th><th>First seen</th></tr></thead>
+          <tbody>{{range .Failures}}<tr><td class="num">{{num .Count}}</td><td>{{.Message}}<span class="sub">{{.Kind}}</span></td><td class="mono">{{join .Executors ", "}}</td><td class="srcref">{{src .Source}}</td></tr>{{end}}</tbody></table></div>
+        </div></details>{{end}}{{end}}
+        {{else}}<div class="missing"><h3>Needs the event log</h3><ul>{{range $j.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+      </section>
+
+      <section id="sql">
+        <div class="sechead"><h2>SQL queries</h2><span class="pill {{cov $r.Jobs.Coverage}}">{{covLabel $r.Jobs.Coverage}}</span></div>
+        {{if $r.Jobs.SQL}}<p class="lede">Every DataFrame or SQL action runs as a query with a physical plan: the steps Spark chose. {{numi (len $r.Jobs.SQL)}} queries ran.{{if gt (len $r.Jobs.SQL) 200}} The first 200 are listed; the JSON export has all of them.{{end}}</p>
+        {{range first 200 $r.Jobs.SQL}}<details id="sql-{{.ID}}"><summary>Query {{.ID}}: {{if .Description}}{{short .Description 140}}{{else}}(no description){{end}}{{if .Error}} <span class="pill crit">Failed</span>{{end}}</summary><div class="inner">
+          <dl class="kv"><dt>Ran</dt><dd>{{time .Start "hms"}} for {{span .Start .End}}{{if .JobIDs}}, jobs {{ints .JobIDs}}{{end}}</dd>
+          {{if .Reads}}<dt>Reads</dt><dd>{{range $i, $d := .Reads}}{{if $i}}, {{end}}<span class="mono">{{$d.Name}}</span>{{end}}</dd>{{end}}
+          {{if .Writes}}<dt>Writes</dt><dd>{{range $i, $d := .Writes}}{{if $i}}, {{end}}<span class="mono">{{$d.Name}}</span>{{end}}</dd>{{end}}
+          {{if .Error}}<dt>Error</dt><dd class="bad">{{short .Error 600}}</dd>{{end}}
+          <dt>Source</dt><dd class="srcref">{{src .Source}}</dd></dl>
+          {{if .Plan}}<pre class="plan">{{planCap .Plan}}</pre>{{end}}
+        </div></details>
+        {{end}}{{else if $r.EventLog}}<p class="note">No SQL or DataFrame queries ran (the job used RDDs only).</p>{{else}}<div class="missing"><h3>Needs the event log</h3><ul><li>SQL queries, their plans and the tables they touched</li></ul></div>{{end}}
+      </section>
+
+      <section id="config">
+        <div class="sechead"><h2>Configuration</h2><span class="pill {{cov $r.Config.Coverage}}">{{covLabel $r.Config.Coverage}}</span></div>
+        {{$cf := $r.Config}}{{if $cf.Total}}
+        <p class="lede">{{num (int64 $cf.Total)}} settings were in effect. {{$cf.NonDefault}} of the key settings below differ from Spark 3.5's defaults (marked with a bar). {{$cf.Redacted}} values are hidden because their names suggest secrets.</p>
+        <div class="tbl"><table class="cfg keycfg">
+          <colgroup><col style="width:32%"><col style="width:20%"><col style="width:12%"><col style="width:36%"></colgroup>
+          <thead><tr><th>Setting</th><th>Value</th><th>Spark default</th><th>What it does</th></tr></thead>
+          <tbody>{{range $cf.Key}}<tr{{if .NonDefault}} class="nondefault"{{end}}><td class="mono">{{.Key}}</td><td class="mono">{{if .Redacted}}Set · value hidden{{else}}{{short .Value 200}}{{end}}</td><td class="mono">{{if .Default}}{{.Default}}{{else}}—{{end}}</td><td>{{.Explain}}{{if .Risk}}<span class="sub bad">{{.Risk}}</span>{{end}}</td></tr>
+          {{end}}</tbody>
+        </table></div>
+        <p class="note">Defaults are Spark 3.5's. EMR sets its own defaults on top (in spark-defaults.conf), which sparkplain can compare once it reads the EMR API.</p>
+        <input type="search" id="configfilter" class="filter" placeholder="Search all settings" aria-label="Search all settings" hidden>
+        {{range $cf.Groups}}<details class="cfggroup"><summary>{{.Name}} ({{numi (len .Entries)}})</summary><div class="inner">
+          <div class="tbl"><table class="cfg"><thead><tr><th>Setting</th><th>Value</th><th>From</th></tr></thead>
+          <tbody>{{range .Entries}}<tr{{if .NonDefault}} class="nondefault"{{end}}><td class="mono">{{.Key}}</td><td class="mono">{{if .Redacted}}Set · value hidden{{else}}{{short .Value 300}}{{end}}</td><td>{{.Origin}}</td></tr>{{end}}</tbody></table></div>
+        </div></details>{{end}}
+        {{end}}
+        {{if $cf.Missing}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $cf.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+      </section>
+
+      <section id="access">
+        <div class="sechead"><h2>Identity and access</h2><span class="pill {{cov $r.Identity.Coverage}}">{{covLabel $r.Identity.Coverage}}</span></div>
+        {{if $r.Identity.Facts}}<div class="facts">
+          {{range $r.Identity.Facts}}<div class="fact"><span class="l">{{.Label}}</span><span class="v">{{.Value}}</span><span class="x">{{.Explain}}</span></div>{{end}}
+        </div>{{end}}
+        {{if $r.Identity.Missing}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $r.Identity.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+      </section>
+
+      <section id="sources">
+        <div class="sechead"><h2>Sources</h2></div>
+        <div class="tbl"><table>
+          <thead><tr><th>Source</th><th>Status</th><th>What was read</th></tr></thead>
+          <tbody>{{range $r.Sources}}<tr><td>{{.Name}}{{if .Location}}<span class="sub mono">{{.Location}}</span>{{end}}</td><td><span class="pill {{srcPill .Status}}">{{srcLabel .Status}}</span>{{if .Class}}<span class="sub">{{.Class}}</span>{{end}}</td><td>{{.Detail}}</td></tr>
+          {{end}}</tbody>
+        </table></div>
+        {{with $r.EventLog}}<details><summary>Event log details: {{len .Files}} file{{if ne (len .Files) 1}}s{{end}}, {{num .Lines}} lines</summary><div class="inner">
+          <div class="tbl"><table><thead><tr><th>File</th><th>Codec</th><th class="num">Size</th><th class="num">Unpacked</th><th class="num">Lines</th><th>Problem</th></tr></thead>
+          <tbody>{{range .Files}}<tr><td class="mono">{{.Name}}</td><td>{{.Codec}}</td><td class="num">{{bytes .Bytes}}</td><td class="num">{{bytes .Decompressed}}</td><td class="num">{{num .Lines}}</td><td>{{if .Error}}<span class="bad">{{.Error}}</span>{{else}}—{{end}}</td></tr>{{end}}</tbody></table></div>
+          <dl class="kv">
+            <dt>Events</dt><dd>{{num .Events}}</dd>
+            <dt>Malformed lines</dt><dd>{{num .Malformed}}{{if .Malformed}}, first at <span class="srcref">{{src .FirstMalformed}}</span>{{end}}</dd>
+            <dt>Unknown events</dt><dd>{{if .UnknownEvents}}{{range $k, $v := .UnknownEvents}}{{$k}} ({{num $v}}) {{end}}{{else}}none{{end}}</dd>
+            <dt>Unknown fields</dt><dd>{{if .UnknownFields}}{{range $k, $v := .UnknownFields}}{{$k}} ({{num $v}}) {{end}}{{else}}none{{end}}</dd>
+            <dt>Values hidden</dt><dd>{{num .Redacted}} settings whose names suggest secrets</dd>
+          </dl>
+          {{if .Notes}}<ul class="note">{{range .Notes}}<li>{{.}}</li>{{end}}</ul>{{end}}
+        </div></details>{{end}}
+      </section>
+    </main>
+  </div>
+
+  <footer>
+    <span>{{$r.Tool}} · report schema {{$r.SchemaVersion}} · every value links to the log line it came from</span>
+    <span>Times in <span class="tzlabel">{{.Zone}}</span></span>
+  </footer>
+</div>
+<script>{{.JS}}</script>
+</body>
+</html>
