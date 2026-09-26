@@ -109,3 +109,32 @@ func dropRune(r rune) bool {
 	}
 	return false
 }
+
+// stringLit matches a quoted string literal in code: "…" or '…', with
+// backslash escapes.
+var stringLit = regexp.MustCompile(`"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'`)
+
+// Code redacts one line of source code. On top of Text, a line that names
+// a sensitive key has every string literal hidden except the first one that
+// is itself a key name, so .config("spark.db.password", "hunter2") keeps the
+// key and loses the value, even when the value also contains a word like
+// PASSWORD. It errs towards hiding: a line mentioning "key" loses its other
+// literals too.
+func Code(line string) string {
+	line = Text(line)
+	if !sensitiveKey.MatchString(line) {
+		return line
+	}
+	keptKey := false
+	return stringLit.ReplaceAllStringFunc(line, func(lit string) string {
+		body := lit[1 : len(lit)-1]
+		if body == "" || body == Mask {
+			return lit
+		}
+		if !keptKey && sensitiveKey.MatchString(body) && !strings.ContainsAny(body, " \t") && len(body) < 100 {
+			keptKey = true
+			return lit
+		}
+		return lit[:1] + Mask + lit[len(lit)-1:]
+	})
+}

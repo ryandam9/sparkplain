@@ -81,3 +81,19 @@ func FuzzText(f *testing.F) {
 		}
 	})
 }
+
+func TestCodeRedaction(t *testing.T) {
+	for in, want := range map[string]string{
+		`     .config("spark.myapp.db.password", "FAKE-DB-PASSWORD-0002")`:       `     .config("spark.myapp.db.password", "[redacted]")`,
+		`spark.conf.set('spark.myapp.session.token', 'FAKE-SESSION-TOKEN-0009')`: `spark.conf.set('spark.myapp.session.token', '[redacted]')`,
+		`password = "hunter2"`:           `password = "[redacted]"`,
+		`df.groupBy("provider").count()`: `df.groupBy("provider").count()`,
+		`url = "jdbc:postgresql://svc:FAKE-URL-PASSWORD-0008@db.example.internal:5432/claims"`: `url = "jdbc:postgresql://svc:[redacted]@db.example.internal:5432/claims"`,
+		`# the secret sauce is "caching"`:                                     `# the secret sauce is "[redacted]"`,
+		`raise ValueError("bad row 13 while loading, password=FAKE-PW-0006")`: `raise ValueError("[redacted]")`,
+	} {
+		if got := Code(in); got != want {
+			t.Errorf("Code(%q)\n got %q\nwant %q", in, got, want)
+		}
+	}
+}
