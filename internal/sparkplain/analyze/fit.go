@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
 )
@@ -77,10 +78,19 @@ func fitFindings(c *ctx, r *model.Report) {
 	if desired > 0 {
 		wanted, wantSrc = desired, desiredSrc
 	}
-	// Show each host's YARN capacity in the Nodes table.
+	// Show each host's YARN capacity, and what of this application YARN
+	// placed on it, in the Nodes table and chart.
 	for i := range r.Nodes.Hosts {
-		if n := nodes[hostKey(r.Nodes.Hosts[i].Name)]; n != nil {
-			r.Nodes.Hosts[i].YARNMemoryBytes, r.Nodes.Hosts[i].YARNVCores = n.memMB<<20, n.vcores
+		h := &r.Nodes.Hosts[i]
+		if n := nodes[hostKey(h.Name)]; n != nil {
+			h.YARNMemoryBytes, h.YARNVCores = n.memMB<<20, n.vcores
+		}
+		if len(h.Executors) > 0 && execMB > 0 {
+			h.ExecutorContainerBytes = execMB << 20
+			h.PeakExecutors = peakAlive(c, h.Name)
+		}
+		if amHost != "" && hostKey(h.Name) == hostKey(amHost) {
+			h.DriverContainerBytes = amMB << 20
 		}
 	}
 	if len(nodes) == 0 || execMB <= 0 {
@@ -191,3 +201,34 @@ func suggestSize(nodes []*fitNode, amMB, heapMB, overheadMB int64, cores int) st
 }
 
 func mb(n int64) string { return model.Bytes(n << 20) }
+
+// peakAlive is the most executors on host that were alive at once.
+func peakAlive(c *ctx, host string) int {
+	if !c.has() {
+		return 0
+	}
+	type edge struct {
+		t time.Time
+		d int
+	}
+	var es []edge
+	for _, x := range c.log.Executors {
+		if x.ID == "driver" || hostKey(x.Host) != hostKey(host) {
+			continue
+		}
+		start, end := c.lifetime(x)
+		es = append(es, edge{start, 1}, edge{end, -1})
+	}
+	sort.Slice(es, func(i, j int) bool {
+		if es[i].t.Equal(es[j].t) {
+			return es[i].d < es[j].d // an executor leaving frees its slot before another arrives
+		}
+		return es[i].t.Before(es[j].t)
+	})
+	n, peak := 0, 0
+	for _, e := range es {
+		n += e.d
+		peak = max(peak, n)
+	}
+	return peak
+}

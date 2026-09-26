@@ -148,6 +148,7 @@
         {{with clusterChart $r}}<div class="chart">{{.}}
           <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>Containers allocated</span><span><i class="sw" style="background:var(--warn)"></i>Containers waiting</span><span><i class="sw" style="background:var(--accent);opacity:.2"></i>This application's run</span></div></div>{{end}}
         {{if .Missing}}<div class="missing"><h3>Not in CloudWatch</h3><ul>{{range .Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}{{end}}{{end}}
+        <div class="charts2">{{nodeMemoryChart $r}}{{nodeCPUChart $r}}</div>
         {{if $r.Nodes.Missing}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $r.Nodes.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
       </section>
 
@@ -196,6 +197,7 @@
         <div class="chart">{{memChart $r}}
           <div class="legend"><span><i class="sw" style="background:var(--surface-2);border:1px solid var(--line)"></i>Configured heap</span><span><i class="sw" style="background:var(--accent)"></i>Peak heap used</span><span><i class="sw" style="background:var(--crit)"></i>Over 90% of the heap</span></div>
         </div>{{end}}
+        {{spillChart $r}}
         <p class="explain"><b>These are peaks, not continuous readings.</b> Spark samples executor memory on heartbeats and at the end of each task, so short spikes can be missed.{{if not $m.HeapKnown}} <b>This run recorded no executor memory samples</b>, so peak heap, off-heap and execution memory show as —; set spark.eventLog.logStageExecutorMetrics=true to record them.{{end}}{{if not $m.RSSKnown}} Whole-process memory (RSS, including Python) was not recorded; set spark.executor.processTreeMetrics.enabled=true to get it.{{end}}</p>
         <div class="tbl scroll"><table>
           <thead><tr><th data-sort="num">Executor</th><th data-sort="text">Host</th><th class="num" data-sort="num">Peak heap</th><th class="num" data-sort="num">Off-heap</th><th class="num" data-sort="num">Execution</th><th class="num" data-sort="num">Storage</th><th class="num" data-sort="num">Process RSS</th><th data-sort="num">GC</th></tr></thead>
@@ -228,6 +230,7 @@
           <div class="fact"><span class="l">CPU time used</span><span class="v num">{{dur $c.CPUMs}} of {{dur $c.RunMs}} run time</span><span class="x">{{pct $c.Share}}. Tasks spent the rest waiting on I/O, shuffle fetches, garbage collection or Python workers.</span></div>
           <div class="fact"><span class="l">Executor cores busy</span><span class="v num">{{pct $c.BusyShare}}</span><span class="x">Task run time ({{dur $c.RunMs}}) out of the core time executors held ({{dur $c.AllocatedCoreMs}}).</span></div>
         </div>
+        {{timeChart $r}}
         <h3>Stages with the most task time</h3>
         <div class="tbl"><table>
           <thead><tr><th data-sort="num">Stage</th><th>Name</th><th class="num" data-sort="num">Run time</th><th class="num" data-sort="num">CPU time</th><th data-sort="num">CPU share</th></tr></thead>
@@ -248,6 +251,7 @@
           <div class="fact"><span class="l">Shuffled</span><span class="v num">{{bytes $io.Totals.ShuffleWriteBytes}} written · {{bytes $io.Totals.ShuffleReadBytes}} read</span><span class="x">Data exchanged between executors for joins, groupings and repartitions. {{bytes $io.Totals.ShuffleRemoteBytes}} came over the network.</span></div>
           <div class="fact"><span class="l">Waiting for shuffle data</span><span class="v num">{{dur $io.Totals.ShuffleFetchWaitMs}}</span><span class="x">Task time spent waiting for shuffle blocks from other executors.</span></div>
         </div>
+        <div class="charts2">{{dataChart $r}}{{dataOverTime $r}}</div>
         {{if $io.Data}}<h3>Tables and paths</h3>
         <div class="tbl"><table>
           <thead><tr><th data-sort="text">Access</th><th data-sort="text">What</th><th data-sort="text">Name</th><th>Format</th><th>Found in</th></tr></thead>
@@ -281,6 +285,7 @@
         {{$j := $r.Jobs}}{{if $r.EventLog}}
         <p class="lede">A job is one action in the code (such as count, collect or write). Spark splits each job into stages at every shuffle, and each stage into one task per partition. {{numi (len $j.Jobs)}} jobs ran, {{$j.Failed}} failed; {{numi (len $j.Stages)}} stage attempts, {{num .Tasks}} tasks.</p>
         {{if gt (len $j.CriticalPath) 1}}<p class="explain"><b>Critical path:</b> the longest job was job {{$j.CriticalJob}}; within it, the slowest chain of dependent stages was {{ints $j.CriticalPath}}. Speeding up other stages would not shorten that job.</p>{{end}}
+        <div class="charts2">{{stagesChart $r}}{{spreadChart $r}}</div>
         <h3>Jobs</h3>
         <div class="tbl scroll"><table>
           <thead><tr><th data-sort="num">Job</th><th data-sort="text">What</th><th data-sort="text">Status</th><th data-sort="text">Started</th><th class="num" data-sort="num">Duration</th><th class="num" data-sort="num">Stages</th><th data-sort="num">SQL</th></tr></thead>
@@ -317,6 +322,7 @@
       <section id="sql">
         <div class="sechead"><h2>SQL queries</h2><span class="pill {{cov $r.Jobs.Coverage}}">{{covLabel $r.Jobs.Coverage}}</span></div>
         {{if $r.Jobs.SQL}}<p class="lede">Every DataFrame or SQL action runs as a query with a physical plan: the steps Spark chose. {{numi (len $r.Jobs.SQL)}} queries ran.{{if gt (len $r.Jobs.SQL) 200}} The first 200 are listed; the JSON export has all of them.{{end}}</p>
+        {{queriesChart $r}}
         {{range first 200 $r.Jobs.SQL}}<details id="sql-{{.ID}}"><summary>Query {{.ID}}: {{if .Description}}{{short .Description 140}}{{else}}(no description){{end}}{{if .Error}} <span class="pill crit">Failed</span>{{end}}</summary><div class="inner">
           <dl class="kv"><dt>Ran</dt><dd>{{time .Start "hms"}} for {{span .Start .End}}{{if .JobIDs}}, jobs {{ints .JobIDs}}{{end}}</dd>
           {{if .Reads}}<dt>Reads</dt><dd>{{range $i, $d := .Reads}}{{if $i}}, {{end}}<span class="mono">{{$d.Name}}</span>{{end}}</dd>{{end}}

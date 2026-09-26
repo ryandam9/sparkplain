@@ -64,7 +64,11 @@ func WriteHTML(w io.Writer, r *model.Report, opt Options) error {
 	if loc == nil {
 		loc = time.UTC
 	}
-	t, err := template.New("report").Funcs(funcs(loc)).Parse(pageTmpl)
+	fm := funcs(loc)
+	for name, fn := range chartFuncs(loc, opt.ExplorerHref) {
+		fm[name] = fn
+	}
+	t, err := template.New("report").Funcs(fm).Parse(pageTmpl)
 	if err != nil {
 		return err
 	}

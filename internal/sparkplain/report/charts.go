@@ -171,7 +171,11 @@ func memChart(r *model.Report) template.HTML {
 	iw := W - ml - mr
 	H := float64(len(ex))*rowH + 8
 	var b strings.Builder
-	fmt.Fprintf(&b, `<svg viewBox="0 0 %.0f %.0f" role="img" aria-label="Peak heap against configured heap for %d executors">`, W, H, len(ex))
+	maxW := 1000
+	if len(ex) <= 3 {
+		maxW = 760 // a few rows stay small rather than filling a wide page
+	}
+	fmt.Fprintf(&b, `<svg viewBox="0 0 %.0f %.0f" role="img" aria-label="Peak heap against configured heap for %d executors" style="max-width:%dpx">`, W, H, len(ex), maxW)
 	for i, e := range ex {
 		yy := 4 + float64(i)*rowH
 		full := float64(e.HeapBytes) / float64(scale) * iw

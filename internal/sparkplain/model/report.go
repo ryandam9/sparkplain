@@ -147,6 +147,13 @@ type Host struct {
 	// offered YARN, from the ResourceManager or NodeManager log.
 	YARNMemoryBytes int64 `json:"yarnMemoryBytes,omitempty"`
 	YARNVCores      int   `json:"yarnVCores,omitempty"`
+	// DriverContainerBytes is the driver's (application master's) YARN
+	// container when it ran here, and ExecutorContainerBytes the size of
+	// each executor container, from the logs.
+	DriverContainerBytes   int64 `json:"driverContainerBytes,omitempty"`
+	ExecutorContainerBytes int64 `json:"executorContainerBytes,omitempty"`
+	// PeakExecutors is the most of its executors alive at once.
+	PeakExecutors int `json:"peakExecutors,omitempty"`
 	// HostCPU is the node's CPU while the application ran, from CloudWatch.
 	HostCPU       *HostCPU   `json:"hostCpu,omitempty"`
 	Driver        bool       `json:"driver"`
