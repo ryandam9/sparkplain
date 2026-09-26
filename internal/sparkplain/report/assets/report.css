@@ -70,6 +70,8 @@ section{display:grid;gap:14px;scroll-margin-top:16px}
 /* summary */
 .story{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:20px 22px;display:grid;gap:10px}
 .story p{max-width:70ch;font-size:16px;line-height:1.6}
+.story ul{margin:0;padding-left:1.2em;display:grid;gap:6px;font-size:16px;line-height:1.6}
+.story li::marker{color:var(--faint)}
 .kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:0;background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .kpi{background:var(--surface);padding:14px 16px;display:grid;gap:2px;align-content:start;box-shadow:inset -1px -1px 0 var(--line)}
 .kpi .l{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
@@ -219,6 +221,5 @@ a.themebtn{text-decoration:none}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--viz-1:#3987e5;--viz-2:#d95926;--viz-3:#199e70;--viz-4:#c98500;--viz-5:#d55181}}
 :root[data-theme="dark"]{--viz-1:#3987e5;--viz-2:#d95926;--viz-3:#199e70;--viz-4:#c98500;--viz-5:#d55181}
 
-/* "What happened" beside the headline figures on wide screens */
+/* "What happened" as full-width bullets, the headline figures below */
 #summary{display:grid;gap:14px}
-@media (min-width:1200px){#summary{grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);align-items:start}}

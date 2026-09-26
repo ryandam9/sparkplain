@@ -60,7 +60,7 @@
       <section id="summary">
         <div class="story">
           <h2>What happened</h2>
-          {{range $r.Summary.Sentences}}<p>{{.}}</p>{{end}}
+          <ul>{{range $r.Summary.Sentences}}<li>{{.}}</li>{{end}}</ul>
         </div>
         {{if $r.Summary.KPIs}}<div class="kpis">
           {{range $r.Summary.KPIs}}<div class="kpi"><span class="l">{{.Label}}</span><span class="v{{if .Tone}} {{.Tone}}{{end}}">{{.Value}}{{if .Unit}} <small>{{.Unit}}</small>{{end}}</span><span class="x">{{.Explain}}</span></div>

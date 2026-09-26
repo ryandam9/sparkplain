@@ -281,7 +281,7 @@
         el("p", { text: "sparkplain carried on with everything else. The Logs tab lists each error." })));
     }
     var story = el("div", { cls: "story" }, el("h2", { text: "What happened" }));
-    (D.summary || []).forEach(function (s) { story.appendChild(el("p", { text: s })); });
+    story.appendChild(el("ul", null, (D.summary || []).map(function (s) { return el("li", { text: s }); })));
     out.push(story);
     if (D.kpis && D.kpis.length) {
       out.push(el("div", { cls: "kpis" }, D.kpis.map(function (k) {
