@@ -137,6 +137,10 @@ type xData struct {
 	LogStats   *model.EventLogStats `json:"logStats,omitempty"`
 	Sources    []xSource            `json:"sources"`
 	SourceNote []string             `json:"sourceNotes"`
+	Logs       []xLogFile           `json:"logs"`
+	LogCols    []string             `json:"logCols"`
+	LogSources []xLogSource         `json:"logSources"`
+	Cluster    *xCluster            `json:"cluster,omitempty"`
 	Collected  bool                 `json:"collected"` // explorer data was gathered
 	Limits     model.ExplorerLimits `json:"limits"`
 	Shrinks    int                  `json:"shrinks"`
@@ -269,6 +273,8 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		return int64(i)
 	}
 
+	d.Logs, d.LogSources, d.Cluster = logData(r)
+	d.LogCols = logLineCols
 	for _, f := range r.Findings {
 		xf := xFinding{Sev: string(f.Severity), Title: f.Title, Expl: f.Explanation, Fix: f.Fix}
 		for _, e := range f.Evidence {

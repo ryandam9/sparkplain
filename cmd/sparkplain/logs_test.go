@@ -123,6 +123,9 @@ func TestOnlineReadsClusterLogs(t *testing.T) {
 	ev, _ := os.ReadFile(filepath.Join(fx, "application_1790380000000_0049"))
 	os.MkdirAll(filepath.Join(bucket, "job-events"), 0o755)
 	os.WriteFile(filepath.Join(bucket, "job-events", "application_1790380000000_0049"), ev, 0o644)
+	// The job's script, with a planted secret.
+	os.MkdirAll(filepath.Join(bucket, "code"), 0o755)
+	os.WriteFile(filepath.Join(bucket, "code", "emr_job.py"), []byte("from pyspark.sql import SparkSession\nspark = SparkSession.builder.config(\"spark.myapp.db.password\", \"FAKE-SCRIPT-PASSWORD-0011\").getOrCreate()\n"), 0o644)
 	cl := cluster("j-FIXTURE0049CLUSTER", "")
 	cl.MasterPublicDnsName = aws.String("ip-10-0-2-11.us-east-1.compute.internal")
 	fakeAWS(t, map[string]string{"logs": bucket}, map[string]*emrtypes.Cluster{"j-FIXTURE0049CLUSTER": cl})
@@ -140,7 +143,7 @@ func TestOnlineReadsClusterLogs(t *testing.T) {
 		s := saved(c).(stubEMR)
 		s.steps = []emrtypes.StepSummary{
 			step("s-FIXTURESTEP0002", t0.Add(3*time.Hour), t0.Add(3*time.Hour+time.Minute)), // after the app: not searched
-			step("s-FIXTURESTEP0001", t0, t0.Add(5*time.Minute), "spark-submit", "--conf", "spark.eventLog.dir=s3://logs/job-events/", "s3://code/emr_job.py"),
+			step("s-FIXTURESTEP0001", t0, t0.Add(5*time.Minute), "spark-submit", "--conf", "spark.eventLog.dir=s3://logs/job-events/", "s3://logs/code/emr_job.py", "s3://logs/in/"),
 		}
 		s.instances = []emrtypes.Instance{inst("i-0fee0000000000001", "ip-10-0-2-10.us-east-1.compute.internal"),
 			inst("i-0fee0000000000002", "ip-10-0-2-11.us-east-1.compute.internal"), inst("i-0fee0000000000009", "ip-10-0-2-77.us-east-1.compute.internal")}
@@ -148,7 +151,7 @@ func TestOnlineReadsClusterLogs(t *testing.T) {
 	}
 	dir := t.TempDir()
 	code, _, errs := runCLI(t, "-app-id", "application_1790380000000_0049", "-cluster-id", "j-FIXTURE0049CLUSTER", "-profile", "test",
-		"-out", dir, "-format", "json")
+		"-out", dir, "-format", "json,explorer")
 	if code != exitOK {
 		t.Fatalf("exit %d: %s", code, errs)
 	}
@@ -179,9 +182,32 @@ func TestOnlineReadsClusterLogs(t *testing.T) {
 			t.Errorf("location %q", f.Location)
 		}
 	}
-	for _, name := range []string{"Container logs", "Step logs", "Node logs"} {
+	for _, name := range []string{"Container logs", "Step logs", "Node logs", "Application code"} {
 		if s := sourceOf(r, name); s.Status != "read" {
 			t.Errorf("%s = %+v", name, s)
+		}
+	}
+	page, _ := os.ReadFile(filepath.Join(dir, "explorer.html"))
+	if !strings.Contains(string(page), "from pyspark.sql import SparkSession") || !strings.Contains(string(page), "s3://logs/code/emr_job.py") {
+		t.Error("the explorer should embed the script fetched from S3")
+	}
+	if strings.Contains(string(page), "FAKE-SCRIPT-PASSWORD") {
+		t.Error("the script's planted password reached the explorer")
+	}
+}
+
+func TestSubmitScripts(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"spark-submit", "--deploy-mode", "cluster", "--conf", "a=b", "--py-files", "s3://b/lib.py,s3://b/deps.zip", "--verbose", "s3://b/job.py", "s3://b/in.py"}, "s3://b/lib.py s3://b/job.py"},
+		{[]string{"/usr/bin/spark-submit", "--class", "x.Main", "s3://b/app.jar"}, ""},
+		{[]string{"spark-submit", "--py-files=s3://b/u.py", "/home/hadoop/job.py"}, "s3://b/u.py"},
+		{[]string{"bash", "-c", "echo"}, ""},
+	} {
+		if got := strings.Join(submitScripts(tc.args), " "); got != tc.want {
+			t.Errorf("submitScripts(%v) = %q, want %q", tc.args, got, tc.want)
 		}
 	}
 }

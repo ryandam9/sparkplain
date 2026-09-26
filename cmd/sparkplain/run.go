@@ -275,11 +275,18 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	lim := source.Limits{Workers: o.workers, MaxObject: maxSize}
+	var fetched []report.FetchedSource // the application's scripts, from S3
 	mode := "offline-eventlog"
 	switch {
 	case online:
 		mode = "online"
 		logs.readLogs(ctx, cloud, log, o.appID, lim)
+		if outputs["explorer"] {
+			var row *model.SourceStatus
+			if fetched, row = logs.fetchScripts(ctx, cloud, o.appID); row != nil {
+				logs.sources = append(logs.sources, *row)
+			}
+		}
 	case o.from != "":
 		mode = "offline-logs"
 		if logs, err = offlineLogs(ctx, o.from, o.appID, log, lim); err != nil {
@@ -340,9 +347,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 			x = log.Explorer
 		}
 		xopt := report.ExplorerOptions{}
-		if len(o.sources) > 0 {
+		if len(o.sources) > 0 || len(fetched) > 0 {
 			var err error
-			if xopt.Sources, xopt.SourceNotes, err = report.LoadSources(r, o.sources); err != nil {
+			if xopt.Sources, xopt.SourceNotes, err = report.LoadSourcesFrom(r, o.sources, fetched); err != nil {
 				return fail("%v", err)
 			}
 		}

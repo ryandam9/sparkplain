@@ -87,6 +87,44 @@
 
   // ---------- data ----------
   var jobs = objs(D.jobs), stages = objs(D.stages), execs = objs(D.executors), queries = objs(D.sql), rdds = objs(D.rdds);
+  // Container, step and node logs, and what was found in each line.
+  var logFiles = D.logs || [], LC = colIdx(D.logCols || []), logByLoc = {};
+  logFiles.forEach(function (f, i) {
+    f.i = i;
+    logByLoc[f.loc] = i;
+    f.rows = f.found.map(function (r) { var o = {}; (D.logCols || []).forEach(function (c, k) { o[c] = r[k]; }); o.file = f; return o; });
+  });
+  var LOG_KIND = { exception: "Exception", traceback: "Python traceback", "out-of-memory": "Out of memory", "memory-kill": "Memory kill", "container-exit": "Container exit",
+    "app-exit": "Application master exit", "lost-executor": "Lost executor", "task-error": "Task error", signal: "Signal", "access-denied": "Access denied",
+    kerberos: "Kerberos", metastore: "Metastore", hbase: "HBase", identity: "Identity", submit: "spark-submit command", submitted: "Submitted application",
+    resource: "Uploaded file", "step-status": "Step status", "app-report": "YARN report", "app-summary": "YARN summary", bootstrap: "Bootstrap", error: "Error" };
+  var FILE_KIND = { "container-stderr": "Container stderr", "container-stdout": "Container stdout", "step-controller": "Step controller", "step-stderr": "Step stderr",
+    nodemanager: "NodeManager", resourcemanager: "ResourceManager", bootstrap: "Bootstrap log", "bootstrap-output": "Bootstrap action output" };
+  function sevPill(sev) {
+    var k = { critical: "crit", warning: "part", info: "info" }[sev] || "info";
+    return el("span", { cls: "pill " + k, text: { critical: "Critical", warning: "Warning", info: "Info" }[sev] || sev });
+  }
+  // logHref links a cited file:line to the log's page when it is one of
+  // the logs read.
+  function logHref(loc) {
+    var m = /^(.*):(\d+)(?:-\d+)?$/.exec(loc || "");
+    if (!m || logByLoc[m[1]] == null) return null;
+    return "#logs/" + logByLoc[m[1]] + ":" + m[2];
+  }
+  // shortLoc is a log's path below the cluster's log folder.
+  function shortLoc(loc) {
+    var m = /(?:^|\/)((?:containers|steps|node)\/.*)$/.exec(loc);
+    return m ? m[1] : loc;
+  }
+  var SRC_LABEL = { read: "Read", partial: "Partly read", error: "Could not read", "not-supplied": "Not supplied", none: "Nothing for this app", "not-requested": "Not requested", "not-yet": "Not in this version" };
+  function logWho(f) {
+    if (f.exec === "driver") return "driver";
+    if (f.exec === "am") return "application master";
+    if (f.exec) return "executor " + f.exec;
+    if (f.container) return f.container;
+    if (f.step) return "step " + f.step;
+    return f.host || f.instance || "";
+  }
   var exclusions = objs(D.exclusions), runningTasks = objs(D.runningTasks), blockKinds = objs(D.blockKinds);
   // extLink opens a log link in a new tab; such links point at the cluster's
   // NodeManagers, which may be gone once the cluster ends.
@@ -229,6 +267,7 @@
   // ---------- views ----------
   var TABS = [["overview", "Overview"], ["jobs", "Jobs", jobs.length], ["stages", "Stages", stages.length], ["executors", "Executors", execs.length],
     ["sql", "SQL / DataFrame", queries.length], ["storage", "Storage", rdds.length], ["code", "Code"], ["environment", "Environment"], ["log", "Event log"]];
+  if (logFiles.length || (D.logSources || []).length) TABS.push(["logs", "Logs", logFiles.length]);
   var tabs = document.getElementById("sp-tabs");
   TABS.forEach(function (t) { tabs.appendChild(el("a", { href: "#" + t[0], "data-tab": t[0] }, t[1], t[2] != null ? el("span", { cls: "n", text: num(t[2]) }) : null)); });
 
@@ -255,8 +294,8 @@
         el("div", { cls: "t" }, el("span", { cls: "pill " + ({ crit: "crit", warn: "part", info: "info" }[sev]), text: { crit: "Critical", warn: "Warning", info: "Info" }[sev] }), el("h3", { text: f.title })),
         el("p", { text: f.expl }),
         (f.ev || []).map(function (e) {
-          var h = refHref(e[1]);
-          return el("div", { cls: "ev" }, h ? link(h, e[0]) : e[0], e[2] ? " · " + e[2] : "");
+          var h = refHref(e[1]), lh = logHref(e[2]);
+          return el("div", { cls: "ev" }, h ? link(h, e[0]) : e[0], e[2] ? [" · ", lh ? link(lh, e[2]) : e[2]] : "");
         }),
         f.fix ? el("p", { cls: "fix", text: f.fix }) : null)));
     });
@@ -610,7 +649,15 @@
   };
   views.executor = function (id) {
     var x = execByID[id];
-    if (!x) return notFound("Executor " + id);
+    if (!x) {
+      var only = logFiles.filter(function (f) { return f.exec === id; });
+      if (!only.length) return notFound("Executor " + id);
+      var s0 = section(id === "driver" ? "Driver" : "Executor " + id, "The event log has no record of it, so only its own container logs are shown.");
+      s0.insertBefore(el("div", { cls: "crumbs" }, link("#executors", "Executors"), " / " + id), s0.firstChild);
+      only.forEach(function (f) { s0.appendChild(el("p", null, link("#logs/" + f.i, FILE_KIND[f.kind] || f.kind), el("span", { cls: "sub mono", text: f.loc }))); });
+      s0.appendChild(logLinesTable([].concat.apply([], only.map(function (f) { return f.rows; })), true));
+      return s0;
+    }
     var s = section(id === "driver" ? "Driver" : "Executor " + id);
     s.insertBefore(el("div", { cls: "crumbs" }, link("#executors", "Executors"), " / " + id), s.firstChild);
     s.appendChild(el("div", { cls: "facts" },
@@ -651,9 +698,42 @@
         { h: "Peak heap", num: true, v: function (c) { return c.peakHeap; }, f: function (c) { return c.peakHeap ? bytes(c.peakHeap) : "—"; } }
       ]
     }));
+    var mineLogs = logFiles.filter(function (f) { return f.exec === id; });
+    if (mineLogs.length) {
+      s.appendChild(el("h3", { text: "From its logs" }));
+      s.appendChild(explain("What sparkplain recognised in this " + (id === "driver" ? "driver" : "executor") + "'s own container logs. The event log records what Spark decided; these lines are what the process itself wrote."));
+      s.appendChild(logLinesTable([].concat.apply([], mineLogs.map(function (f) { return f.rows; })), true));
+    }
     if (x.src) s.appendChild(el("p", { cls: "srcref", text: "Added: " + src(x.src) }));
     return s;
   };
+
+  // logLinesTable lists recognised log lines, most severe first, each
+  // opening to its detail (the cause chain, the traceback).
+  function logLinesTable(lines, withFile, hit) {
+    var rank = { critical: 0, warning: 1, info: 2 };
+    return table({
+      rows: lines, sort: withFile ? 0 : 1, dir: "asc", page: 100, filter: "Filter lines",
+      text: function (l) { return l.kind + " " + l.text + " " + (l.detail || []).join(" "); },
+      rowCls: function (l) { return hit && l.line === hit ? "hitrow" : null; },
+      cols: [
+        { h: "Severity", v: function (l) { return rank[l.sev] * 1e12 + (l.time || 0); }, f: function (l) { return sevPill(l.sev); } },
+        { h: "Line", num: true, v: function (l) { return l.line; }, f: function (l) {
+          return el("span", null, withFile ? link("#logs/" + l.file.i + ":" + l.line, String(l.line)) : String(l.line), l.end ? el("span", { cls: "sub", text: "to " + l.end }) : null, withFile ? el("span", { cls: "sub", text: FILE_KIND[l.file.kind] || l.file.kind }) : null);
+        } },
+        { h: "Time", num: true, v: function (l) { return l.time || 0; }, f: function (l) { return l.time ? when(l.time) : "—"; } },
+        { h: "What", v: function (l) { return LOG_KIND[l.kind] || l.kind; }, f: function (l) { return LOG_KIND[l.kind] || l.kind; } },
+        { h: "Line text", v: function (l) { return l.text; }, f: function (l) {
+          var extra = (l.detail || []).length || Object.keys(l.fields || {}).length;
+          var head = el("span", { cls: "mono" }, l.text, l.count > 1 ? el("span", { cls: "sub", text: num(l.count) + " times, last at line " + l.last }) : null);
+          if (!extra) return head;
+          return el("details", { cls: "logline" }, el("summary", null, head), el("div", { cls: "inner" },
+            (l.detail || []).length ? el("pre", { cls: "mono", text: l.detail.join("\n") }) : null,
+            Object.keys(l.fields || {}).length ? el("dl", { cls: "kv" }, Object.keys(l.fields).sort().map(function (k) { return [el("dt", { text: k }), el("dd", { cls: "mono", text: l.fields[k] })]; })) : null));
+        } }
+      ]
+    });
+  }
 
   views.sql = function () {
     var s = section("SQL / DataFrame", "Each query is one DataFrame action or SQL statement. Open one for its plan with row counts and time per operator.");
@@ -1290,6 +1370,67 @@
     }
     if (st.notes && st.notes.length) s.appendChild(el("div", { cls: "missing" }, el("h3", { text: "Notes from reading it" }), el("ul", null, st.notes.map(function (n) { return el("li", { text: n }); }))));
     return s;
+  };
+
+  views.logs = function (arg) {
+    if (arg != null && arg !== "") {
+      var parts = String(arg).split(":"), f = logFiles[+parts[0]];
+      if (!f) return notFound("Log " + arg);
+      var s = section(FILE_KIND[f.kind] || f.kind);
+      s.insertBefore(el("div", { cls: "crumbs" }, link("#logs", "Logs"), " / " + (logWho(f) || f.kind)), s.firstChild);
+      s.appendChild(el("div", { cls: "facts" },
+        fact("Object", el("span", null, el("span", { cls: "mono", text: f.loc }), f.href ? el("span", { cls: "sub" }, extLink(f.href, "Open in the S3 console")) : null), "Where it was read from. The console link needs your own AWS sign-in; this page never fetches it."),
+        f.exec ? fact("Ran", f.exec === "am" ? "the application master" : execLink(f.exec), f.host ? "On " + f.host + "." : null) : null,
+        f.container ? fact("Container", el("span", { cls: "mono", text: f.container })) : null,
+        f.step ? fact("Step", el("span", { cls: "mono", text: f.step })) : null,
+        f.instance ? fact("Node", el("span", { cls: "mono", text: f.instance }), f.host || null) : null,
+        fact("Read", bytes(f.bytes) + " compressed, " + num(f.lines) + " lines", num(f.found.length) + " recognised" + (f.dropped ? "; " + num(f.dropped) + " more distinct lines were over the per-file limit" : "") + (f.cut ? "; " + num(f.cut) + " more are in report.json" : "") + ".")));
+      if (!f.rows.length) s.appendChild(explain("Nothing in this log matched a rule: no errors, exits or identity lines."));
+      else s.appendChild(logLinesTable(f.rows, false, parts[1] ? +parts[1] : null));
+      return s;
+    }
+    var s2 = section("Logs", "The container, step and node logs read for this application, and what sparkplain recognised in each: errors with their causes, exits, memory kills, and who the application ran as.");
+    if (D.cluster) {
+      var c = D.cluster;
+      s2.appendChild(el("div", { cls: "facts" },
+        fact("Cluster", el("span", null, el("span", { cls: "mono", text: c.id }), c.name ? " (" + c.name + ")" : ""), c.release + ", " + c.state + (c.reason ? ": " + c.reason : "") + "."),
+        fact("Log URI", el("span", { cls: "mono", text: c.logUri || "none" }), "Where EMR copies the cluster's logs."),
+        fact("Instance profile", c.profile || "none", "The IAM role the nodes' processes use for AWS calls."),
+        fact("Nodes", num(c.instances.length), c.instances.map(function (i) { return i.id + (i.primary ? " (primary)" : "") + (i.type ? " " + i.type : "") + (i.market ? " " + i.market : ""); }).join(", "))));
+    }
+    (D.logSources || []).forEach(function (x) {
+      s2.appendChild(el("div", { cls: "logsrc" }, el("h3", null, x.name, " ", el("span", { cls: "pill " + ({ read: "full", partial: "part", error: "crit" }[x.status] || "none"), text: SRC_LABEL[x.status] || x.status }), x.class ? el("span", { cls: "sub", text: x.class }) : null),
+        x.loc ? el("p", { cls: "mono sub", text: x.loc }) : null, el("p", { text: x.detail }),
+        (x.skipped || []).length ? el("details", null, el("summary", { text: num(x.skipped.length + (x.more || 0)) + " objects skipped or unreadable" }), el("div", { cls: "inner" },
+          table({ rows: x.skipped, sort: 0, dir: "asc", page: 100, cols: [
+            { h: "Object", v: function (o) { return o.location; }, f: function (o) { return el("span", { cls: "mono", text: o.location }); } },
+            { h: "Size", num: true, v: function (o) { return o.bytes; }, f: function (o) { return bytes(o.bytes); } },
+            { h: "Why", v: function (o) { return o.status + " " + (o.detail || ""); }, f: function (o) { return el("span", { cls: o.status === "error" ? "bad" : null, text: (o.errorClass ? o.errorClass + ": " : "") + (o.detail || o.status) }); } }
+          ] }), x.more ? explain(num(x.more) + " more are listed in report.json.") : null)) : null));
+    });
+    if (!logFiles.length) { s2.appendChild(explain("No container, step or node logs were read. Run sparkplain with -cluster-id (reads them from S3) or -from (a local copy).")); return s2; }
+    var worst = function (f) { return f.found.reduce(function (m, r) { return Math.min(m, { critical: 0, warning: 1, info: 2 }[r[LC.sev]]); }, 3); };
+    s2.appendChild(el("h3", { text: "Files" }));
+    s2.appendChild(table({
+      rows: logFiles, sort: 2, dir: "asc", filter: "Filter by path, executor or kind",
+      text: function (f) { return f.loc + " " + f.kind + " " + logWho(f); },
+      rowCls: function (f) { return worst(f) === 0 ? "failedrow" : null; },
+      cols: [
+        { h: "Log", v: function (f) { return f.loc; }, f: function (f) { return el("span", { title: f.loc }, link("#logs/" + f.i, FILE_KIND[f.kind] || f.kind), el("span", { cls: "sub mono", text: shortLoc(f.loc) })); } },
+        { h: "Process", v: function (f) { return logWho(f); }, f: function (f) { return f.exec && f.exec !== "am" ? execLink(f.exec) : logWho(f) || "—"; } },
+        { h: "Worst", v: worst, f: function (f) { var w = worst(f); return w < 3 ? sevPill(["critical", "warning", "info"][w]) : "—"; } },
+        { h: "Found", num: true, v: function (f) { return f.found.length; }, f: function (f) { return num(f.found.length); } },
+        { h: "Lines", num: true, v: function (f) { return f.lines; }, f: function (f) { return num(f.lines); } },
+        { h: "Size", num: true, v: function (f) { return f.bytes; }, f: function (f) { return bytes(f.bytes); } }
+      ]
+    }));
+    var problems = [];
+    logFiles.forEach(function (f) { f.rows.forEach(function (l) { if (l.sev !== "info") problems.push(l); }); });
+    if (problems.length) {
+      s2.appendChild(el("h3", { text: "Errors and warnings across all logs" }));
+      s2.appendChild(logLinesTable(problems, true));
+    }
+    return s2;
   };
 
   function notFound(what) { return section(what + " is not in this log", "It may have been cut off, or the link is from another run."); }

@@ -65,3 +65,13 @@ table.code.side td.uses{font:12px var(--sans);color:var(--muted);width:36%;borde
 table.code tr.hit td.src,table.code tr.hit td.ln{background:var(--accent-soft)}
 table.code tr.focus td{outline:2px solid var(--accent);outline-offset:-2px}
 ol.frames{margin:0;padding-left:20px;display:grid;gap:4px;font-size:14px}
+
+/* logs */
+tr.hitrow td{background:var(--accent-soft)}
+details.logline>summary{cursor:pointer;list-style:none}
+details.logline>summary::-webkit-details-marker{display:none}
+details.logline>summary::before{content:"▸ ";color:var(--muted)}
+details.logline[open]>summary::before{content:"▾ "}
+details.logline pre{white-space:pre-wrap;word-break:break-word;margin:0;font-size:12px}
+.logsrc{border-top:1px solid var(--line);padding-top:8px}
+.logsrc h3{display:flex;gap:8px;align-items:center}

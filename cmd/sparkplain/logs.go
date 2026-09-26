@@ -4,14 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/awsmeta"
 	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
+	"github.com/ryandam9/sparkplain/internal/sparkplain/report"
 	"github.com/ryandam9/sparkplain/internal/sparkplain/source"
 	"github.com/ryandam9/sparkplain/internal/sparkplain/yarnlog"
 )
@@ -250,4 +253,111 @@ func fromLayout(dir, appID string) (root string, appFolder bool, err error) {
 		return clusters[0] + "/", false, nil
 	}
 	return "", false, fmt.Errorf("-from %s holds no cluster log folder (containers/, steps/, node/) and no container_* folders; copy the cluster's log folder, for example with aws s3 cp --recursive <LogUri>/<cluster-id>/ %s", dir, dir)
+}
+
+// maxScriptBytes caps each script fetched from S3, like -source files.
+const maxScriptBytes = 4 << 20
+
+var scriptExts = map[string]bool{".py": true, ".scala": true, ".java": true, ".kt": true, ".sql": true, ".r": true, ".R": true}
+
+// submitScripts returns the application's own source files a spark-submit
+// argument list names on S3: the primary resource and --py-files entries.
+// Jars are skipped; they are not readable source.
+func submitScripts(args []string) []string {
+	takesNoValue := map[string]bool{"--verbose": true, "-v": true, "--supervise": true, "--help": true, "-h": true, "--version": true}
+	start := 0
+	for i, a := range args {
+		if a == "spark-submit" || strings.HasSuffix(a, "/spark-submit") {
+			start = i + 1
+			break
+		}
+	}
+	var out []string
+	add := func(p string) {
+		if isS3(p) && scriptExts[filepath.Ext(p)] && !slices.Contains(out, p) {
+			out = append(out, p)
+		}
+	}
+	for i := start; i < len(args); i++ {
+		a := args[i]
+		if !strings.HasPrefix(a, "-") {
+			add(a) // the primary resource; what follows are its own arguments
+			break
+		}
+		name, val, eq := strings.Cut(a, "=")
+		if !eq && !takesNoValue[a] && i+1 < len(args) {
+			i++
+			val = args[i]
+		}
+		if name == "--py-files" {
+			for _, p := range strings.Split(val, ",") {
+				add(strings.TrimSpace(p))
+			}
+		}
+	}
+	return out
+}
+
+// fetchScripts reads the application's scripts from S3 (GetObject), named
+// by the spark-submit arguments of the step that submitted it, for the
+// explorer's Code tab. It returns nil when there is nothing to fetch.
+func (out *clusterLogs) fetchScripts(ctx context.Context, cloud *awsSession, appID string) ([]report.FetchedSource, *model.SourceStatus) {
+	var paths []string
+	for _, st := range out.steps {
+		if st.AppID == appID {
+			paths = append(paths, submitScripts(st.Args)...)
+		}
+	}
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	row := &model.SourceStatus{Name: "Application code", Status: "read", Location: paths[0]}
+	cfg, err := cloud.config(ctx)
+	if err != nil {
+		row.Status, row.Class, row.Detail = "error", source.ClassAccessDenied, err.Error()
+		return nil, row
+	}
+	var got []report.FetchedSource
+	var read, failed []string
+	for _, p := range paths {
+		bucket, key, _ := source.ParseS3(p)
+		f := model.SourceFile{Location: p, Status: "read"}
+		data, err := func() ([]byte, error) {
+			st, err := awsDeps.s3(ctx, cfg, bucket)
+			if err != nil {
+				return nil, err
+			}
+			rc, err := st.Open(ctx, source.Object{Key: key})
+			if err != nil {
+				return nil, err
+			}
+			defer rc.Close()
+			b, err := io.ReadAll(io.LimitReader(rc, maxScriptBytes+1))
+			if err == nil && len(b) > maxScriptBytes {
+				err = &source.Error{Class: source.ClassTooLarge, Key: p, Err: fmt.Errorf("over %d bytes", maxScriptBytes)}
+			}
+			return b, err
+		}()
+		if err != nil {
+			f.Status, f.Class, f.Detail = "error", source.ClassOf(err), err.Error()
+			row.Class = f.Class
+			failed = append(failed, p)
+		} else {
+			f.Bytes = int64(len(data))
+			got = append(got, report.FetchedSource{Path: p, Data: data})
+			read = append(read, p)
+		}
+		row.Files = append(row.Files, f)
+	}
+	switch {
+	case len(failed) == 0:
+		row.Detail = fmt.Sprintf("Fetched %s, named in the step's spark-submit arguments. The explorer's Code tab shows it beside the jobs and stages that ran each line, redacted.", strings.Join(read, ", "))
+	case len(read) == 0:
+		row.Status = "error"
+		row.Detail = fmt.Sprintf("Could not fetch %s, named in the step's spark-submit arguments; pass -source with a local copy to see it beside the jobs.", strings.Join(failed, ", "))
+	default:
+		row.Status = "partial"
+		row.Detail = fmt.Sprintf("Fetched %s; could not fetch %s.", strings.Join(read, ", "), strings.Join(failed, ", "))
+	}
+	return got, row
 }

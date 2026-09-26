@@ -2,7 +2,9 @@ package report
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -48,6 +50,16 @@ func codeFiles(r *model.Report) []string {
 	for _, q := range r.Jobs.SQL {
 		add(q.Code)
 	}
+	if r.Logs != nil {
+		// Tracebacks name the script even when there is no event log.
+		for _, f := range r.Logs.Files {
+			for _, l := range f.Found {
+				if p := l.Fields["pyFile"]; p != "" {
+					seen[p] = true
+				}
+			}
+		}
+	}
 	out := make([]string, 0, len(seen))
 	for f := range seen {
 		out = append(out, f)
@@ -63,7 +75,25 @@ func codeFiles(r *model.Report) []string {
 // frame's bare ClaimsJob.java matches src/main/java/ClaimsJob.java. Notes
 // say what could not be matched or was cut.
 func LoadSources(r *model.Report, roots []string) ([]SourceFile, []string, error) {
+	return LoadSourcesFrom(r, roots, nil)
+}
+
+// FetchedSource is a source file read from elsewhere, such as the
+// application's script on S3, named by where it came from.
+type FetchedSource struct {
+	Path string // s3://bucket/key
+	Data []byte
+}
+
+// LoadSourcesFrom is LoadSources with files already fetched (the step's
+// script on S3) matched alongside the local ones.
+func LoadSourcesFrom(r *model.Report, roots []string, fetched []FetchedSource) ([]SourceFile, []string, error) {
 	var local []string
+	data := map[string][]byte{}
+	for _, f := range fetched {
+		local = append(local, f.Path)
+		data[f.Path] = f.Data
+	}
 	for _, root := range roots {
 		info, err := os.Stat(root)
 		if err != nil {
@@ -129,8 +159,11 @@ func LoadSources(r *model.Report, roots []string) ([]SourceFile, []string, error
 	total := 0
 	for _, p := range order {
 		sf := byLocal[p]
-		f, err := os.Open(p)
-		if err != nil {
+		var f io.ReadCloser
+		var err error
+		if b, ok := data[p]; ok {
+			f = io.NopCloser(bytes.NewReader(b))
+		} else if f, err = os.Open(p); err != nil {
 			notes = append(notes, fmt.Sprintf("Could not read %s: %v.", p, err))
 			continue
 		}
