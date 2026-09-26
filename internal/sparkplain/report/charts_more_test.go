@@ -66,3 +66,18 @@ func TestNoChartsWithoutData(t *testing.T) {
 		t.Error("charts drawn for an empty report")
 	}
 }
+
+// Long tables scroll inside a box no taller than most of the screen, with
+// the header in view, and print in full. Every table sits in such a box.
+func TestTablesScrollInTheirBox(t *testing.T) {
+	for _, rule := range []string{".tbl{overflow:auto;max-height:75vh;", ".tbl thead th{position:sticky;top:0;", "@media print{", ".tbl{max-height:none;overflow:visible}"} {
+		if !strings.Contains(css, rule) {
+			t.Errorf("report.css lacks %q", rule)
+		}
+	}
+	r, _ := buildWithExplorer(t, "application_1790380000000_0042")
+	page := html(t, r, Options{})
+	if tables, boxes := strings.Count(page, "<table"), strings.Count(page, `<div class="tbl"><table`); tables != boxes {
+		t.Errorf("%d tables but %d in a scrolling box", tables, boxes)
+	}
+}

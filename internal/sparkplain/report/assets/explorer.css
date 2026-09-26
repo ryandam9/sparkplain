@@ -68,7 +68,7 @@ table.code tr.focus td{outline:2px solid var(--accent);outline-offset:-2px}
 ol.frames{margin:0;padding-left:20px;display:grid;gap:4px;font-size:14px}
 
 /* logs */
-tr.hitrow td{background:var(--accent-soft)}
+tr.hitrow td,.tbl tr.hitrow td:first-child{background:var(--accent-soft)}
 details.logline>summary{cursor:pointer;list-style:none}
 details.logline>summary::-webkit-details-marker{display:none}
 details.logline>summary::before{content:"▸ ";color:var(--muted)}

@@ -169,7 +169,7 @@
     }
     tools.appendChild(count);
     if (opts.filter || opts.select) wrap.appendChild(tools);
-    var box2 = el("div", { cls: "tbl" + (opts.scroll ? " scroll" : "") });
+    var box2 = el("div", { cls: "tbl" });
     var t = el("table", { cls: opts.cls });
     var head = el("tr");
     opts.cols.forEach(function (c, i) {
@@ -491,7 +491,7 @@
   function taskTable(rows, o) {
     var TS = ["succeeded", "failed", "killed"];
     return table({
-      rows: taskRows(rows), sort: o.sort, dir: "desc", page: 50, scroll: true,
+      rows: taskRows(rows), sort: o.sort, dir: "desc", page: 50,
       rowCls: function (t) { return t.status === 1 ? "failedrow" : null; },
       cols: [
         numCol("Task", "task"), numCol("Index", "index"), numCol("Partition", "part"),

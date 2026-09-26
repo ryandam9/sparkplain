@@ -114,7 +114,7 @@
             <span><i class="sw" style="background:var(--na)"></i>Running when the log ends</span>
           </div>
         </div>
-        <div class="tbl scroll"><table>
+        <div class="tbl"><table>
           <thead><tr><th>Time (<span class="tzlabel">{{.Zone}}</span>)</th><th>Event</th><th>Source</th></tr></thead>
           <tbody class="num">{{range $r.Timeline.Events}}<tr><td>{{time .Time "hms"}}</td><td>{{.Text}}</td><td class="srcref">{{src .Source}}</td></tr>
           {{end}}</tbody>
@@ -161,7 +161,7 @@
           <div class="fact"><span class="l">How they ended</span><span class="v num">{{range $i, $c := $e.EndedBy}}{{if $i}} · {{end}}{{$c.N}} {{$c.Label}}{{end}}</span><span class="x">From the removal reason Spark logged for each executor.</span></div>
           <div class="fact"><span class="l">Size</span><span class="v num">{{$e.Cores}} cores · {{bytes $r.Memory.Config.ContainerBytes}}</span><span class="x">Each core runs one task at a time. Memory is the YARN container: heap plus overhead.</span></div>
         </div>
-        <div class="tbl scroll"><table>
+        <div class="tbl"><table>
           <thead><tr><th data-sort="num">ID</th><th data-sort="text">Host</th><th class="num" data-sort="num">Cores</th><th data-sort="text">Started</th><th class="num" data-sort="num">Lifetime</th><th data-sort="text">Ended</th><th class="num" data-sort="num">Tasks</th><th class="num" data-sort="num">Failed</th><th data-sort="num">CPU share</th><th data-sort="num">GC</th><th class="num" data-sort="num">Input</th><th class="num" data-sort="num">Shuffle read</th><th class="num" data-sort="num">Shuffle write</th><th class="num" data-sort="num">Peak heap</th></tr></thead>
           <tbody>{{range $e.Executors}}<tr{{if removalBad .RemovalKind}} class="lost"{{end}}>
             <td data-v="{{.ID}}" class="mono">{{.ID}}</td><td class="mono">{{.Host}}</td><td class="num">{{.Cores}}</td>
@@ -199,7 +199,7 @@
         </div>{{end}}
         {{spillChart $r}}
         <p class="explain"><b>These are peaks, not continuous readings.</b> Spark samples executor memory on heartbeats and at the end of each task, so short spikes can be missed.{{if not $m.HeapKnown}} <b>This run recorded no executor memory samples</b>, so peak heap, off-heap and execution memory show as —; set spark.eventLog.logStageExecutorMetrics=true to record them.{{end}}{{if not $m.RSSKnown}} Whole-process memory (RSS, including Python) was not recorded; set spark.executor.processTreeMetrics.enabled=true to get it.{{end}}</p>
-        <div class="tbl scroll"><table>
+        <div class="tbl"><table>
           <thead><tr><th data-sort="num">Executor</th><th data-sort="text">Host</th><th class="num" data-sort="num">Peak heap</th><th class="num" data-sort="num">Off-heap</th><th class="num" data-sort="num">Execution</th><th class="num" data-sort="num">Storage</th><th class="num" data-sort="num">Process RSS</th><th data-sort="num">GC</th></tr></thead>
           <tbody>{{if $m.Driver}}{{with $m.Driver}}<tr><td class="mono">driver</td><td class="mono">{{.Host}}</td><td class="num" data-v="{{.PeakHeap}}">{{if .PeakHeap}}{{bytes .PeakHeap}}{{else}}—{{end}} <span class="sub">of {{bytes .HeapBytes}}</span></td><td class="num" data-v="{{.PeakOffHeap}}">{{if .PeakOffHeap}}{{bytes .PeakOffHeap}}{{else}}—{{end}}</td><td class="num">—</td><td class="num">—</td><td class="num" data-v="{{.PeakRSS}}">{{if .PeakRSS}}{{bytes .PeakRSS}}{{else}}—{{end}}</td><td>—</td></tr>{{end}}{{end}}
           {{range $m.Executors}}<tr><td class="mono" data-v="{{.ID}}">{{.ID}}</td><td class="mono">{{.Host}}</td>
@@ -260,7 +260,7 @@
         </table></div>
         <p class="explain">From SQL physical plans and catalog events. Reads and writes done with RDD code, or inside Python, do not appear in plans.</p>{{end}}
         {{if $io.Stages}}<h3>Stages that moved the most data</h3>
-        <div class="tbl scroll"><table>
+        <div class="tbl"><table>
           <thead><tr><th data-sort="num">Stage</th><th>Name</th><th class="num" data-sort="num">Input</th><th class="num" data-sort="num">Output</th><th class="num" data-sort="num">Shuffle read</th><th class="num" data-sort="num">Shuffle write</th><th class="num" data-sort="num">Spill (disk)</th></tr></thead>
           <tbody>{{range $io.Stages}}<tr><td data-v="{{.StageID}}">{{.StageID}}{{if .Attempt}}.{{.Attempt}}{{end}}</td><td>{{.Name}}<span class="sub srcref">{{src .Source}}</span></td>
             <td class="num" data-v="{{.Totals.InputBytes}}">{{bytes .Totals.InputBytes}}<span class="sub">{{num .Totals.InputRecords}} rows</span></td>
@@ -287,7 +287,7 @@
         {{if gt (len $j.CriticalPath) 1}}<p class="explain"><b>Critical path:</b> the longest job was job {{$j.CriticalJob}}; within it, the slowest chain of dependent stages was {{ints $j.CriticalPath}}. Speeding up other stages would not shorten that job.</p>{{end}}
         <div class="charts2">{{stagesChart $r}}{{spreadChart $r}}</div>
         <h3>Jobs</h3>
-        <div class="tbl scroll"><table>
+        <div class="tbl"><table>
           <thead><tr><th data-sort="num">Job</th><th data-sort="text">What</th><th data-sort="text">Status</th><th data-sort="text">Started</th><th class="num" data-sort="num">Duration</th><th class="num" data-sort="num">Stages</th><th data-sort="num">SQL</th></tr></thead>
           <tbody>{{range $j.Jobs}}<tr><td data-v="{{.ID}}">{{.ID}}</td>
             <td>{{if .Description}}{{.Description}}<span class="sub mono">{{.Name}}</span>{{else}}<span class="mono">{{.Name}}</span>{{end}}{{if .Failure}}<span class="sub bad">{{short .Failure 300}}</span>{{end}}</td>
@@ -296,7 +296,7 @@
           {{end}}</tbody>
         </table></div>
         <h3>Stages</h3>
-        <div class="tbl scroll"><table>
+        <div class="tbl"><table>
           <thead><tr><th data-sort="num">Stage</th><th data-sort="text">Name</th><th data-sort="text">Status</th><th class="num" data-sort="num">Duration</th><th class="num" data-sort="num">Tasks</th><th class="num" data-sort="num">Median task</th><th class="num" data-sort="num">p95</th><th class="num" data-sort="num">Slowest</th><th class="num" data-sort="num">Skew</th><th class="num" data-sort="num">Spill (disk)</th><th class="num" data-sort="num">Failed tasks</th></tr></thead>
           <tbody>{{range $j.Stages}}<tr><td data-v="{{.ID}}">{{.ID}}{{if .Attempt}}.{{.Attempt}}{{end}}</td>
             <td>{{.Name}}{{if .JobIDs}}<span class="sub">job {{ints .JobIDs}}</span>{{end}}{{if .FailureReason}}<span class="sub bad">{{short .FailureReason 300}}</span>{{end}}</td>

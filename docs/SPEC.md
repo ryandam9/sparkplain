@@ -424,6 +424,7 @@ Fixtures (added, not regenerated, so existing expectations hold): `0046` exercis
   - `explorer.html` (Google Charts): the same stage times, data and spill on the Stages tab, data over time on the Overview, executor time and peak heap against the heap on the Executors tab, and node memory on the Cluster tab. Bars link to their stage or executor.
   - Node memory counts executor containers at the most alive at once (`PeakExecutors`), because dynamic allocation can start and stop more executors on a node than ever fit on it together. The driver's container is the application master's.
   - Timeline axes now show clock times, and a drawn timeline is only as tall as its rows.
+  - Every table, in both pages, scrolls inside its own box at most 75% of the screen tall (so the page can still be scrolled past it), with its header row pinned and, on screens 900 px or wider, its first column pinned when scrolling sideways. Printing shows every row. Production runs can have hundreds of executors and stages; the explorer still draws 200 rows at a time behind "Show more".
 
 ## 9. Open questions
 
