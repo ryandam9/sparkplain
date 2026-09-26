@@ -359,6 +359,8 @@ Fixtures (added, not regenerated, so existing expectations hold): `0046` exercis
 6. **Explorer and code.** Executor and driver pages show their classified log lines, with links to the S3 objects; a Logs tab lists every source file with what was found in it. The application's script is fetched from S3 automatically (found in the step's `spark-submit` arguments) and shown as with `-source`.
 7. **Fixtures and a live check.** The step, container and node logs of the four test clusters in the test bucket (including a failed run whose driver `stdout` holds a Python traceback), scrubbed like the event logs into `testdata/emrlogs/`, drive the tests through the local-folder implementation. A final read-only check runs `-cluster-id` against the live testbed cluster and one terminated cluster.
 
+- Phase 2 step 1 (built): `internal/sparkplain/source` has the `Store` interface with S3 and local-folder implementations and a bounded fetcher. The S3 store finds the bucket's region itself (checked live: a client made for us-east-1 read the test bucket in ap-southeast-2), lists with restore status so unrestored Glacier and Deep Archive objects are reported instead of read, and opens with `If-Match` on the listed ETag. Tests run against a stubbed client.
+
 ## 9. Open questions
 
 - [ ] Where is the S3 copy of the event logs that the History Server reads (`s3a://…/sparklogs`), and can your AWS profile read it?
