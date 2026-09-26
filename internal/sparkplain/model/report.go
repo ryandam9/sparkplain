@@ -343,3 +343,38 @@ type SourceStatus struct {
 	Location string `json:"location,omitempty"`
 	Detail   string `json:"detail"`
 }
+
+// Cluster is the EMR cluster an application ran on, from the EMR API.
+type Cluster struct {
+	ID              string            `json:"id"`
+	Name            string            `json:"name"`
+	State           string            `json:"state"`
+	StateReason     string            `json:"stateReason,omitempty"`
+	Release         string            `json:"release"`
+	Applications    []string          `json:"applications"`
+	LogURI          string            `json:"logUri,omitempty"`
+	ServiceRole     string            `json:"serviceRole,omitempty"`
+	InstanceProfile string            `json:"instanceProfile,omitempty"`
+	SecurityConfig  string            `json:"securityConfiguration,omitempty"`
+	Created         time.Time         `json:"created,omitzero"`
+	Ended           time.Time         `json:"ended,omitzero"`
+	Configurations  map[string]string `json:"configurations,omitempty"` // "classification/key" → value, redacted
+	Source          string            `json:"source"`                   // the API call it came from
+}
+
+// Step is one EMR step: a spark-submit or other command the cluster ran.
+type Step struct {
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	State          string    `json:"state"`
+	Jar            string    `json:"jar,omitempty"`
+	Args           []string  `json:"args,omitempty"` // redacted
+	Started        time.Time `json:"started,omitzero"`
+	Ended          time.Time `json:"ended,omitzero"`
+	FailureReason  string    `json:"failureReason,omitempty"`
+	FailureMessage string    `json:"failureMessage,omitempty"`
+	FailureLog     string    `json:"failureLog,omitempty"`
+	// AppID is the Spark application the step started, found in its stderr.
+	AppID  string `json:"appId,omitempty"`
+	Source string `json:"source"`
+}

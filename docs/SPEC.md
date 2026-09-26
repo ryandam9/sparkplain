@@ -361,6 +361,8 @@ Fixtures (added, not regenerated, so existing expectations hold): `0046` exercis
 
 - Phase 2 step 1 (built): `internal/sparkplain/source` has the `Store` interface with S3 and local-folder implementations and a bounded fetcher. The S3 store finds the bucket's region itself (checked live: a client made for us-east-1 read the test bucket in ap-southeast-2), lists with restore status so unrestored Glacier and Deep Archive objects are reported instead of read, and opens with `If-Match` on the listed ETag. Tests run against a stubbed client.
 
+- Phase 2 step 2 (built): `internal/sparkplain/awsmeta` reads the cluster (`DescribeCluster`: state, release, applications, log URI, roles, security configuration, EMR configurations flattened and redacted), finds a cluster by name (`ListClusters`, newest wins), lists steps (`ListSteps`, arguments redacted), and finds the application a step submitted in its `stderr`. Checked against the live testbed and a terminated cluster: `LogUri` uses the `s3n://` scheme, and a terminated cluster still describes. Tests use a stubbed client.
+
 ## 9. Open questions
 
 - [ ] Where is the S3 copy of the event logs that the History Server reads (`s3a://…/sparklogs`), and can your AWS profile read it?
