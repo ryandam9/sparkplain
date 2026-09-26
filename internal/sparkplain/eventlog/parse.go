@@ -439,6 +439,9 @@ func (p *parser) taskEnd(e *taskEndEvent, src model.Source) {
 	}
 	if e.Info.Speculative {
 		t.Speculative = 1
+		if ok {
+			t.SpeculativeWon = 1
+		}
 	}
 	dur := int64(0)
 	if e.Info.FinishTime > 0 && e.Info.LaunchTime > 0 {
@@ -779,6 +782,24 @@ func (p *parser) resourceProfile(e *resourceProfileEvent, src model.Source) {
 	rp.OffHeapMB = e.Executor["offHeap"].Amount
 	rp.PySparkMemoryMB = e.Executor["pyspark.memory"].Amount
 	rp.TaskCPUs = e.Task["cpus"].Amount
+	for name, v := range e.Executor {
+		switch name {
+		case "cores", "memory", "memoryOverhead", "offHeap", "pyspark.memory":
+		default:
+			if rp.ExecutorOther == nil {
+				rp.ExecutorOther = map[string]int64{}
+			}
+			rp.ExecutorOther[redact.Text(name)] = v.Amount
+		}
+	}
+	for name, v := range e.Task {
+		if name != "cpus" {
+			if rp.TaskOther == nil {
+				rp.TaskOther = map[string]float64{}
+			}
+			rp.TaskOther[redact.Text(name)] = v.Amount
+		}
+	}
 	p.log.ResourceProfiles = append(p.log.ResourceProfiles, rp)
 }
 

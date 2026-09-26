@@ -32,14 +32,18 @@ type fileConfig struct {
 // thresholds mirrors analyze.Thresholds with optional fields, so a file
 // can set only the values it wants to change.
 type thresholds struct {
-	SkewRatio       *float64       `yaml:"skew-ratio"`
-	SkewMinTask     *time.Duration `yaml:"skew-min-task"`
-	SkewMinTasks    *int           `yaml:"skew-min-tasks"`
-	SpillShare      *float64       `yaml:"spill-share"`
-	GCShare         *float64       `yaml:"gc-share"`
-	LowCPUShare     *float64       `yaml:"low-cpu-share"`
-	MemoryUsedShare *float64       `yaml:"memory-used-share"`
-	MinRunTime      *time.Duration `yaml:"min-run-time"`
+	SkewRatio        *float64       `yaml:"skew-ratio"`
+	SkewMinTask      *time.Duration `yaml:"skew-min-task"`
+	SkewMinTasks     *int           `yaml:"skew-min-tasks"`
+	SpillShare       *float64       `yaml:"spill-share"`
+	GCShare          *float64       `yaml:"gc-share"`
+	LowCPUShare      *float64       `yaml:"low-cpu-share"`
+	MemoryUsedShare  *float64       `yaml:"memory-used-share"`
+	MinRunTime       *time.Duration `yaml:"min-run-time"`
+	SchedDelayShare  *float64       `yaml:"sched-delay-share"`
+	LocalityAnyShare *float64       `yaml:"locality-any-share"`
+	ResultShare      *float64       `yaml:"result-share"`
+	SlowStartup      *time.Duration `yaml:"slow-startup"`
 }
 
 func (t thresholds) apply(d analyze.Thresholds) analyze.Thresholds {
@@ -63,6 +67,10 @@ func (t thresholds) apply(d analyze.Thresholds) analyze.Thresholds {
 	setF(&d.LowCPUShare, t.LowCPUShare)
 	setF(&d.MemoryUsedShare, t.MemoryUsedShare)
 	setD(&d.MinRunTime, t.MinRunTime)
+	setF(&d.SchedDelayShare, t.SchedDelayShare)
+	setF(&d.LocalityAnyShare, t.LocalityAnyShare)
+	setF(&d.ResultShare, t.ResultShare)
+	setD(&d.SlowStartup, t.SlowStartup)
 	return d
 }
 

@@ -99,7 +99,10 @@ type ResourceProfile struct {
 	OffHeapMB        int64   `json:"offHeapMiB,omitempty"`
 	PySparkMemoryMB  int64   `json:"pysparkMemoryMiB,omitempty"`
 	TaskCPUs         float64 `json:"taskCpus,omitempty"`
-	Source           Source  `json:"source"`
+	// Other resources the profile requests, such as gpu, with amounts.
+	ExecutorOther map[string]int64   `json:"executorOther,omitempty"`
+	TaskOther     map[string]float64 `json:"taskOther,omitempty"`
+	Source        Source             `json:"source"`
 }
 
 // PeakMemory holds the highest sampled executor memory metrics, in bytes.
@@ -253,6 +256,7 @@ type TaskTotals struct {
 	Failed              int64 `json:"failed"`
 	Killed              int64 `json:"killed"`
 	Speculative         int64 `json:"speculative"`
+	SpeculativeWon      int64 `json:"speculativeWon"` // speculative attempts that succeeded
 	DurationMs          int64 `json:"durationMs"`
 	RunTimeMs           int64 `json:"runTimeMs"`
 	CPUTimeNs           int64 `json:"cpuTimeNs"`
@@ -315,6 +319,7 @@ func (t *TaskTotals) Add(o TaskTotals) {
 	t.Failed += o.Failed
 	t.Killed += o.Killed
 	t.Speculative += o.Speculative
+	t.SpeculativeWon += o.SpeculativeWon
 	t.DurationMs += o.DurationMs
 	t.RunTimeMs += o.RunTimeMs
 	t.CPUTimeNs += o.CPUTimeNs

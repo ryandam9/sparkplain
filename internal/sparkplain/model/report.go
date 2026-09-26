@@ -309,14 +309,15 @@ type RuntimeRow struct {
 
 // ConfigSection is module 8.
 type ConfigSection struct {
-	Coverage   Coverage      `json:"coverage"`
-	Runtime    []RuntimeRow  `json:"runtime"`
-	Key        []ConfigView  `json:"key"` // the settings that matter most, explained
-	Groups     []ConfigGroup `json:"groups"`
-	Total      int           `json:"total"`
-	NonDefault int           `json:"nonDefault"`
-	Redacted   int           `json:"redacted"`
-	Missing    []string      `json:"missing,omitempty"`
+	Coverage         Coverage          `json:"coverage"`
+	Runtime          []RuntimeRow      `json:"runtime"`
+	Key              []ConfigView      `json:"key"` // the settings that matter most, explained
+	Groups           []ConfigGroup     `json:"groups"`
+	Total            int               `json:"total"`
+	NonDefault       int               `json:"nonDefault"`
+	Redacted         int               `json:"redacted"`
+	Missing          []string          `json:"missing,omitempty"`
+	ResourceProfiles []ResourceProfile `json:"resourceProfiles,omitempty"`
 }
 
 // Fact is a labelled value with a one-line explanation.

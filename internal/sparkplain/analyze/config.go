@@ -16,6 +16,7 @@ func analyzeConfig(c *ctx, r *model.Report) {
 		s.Missing = []string{"The effective configuration, including settings made inside the code"}
 		return
 	}
+	s.ResourceProfiles = c.log.ResourceProfiles
 	s.Coverage = model.Partial
 	s.Missing = []string{
 		"Which settings came from EMR defaults, cluster configuration or spark-submit (needs the EMR API and step logs)",

@@ -384,3 +384,59 @@ func TestRuntimeTableWithSparseEnvironment(t *testing.T) {
 		t.Errorf("expected most rows to be not recorded, got %d missing", missing)
 	}
 }
+
+// The phase 1c rules fire on the fixtures that exercise them, and not on the
+// main fixture.
+func TestInvestigateRulesOnFixtures(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		want map[string]model.Severity
+	}{
+		{"application_1790380000000_0046", map[string]model.Severity{"executors-excluded": model.Warning}},
+		{"application_1790380000000_0047.inprogress", map[string]model.Severity{"tasks-running-at-end": model.Warning}},
+		{"application_1790380000000_0048", map[string]model.Severity{"executors-excluded": model.Warning, "tasks-running-at-end": model.Warning}},
+		{"application_1790380000000_0050", map[string]model.Severity{"speculation": model.Info}},
+	} {
+		app := strings.TrimSuffix(c.name, ".inprogress")
+		got := rules(fixtureReport(t, c.name, app, DefaultThresholds()))
+		for rule, sev := range c.want {
+			f, ok := got[rule]
+			if !ok || f.Severity != sev || len(f.Evidence) == 0 || f.Evidence[0].Ref == "" && rule != "executors-excluded" {
+				t.Errorf("%s: %s = %+v, want severity %s with linked evidence", c.name, rule, f, sev)
+			}
+		}
+	}
+	got := rules(fixtureReport(t, "application_1790380000000_0042", "application_1790380000000_0042", DefaultThresholds()))
+	for _, rule := range []string{"executors-excluded", "tasks-running-at-end", "speculation", "scheduler-delay", "large-results", "slow-executor-startup"} {
+		if _, ok := got[rule]; ok {
+			t.Errorf("main fixture raised %s", rule)
+		}
+	}
+}
+
+func TestSchedulerDelayResultsAndStartup(t *testing.T) {
+	stage := func(delay, dur, result int64) *model.Stage {
+		return &model.Stage{ID: 1, Name: "collect at job.py:3", TaskType: "ResultTask",
+			Totals: model.TaskTotals{Tasks: 100, DurationMs: dur, SchedulerDelayMs: delay, ResultSizeBytes: result}}
+	}
+	l := synthetic(map[string]string{"spark.driver.maxResultSize": "1g"},
+		&model.Executor{ID: "1", Host: "h", Cores: 2, StartupMs: 95_000}, &model.Executor{ID: "2", Host: "h", Cores: 2, StartupMs: 3_000})
+	l.Stages = []*model.Stage{stage(40_000, 120_000, 700<<20)}
+	got := runSynthetic(l)
+	for _, r := range []string{"scheduler-delay", "large-results", "slow-executor-startup"} {
+		if f, ok := got[r]; !ok || f.Evidence[0].Ref == "" {
+			t.Errorf("%s missing or unlinked: %+v", r, f)
+		}
+	}
+	if f := got["slow-executor-startup"]; !strings.Contains(f.Title, "1 executor") {
+		t.Errorf("startup title %q", f.Title)
+	}
+	l.Stages = []*model.Stage{stage(10_000, 120_000, 100<<20)}
+	l.Executors = []*model.Executor{{ID: "2", Host: "h", Cores: 2, StartupMs: 3_000}}
+	got = runSynthetic(l)
+	for _, r := range []string{"scheduler-delay", "large-results", "slow-executor-startup"} {
+		if _, ok := got[r]; ok {
+			t.Errorf("%s fired below its threshold", r)
+		}
+	}
+}

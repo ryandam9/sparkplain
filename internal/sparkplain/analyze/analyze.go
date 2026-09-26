@@ -13,14 +13,18 @@ import (
 // Thresholds tune the findings rules (SPEC §5). They can be set in the
 // config file.
 type Thresholds struct {
-	SkewRatio       float64       `yaml:"skew-ratio"`        // slowest task over this × the stage median
-	SkewMinTask     time.Duration `yaml:"skew-min-task"`     // ignore stages whose slowest task is shorter
-	SkewMinTasks    int           `yaml:"skew-min-tasks"`    // ignore stages with fewer successful tasks
-	SpillShare      float64       `yaml:"spill-share"`       // disk spill over this share of shuffle write
-	GCShare         float64       `yaml:"gc-share"`          // GC time over this share of run time
-	LowCPUShare     float64       `yaml:"low-cpu-share"`     // CPU time under this share of run time
-	MemoryUsedShare float64       `yaml:"memory-used-share"` // peak heap under this share of the heap
-	MinRunTime      time.Duration `yaml:"min-run-time"`      // skip CPU and GC rules for less task time than this
+	SkewRatio        float64       `yaml:"skew-ratio"`         // slowest task over this × the stage median
+	SkewMinTask      time.Duration `yaml:"skew-min-task"`      // ignore stages whose slowest task is shorter
+	SkewMinTasks     int           `yaml:"skew-min-tasks"`     // ignore stages with fewer successful tasks
+	SpillShare       float64       `yaml:"spill-share"`        // disk spill over this share of shuffle write
+	GCShare          float64       `yaml:"gc-share"`           // GC time over this share of run time
+	LowCPUShare      float64       `yaml:"low-cpu-share"`      // CPU time under this share of run time
+	MemoryUsedShare  float64       `yaml:"memory-used-share"`  // peak heap under this share of the heap
+	MinRunTime       time.Duration `yaml:"min-run-time"`       // skip CPU and GC rules for less task time than this
+	SchedDelayShare  float64       `yaml:"sched-delay-share"`  // scheduler delay over this share of task time
+	LocalityAnyShare float64       `yaml:"locality-any-share"` // input tasks off their data's host over this share
+	ResultShare      float64       `yaml:"result-share"`       // a stage's results over this share of spark.driver.maxResultSize
+	SlowStartup      time.Duration `yaml:"slow-startup"`       // executors taking longer than this to register
 }
 
 // DefaultThresholds are the values in SPEC §5.
@@ -28,7 +32,8 @@ func DefaultThresholds() Thresholds {
 	return Thresholds{
 		SkewRatio: 5, SkewMinTask: time.Second, SkewMinTasks: 5,
 		SpillShare: 0.10, GCShare: 0.10, LowCPUShare: 0.30, MemoryUsedShare: 0.40,
-		MinRunTime: time.Minute,
+		MinRunTime:      time.Minute,
+		SchedDelayShare: 0.20, LocalityAnyShare: 0.30, ResultShare: 0.50, SlowStartup: time.Minute,
 	}
 }
 
@@ -95,6 +100,7 @@ func Run(in Input) *model.Report {
 	} {
 		a(c, r)
 	}
+	investigateFindings(c)
 	sort.SliceStable(c.findings, func(i, j int) bool {
 		a, b := c.findings[i], c.findings[j]
 		if a.Severity.Rank() != b.Severity.Rank() {
