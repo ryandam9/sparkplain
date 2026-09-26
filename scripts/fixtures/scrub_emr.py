@@ -8,67 +8,94 @@ EC2 host names and addresses become fixture-style names, the application
 and cluster timestamps become the fixture ones, the test bucket and region
 become neutral values, and the planted password becomes the FAKE- form the
 secret tests look for. The script fails if any original marker is left.
+
+scrub_emrlogs.py imports Scrubber so a cluster's text logs get the same
+host names as its event log.
 """
 import json
 import re
 import sys
 import zipfile
 
-src, out = sys.argv[1:3]
-new_app = sys.argv[3] if len(sys.argv) > 3 else "application_1790380000000_0049"
-if src.endswith(".zip"):
-    z = zipfile.ZipFile(src)
-    raw = z.read([n for n in z.namelist() if not n.endswith("/")][0]).decode("utf-8")
-else:
-    raw = open(src, encoding="utf-8").read()
 
-hosts = {}
+class Scrubber:
+    """Rewrites strings for one application, naming hosts in the order it
+    first sees them."""
+
+    def __init__(self, old_app, new_app):
+        self.hosts = {}
+        old_ts, new_ts = old_app.split("_")[1], new_app.split("_")[1]
+        # "<ts>_<n>" is in every attempt and container ID too
+        # (appattempt_<ts>_<n>_…, container_<ts>_<n>_…), so both parts change
+        # together and the IDs stay those of one application.
+        old_key, new_key = old_app.split("_", 1)[1], new_app.split("_", 1)[1]
+        self.replace = [
+            (re.compile(r"ip-172-31-\d+-\d+"), self._host),
+            (re.compile(r"\b172\.31\.\d+\.\d+\b"), lambda m: "10.0.2.99"),
+            (re.compile(re.escape(old_key)), lambda m: new_key),
+            (re.compile(old_ts), lambda m: new_ts),
+            (re.compile(r"sparkplain-test-[0-9a-f]{8}"), lambda m: "sparkplain-fixtures"),
+            (re.compile(r"ap-southeast-2"), lambda m: "us-east-1"),
+            (re.compile(r"FAKE-hunter2-secret"), lambda m: "FAKE-EMR-PASSWORD-0010"),
+        ]
+        self.forbidden = ["172-31", "172.31.", "sparkplain-test-", "ap-southeast-2", old_ts, "hunter2"]
+
+    def _host(self, m):
+        h = m.group(0)
+        if h not in self.hosts:
+            self.hosts[h] = "ip-10-0-2-%d" % (10 + len(self.hosts))
+        return self.hosts[h]
+
+    def fix(self, s):
+        for rx, fn in self.replace:
+            s = rx.sub(fn, s)
+        return s
+
+    def check(self, s, where):
+        for bad in self.forbidden:
+            if bad in s:
+                sys.exit("scrub left %r in %s: %s" % (bad, where, s[:200]))
+
+    def walk(self, v):
+        if isinstance(v, dict):
+            return {self.fix(k): self.walk(x) for k, x in v.items()}
+        if isinstance(v, list):
+            return [self.walk(x) for x in v]
+        return self.fix(v) if isinstance(v, str) else v
+
+    def eventlog(self, raw):
+        """Returns the scrubbed event log's lines."""
+        lines = []
+        for l in raw.splitlines():
+            if not l.strip():
+                continue
+            s = json.dumps(self.walk(json.loads(l)), separators=(",", ":"), ensure_ascii=False)
+            self.check(s, "event log")
+            lines.append(s)
+        return lines
 
 
-def host(m):
-    h = m.group(0)
-    if h not in hosts:
-        hosts[h] = "ip-10-0-2-%d" % (10 + len(hosts))
-    return hosts[h]
+def read_eventlog(src):
+    if src.endswith(".zip"):
+        z = zipfile.ZipFile(src)
+        return z.read([n for n in z.namelist() if not n.endswith("/")][0]).decode("utf-8")
+    return open(src, encoding="utf-8").read()
 
 
-old_app = next(json.loads(l)["App ID"] for l in raw.splitlines() if '"SparkListenerApplicationStart"' in l)
-old_ts, new_ts = old_app.split("_")[1], new_app.split("_")[1]
-REPLACE = [
-    (re.compile(r"ip-172-31-\d+-\d+"), host),
-    (re.compile(r"\b172\.31\.\d+\.\d+\b"), lambda m: "10.0.2.99"),
-    (re.compile(re.escape(old_app)), lambda m: new_app),
-    (re.compile(old_ts), lambda m: new_ts),
-    (re.compile(r"sparkplain-test-[0-9a-f]{8}"), lambda m: "sparkplain-fixtures"),
-    (re.compile(r"ap-southeast-2"), lambda m: "us-east-1"),
-    (re.compile(r"FAKE-hunter2-secret"), lambda m: "FAKE-EMR-PASSWORD-0010"),
-]
-FORBIDDEN = ["172-31", "172.31.", "sparkplain-test-", "ap-southeast-2", old_ts, "hunter2"]
+def app_of(raw):
+    return next(json.loads(l)["App ID"] for l in raw.splitlines() if '"SparkListenerApplicationStart"' in l)
 
 
-def fix(s):
-    for rx, fn in REPLACE:
-        s = rx.sub(fn, s)
-    return s
+def main():
+    src, out = sys.argv[1:3]
+    new_app = sys.argv[3] if len(sys.argv) > 3 else "application_1790380000000_0049"
+    raw = read_eventlog(src)
+    sc = Scrubber(app_of(raw), new_app)
+    lines = sc.eventlog(raw)
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write("".join(l + "\n" for l in lines))
+    print("wrote", out, len(lines), "events; hosts", sc.hosts)
 
 
-def walk(v):
-    if isinstance(v, dict):
-        return {fix(k): walk(x) for k, x in v.items()}
-    if isinstance(v, list):
-        return [walk(x) for x in v]
-    return fix(v) if isinstance(v, str) else v
-
-
-lines = []
-for l in raw.splitlines():
-    if not l.strip():
-        continue
-    s = json.dumps(walk(json.loads(l)), separators=(",", ":"), ensure_ascii=False)
-    for bad in FORBIDDEN:
-        if bad in s:
-            sys.exit("scrub left %r in: %s" % (bad, s[:200]))
-    lines.append(s)
-with open(out, "w", encoding="utf-8") as fh:
-    fh.write("".join(l + "\n" for l in lines))
-print("wrote", out, len(lines), "events; hosts", hosts)
+if __name__ == "__main__":
+    main()
