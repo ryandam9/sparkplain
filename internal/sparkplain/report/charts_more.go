@@ -45,6 +45,26 @@ type hbar struct {
 // legendItem names a colour under a chart.
 type legendItem struct{ color, label string }
 
+// shown keeps the legend items whose colour some bar actually uses, so a
+// run that spilled nothing has no "Spilled to disk" key.
+func shown(rows []hbar, legend []legendItem) []legendItem {
+	used := map[string]bool{}
+	for _, r := range rows {
+		for _, sg := range r.segs {
+			if sg.v > 0 {
+				used[sg.color] = true
+			}
+		}
+	}
+	var out []legendItem
+	for _, l := range legend {
+		if used[l.color] {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
 // chartBox wraps a chart with a title, a caption and a legend.
 func chartBox(title, caption string, svg string, legend []legendItem) template.HTML {
 	if svg == "" {
@@ -284,7 +304,7 @@ func stagesChart(r *model.Report, explorer string) template.HTML {
 			note: model.Duration(int64(stageMs(s)))})
 	}
 	return chartBox("The longest stages", "Each bar is how long a stage ran, from submission to completion. Red means it failed.", hbars(rows, msF),
-		[]legendItem{{cInput, "Stage run time"}, {cFail, "Failed stage"}})
+		shown(rows, []legendItem{{cInput, "Stage run time"}, {cFail, "Failed stage"}}))
 }
 
 // spreadChart shows the spread of task times in the slowest stages: the
@@ -326,7 +346,7 @@ func dataChart(r *model.Report, explorer string) template.HTML {
 		}, note: model.Bytes(int64(moved(s)))})
 	}
 	return chartBox("Data each stage moved", "The stages that moved the most data, split into what they read, shuffled between executors, wrote out and spilled to disk.", hbars(rows, bytesF),
-		[]legendItem{{cInput, "Read"}, {cShRead, "Shuffle read"}, {cShWrite, "Shuffle write"}, {cOutput, "Written"}, {cSpill, "Spilled to disk"}})
+		shown(rows, []legendItem{{cInput, "Read"}, {cShRead, "Shuffle read"}, {cShWrite, "Shuffle write"}, {cOutput, "Written"}, {cSpill, "Spilled to disk"}}))
 }
 
 // dataOverTime shows data read, shuffled and written, summed as stages
@@ -377,7 +397,7 @@ func spillChart(r *model.Report) template.HTML {
 		}, note: model.Bytes(s.DiskBytes) + " to disk"})
 	}
 	return chartBox("Spill by stage", "Data Spark had to move out of memory while running each stage (as held in memory), and what that came to on disk. Spill means tasks had less memory than their data needed.", hbars(rows, bytesF),
-		[]legendItem{{cShRead, "Spilled (size in memory)"}, {cSpill, "Written to disk"}})
+		shown(rows, []legendItem{{cShRead, "Spilled (size in memory)"}, {cSpill, "Written to disk"}}))
 }
 
 // timeChart shows where each executor's task time went: computing, garbage
@@ -397,7 +417,7 @@ func timeChart(r *model.Report) template.HTML {
 		}, note: model.Duration(t.RunTimeMs)})
 	}
 	return chartBox("Where executor time went", "Task run time on each executor: computing on the JVM, collecting garbage, or neither, which is waiting for shuffle data, storage or Python workers.", hbars(rows, msF),
-		[]legendItem{{cInput, "Computing"}, {cShRead, "Garbage collection"}, {cNeutral, "Other or waiting"}})
+		shown(rows, []legendItem{{cInput, "Computing"}, {cShRead, "Garbage collection"}, {cNeutral, "Other or waiting"}}))
 }
 
 // nodeMemoryChart shows what YARN placed on each node against what the
@@ -492,7 +512,7 @@ func queriesChart(r *model.Report, explorer string) template.HTML {
 			segs: []seg{{dur(q), color, q.Description}}, note: model.Duration(int64(dur(q)))})
 	}
 	return chartBox("The longest queries", "Each SQL statement or DataFrame action, by how long it ran. Red means it failed.", hbars(rows, msF),
-		[]legendItem{{cInput, "Query run time"}, {cFail, "Failed query"}})
+		shown(rows, []legendItem{{cInput, "Query run time"}, {cFail, "Failed query"}}))
 }
 
 // chartFuncs are the report template's chart functions; explorer links

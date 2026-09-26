@@ -81,3 +81,12 @@ func TestTablesScrollInTheirBox(t *testing.T) {
 		t.Errorf("%d tables but %d in a scrolling box", tables, boxes)
 	}
 }
+
+// A legend lists only the colours the bars use.
+func TestLegendShowsUsedColours(t *testing.T) {
+	rows := []hbar{{segs: []seg{{v: 5, color: cInput}, {v: 0, color: cSpill}}}}
+	got := shown(rows, []legendItem{{cInput, "Read"}, {cSpill, "Spilled to disk"}})
+	if len(got) != 1 || got[0].label != "Read" {
+		t.Errorf("legend = %v", got)
+	}
+}
