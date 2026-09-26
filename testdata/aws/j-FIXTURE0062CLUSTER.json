@@ -1,0 +1,4704 @@
+{
+ "recordedAt": "2026-09-26T19:35:24.434167667Z",
+ "cluster": {
+  "Applications": [
+   {
+    "AdditionalInfo": null,
+    "Args": null,
+    "Name": "Spark",
+    "Version": "3.5.1"
+   }
+  ],
+  "AutoScalingRole": null,
+  "AutoTerminate": false,
+  "ClusterArn": "arn:aws:elasticmapreduce:us-east-1:000000000000:cluster/j-FIXTURE0062CLUSTER",
+  "Configurations": [
+   {
+    "Classification": "spark-defaults",
+    "Configurations": null,
+    "Properties": {
+     "spark.eventLog.dir": "s3://sparkplain-fixtures/spark-events/",
+     "spark.eventLog.logStageExecutorMetrics": "true",
+     "spark.executor.processTreeMetrics.enabled": "true"
+    }
+   },
+   {
+    "Classification": "yarn-site",
+    "Configurations": null,
+    "Properties": {
+     "yarn.nodemanager.pmem-check-enabled": "true"
+    }
+   }
+  ],
+  "CustomAmiId": null,
+  "EbsRootVolumeIops": null,
+  "EbsRootVolumeSize": null,
+  "EbsRootVolumeThroughput": null,
+  "Ec2InstanceAttributes": {
+   "AdditionalMasterSecurityGroups": null,
+   "AdditionalSlaveSecurityGroups": null,
+   "Ec2AvailabilityZone": "us-east-1a",
+   "Ec2KeyName": null,
+   "Ec2SubnetId": null,
+   "EmrManagedMasterSecurityGroup": "sg-0f1e0000000000001",
+   "EmrManagedSlaveSecurityGroup": "sg-0f1e0000000000002",
+   "IamInstanceProfile": "EMR_EC2_DefaultRole",
+   "RequestedEc2AvailabilityZones": [],
+   "RequestedEc2SubnetIds": [],
+   "ServiceAccessSecurityGroup": null
+  },
+  "ExtendedSupport": null,
+  "Id": "j-FIXTURE0062CLUSTER",
+  "InstanceCollectionType": "INSTANCE_GROUP",
+  "KerberosAttributes": {
+   "KdcAdminPassword": null,
+   "Realm": null,
+   "ADDomainJoinPassword": null,
+   "ADDomainJoinUser": null,
+   "CrossRealmTrustPrincipalPassword": null
+  },
+  "LogEncryptionKmsKeyId": null,
+  "LogUri": "s3n://sparkplain-fixtures/emr-logs/",
+  "MasterPublicDnsName": "ec2-192-0-2-10.compute.amazonaws.com",
+  "MonitoringConfiguration": null,
+  "Name": "sparkplain-phase3b",
+  "NormalizedInstanceHours": 40,
+  "OSReleaseLabel": "2023.12.20260831.0",
+  "OutpostArn": null,
+  "PlacementGroups": [],
+  "ReleaseLabel": "emr-7.3.0",
+  "RepoUpgradeOnBoot": "",
+  "RequestedAmiVersion": null,
+  "RunningAmiVersion": null,
+  "ScaleDownBehavior": "TERMINATE_AT_TASK_COMPLETION",
+  "SecurityConfiguration": null,
+  "ServiceRole": "EMR_DefaultRole",
+  "SessionEnabled": false,
+  "Status": {
+   "ErrorDetails": null,
+   "State": "TERMINATED",
+   "StateChangeReason": {
+    "Code": "USER_REQUEST",
+    "Message": "Terminated according to the attached auto-termination policy after 3600 idle seconds"
+   },
+   "Timeline": {
+    "CreationDateTime": "2026-09-26T15:48:33.571Z",
+    "EndDateTime": "2026-09-26T17:21:37.013Z",
+    "ReadyDateTime": "2026-09-26T15:52:50.93Z"
+   }
+  },
+  "StepConcurrencyLevel": 2,
+  "Tags": [
+   {
+    "Key": "project",
+    "Value": "sparkplain-test"
+   }
+  ],
+  "TerminationProtected": false,
+  "UnhealthyNodeReplacement": true,
+  "VisibleToAllUsers": true
+ },
+ "steps": [
+  {
+   "ActionOnFailure": "CONTINUE",
+   "Config": {
+    "Args": [
+     "spark-submit",
+     "--deploy-mode",
+     "cluster",
+     "--conf",
+     "spark.executor.memory=1g",
+     "--conf",
+     "spark.executor.memoryOverhead=512m",
+     "--conf",
+     "spark.dynamicAllocation.enabled=false",
+     "--num-executors",
+     "2",
+     "s3://sparkplain-fixtures/p3/p3_oom.py"
+    ],
+    "Jar": "command-runner.jar",
+    "MainClass": null,
+    "Properties": {}
+   },
+   "EncryptionKeyArn": null,
+   "Id": "s-FIXTURESTEP0003",
+   "LogUri": null,
+   "Name": "p3-oom-2",
+   "Status": {
+    "FailureDetails": {
+     "LogFile": "s3://sparkplain-fixtures/emr-logs/j-FIXTURE0062CLUSTER/steps/s-FIXTURESTEP0003/stderr.gz",
+     "Message": "Exception in thread \"main\" org.apache.spark.SparkException: Application application_1790380000000_0065 finished with failed status",
+     "Reason": null
+    },
+    "State": "FAILED",
+    "StateChangeReason": {
+     "Code": "",
+     "Message": null
+    },
+    "Timeline": {
+     "CreationDateTime": "2026-09-26T16:08:11.208Z",
+     "EndDateTime": "2026-09-26T16:19:07.233Z",
+     "StartDateTime": "2026-09-26T16:08:43.123Z"
+    }
+   }
+  },
+  {
+   "ActionOnFailure": "CONTINUE",
+   "Config": {
+    "Args": [
+     "spark-submit",
+     "--deploy-mode",
+     "cluster",
+     "--conf",
+     "spark.executor.memory=1g",
+     "--conf",
+     "spark.executor.memoryOverhead=512m",
+     "--conf",
+     "spark.dynamicAllocation.enabled=false",
+     "--num-executors",
+     "2",
+     "s3://sparkplain-fixtures/p3/p3_memkill.py"
+    ],
+    "Jar": "command-runner.jar",
+    "MainClass": null,
+    "Properties": {}
+   },
+   "EncryptionKeyArn": null,
+   "Id": "s-FIXTURESTEP0005",
+   "LogUri": null,
+   "Name": "p3-memkill-2",
+   "Status": {
+    "FailureDetails": null,
+    "State": "COMPLETED",
+    "StateChangeReason": {
+     "Code": "",
+     "Message": null
+    },
+    "Timeline": {
+     "CreationDateTime": "2026-09-26T16:08:11.208Z",
+     "EndDateTime": "2026-09-26T16:09:19.223Z",
+     "StartDateTime": "2026-09-26T16:08:43.123Z"
+    }
+   }
+  },
+  {
+   "ActionOnFailure": "CONTINUE",
+   "Config": {
+    "Args": [
+     "spark-submit",
+     "--deploy-mode",
+     "cluster",
+     "--conf",
+     "spark.executor.memory=1g",
+     "--conf",
+     "spark.executor.memoryOverhead=512m",
+     "--conf",
+     "spark.dynamicAllocation.enabled=false",
+     "--num-executors",
+     "2",
+     "--conf",
+     "spark.task.maxFailures=2",
+     "s3://sparkplain-fixtures/p3/p3_oom.py"
+    ],
+    "Jar": "command-runner.jar",
+    "MainClass": null,
+    "Properties": {}
+   },
+   "EncryptionKeyArn": null,
+   "Id": "s-FIXTURESTEP0002",
+   "LogUri": null,
+   "Name": "p3-oom",
+   "Status": {
+    "FailureDetails": {
+     "LogFile": "s3://sparkplain-fixtures/emr-logs/j-FIXTURE0062CLUSTER/steps/s-FIXTURESTEP0002/stderr.gz",
+     "Message": "Exception in thread \"main\" org.apache.spark.SparkException: Application application_1790380000000_0064 finished with failed status",
+     "Reason": null
+    },
+    "State": "FAILED",
+    "StateChangeReason": {
+     "Code": "",
+     "Message": null
+    },
+    "Timeline": {
+     "CreationDateTime": "2026-09-26T15:48:33.713Z",
+     "EndDateTime": "2026-09-26T15:55:42.893Z",
+     "StartDateTime": "2026-09-26T15:54:58.792Z"
+    }
+   }
+  },
+  {
+   "ActionOnFailure": "CONTINUE",
+   "Config": {
+    "Args": [
+     "spark-submit",
+     "--deploy-mode",
+     "cluster",
+     "--conf",
+     "spark.executor.memory=1g",
+     "--conf",
+     "spark.executor.memoryOverhead=512m",
+     "--conf",
+     "spark.dynamicAllocation.enabled=false",
+     "--num-executors",
+     "2",
+     "--conf",
+     "spark.task.maxFailures=2",
+     "s3://sparkplain-fixtures/p3/p3_memkill.py"
+    ],
+    "Jar": "command-runner.jar",
+    "MainClass": null,
+    "Properties": {}
+   },
+   "EncryptionKeyArn": null,
+   "Id": "s-FIXTURESTEP0001",
+   "LogUri": null,
+   "Name": "p3-memkill",
+   "Status": {
+    "FailureDetails": {
+     "LogFile": "s3://sparkplain-fixtures/emr-logs/j-FIXTURE0062CLUSTER/steps/s-FIXTURESTEP0001/stderr.gz",
+     "Message": "Exception in thread \"main\" org.apache.spark.SparkException: Application application_1790380000000_0063 finished with failed status",
+     "Reason": null
+    },
+    "State": "FAILED",
+    "StateChangeReason": {
+     "Code": "",
+     "Message": null
+    },
+    "Timeline": {
+     "CreationDateTime": "2026-09-26T15:48:33.713Z",
+     "EndDateTime": "2026-09-26T15:55:22.855Z",
+     "StartDateTime": "2026-09-26T15:54:48.746Z"
+    }
+   }
+  },
+  {
+   "ActionOnFailure": "CONTINUE",
+   "Config": {
+    "Args": [
+     "spark-submit",
+     "--deploy-mode",
+     "cluster",
+     "--conf",
+     "spark.executor.memory=4g",
+     "--conf",
+     "spark.executor.cores=2",
+     "s3://sparkplain-fixtures/p3/p3_access.py"
+    ],
+    "Jar": "command-runner.jar",
+    "MainClass": null,
+    "Properties": {}
+   },
+   "EncryptionKeyArn": null,
+   "Id": "s-FIXTURESTEP0004",
+   "LogUri": null,
+   "Name": "p3-access",
+   "Status": {
+    "FailureDetails": {
+     "LogFile": "s3://sparkplain-fixtures/emr-logs/j-FIXTURE0062CLUSTER/steps/s-FIXTURESTEP0004/stderr.gz",
+     "Message": "Exception in thread \"main\" org.apache.spark.SparkException: Application application_1790380000000_0061 finished with failed status",
+     "Reason": null
+    },
+    "State": "FAILED",
+    "StateChangeReason": {
+     "Code": "",
+     "Message": null
+    },
+    "Timeline": {
+     "CreationDateTime": "2026-09-26T15:48:33.713Z",
+     "EndDateTime": "2026-09-26T15:54:53.781Z",
+     "StartDateTime": "2026-09-26T15:52:55.373Z"
+    }
+   }
+  },
+  {
+   "ActionOnFailure": "CONTINUE",
+   "Config": {
+    "Args": [
+     "spark-submit",
+     "--deploy-mode",
+     "cluster",
+     "--conf",
+     "spark.executor.memory=4g",
+     "--conf",
+     "spark.executor.cores=2",
+     "--conf",
+     "spark.dynamicAllocation.maxExecutors=2",
+     "s3://sparkplain-fixtures/p3/p3_busy.py"
+    ],
+    "Jar": "command-runner.jar",
+    "MainClass": null,
+    "Properties": {}
+   },
+   "EncryptionKeyArn": null,
+   "Id": "s-FIXTURESTEP0006",
+   "LogUri": null,
+   "Name": "p3-busy",
+   "Status": {
+    "FailureDetails": null,
+    "State": "COMPLETED",
+    "StateChangeReason": {
+     "Code": "",
+     "Message": null
+    },
+    "Timeline": {
+     "CreationDateTime": "2026-09-26T15:48:33.713Z",
+     "EndDateTime": "2026-09-26T15:54:43.74Z",
+     "StartDateTime": "2026-09-26T15:52:55.373Z"
+    }
+   }
+  }
+ ],
+ "stepDetails": [
+  {
+   "ActionOnFailure": "CONTINUE",
+   "Config": {
+    "Args": [
+     "spark-submit",
+     "--deploy-mode",
+     "cluster",
+     "--conf",
+     "spark.executor.memory=1g",
+     "--conf",
+     "spark.executor.memoryOverhead=512m",
+     "--conf",
+     "spark.dynamicAllocation.enabled=false",
+     "--num-executors",
+     "2",
+     "s3://sparkplain-fixtures/p3/p3_oom.py"
+    ],
+    "Jar": "command-runner.jar",
+    "MainClass": null,
+    "Properties": {}
+   },
+   "EncryptionKeyArn": null,
+   "ExecutionRoleArn": null,
+   "Id": "s-FIXTURESTEP0003",
+   "LogUri": null,
+   "Name": "p3-oom-2",
+   "Status": {
+    "FailureDetails": {
+     "LogFile": "s3://sparkplain-fixtures/emr-logs/j-FIXTURE0062CLUSTER/steps/s-FIXTURESTEP0003/stderr.gz",
+     "Message": "Exception in thread \"main\" org.apache.spark.SparkException: Application application_1790380000000_0065 finished with failed status",
+     "Reason": null
+    },
+    "State": "FAILED",
+    "StateChangeReason": {
+     "Code": "",
+     "Message": null
+    },
+    "Timeline": {
+     "CreationDateTime": "2026-09-26T16:08:11.208Z",
+     "EndDateTime": "2026-09-26T16:19:07.233Z",
+     "StartDateTime": "2026-09-26T16:08:43.123Z"
+    }
+   }
+  },
+  {
+   "ActionOnFailure": "CONTINUE",
+   "Config": {
+    "Args": [
+     "spark-submit",
+     "--deploy-mode",
+     "cluster",
+     "--conf",
+     "spark.executor.memory=1g",
+     "--conf",
+     "spark.executor.memoryOverhead=512m",
+     "--conf",
+     "spark.dynamicAllocation.enabled=false",
+     "--num-executors",
+     "2",
+     "s3://sparkplain-fixtures/p3/p3_memkill.py"
+    ],
+    "Jar": "command-runner.jar",
+    "MainClass": null,
+    "Properties": {}
+   },
+   "EncryptionKeyArn": null,
+   "ExecutionRoleArn": null,
+   "Id": "s-FIXTURESTEP0005",
+   "LogUri": null,
+   "Name": "p3-memkill-2",
+   "Status": {
+    "FailureDetails": null,
+    "State": "COMPLETED",
+    "StateChangeReason": {
+     "Code": "",
+     "Message": null
+    },
+    "Timeline": {
+     "CreationDateTime": "2026-09-26T16:08:11.208Z",
+     "EndDateTime": "2026-09-26T16:09:19.223Z",
+     "StartDateTime": "2026-09-26T16:08:43.123Z"
+    }
+   }
+  },
+  {
+   "ActionOnFailure": "CONTINUE",
+   "Config": {
+    "Args": [
+     "spark-submit",
+     "--deploy-mode",
+     "cluster",
+     "--conf",
+     "spark.executor.memory=1g",
+     "--conf",
+     "spark.executor.memoryOverhead=512m",
+     "--conf",
+     "spark.dynamicAllocation.enabled=false",
+     "--num-executors",
+     "2",
+     "--conf",
+     "spark.task.maxFailures=2",
+     "s3://sparkplain-fixtures/p3/p3_oom.py"
+    ],
+    "Jar": "command-runner.jar",
+    "MainClass": null,
+    "Properties": {}
+   },
+   "EncryptionKeyArn": null,
+   "ExecutionRoleArn": null,
+   "Id": "s-FIXTURESTEP0002",
+   "LogUri": null,
+   "Name": "p3-oom",
+   "Status": {
+    "FailureDetails": {
+     "LogFile": "s3://sparkplain-fixtures/emr-logs/j-FIXTURE0062CLUSTER/steps/s-FIXTURESTEP0002/stderr.gz",
+     "Message": "Exception in thread \"main\" org.apache.spark.SparkException: Application application_1790380000000_0064 finished with failed status",
+     "Reason": null
+    },
+    "State": "FAILED",
+    "StateChangeReason": {
+     "Code": "",
+     "Message": null
+    },
+    "Timeline": {
+     "CreationDateTime": "2026-09-26T15:48:33.713Z",
+     "EndDateTime": "2026-09-26T15:55:42.893Z",
+     "StartDateTime": "2026-09-26T15:54:58.792Z"
+    }
+   }
+  },
+  {
+   "ActionOnFailure": "CONTINUE",
+   "Config": {
+    "Args": [
+     "spark-submit",
+     "--deploy-mode",
+     "cluster",
+     "--conf",
+     "spark.executor.memory=1g",
+     "--conf",
+     "spark.executor.memoryOverhead=512m",
+     "--conf",
+     "spark.dynamicAllocation.enabled=false",
+     "--num-executors",
+     "2",
+     "--conf",
+     "spark.task.maxFailures=2",
+     "s3://sparkplain-fixtures/p3/p3_memkill.py"
+    ],
+    "Jar": "command-runner.jar",
+    "MainClass": null,
+    "Properties": {}
+   },
+   "EncryptionKeyArn": null,
+   "ExecutionRoleArn": null,
+   "Id": "s-FIXTURESTEP0001",
+   "LogUri": null,
+   "Name": "p3-memkill",
+   "Status": {
+    "FailureDetails": {
+     "LogFile": "s3://sparkplain-fixtures/emr-logs/j-FIXTURE0062CLUSTER/steps/s-FIXTURESTEP0001/stderr.gz",
+     "Message": "Exception in thread \"main\" org.apache.spark.SparkException: Application application_1790380000000_0063 finished with failed status",
+     "Reason": null
+    },
+    "State": "FAILED",
+    "StateChangeReason": {
+     "Code": "",
+     "Message": null
+    },
+    "Timeline": {
+     "CreationDateTime": "2026-09-26T15:48:33.713Z",
+     "EndDateTime": "2026-09-26T15:55:22.855Z",
+     "StartDateTime": "2026-09-26T15:54:48.746Z"
+    }
+   }
+  },
+  {
+   "ActionOnFailure": "CONTINUE",
+   "Config": {
+    "Args": [
+     "spark-submit",
+     "--deploy-mode",
+     "cluster",
+     "--conf",
+     "spark.executor.memory=4g",
+     "--conf",
+     "spark.executor.cores=2",
+     "s3://sparkplain-fixtures/p3/p3_access.py"
+    ],
+    "Jar": "command-runner.jar",
+    "MainClass": null,
+    "Properties": {}
+   },
+   "EncryptionKeyArn": null,
+   "ExecutionRoleArn": null,
+   "Id": "s-FIXTURESTEP0004",
+   "LogUri": null,
+   "Name": "p3-access",
+   "Status": {
+    "FailureDetails": {
+     "LogFile": "s3://sparkplain-fixtures/emr-logs/j-FIXTURE0062CLUSTER/steps/s-FIXTURESTEP0004/stderr.gz",
+     "Message": "Exception in thread \"main\" org.apache.spark.SparkException: Application application_1790380000000_0061 finished with failed status",
+     "Reason": null
+    },
+    "State": "FAILED",
+    "StateChangeReason": {
+     "Code": "",
+     "Message": null
+    },
+    "Timeline": {
+     "CreationDateTime": "2026-09-26T15:48:33.713Z",
+     "EndDateTime": "2026-09-26T15:54:53.781Z",
+     "StartDateTime": "2026-09-26T15:52:55.373Z"
+    }
+   }
+  },
+  {
+   "ActionOnFailure": "CONTINUE",
+   "Config": {
+    "Args": [
+     "spark-submit",
+     "--deploy-mode",
+     "cluster",
+     "--conf",
+     "spark.executor.memory=4g",
+     "--conf",
+     "spark.executor.cores=2",
+     "--conf",
+     "spark.dynamicAllocation.maxExecutors=2",
+     "s3://sparkplain-fixtures/p3/p3_busy.py"
+    ],
+    "Jar": "command-runner.jar",
+    "MainClass": null,
+    "Properties": {}
+   },
+   "EncryptionKeyArn": null,
+   "ExecutionRoleArn": null,
+   "Id": "s-FIXTURESTEP0006",
+   "LogUri": null,
+   "Name": "p3-busy",
+   "Status": {
+    "FailureDetails": null,
+    "State": "COMPLETED",
+    "StateChangeReason": {
+     "Code": "",
+     "Message": null
+    },
+    "Timeline": {
+     "CreationDateTime": "2026-09-26T15:48:33.713Z",
+     "EndDateTime": "2026-09-26T15:54:43.74Z",
+     "StartDateTime": "2026-09-26T15:52:55.373Z"
+    }
+   }
+  }
+ ],
+ "instances": [
+  {
+   "EbsVolumes": [
+    {
+     "Device": "/dev/sdc",
+     "VolumeId": "vol-0f1e0000000000001"
+    },
+    {
+     "Device": "/dev/sdb",
+     "VolumeId": "vol-0f1e0000000000002"
+    }
+   ],
+   "Ec2InstanceId": "i-0fee0000000000001",
+   "Id": "ci-04314601OO24VVSBDNZO",
+   "InstanceFleetId": null,
+   "InstanceGroupId": "ig-065936613NJNV3C62PBQ",
+   "InstanceType": "m5.xlarge",
+   "Market": "ON_DEMAND",
+   "PrivateDnsName": "ip-10-0-2-10.us-east-1.compute.internal",
+   "PrivateIpAddress": "10.0.2.10",
+   "PublicDnsName": "ec2-192-0-2-11.compute.amazonaws.com",
+   "PublicIpAddress": "192.0.2.11",
+   "Status": {
+    "State": "TERMINATED",
+    "StateChangeReason": {
+     "Code": "INSTANCE_FAILURE",
+     "Message": "Instance was terminated."
+    },
+    "Timeline": {
+     "CreationDateTime": "2026-09-26T15:48:45.933Z",
+     "EndDateTime": "2026-09-26T17:21:36.871Z",
+     "ReadyDateTime": "2026-09-26T15:52:20.136Z"
+    }
+   }
+  },
+  {
+   "EbsVolumes": [
+    {
+     "Device": "/dev/sdc",
+     "VolumeId": "vol-0f1e0000000000003"
+    },
+    {
+     "Device": "/dev/sdb",
+     "VolumeId": "vol-0f1e0000000000004"
+    }
+   ],
+   "Ec2InstanceId": "i-0fee0000000000002",
+   "Id": "ci-09046603KV1KNPTKUQJN",
+   "InstanceFleetId": null,
+   "InstanceGroupId": "ig-0669359PPVFJG8Q1PPU",
+   "InstanceType": "m5.xlarge",
+   "Market": "ON_DEMAND",
+   "PrivateDnsName": "ip-10-0-2-11.us-east-1.compute.internal",
+   "PrivateIpAddress": "10.0.2.11",
+   "PublicDnsName": "ec2-192-0-2-10.compute.amazonaws.com",
+   "PublicIpAddress": "192.0.2.10",
+   "Status": {
+    "State": "TERMINATED",
+    "StateChangeReason": {
+     "Code": "INSTANCE_FAILURE",
+     "Message": "Instance was terminated."
+    },
+    "Timeline": {
+     "CreationDateTime": "2026-09-26T15:49:16.335Z",
+     "EndDateTime": "2026-09-26T17:21:36.871Z",
+     "ReadyDateTime": "2026-09-26T15:51:50.149Z"
+    }
+   }
+  },
+  {
+   "EbsVolumes": [
+    {
+     "Device": "/dev/sdc",
+     "VolumeId": "vol-0f1e0000000000005"
+    },
+    {
+     "Device": "/dev/sdb",
+     "VolumeId": "vol-0f1e0000000000006"
+    }
+   ],
+   "Ec2InstanceId": "i-0fee0000000000004",
+   "Id": "ci-04233902GQ05YVK8JIHX",
+   "InstanceFleetId": null,
+   "InstanceGroupId": "ig-06764112JUSXN4AEVG4J",
+   "InstanceType": "m5.xlarge",
+   "Market": "SPOT",
+   "PrivateDnsName": "ip-10-0-2-12.us-east-1.compute.internal",
+   "PrivateIpAddress": "10.0.2.12",
+   "PublicDnsName": "ec2-192-0-2-12.compute.amazonaws.com",
+   "PublicIpAddress": "192.0.2.12",
+   "Status": {
+    "State": "TERMINATED",
+    "StateChangeReason": {
+     "Code": "INSTANCE_FAILURE",
+     "Message": "Spot Instance was terminated due to not enough capacity in the Spot Instance pool."
+    },
+    "Timeline": {
+     "CreationDateTime": "2026-09-26T15:53:28.704Z",
+     "EndDateTime": "2026-09-26T16:06:05.38Z",
+     "ReadyDateTime": "2026-09-26T15:55:55.681Z"
+    }
+   }
+  },
+  {
+   "EbsVolumes": [
+    {
+     "Device": "/dev/sdc",
+     "VolumeId": "vol-0f1e0000000000007"
+    },
+    {
+     "Device": "/dev/sdb",
+     "VolumeId": "vol-0f1e0000000000008"
+    }
+   ],
+   "Ec2InstanceId": "i-0fee0000000000005",
+   "Id": "ci-06423513FGFJKQ5HQDT3",
+   "InstanceFleetId": null,
+   "InstanceGroupId": "ig-06764112JUSXN4AEVG4J",
+   "InstanceType": "m5.xlarge",
+   "Market": "SPOT",
+   "PrivateDnsName": "ip-10-0-2-13.us-east-1.compute.internal",
+   "PrivateIpAddress": "10.0.2.13",
+   "PublicDnsName": "ec2-192-0-2-13.compute.amazonaws.com",
+   "PublicIpAddress": "192.0.2.13",
+   "Status": {
+    "State": "TERMINATED",
+    "StateChangeReason": {
+     "Code": "INSTANCE_FAILURE",
+     "Message": "Spot Instance was terminated due to not enough capacity in the Spot Instance pool."
+    },
+    "Timeline": {
+     "CreationDateTime": "2026-09-26T16:06:36.687Z",
+     "EndDateTime": "2026-09-26T17:05:10.878Z",
+     "ReadyDateTime": "2026-09-26T16:08:55.084Z"
+    }
+   }
+  },
+  {
+   "EbsVolumes": [
+    {
+     "Device": "/dev/sdc",
+     "VolumeId": "vol-0f1e0000000000009"
+    },
+    {
+     "Device": "/dev/sdb",
+     "VolumeId": "vol-0f1e000000000000a"
+    }
+   ],
+   "Ec2InstanceId": "i-0fee0000000000003",
+   "Id": "ci-05478902MNBP6I1RAF3M",
+   "InstanceFleetId": null,
+   "InstanceGroupId": "ig-06764112JUSXN4AEVG4J",
+   "InstanceType": "m5.xlarge",
+   "Market": "SPOT",
+   "PrivateDnsName": "ip-10-0-2-14.us-east-1.compute.internal",
+   "PrivateIpAddress": "10.0.2.14",
+   "PublicDnsName": "ec2-192-0-2-14.compute.amazonaws.com",
+   "PublicIpAddress": "192.0.2.14",
+   "Status": {
+    "State": "TERMINATED",
+    "StateChangeReason": {
+     "Code": "INSTANCE_FAILURE",
+     "Message": "Instance was terminated."
+    },
+    "Timeline": {
+     "CreationDateTime": "2026-09-26T17:05:41.714Z",
+     "EndDateTime": "2026-09-26T17:21:36.871Z",
+     "ReadyDateTime": "2026-09-26T17:08:18.87Z"
+    }
+   }
+  }
+ ],
+ "groups": [
+  {
+   "AutoScalingPolicy": null,
+   "BidPrice": null,
+   "Configurations": [],
+   "ConfigurationsVersion": 0,
+   "CustomAmiId": null,
+   "EbsBlockDevices": [
+    {
+     "Device": "/dev/sdb",
+     "VolumeSpecification": {
+      "SizeInGB": 32,
+      "VolumeType": "gp2",
+      "Iops": null,
+      "Throughput": null
+     }
+    },
+    {
+     "Device": "/dev/sdc",
+     "VolumeSpecification": {
+      "SizeInGB": 32,
+      "VolumeType": "gp2",
+      "Iops": null,
+      "Throughput": null
+     }
+    }
+   ],
+   "EbsOptimized": null,
+   "Id": "ig-0669359PPVFJG8Q1PPU",
+   "InstanceGroupType": "MASTER",
+   "InstanceType": "m5.xlarge",
+   "LastSuccessfullyAppliedConfigurations": [],
+   "LastSuccessfullyAppliedConfigurationsVersion": 0,
+   "Market": "ON_DEMAND",
+   "Name": "MASTER",
+   "RequestedInstanceCount": 1,
+   "RunningInstanceCount": 0,
+   "ShrinkPolicy": {
+    "DecommissionTimeout": null,
+    "InstanceResizePolicy": null
+   },
+   "Status": {
+    "State": "TERMINATED",
+    "StateChangeReason": {
+     "Code": "CLUSTER_TERMINATED",
+     "Message": "Job flow terminated"
+    },
+    "Timeline": {
+     "CreationDateTime": "2026-09-26T15:48:33.694Z",
+     "EndDateTime": "2026-09-26T17:21:36.917Z",
+     "ReadyDateTime": "2026-09-26T15:51:50.149Z"
+    }
+   }
+  },
+  {
+   "AutoScalingPolicy": null,
+   "BidPrice": null,
+   "Configurations": [],
+   "ConfigurationsVersion": 0,
+   "CustomAmiId": null,
+   "EbsBlockDevices": [
+    {
+     "Device": "/dev/sdb",
+     "VolumeSpecification": {
+      "SizeInGB": 32,
+      "VolumeType": "gp2",
+      "Iops": null,
+      "Throughput": null
+     }
+    },
+    {
+     "Device": "/dev/sdc",
+     "VolumeSpecification": {
+      "SizeInGB": 32,
+      "VolumeType": "gp2",
+      "Iops": null,
+      "Throughput": null
+     }
+    }
+   ],
+   "EbsOptimized": null,
+   "Id": "ig-065936613NJNV3C62PBQ",
+   "InstanceGroupType": "CORE",
+   "InstanceType": "m5.xlarge",
+   "LastSuccessfullyAppliedConfigurations": [],
+   "LastSuccessfullyAppliedConfigurationsVersion": 0,
+   "Market": "ON_DEMAND",
+   "Name": "CORE",
+   "RequestedInstanceCount": 1,
+   "RunningInstanceCount": 0,
+   "ShrinkPolicy": {
+    "DecommissionTimeout": null,
+    "InstanceResizePolicy": null
+   },
+   "Status": {
+    "State": "TERMINATED",
+    "StateChangeReason": {
+     "Code": "CLUSTER_TERMINATED",
+     "Message": "Job flow terminated"
+    },
+    "Timeline": {
+     "CreationDateTime": "2026-09-26T15:48:33.694Z",
+     "EndDateTime": "2026-09-26T17:21:36.917Z",
+     "ReadyDateTime": "2026-09-26T15:52:50.93Z"
+    }
+   }
+  },
+  {
+   "AutoScalingPolicy": null,
+   "BidPrice": null,
+   "Configurations": [],
+   "ConfigurationsVersion": 0,
+   "CustomAmiId": null,
+   "EbsBlockDevices": [
+    {
+     "Device": "/dev/sdb",
+     "VolumeSpecification": {
+      "SizeInGB": 32,
+      "VolumeType": "gp2",
+      "Iops": null,
+      "Throughput": null
+     }
+    },
+    {
+     "Device": "/dev/sdc",
+     "VolumeSpecification": {
+      "SizeInGB": 32,
+      "VolumeType": "gp2",
+      "Iops": null,
+      "Throughput": null
+     }
+    }
+   ],
+   "EbsOptimized": null,
+   "Id": "ig-06764112JUSXN4AEVG4J",
+   "InstanceGroupType": "TASK",
+   "InstanceType": "m5.xlarge",
+   "LastSuccessfullyAppliedConfigurations": [],
+   "LastSuccessfullyAppliedConfigurationsVersion": 0,
+   "Market": "SPOT",
+   "Name": "TASK",
+   "RequestedInstanceCount": 1,
+   "RunningInstanceCount": 0,
+   "ShrinkPolicy": {
+    "DecommissionTimeout": null,
+    "InstanceResizePolicy": null
+   },
+   "Status": {
+    "State": "TERMINATED",
+    "StateChangeReason": {
+     "Code": "CLUSTER_TERMINATED",
+     "Message": "Job flow terminated"
+    },
+    "Timeline": {
+     "CreationDateTime": "2026-09-26T15:48:33.694Z",
+     "EndDateTime": "2026-09-26T17:21:36.917Z",
+     "ReadyDateTime": "2026-09-26T15:55:55.694Z"
+    }
+   }
+  }
+ ],
+ "instanceTypes": [
+  {
+   "AutoRecoverySupported": true,
+   "BareMetal": false,
+   "BurstablePerformanceSupported": false,
+   "CurrentGeneration": false,
+   "DedicatedHostsSupported": true,
+   "EbsInfo": {
+    "AttachmentLimitType": "shared",
+    "EbsCards": null,
+    "EbsOptimizedInfo": {
+     "BaselineBandwidthInMbps": 1150,
+     "BaselineIops": 6000,
+     "BaselineThroughputInMBps": 143.75,
+     "MaximumBandwidthInMbps": 4750,
+     "MaximumIops": 18750,
+     "MaximumThroughputInMBps": 593.75
+    },
+    "EbsOptimizedSupport": "default",
+    "EncryptionSupport": "supported",
+    "MaximumEbsAttachments": 27,
+    "MaximumEbsCards": null,
+    "NvmeSupport": "required"
+   },
+   "FpgaInfo": null,
+   "FreeTierEligible": false,
+   "GpuInfo": null,
+   "HibernationSupported": true,
+   "Hypervisor": "nitro",
+   "InferenceAcceleratorInfo": null,
+   "InstanceStorageInfo": null,
+   "InstanceStorageSupported": false,
+   "InstanceType": "m5.xlarge",
+   "MediaAcceleratorInfo": null,
+   "MemoryInfo": {
+    "SizeInMiB": 16384
+   },
+   "NetworkInfo": {
+    "BandwidthWeightings": null,
+    "ConnectionTrackingConfiguration": {
+     "DefaultTcpEstablishedTimeout": 432000,
+     "DefaultUdpStreamTimeout": 180,
+     "DefaultUdpTimeout": 30
+    },
+    "DefaultNetworkCardIndex": 0,
+    "EfaInfo": null,
+    "EfaSupported": false,
+    "EnaSrdSupported": false,
+    "EnaSupport": "required",
+    "EncryptionInTransitSupported": false,
+    "FlexibleEnaQueuesSupport": "unsupported",
+    "Ipv4AddressesPerInterface": 15,
+    "Ipv4AddressesPerSecondaryInterface": null,
+    "Ipv6AddressesPerInterface": 15,
+    "Ipv6Supported": true,
+    "MaximumNetworkCards": 1,
+    "MaximumNetworkInterfaces": 4,
+    "MaximumSecondaryNetworkInterfaces": null,
+    "NetworkCards": [
+     {
+      "AdditionalFlexibleNetworkInterfaces": null,
+      "BaselineBandwidthInGbps": 1.25,
+      "DefaultEnaQueueCountPerInterface": 8,
+      "InterfaceTypes": [
+       "interface"
+      ],
+      "MaximumEnaQueueCount": null,
+      "MaximumEnaQueueCountPerInterface": null,
+      "MaximumNetworkInterfaces": 4,
+      "NetworkCardIndex": 0,
+      "NetworkPerformance": "Up to 10 Gigabit",
+      "PeakBandwidthInGbps": 10
+     }
+    ],
+    "NetworkPerformance": "Up to 10 Gigabit",
+    "SecondaryNetworkSupported": false
+   },
+   "NeuronInfo": null,
+   "NitroEnclavesSupport": "supported",
+   "NitroTpmInfo": {
+    "SupportedVersions": [
+     "2.0"
+    ]
+   },
+   "NitroTpmSupport": "supported",
+   "PhcSupport": "unsupported",
+   "PlacementGroupInfo": {
+    "SupportedStrategies": [
+     "cluster",
+     "partition",
+     "spread"
+    ]
+   },
+   "ProcessorInfo": {
+    "Manufacturer": "Intel",
+    "SupportedArchitectures": [
+     "x86_64"
+    ],
+    "SupportedFeatures": null,
+    "SustainedClockSpeedInGhz": 3.1
+   },
+   "RebootMigrationSupport": "supported",
+   "SupportedBootModes": [
+    "legacy-bios",
+    "uefi"
+   ],
+   "SupportedInRegion": true,
+   "SupportedRootDeviceTypes": [
+    "ebs"
+   ],
+   "SupportedUsageClasses": [
+    "on-demand",
+    "spot"
+   ],
+   "SupportedVirtualizationTypes": [
+    "hvm"
+   ],
+   "VCpuInfo": {
+    "DefaultCores": 2,
+    "DefaultThreadsPerCore": 2,
+    "DefaultVCpus": 4,
+    "ValidCores": [
+     2
+    ],
+    "ValidThreadsPerCore": [
+     1,
+     2
+    ]
+   }
+  }
+ ],
+ "metrics": [
+  {
+   "namespace": "AWS/ElasticMapReduce",
+   "name": "ContainerPending",
+   "stat": "Maximum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "JobFlowId",
+     "Value": "j-FIXTURE0062CLUSTER"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:53:00Z",
+     "v": 101
+    },
+    {
+     "t": "2026-09-26T15:54:00Z",
+     "v": 101
+    },
+    {
+     "t": "2026-09-26T15:55:00Z",
+     "v": 4
+    },
+    {
+     "t": "2026-09-26T15:56:00Z",
+     "v": 101
+    },
+    {
+     "t": "2026-09-26T15:57:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T15:58:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T15:59:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:00:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:01:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:02:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:03:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:04:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:05:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:06:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:07:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:08:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:09:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:10:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:11:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:12:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:13:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:14:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:15:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:16:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:17:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:18:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:19:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:20:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:21:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:22:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:23:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:24:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:25:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:26:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:27:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:28:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:29:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:30:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:31:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:32:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:33:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:34:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:35:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:36:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:37:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:38:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:39:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:40:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:41:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:42:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:43:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:44:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:45:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:46:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:47:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:48:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:49:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:50:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:51:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:52:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:53:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:54:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:55:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:56:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:57:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:58:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:59:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:00:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:01:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:02:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:03:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:04:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:05:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:06:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:07:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:08:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:09:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:10:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:11:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:12:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:13:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:14:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:15:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:16:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:17:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:18:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:19:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:20:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:21:00Z",
+     "v": 0
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/ElasticMapReduce",
+   "name": "ContainerAllocated",
+   "stat": "Maximum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "JobFlowId",
+     "Value": "j-FIXTURE0062CLUSTER"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:53:00Z",
+     "v": 3
+    },
+    {
+     "t": "2026-09-26T15:54:00Z",
+     "v": 3
+    },
+    {
+     "t": "2026-09-26T15:55:00Z",
+     "v": 4
+    },
+    {
+     "t": "2026-09-26T15:56:00Z",
+     "v": 3
+    },
+    {
+     "t": "2026-09-26T15:57:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T15:58:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T15:59:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:00:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:01:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:02:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:03:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:04:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:05:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:06:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:07:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:08:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:09:00Z",
+     "v": 6
+    },
+    {
+     "t": "2026-09-26T16:10:00Z",
+     "v": 3
+    },
+    {
+     "t": "2026-09-26T16:11:00Z",
+     "v": 3
+    },
+    {
+     "t": "2026-09-26T16:12:00Z",
+     "v": 3
+    },
+    {
+     "t": "2026-09-26T16:13:00Z",
+     "v": 3
+    },
+    {
+     "t": "2026-09-26T16:14:00Z",
+     "v": 3
+    },
+    {
+     "t": "2026-09-26T16:15:00Z",
+     "v": 3
+    },
+    {
+     "t": "2026-09-26T16:16:00Z",
+     "v": 3
+    },
+    {
+     "t": "2026-09-26T16:17:00Z",
+     "v": 3
+    },
+    {
+     "t": "2026-09-26T16:18:00Z",
+     "v": 3
+    },
+    {
+     "t": "2026-09-26T16:19:00Z",
+     "v": 3
+    },
+    {
+     "t": "2026-09-26T16:20:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:21:00Z",
+     "v": 3
+    },
+    {
+     "t": "2026-09-26T16:22:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:23:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:24:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:25:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:26:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:27:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:28:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:29:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:30:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:31:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:32:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:33:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:34:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:35:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:36:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:37:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:38:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:39:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:40:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:41:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:42:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:43:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:44:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:45:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:46:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:47:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:48:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:49:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:50:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:51:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:52:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:53:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:54:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:55:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:56:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:57:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:58:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:59:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:00:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:01:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:02:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:03:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:04:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:05:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:06:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:07:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:08:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:09:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:10:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:11:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:12:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:13:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:14:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:15:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:16:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:17:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:18:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:19:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:20:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:21:00Z",
+     "v": 0
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/ElasticMapReduce",
+   "name": "AppsRunning",
+   "stat": "Maximum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "JobFlowId",
+     "Value": "j-FIXTURE0062CLUSTER"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:53:00Z",
+     "v": 2
+    },
+    {
+     "t": "2026-09-26T15:54:00Z",
+     "v": 2
+    },
+    {
+     "t": "2026-09-26T15:55:00Z",
+     "v": 2
+    },
+    {
+     "t": "2026-09-26T15:56:00Z",
+     "v": 2
+    },
+    {
+     "t": "2026-09-26T15:57:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T15:58:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T15:59:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:00:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:01:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:02:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:03:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:04:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:05:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:06:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:07:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:08:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:09:00Z",
+     "v": 2
+    },
+    {
+     "t": "2026-09-26T16:10:00Z",
+     "v": 1
+    },
+    {
+     "t": "2026-09-26T16:11:00Z",
+     "v": 1
+    },
+    {
+     "t": "2026-09-26T16:12:00Z",
+     "v": 1
+    },
+    {
+     "t": "2026-09-26T16:13:00Z",
+     "v": 1
+    },
+    {
+     "t": "2026-09-26T16:14:00Z",
+     "v": 1
+    },
+    {
+     "t": "2026-09-26T16:15:00Z",
+     "v": 1
+    },
+    {
+     "t": "2026-09-26T16:16:00Z",
+     "v": 1
+    },
+    {
+     "t": "2026-09-26T16:17:00Z",
+     "v": 1
+    },
+    {
+     "t": "2026-09-26T16:18:00Z",
+     "v": 1
+    },
+    {
+     "t": "2026-09-26T16:19:00Z",
+     "v": 1
+    },
+    {
+     "t": "2026-09-26T16:20:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:21:00Z",
+     "v": 1
+    },
+    {
+     "t": "2026-09-26T16:22:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:23:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:24:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:25:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:26:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:27:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:28:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:29:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:30:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:31:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:32:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:33:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:34:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:35:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:36:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:37:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:38:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:39:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:40:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:41:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:42:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:43:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:44:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:45:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:46:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:47:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:48:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:49:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:50:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:51:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:52:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:53:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:54:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:55:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:56:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:57:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:58:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:59:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:00:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:01:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:02:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:03:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:04:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:05:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:06:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:07:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:08:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:09:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:10:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:11:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:12:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:13:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:14:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:15:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:16:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:17:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:18:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:19:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:20:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:21:00Z",
+     "v": 0
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/ElasticMapReduce",
+   "name": "AppsPending",
+   "stat": "Maximum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "JobFlowId",
+     "Value": "j-FIXTURE0062CLUSTER"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:53:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T15:54:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T15:55:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T15:56:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T15:57:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T15:58:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T15:59:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:00:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:01:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:02:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:03:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:04:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:05:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:06:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:07:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:08:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:09:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:10:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:11:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:12:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:13:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:14:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:15:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:16:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:17:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:18:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:19:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:20:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:21:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:22:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:23:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:24:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:25:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:26:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:27:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:28:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:29:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:30:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:31:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:32:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:33:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:34:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:35:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:36:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:37:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:38:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:39:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:40:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:41:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:42:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:43:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:44:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:45:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:46:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:47:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:48:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:49:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:50:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:51:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:52:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:53:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:54:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:55:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:56:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:57:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:58:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:59:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:00:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:01:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:02:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:03:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:04:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:05:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:06:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:07:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:08:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:09:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:10:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:11:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:12:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:13:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:14:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:15:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:16:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:17:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:18:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:19:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:20:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:21:00Z",
+     "v": 0
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/ElasticMapReduce",
+   "name": "YARNMemoryAvailablePercentage",
+   "stat": "Minimum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "JobFlowId",
+     "Value": "j-FIXTURE0062CLUSTER"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:53:00Z",
+     "v": 20.833333333333332
+    },
+    {
+     "t": "2026-09-26T15:54:00Z",
+     "v": 20.833333333333332
+    },
+    {
+     "t": "2026-09-26T15:55:00Z",
+     "v": 1.0416666666666667
+    },
+    {
+     "t": "2026-09-26T15:56:00Z",
+     "v": 20.833333333333332
+    },
+    {
+     "t": "2026-09-26T15:57:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T15:58:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T15:59:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:00:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:01:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:02:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:03:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:04:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:05:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:06:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:07:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:08:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:09:00Z",
+     "v": 55.208333333333336
+    },
+    {
+     "t": "2026-09-26T16:10:00Z",
+     "v": 77.60416666666667
+    },
+    {
+     "t": "2026-09-26T16:11:00Z",
+     "v": 77.60416666666667
+    },
+    {
+     "t": "2026-09-26T16:12:00Z",
+     "v": 77.60416666666667
+    },
+    {
+     "t": "2026-09-26T16:13:00Z",
+     "v": 77.60416666666667
+    },
+    {
+     "t": "2026-09-26T16:14:00Z",
+     "v": 77.60416666666667
+    },
+    {
+     "t": "2026-09-26T16:15:00Z",
+     "v": 77.60416666666667
+    },
+    {
+     "t": "2026-09-26T16:16:00Z",
+     "v": 77.60416666666667
+    },
+    {
+     "t": "2026-09-26T16:17:00Z",
+     "v": 77.60416666666667
+    },
+    {
+     "t": "2026-09-26T16:18:00Z",
+     "v": 77.60416666666667
+    },
+    {
+     "t": "2026-09-26T16:19:00Z",
+     "v": 77.60416666666667
+    },
+    {
+     "t": "2026-09-26T16:20:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:21:00Z",
+     "v": 77.60416666666667
+    },
+    {
+     "t": "2026-09-26T16:22:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:23:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:24:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:25:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:26:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:27:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:28:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:29:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:30:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:31:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:32:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:33:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:34:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:35:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:36:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:37:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:38:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:39:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:40:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:41:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:42:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:43:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:44:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:45:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:46:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:47:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:48:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:49:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:50:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:51:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:52:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:53:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:54:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:55:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:56:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:57:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:58:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T16:59:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:00:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:01:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:02:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:03:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:04:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:05:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:06:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:07:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:08:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:09:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:10:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:11:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:12:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:13:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:14:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:15:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:16:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:17:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:18:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:19:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:20:00Z",
+     "v": 100
+    },
+    {
+     "t": "2026-09-26T17:21:00Z",
+     "v": 100
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/ElasticMapReduce",
+   "name": "MemoryTotalMB",
+   "stat": "Maximum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "JobFlowId",
+     "Value": "j-FIXTURE0062CLUSTER"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:56:00Z",
+     "v": 12288
+    },
+    {
+     "t": "2026-09-26T16:01:00Z",
+     "v": 24576
+    },
+    {
+     "t": "2026-09-26T16:06:00Z",
+     "v": 12288
+    },
+    {
+     "t": "2026-09-26T16:11:00Z",
+     "v": 24576
+    },
+    {
+     "t": "2026-09-26T16:16:00Z",
+     "v": 24576
+    },
+    {
+     "t": "2026-09-26T16:21:00Z",
+     "v": 24576
+    },
+    {
+     "t": "2026-09-26T16:26:00Z",
+     "v": 24576
+    },
+    {
+     "t": "2026-09-26T16:31:00Z",
+     "v": 24576
+    },
+    {
+     "t": "2026-09-26T16:36:00Z",
+     "v": 24576
+    },
+    {
+     "t": "2026-09-26T16:41:00Z",
+     "v": 24576
+    },
+    {
+     "t": "2026-09-26T16:46:00Z",
+     "v": 24576
+    },
+    {
+     "t": "2026-09-26T16:51:00Z",
+     "v": 24576
+    },
+    {
+     "t": "2026-09-26T16:56:00Z",
+     "v": 24576
+    },
+    {
+     "t": "2026-09-26T17:01:00Z",
+     "v": 24576
+    },
+    {
+     "t": "2026-09-26T17:06:00Z",
+     "v": 12288
+    },
+    {
+     "t": "2026-09-26T17:11:00Z",
+     "v": 24576
+    },
+    {
+     "t": "2026-09-26T17:16:00Z",
+     "v": 24576
+    },
+    {
+     "t": "2026-09-26T17:21:00Z",
+     "v": 24576
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/ElasticMapReduce",
+   "name": "MemoryAllocatedMB",
+   "stat": "Maximum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "JobFlowId",
+     "Value": "j-FIXTURE0062CLUSTER"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:56:00Z",
+     "v": 9728
+    },
+    {
+     "t": "2026-09-26T16:01:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:06:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:11:00Z",
+     "v": 5504
+    },
+    {
+     "t": "2026-09-26T16:16:00Z",
+     "v": 5504
+    },
+    {
+     "t": "2026-09-26T16:21:00Z",
+     "v": 5504
+    },
+    {
+     "t": "2026-09-26T16:26:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:31:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:36:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:41:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:46:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:51:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:56:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:01:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:06:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:11:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:16:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:21:00Z",
+     "v": 0
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/ElasticMapReduce",
+   "name": "MRLostNodes",
+   "stat": "Maximum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "JobFlowId",
+     "Value": "j-FIXTURE0062CLUSTER"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:56:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:01:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:06:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:11:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:16:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:21:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:26:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:31:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:36:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:41:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:46:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:51:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:56:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:01:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:06:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:11:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:16:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:21:00Z",
+     "v": 0
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/ElasticMapReduce",
+   "name": "MRUnhealthyNodes",
+   "stat": "Maximum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "JobFlowId",
+     "Value": "j-FIXTURE0062CLUSTER"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:56:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:01:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:06:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:11:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:16:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:21:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:26:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:31:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:36:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:41:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:46:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:51:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:56:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:01:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:06:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:11:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:16:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:21:00Z",
+     "v": 0
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/ElasticMapReduce",
+   "name": "S3BytesRead",
+   "stat": "Sum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "JobFlowId",
+     "Value": "j-FIXTURE0062CLUSTER"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:56:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:01:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:06:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:11:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:16:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:21:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:26:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:31:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:36:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:41:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:46:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:51:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:56:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:01:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:06:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:11:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:16:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:21:00Z",
+     "v": 0
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/ElasticMapReduce",
+   "name": "S3BytesWritten",
+   "stat": "Sum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "JobFlowId",
+     "Value": "j-FIXTURE0062CLUSTER"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:56:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:01:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:06:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:11:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:16:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:21:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:26:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:31:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:36:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:41:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:46:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:51:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T16:56:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:01:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:06:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:11:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:16:00Z",
+     "v": 0
+    },
+    {
+     "t": "2026-09-26T17:21:00Z",
+     "v": 0
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/EC2",
+   "name": "CPUUtilization",
+   "stat": "Average",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "InstanceId",
+     "Value": "i-0fee0000000000001"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:45:00Z",
+     "v": 0.0053610556075803
+    },
+    {
+     "t": "2026-09-26T15:50:00Z",
+     "v": 25.259110502364774
+    },
+    {
+     "t": "2026-09-26T15:55:00Z",
+     "v": 11.445831955026616
+    },
+    {
+     "t": "2026-09-26T16:00:00Z",
+     "v": 1.1779512386333137
+    },
+    {
+     "t": "2026-09-26T16:05:00Z",
+     "v": 8.139334039105275
+    },
+    {
+     "t": "2026-09-26T16:10:00Z",
+     "v": 69.39145398629086
+    },
+    {
+     "t": "2026-09-26T16:15:00Z",
+     "v": 69.52806156243739
+    },
+    {
+     "t": "2026-09-26T16:20:00Z",
+     "v": 0.9520038584813333
+    },
+    {
+     "t": "2026-09-26T16:25:00Z",
+     "v": 0.8809842399083545
+    },
+    {
+     "t": "2026-09-26T16:30:00Z",
+     "v": 1.3110227371711494
+    },
+    {
+     "t": "2026-09-26T16:35:00Z",
+     "v": 0.7726839756485526
+    },
+    {
+     "t": "2026-09-26T16:40:00Z",
+     "v": 0.8286666078673489
+    },
+    {
+     "t": "2026-09-26T16:45:00Z",
+     "v": 1.1540409269620049
+    },
+    {
+     "t": "2026-09-26T16:50:00Z",
+     "v": 0.7940057500958349
+    },
+    {
+     "t": "2026-09-26T16:55:00Z",
+     "v": 0.7816786998288826
+    },
+    {
+     "t": "2026-09-26T17:00:00Z",
+     "v": 1.2160012223966672
+    },
+    {
+     "t": "2026-09-26T17:05:00Z",
+     "v": 0.7446687867151913
+    },
+    {
+     "t": "2026-09-26T17:10:00Z",
+     "v": 0.7819978112077772
+    },
+    {
+     "t": "2026-09-26T17:15:00Z",
+     "v": 0.7580030653865384
+    },
+    {
+     "t": "2026-09-26T17:20:00Z",
+     "v": 3.9558333333333335
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/EC2",
+   "name": "CPUUtilization",
+   "stat": "Maximum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "InstanceId",
+     "Value": "i-0fee0000000000001"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:45:00Z",
+     "v": 0.0053610556075803
+    },
+    {
+     "t": "2026-09-26T15:50:00Z",
+     "v": 69.47059705720616
+    },
+    {
+     "t": "2026-09-26T15:55:00Z",
+     "v": 47.87753537441043
+    },
+    {
+     "t": "2026-09-26T16:00:00Z",
+     "v": 2.582945891449616
+    },
+    {
+     "t": "2026-09-26T16:05:00Z",
+     "v": 34.58666666666666
+    },
+    {
+     "t": "2026-09-26T16:10:00Z",
+     "v": 96.96166666666666
+    },
+    {
+     "t": "2026-09-26T16:15:00Z",
+     "v": 95.20833333333333
+    },
+    {
+     "t": "2026-09-26T16:20:00Z",
+     "v": 2.208333333333333
+    },
+    {
+     "t": "2026-09-26T16:25:00Z",
+     "v": 1.8116364727254544
+    },
+    {
+     "t": "2026-09-26T16:30:00Z",
+     "v": 1.9251925192519252
+    },
+    {
+     "t": "2026-09-26T16:35:00Z",
+     "v": 1.4950996733115542
+    },
+    {
+     "t": "2026-09-26T16:40:00Z",
+     "v": 1.8450307505125088
+    },
+    {
+     "t": "2026-09-26T16:45:00Z",
+     "v": 2.5
+    },
+    {
+     "t": "2026-09-26T16:50:00Z",
+     "v": 1.7250287504791746
+    },
+    {
+     "t": "2026-09-26T16:55:00Z",
+     "v": 1.5533333333333335
+    },
+    {
+     "t": "2026-09-26T17:00:00Z",
+     "v": 1.7533625560426007
+    },
+    {
+     "t": "2026-09-26T17:05:00Z",
+     "v": 1.4083333333333334
+    },
+    {
+     "t": "2026-09-26T17:10:00Z",
+     "v": 1.7000000000000002
+    },
+    {
+     "t": "2026-09-26T17:15:00Z",
+     "v": 1.5450257504291738
+    },
+    {
+     "t": "2026-09-26T17:20:00Z",
+     "v": 6.258333333333334
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/EC2",
+   "name": "NetworkIn",
+   "stat": "Sum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "InstanceId",
+     "Value": "i-0fee0000000000001"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:50:00Z",
+     "v": 829810719
+    },
+    {
+     "t": "2026-09-26T15:55:00Z",
+     "v": 776938222
+    },
+    {
+     "t": "2026-09-26T16:00:00Z",
+     "v": 340248
+    },
+    {
+     "t": "2026-09-26T16:05:00Z",
+     "v": 775846940
+    },
+    {
+     "t": "2026-09-26T16:10:00Z",
+     "v": 911111
+    },
+    {
+     "t": "2026-09-26T16:15:00Z",
+     "v": 1017383
+    },
+    {
+     "t": "2026-09-26T16:20:00Z",
+     "v": 331470
+    },
+    {
+     "t": "2026-09-26T16:25:00Z",
+     "v": 323456
+    },
+    {
+     "t": "2026-09-26T16:30:00Z",
+     "v": 248054
+    },
+    {
+     "t": "2026-09-26T16:35:00Z",
+     "v": 251376
+    },
+    {
+     "t": "2026-09-26T16:40:00Z",
+     "v": 260060
+    },
+    {
+     "t": "2026-09-26T16:45:00Z",
+     "v": 246735
+    },
+    {
+     "t": "2026-09-26T16:50:00Z",
+     "v": 253957
+    },
+    {
+     "t": "2026-09-26T16:55:00Z",
+     "v": 269691
+    },
+    {
+     "t": "2026-09-26T17:00:00Z",
+     "v": 256388
+    },
+    {
+     "t": "2026-09-26T17:05:00Z",
+     "v": 283403
+    },
+    {
+     "t": "2026-09-26T17:10:00Z",
+     "v": 269772
+    },
+    {
+     "t": "2026-09-26T17:15:00Z",
+     "v": 253638
+    },
+    {
+     "t": "2026-09-26T17:20:00Z",
+     "v": 211725
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/EC2",
+   "name": "NetworkOut",
+   "stat": "Sum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "InstanceId",
+     "Value": "i-0fee0000000000001"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:50:00Z",
+     "v": 2498672
+    },
+    {
+     "t": "2026-09-26T15:55:00Z",
+     "v": 779645865
+    },
+    {
+     "t": "2026-09-26T16:00:00Z",
+     "v": 1398483
+    },
+    {
+     "t": "2026-09-26T16:05:00Z",
+     "v": 390578571
+    },
+    {
+     "t": "2026-09-26T16:10:00Z",
+     "v": 389291493
+    },
+    {
+     "t": "2026-09-26T16:15:00Z",
+     "v": 1518162
+    },
+    {
+     "t": "2026-09-26T16:20:00Z",
+     "v": 1677166
+    },
+    {
+     "t": "2026-09-26T16:25:00Z",
+     "v": 1276835
+    },
+    {
+     "t": "2026-09-26T16:30:00Z",
+     "v": 1316135
+    },
+    {
+     "t": "2026-09-26T16:35:00Z",
+     "v": 1180964
+    },
+    {
+     "t": "2026-09-26T16:40:00Z",
+     "v": 1330360
+    },
+    {
+     "t": "2026-09-26T16:45:00Z",
+     "v": 1108381
+    },
+    {
+     "t": "2026-09-26T16:50:00Z",
+     "v": 1411537
+    },
+    {
+     "t": "2026-09-26T16:55:00Z",
+     "v": 1159988
+    },
+    {
+     "t": "2026-09-26T17:00:00Z",
+     "v": 1320545
+    },
+    {
+     "t": "2026-09-26T17:05:00Z",
+     "v": 1231941
+    },
+    {
+     "t": "2026-09-26T17:10:00Z",
+     "v": 1320973
+    },
+    {
+     "t": "2026-09-26T17:15:00Z",
+     "v": 1079158
+    },
+    {
+     "t": "2026-09-26T17:20:00Z",
+     "v": 11574470
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/EC2",
+   "name": "CPUUtilization",
+   "stat": "Average",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "InstanceId",
+     "Value": "i-0fee0000000000002"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:50:00Z",
+     "v": 24.941144735325818
+    },
+    {
+     "t": "2026-09-26T15:55:00Z",
+     "v": 11.291307379014068
+    },
+    {
+     "t": "2026-09-26T16:00:00Z",
+     "v": 7.918695464114782
+    },
+    {
+     "t": "2026-09-26T16:05:00Z",
+     "v": 10.778093689792751
+    },
+    {
+     "t": "2026-09-26T16:10:00Z",
+     "v": 7.725139617484409
+    },
+    {
+     "t": "2026-09-26T16:15:00Z",
+     "v": 6.7507965559492265
+    },
+    {
+     "t": "2026-09-26T16:20:00Z",
+     "v": 7.714311250368048
+    },
+    {
+     "t": "2026-09-26T16:25:00Z",
+     "v": 5.9913171493055835
+    },
+    {
+     "t": "2026-09-26T16:30:00Z",
+     "v": 7.423800279638695
+    },
+    {
+     "t": "2026-09-26T16:35:00Z",
+     "v": 5.881421543061809
+    },
+    {
+     "t": "2026-09-26T16:40:00Z",
+     "v": 5.9481320155931865
+    },
+    {
+     "t": "2026-09-26T16:45:00Z",
+     "v": 6.91454766839197
+    },
+    {
+     "t": "2026-09-26T16:50:00Z",
+     "v": 5.803668076342115
+    },
+    {
+     "t": "2026-09-26T16:55:00Z",
+     "v": 5.588095930101637
+    },
+    {
+     "t": "2026-09-26T17:00:00Z",
+     "v": 6.142896967889579
+    },
+    {
+     "t": "2026-09-26T17:05:00Z",
+     "v": 6.884265339003738
+    },
+    {
+     "t": "2026-09-26T17:10:00Z",
+     "v": 6.511443961944113
+    },
+    {
+     "t": "2026-09-26T17:15:00Z",
+     "v": 6.985307818704186
+    },
+    {
+     "t": "2026-09-26T17:20:00Z",
+     "v": 15.558333333333332
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/EC2",
+   "name": "CPUUtilization",
+   "stat": "Maximum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "InstanceId",
+     "Value": "i-0fee0000000000002"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:50:00Z",
+     "v": 54.25
+    },
+    {
+     "t": "2026-09-26T15:55:00Z",
+     "v": 27.91166666666667
+    },
+    {
+     "t": "2026-09-26T16:00:00Z",
+     "v": 11.767058901963399
+    },
+    {
+     "t": "2026-09-26T16:05:00Z",
+     "v": 23.867064451074185
+    },
+    {
+     "t": "2026-09-26T16:10:00Z",
+     "v": 11.00149975004166
+    },
+    {
+     "t": "2026-09-26T16:15:00Z",
+     "v": 7.717309775814651
+    },
+    {
+     "t": "2026-09-26T16:20:00Z",
+     "v": 10.47
+    },
+    {
+     "t": "2026-09-26T16:25:00Z",
+     "v": 6.990967569909676
+    },
+    {
+     "t": "2026-09-26T16:30:00Z",
+     "v": 12.753333333333332
+    },
+    {
+     "t": "2026-09-26T16:35:00Z",
+     "v": 6.917704322315014
+    },
+    {
+     "t": "2026-09-26T16:40:00Z",
+     "v": 7.6257625762576255
+    },
+    {
+     "t": "2026-09-26T16:45:00Z",
+     "v": 10.7859476034931
+    },
+    {
+     "t": "2026-09-26T16:50:00Z",
+     "v": 7.10857028567619
+    },
+    {
+     "t": "2026-09-26T16:55:00Z",
+     "v": 6.525217507250241
+    },
+    {
+     "t": "2026-09-26T17:00:00Z",
+     "v": 7.244879252012465
+    },
+    {
+     "t": "2026-09-26T17:05:00Z",
+     "v": 11.111666666666666
+    },
+    {
+     "t": "2026-09-26T17:10:00Z",
+     "v": 9.875
+    },
+    {
+     "t": "2026-09-26T17:15:00Z",
+     "v": 11.724804586590224
+    },
+    {
+     "t": "2026-09-26T17:20:00Z",
+     "v": 24.775
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/EC2",
+   "name": "NetworkIn",
+   "stat": "Sum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "InstanceId",
+     "Value": "i-0fee0000000000002"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:50:00Z",
+     "v": 60981833
+    },
+    {
+     "t": "2026-09-26T15:55:00Z",
+     "v": 3193717
+    },
+    {
+     "t": "2026-09-26T16:00:00Z",
+     "v": 1797644
+    },
+    {
+     "t": "2026-09-26T16:05:00Z",
+     "v": 3587197
+    },
+    {
+     "t": "2026-09-26T16:10:00Z",
+     "v": 2751475
+    },
+    {
+     "t": "2026-09-26T16:15:00Z",
+     "v": 2941034
+    },
+    {
+     "t": "2026-09-26T16:20:00Z",
+     "v": 2181620
+    },
+    {
+     "t": "2026-09-26T16:25:00Z",
+     "v": 2136143
+    },
+    {
+     "t": "2026-09-26T16:30:00Z",
+     "v": 1853970
+    },
+    {
+     "t": "2026-09-26T16:35:00Z",
+     "v": 2145575
+    },
+    {
+     "t": "2026-09-26T16:40:00Z",
+     "v": 1897605
+    },
+    {
+     "t": "2026-09-26T16:45:00Z",
+     "v": 2139442
+    },
+    {
+     "t": "2026-09-26T16:50:00Z",
+     "v": 1921962
+    },
+    {
+     "t": "2026-09-26T16:55:00Z",
+     "v": 2169893
+    },
+    {
+     "t": "2026-09-26T17:00:00Z",
+     "v": 1779662
+    },
+    {
+     "t": "2026-09-26T17:05:00Z",
+     "v": 1925921
+    },
+    {
+     "t": "2026-09-26T17:10:00Z",
+     "v": 1928303
+    },
+    {
+     "t": "2026-09-26T17:15:00Z",
+     "v": 2140731
+    },
+    {
+     "t": "2026-09-26T17:20:00Z",
+     "v": 8545675
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/EC2",
+   "name": "NetworkOut",
+   "stat": "Sum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "InstanceId",
+     "Value": "i-0fee0000000000002"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:50:00Z",
+     "v": 1163702846
+    },
+    {
+     "t": "2026-09-26T15:55:00Z",
+     "v": 389127234
+    },
+    {
+     "t": "2026-09-26T16:00:00Z",
+     "v": 1543865
+    },
+    {
+     "t": "2026-09-26T16:05:00Z",
+     "v": 776329774
+    },
+    {
+     "t": "2026-09-26T16:10:00Z",
+     "v": 1390579
+    },
+    {
+     "t": "2026-09-26T16:15:00Z",
+     "v": 1750080
+    },
+    {
+     "t": "2026-09-26T16:20:00Z",
+     "v": 1762817
+    },
+    {
+     "t": "2026-09-26T16:25:00Z",
+     "v": 1776996
+    },
+    {
+     "t": "2026-09-26T16:30:00Z",
+     "v": 1035636
+    },
+    {
+     "t": "2026-09-26T16:35:00Z",
+     "v": 2017188
+    },
+    {
+     "t": "2026-09-26T16:40:00Z",
+     "v": 1645845
+    },
+    {
+     "t": "2026-09-26T16:45:00Z",
+     "v": 1952714
+    },
+    {
+     "t": "2026-09-26T16:50:00Z",
+     "v": 1951321
+    },
+    {
+     "t": "2026-09-26T16:55:00Z",
+     "v": 2099146
+    },
+    {
+     "t": "2026-09-26T17:00:00Z",
+     "v": 1922221
+    },
+    {
+     "t": "2026-09-26T17:05:00Z",
+     "v": 1390555
+    },
+    {
+     "t": "2026-09-26T17:10:00Z",
+     "v": 1389213
+    },
+    {
+     "t": "2026-09-26T17:15:00Z",
+     "v": 1488903
+    },
+    {
+     "t": "2026-09-26T17:20:00Z",
+     "v": 12186868
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/EC2",
+   "name": "CPUUtilization",
+   "stat": "Average",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "InstanceId",
+     "Value": "i-0fee0000000000004"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:50:00Z",
+     "v": 0.0082423618558672
+    },
+    {
+     "t": "2026-09-26T15:55:00Z",
+     "v": 12.296953800417736
+    },
+    {
+     "t": "2026-09-26T16:00:00Z",
+     "v": 1.5291702763561124
+    },
+    {
+     "t": "2026-09-26T16:05:00Z",
+     "v": 23.517450581686052
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/EC2",
+   "name": "CPUUtilization",
+   "stat": "Maximum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "InstanceId",
+     "Value": "i-0fee0000000000004"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:50:00Z",
+     "v": 0.0082423618558672
+    },
+    {
+     "t": "2026-09-26T15:55:00Z",
+     "v": 30.999483341944302
+    },
+    {
+     "t": "2026-09-26T16:00:00Z",
+     "v": 2.6114925671621894
+    },
+    {
+     "t": "2026-09-26T16:05:00Z",
+     "v": 23.517450581686052
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/EC2",
+   "name": "NetworkIn",
+   "stat": "Sum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "InstanceId",
+     "Value": "i-0fee0000000000004"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:55:00Z",
+     "v": 829755362
+    },
+    {
+     "t": "2026-09-26T16:00:00Z",
+     "v": 338117
+    },
+    {
+     "t": "2026-09-26T16:05:00Z",
+     "v": 24084
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/EC2",
+   "name": "NetworkOut",
+   "stat": "Sum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "InstanceId",
+     "Value": "i-0fee0000000000004"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T15:55:00Z",
+     "v": 2784336
+    },
+    {
+     "t": "2026-09-26T16:00:00Z",
+     "v": 956303
+    },
+    {
+     "t": "2026-09-26T16:05:00Z",
+     "v": 38724
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/EC2",
+   "name": "CPUUtilization",
+   "stat": "Average",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "InstanceId",
+     "Value": "i-0fee0000000000005"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T16:05:00Z",
+     "v": 19.538066040170285
+    },
+    {
+     "t": "2026-09-26T16:10:00Z",
+     "v": 28.177189167857698
+    },
+    {
+     "t": "2026-09-26T16:15:00Z",
+     "v": 24.45462631730712
+    },
+    {
+     "t": "2026-09-26T16:20:00Z",
+     "v": 0.998010447267039
+    },
+    {
+     "t": "2026-09-26T16:25:00Z",
+     "v": 0.9753237507035699
+    },
+    {
+     "t": "2026-09-26T16:30:00Z",
+     "v": 1.4703368026585362
+    },
+    {
+     "t": "2026-09-26T16:35:00Z",
+     "v": 0.936996533748327
+    },
+    {
+     "t": "2026-09-26T16:40:00Z",
+     "v": 0.8140059007576103
+    },
+    {
+     "t": "2026-09-26T16:45:00Z",
+     "v": 1.190339423292563
+    },
+    {
+     "t": "2026-09-26T16:50:00Z",
+     "v": 0.7686676669974037
+    },
+    {
+     "t": "2026-09-26T16:55:00Z",
+     "v": 0.7770085504425319
+    },
+    {
+     "t": "2026-09-26T17:00:00Z",
+     "v": 9.369431610385856
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/EC2",
+   "name": "CPUUtilization",
+   "stat": "Maximum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "InstanceId",
+     "Value": "i-0fee0000000000005"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T16:05:00Z",
+     "v": 29.294023532548916
+    },
+    {
+     "t": "2026-09-26T16:10:00Z",
+     "v": 94.3067615539741
+    },
+    {
+     "t": "2026-09-26T16:15:00Z",
+     "v": 85.27142119035317
+    },
+    {
+     "t": "2026-09-26T16:20:00Z",
+     "v": 1.816727224240808
+    },
+    {
+     "t": "2026-09-26T16:25:00Z",
+     "v": 1.883333333333333
+    },
+    {
+     "t": "2026-09-26T16:30:00Z",
+     "v": 2.361548589237205
+    },
+    {
+     "t": "2026-09-26T16:35:00Z",
+     "v": 1.6666944449074153
+    },
+    {
+     "t": "2026-09-26T16:40:00Z",
+     "v": 1.3416443059282344
+    },
+    {
+     "t": "2026-09-26T16:45:00Z",
+     "v": 1.5866931115518592
+    },
+    {
+     "t": "2026-09-26T16:50:00Z",
+     "v": 1.245020750345839
+    },
+    {
+     "t": "2026-09-26T16:55:00Z",
+     "v": 1.4366906115101918
+    },
+    {
+     "t": "2026-09-26T17:00:00Z",
+     "v": 36.528942149035814
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/EC2",
+   "name": "NetworkIn",
+   "stat": "Sum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "InstanceId",
+     "Value": "i-0fee0000000000005"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T16:05:00Z",
+     "v": 441909379
+    },
+    {
+     "t": "2026-09-26T16:10:00Z",
+     "v": 387768185
+    },
+    {
+     "t": "2026-09-26T16:15:00Z",
+     "v": 433337
+    },
+    {
+     "t": "2026-09-26T16:20:00Z",
+     "v": 314629
+    },
+    {
+     "t": "2026-09-26T16:25:00Z",
+     "v": 312219
+    },
+    {
+     "t": "2026-09-26T16:30:00Z",
+     "v": 255723
+    },
+    {
+     "t": "2026-09-26T16:35:00Z",
+     "v": 230042
+    },
+    {
+     "t": "2026-09-26T16:40:00Z",
+     "v": 230348
+    },
+    {
+     "t": "2026-09-26T16:45:00Z",
+     "v": 240221
+    },
+    {
+     "t": "2026-09-26T16:50:00Z",
+     "v": 243805
+    },
+    {
+     "t": "2026-09-26T16:55:00Z",
+     "v": 230662
+    },
+    {
+     "t": "2026-09-26T17:00:00Z",
+     "v": 258669
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/EC2",
+   "name": "NetworkOut",
+   "stat": "Sum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "InstanceId",
+     "Value": "i-0fee0000000000005"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T16:05:00Z",
+     "v": 842836
+    },
+    {
+     "t": "2026-09-26T16:10:00Z",
+     "v": 1777414
+    },
+    {
+     "t": "2026-09-26T16:15:00Z",
+     "v": 2032042
+    },
+    {
+     "t": "2026-09-26T16:20:00Z",
+     "v": 785392
+    },
+    {
+     "t": "2026-09-26T16:25:00Z",
+     "v": 746220
+    },
+    {
+     "t": "2026-09-26T16:30:00Z",
+     "v": 693367
+    },
+    {
+     "t": "2026-09-26T16:35:00Z",
+     "v": 607404
+    },
+    {
+     "t": "2026-09-26T16:40:00Z",
+     "v": 611129
+    },
+    {
+     "t": "2026-09-26T16:45:00Z",
+     "v": 627126
+    },
+    {
+     "t": "2026-09-26T16:50:00Z",
+     "v": 691225
+    },
+    {
+     "t": "2026-09-26T16:55:00Z",
+     "v": 626549
+    },
+    {
+     "t": "2026-09-26T17:00:00Z",
+     "v": 600572
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/EC2",
+   "name": "CPUUtilization",
+   "stat": "Average",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "InstanceId",
+     "Value": "i-0fee0000000000003"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T17:05:00Z",
+     "v": 10.411019612532858
+    },
+    {
+     "t": "2026-09-26T17:10:00Z",
+     "v": 1.0693502153463266
+    },
+    {
+     "t": "2026-09-26T17:15:00Z",
+     "v": 1.264452615278227
+    },
+    {
+     "t": "2026-09-26T17:20:00Z",
+     "v": 5.776251521162918
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/EC2",
+   "name": "CPUUtilization",
+   "stat": "Maximum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "InstanceId",
+     "Value": "i-0fee0000000000003"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T17:05:00Z",
+     "v": 30.249495841735975
+    },
+    {
+     "t": "2026-09-26T17:10:00Z",
+     "v": 2.0784026134204474
+    },
+    {
+     "t": "2026-09-26T17:15:00Z",
+     "v": 2.545848616205402
+    },
+    {
+     "t": "2026-09-26T17:20:00Z",
+     "v": 5.776251521162918
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/EC2",
+   "name": "NetworkIn",
+   "stat": "Sum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "InstanceId",
+     "Value": "i-0fee0000000000003"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T17:05:00Z",
+     "v": 144946819
+    },
+    {
+     "t": "2026-09-26T17:10:00Z",
+     "v": 314909
+    },
+    {
+     "t": "2026-09-26T17:15:00Z",
+     "v": 254146
+    },
+    {
+     "t": "2026-09-26T17:20:00Z",
+     "v": 220010
+    }
+   ]
+  },
+  {
+   "namespace": "AWS/EC2",
+   "name": "NetworkOut",
+   "stat": "Sum",
+   "period": 60,
+   "dims": [
+    {
+     "Name": "InstanceId",
+     "Value": "i-0fee0000000000003"
+    }
+   ],
+   "points": [
+    {
+     "t": "2026-09-26T17:05:00Z",
+     "v": 695516
+    },
+    {
+     "t": "2026-09-26T17:10:00Z",
+     "v": 868324
+    },
+    {
+     "t": "2026-09-26T17:15:00Z",
+     "v": 655580
+    },
+    {
+     "t": "2026-09-26T17:20:00Z",
+     "v": 2289066
+    }
+   ]
+  }
+ ],
+ "events": [
+  {
+   "AccessKeyId": "ASIAFIXTUREFIXTURE01",
+   "CloudTrailEvent": "{\"eventVersion\":\"1.11\",\"userIdentity\":{\"type\":\"AssumedRole\",\"principalId\":\"000000000000:aws:ec2-instance:i-0fee0000000000001\",\"arn\":\"arn:aws:sts::000000000000:assumed-role/aws:ec2-instance/i-0fee0000000000001\",\"accountId\":\"000000000000\",\"accessKeyId\":\"ASIAFIXTUREFIXTURE01\",\"sessionContext\":{\"sessionIssuer\":{\"type\":\"Role\",\"principalId\":\"000000000000:aws:ec2-instance\",\"arn\":\"arn:aws:iam::000000000000:role/aws:ec2-instance\",\"accountId\":\"000000000000\",\"userName\":\"aws:ec2-instance\"},\"attributes\":{\"creationDate\":\"2026-09-26T15:48:43Z\",\"mfaAuthenticated\":\"false\"},\"ec2RoleDelivery\":\"2.0\"},\"inScopeOf\":{\"issuerType\":\"AWS::EC2::Instance\",\"credentialsIssuedTo\":\"arn:aws:ec2:us-east-1:000000000000:instance/i-0fee0000000000001\"}},\"eventTime\":\"2026-09-26T15:49:02Z\",\"eventSource\":\"ssm.amazonaws.com\",\"eventName\":\"RegisterManagedInstance\",\"awsRegion\":\"us-east-1\",\"sourceIPAddress\":\"192.0.2.11\",\"userAgent\":\"aws-sdk-go/1.55.5 (go1.25.11 X:nodwarf5; linux; amd64) amazon-ssm-agent/3.3.4624.0\",\"requestParameters\":{\"publicKey\":\"MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1twsW24KIOhGUlpWA9N7XlcTaFG3jIX76Amqjlw1OPkR7etAqfWZvNY5LLHBbxJFYUwcMneHmSkQnZnOG3+TFZha0sDLhM5LHajGiQeEwacfOhAyd22496AEYsBgFVX/0AxPrGwAgApG140rM+N0pGSgr3/LlKvs1ZJBgFp7C3LXdqRug/Qdo6o5lX6s4DqORcEZXbmaUhJmWT/g0l36ohcCg4ezXPQqBh+mp8kswD6LqFhmbqrzSVY6XfKBAZcud0VtxNXVkN7s8o4Tcwq0Z+WJ2l8/jmhWO3X3nNCyM4G/iuT0VKxMfZvRJieiODsE/YDz7gHz4w5zYBibdacvQQIDAQAB\",\"publicKeyType\":\"Rsa\",\"fingerprint\":\"i-0fee0000000000001\"},\"responseElements\":{\"instanceId\":\"i-0fee0000000000001\"},\"requestID\":\"29444c61-c326-43c6-a6c4-ee5bf81fb470\",\"eventID\":\"1bb9e39e-c82a-41c6-9584-459fee1e14f0\",\"readOnly\":false,\"eventType\":\"AwsApiCall\",\"managementEvent\":true,\"recipientAccountId\":\"000000000000\",\"eventCategory\":\"Management\",\"tlsDetails\":{\"tlsVersion\":\"TLSv1.2\",\"cipherSuite\":\"ECDHE-RSA-AES128-GCM-SHA256\",\"clientProvidedHostHeader\":\"ssm.us-east-1.amazonaws.com\"}}",
+   "EventId": "1bb9e39e-c82a-41c6-9584-459fee1e14f0",
+   "EventName": "RegisterManagedInstance",
+   "EventSource": "ssm.amazonaws.com",
+   "EventTime": "2026-09-26T15:49:02Z",
+   "ReadOnly": "false",
+   "Resources": [],
+   "Username": "i-0fee0000000000001"
+  },
+  {
+   "AccessKeyId": "ASIAFIXTUREFIXTURE01",
+   "CloudTrailEvent": "{\"eventVersion\":\"1.11\",\"userIdentity\":{\"type\":\"AssumedRole\",\"principalId\":\"000000000000:aws:ec2-instance:i-0fee0000000000002\",\"arn\":\"arn:aws:sts::000000000000:assumed-role/aws:ec2-instance/i-0fee0000000000002\",\"accountId\":\"000000000000\",\"accessKeyId\":\"ASIAFIXTUREFIXTURE01\",\"sessionContext\":{\"sessionIssuer\":{\"type\":\"Role\",\"principalId\":\"000000000000:aws:ec2-instance\",\"arn\":\"arn:aws:iam::000000000000:role/aws:ec2-instance\",\"accountId\":\"000000000000\",\"userName\":\"aws:ec2-instance\"},\"attributes\":{\"creationDate\":\"2026-09-26T15:49:15Z\",\"mfaAuthenticated\":\"false\"},\"ec2RoleDelivery\":\"2.0\"},\"inScopeOf\":{\"issuerType\":\"AWS::EC2::Instance\",\"credentialsIssuedTo\":\"arn:aws:ec2:us-east-1:000000000000:instance/i-0fee0000000000002\"}},\"eventTime\":\"2026-09-26T15:49:35Z\",\"eventSource\":\"ssm.amazonaws.com\",\"eventName\":\"RegisterManagedInstance\",\"awsRegion\":\"us-east-1\",\"sourceIPAddress\":\"192.0.2.10\",\"userAgent\":\"aws-sdk-go/1.55.5 (go1.25.11 X:nodwarf5; linux; amd64) amazon-ssm-agent/3.3.4624.0\",\"requestParameters\":{\"publicKey\":\"MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvuT0zQrCmATNAmylZXezi1OYOglqLGoxoKHSvg9p6N/3TBqJ0YLuMQeWcq9/7OKm0nhRrAD2hV5Xre67L19oHcu0WKcn5mefNZ6BREH72D6ei6G2VVF3mrEMTkFcLuaaAvGhwfrW+2P1WjzehUj5g4nSf7x/KypGg0Zr0Fxlzv/3+BYJE3byd9J89AWKn5hFXpDu2PV7KhweKuR7Io+vuJIXu8SC2KsNzeI6cafS+ZgMwyGcbM8yr6U38sti7nClmNc2BlfHnUaJruNWjPtre0kRl90YGGKa/hKCKLu31O8TcPy5AEWcOwzO5QLESt/Xamto9FSKhle+X2lE9nucMQIDAQAB\",\"publicKeyType\":\"Rsa\",\"fingerprint\":\"i-0fee0000000000002\"},\"responseElements\":{\"instanceId\":\"i-0fee0000000000002\"},\"requestID\":\"026856a9-f762-4e25-bfc6-87f71d289435\",\"eventID\":\"c1437aea-d59e-4daf-93c3-5acd68cabb17\",\"readOnly\":false,\"eventType\":\"AwsApiCall\",\"managementEvent\":true,\"recipientAccountId\":\"000000000000\",\"eventCategory\":\"Management\",\"tlsDetails\":{\"tlsVersion\":\"TLSv1.2\",\"cipherSuite\":\"ECDHE-RSA-AES128-GCM-SHA256\",\"clientProvidedHostHeader\":\"ssm.us-east-1.amazonaws.com\"}}",
+   "EventId": "c1437aea-d59e-4daf-93c3-5acd68cabb17",
+   "EventName": "RegisterManagedInstance",
+   "EventSource": "ssm.amazonaws.com",
+   "EventTime": "2026-09-26T15:49:35Z",
+   "ReadOnly": "false",
+   "Resources": [],
+   "Username": "i-0fee0000000000002"
+  },
+  {
+   "AccessKeyId": "ASIAFIXTUREFIXTURE01",
+   "CloudTrailEvent": "{\"eventVersion\":\"1.11\",\"userIdentity\":{\"type\":\"AssumedRole\",\"principalId\":\"000000000000:aws:ec2-instance:i-0fee0000000000004\",\"arn\":\"arn:aws:sts::000000000000:assumed-role/aws:ec2-instance/i-0fee0000000000004\",\"accountId\":\"000000000000\",\"accessKeyId\":\"ASIAFIXTUREFIXTURE01\",\"sessionContext\":{\"sessionIssuer\":{\"type\":\"Role\",\"principalId\":\"000000000000:aws:ec2-instance\",\"arn\":\"arn:aws:iam::000000000000:role/aws:ec2-instance\",\"accountId\":\"000000000000\",\"userName\":\"aws:ec2-instance\"},\"attributes\":{\"creationDate\":\"2026-09-26T15:53:21Z\",\"mfaAuthenticated\":\"false\"},\"ec2RoleDelivery\":\"2.0\"},\"inScopeOf\":{\"issuerType\":\"AWS::EC2::Instance\",\"credentialsIssuedTo\":\"arn:aws:ec2:us-east-1:000000000000:instance/i-0fee0000000000004\"}},\"eventTime\":\"2026-09-26T15:53:44Z\",\"eventSource\":\"ssm.amazonaws.com\",\"eventName\":\"RegisterManagedInstance\",\"awsRegion\":\"us-east-1\",\"sourceIPAddress\":\"192.0.2.12\",\"userAgent\":\"aws-sdk-go/1.55.5 (go1.25.11 X:nodwarf5; linux; amd64) amazon-ssm-agent/3.3.4624.0\",\"requestParameters\":{\"publicKey\":\"MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvkhXOGfkLXnL1qh8Lor2szhoa8IvxZ907jZjnakAjWQfasPiAT4Q7MNWQhg89JkVZ2yxzP0RM1ZGjZAZO1P/TrDHfHf6a4H1VrvBko92nvmWJHFTi0OfhKPi/FT5PfTVh/qnotq8oNHy9IzO5fraYoIL0NoNN6wcmmkBynX1HmdDtJiCxa1FgODNe21aco1W3cigTmSvkvU6qVbjOJ3z8px61++dTwjZ20qBZl5xp1YOYZDxNDaR5wac5FHjS9e+I48WoyzGSlvKsK3UmkkM/9CaxDTThKpwJjPSxCY5+btGABnAWCNg5F6SLaL+/av/oBqSQAa+yWJbHsy1CAqjhwIDAQAB\",\"publicKeyType\":\"Rsa\",\"fingerprint\":\"i-0fee0000000000004\"},\"responseElements\":{\"instanceId\":\"i-0fee0000000000004\"},\"requestID\":\"04d0afc0-e44e-48eb-ac8f-2d660e0fe2c8\",\"eventID\":\"ed4bfba4-5a9d-4228-9c9c-e1bea3f97598\",\"readOnly\":false,\"eventType\":\"AwsApiCall\",\"managementEvent\":true,\"recipientAccountId\":\"000000000000\",\"eventCategory\":\"Management\",\"tlsDetails\":{\"tlsVersion\":\"TLSv1.2\",\"cipherSuite\":\"ECDHE-RSA-AES128-GCM-SHA256\",\"clientProvidedHostHeader\":\"ssm.us-east-1.amazonaws.com\"}}",
+   "EventId": "ed4bfba4-5a9d-4228-9c9c-e1bea3f97598",
+   "EventName": "RegisterManagedInstance",
+   "EventSource": "ssm.amazonaws.com",
+   "EventTime": "2026-09-26T15:53:44Z",
+   "ReadOnly": "false",
+   "Resources": [],
+   "Username": "i-0fee0000000000004"
+  },
+  {
+   "AccessKeyId": "ASIAFIXTUREFIXTURE01",
+   "CloudTrailEvent": "{\"eventVersion\":\"1.11\",\"userIdentity\":{\"type\":\"AssumedRole\",\"principalId\":\"000000000000:aws:ec2-instance:i-0fee0000000000005\",\"arn\":\"arn:aws:sts::000000000000:assumed-role/aws:ec2-instance/i-0fee0000000000005\",\"accountId\":\"000000000000\",\"accessKeyId\":\"ASIAFIXTUREFIXTURE01\",\"sessionContext\":{\"sessionIssuer\":{\"type\":\"Role\",\"principalId\":\"000000000000:aws:ec2-instance\",\"arn\":\"arn:aws:iam::000000000000:role/aws:ec2-instance\",\"accountId\":\"000000000000\",\"userName\":\"aws:ec2-instance\"},\"attributes\":{\"creationDate\":\"2026-09-26T16:06:34Z\",\"mfaAuthenticated\":\"false\"},\"ec2RoleDelivery\":\"2.0\"},\"inScopeOf\":{\"issuerType\":\"AWS::EC2::Instance\",\"credentialsIssuedTo\":\"arn:aws:ec2:us-east-1:000000000000:instance/i-0fee0000000000005\"}},\"eventTime\":\"2026-09-26T16:06:54Z\",\"eventSource\":\"ssm.amazonaws.com\",\"eventName\":\"RegisterManagedInstance\",\"awsRegion\":\"us-east-1\",\"sourceIPAddress\":\"192.0.2.13\",\"userAgent\":\"aws-sdk-go/1.55.5 (go1.25.11 X:nodwarf5; linux; amd64) amazon-ssm-agent/3.3.4624.0\",\"requestParameters\":{\"publicKey\":\"MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwbLWe8e3M+YE6Zk8R7nqHOSploHvu8wv1eYRRjJytZQ2oU28x8Ah0I1QDbZPJZrXj0NQ1LGQpi3Zo7cnT7v/oYWrR/ltNCE9gHt0fNeSpRc+c2zXSondLBRpE6OdFbXwnCQdJV1Xh+AXEkGDIirVrhOIwkhmP1118G8PBH3W3OmCexOOyLIwJU+GjxoBSBiQNXVTcXDl5+rlobzxhthMrma4Vu1JA4eLDawi+TvOUAXxGssyT0vOvBn6m1FdM+gr1el527Up1bN5BBm6xNbW1V/LB2DHrLrnSQQnsqWrwjQ78HCI4Q9P3hF+Q2MG24bqkSbBAoX83Lf9FEW2jW53fQIDAQAB\",\"publicKeyType\":\"Rsa\",\"fingerprint\":\"i-0fee0000000000005\"},\"responseElements\":{\"instanceId\":\"i-0fee0000000000005\"},\"requestID\":\"53851e55-f15d-417c-88ab-fda3ff976969\",\"eventID\":\"e2d725d1-5108-49b9-87c8-5c831dca0d50\",\"readOnly\":false,\"eventType\":\"AwsApiCall\",\"managementEvent\":true,\"recipientAccountId\":\"000000000000\",\"eventCategory\":\"Management\",\"tlsDetails\":{\"tlsVersion\":\"TLSv1.2\",\"cipherSuite\":\"ECDHE-RSA-AES128-GCM-SHA256\",\"clientProvidedHostHeader\":\"ssm.us-east-1.amazonaws.com\"}}",
+   "EventId": "e2d725d1-5108-49b9-87c8-5c831dca0d50",
+   "EventName": "RegisterManagedInstance",
+   "EventSource": "ssm.amazonaws.com",
+   "EventTime": "2026-09-26T16:06:54Z",
+   "ReadOnly": "false",
+   "Resources": [],
+   "Username": "i-0fee0000000000005"
+  },
+  {
+   "AccessKeyId": "ASIAFIXTUREFIXTURE01",
+   "CloudTrailEvent": "{\"eventVersion\":\"1.11\",\"userIdentity\":{\"type\":\"AssumedRole\",\"principalId\":\"000000000000:aws:ec2-instance:i-0fee0000000000003\",\"arn\":\"arn:aws:sts::000000000000:assumed-role/aws:ec2-instance/i-0fee0000000000003\",\"accountId\":\"000000000000\",\"accessKeyId\":\"ASIAFIXTUREFIXTURE01\",\"sessionContext\":{\"sessionIssuer\":{\"type\":\"Role\",\"principalId\":\"000000000000:aws:ec2-instance\",\"arn\":\"arn:aws:iam::000000000000:role/aws:ec2-instance\",\"accountId\":\"000000000000\",\"userName\":\"aws:ec2-instance\"},\"attributes\":{\"creationDate\":\"2026-09-26T17:05:40Z\",\"mfaAuthenticated\":\"false\"},\"ec2RoleDelivery\":\"2.0\"},\"inScopeOf\":{\"issuerType\":\"AWS::EC2::Instance\",\"credentialsIssuedTo\":\"arn:aws:ec2:us-east-1:000000000000:instance/i-0fee0000000000003\"}},\"eventTime\":\"2026-09-26T17:06:00Z\",\"eventSource\":\"ssm.amazonaws.com\",\"eventName\":\"RegisterManagedInstance\",\"awsRegion\":\"us-east-1\",\"sourceIPAddress\":\"192.0.2.14\",\"userAgent\":\"aws-sdk-go/1.55.5 (go1.25.11 X:nodwarf5; linux; amd64) amazon-ssm-agent/3.3.4624.0\",\"requestParameters\":{\"publicKey\":\"MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwSogJkQzVeGuPKGT5ToSXtwklEbWZ8+ID5B1GdGgEgq25ktuKyOjrMhOdwc9uGrXUYdu/g5Q7RJpI+4uevXMATP2EXyY49z2m5R7UyIiGyB9hpxtIf8zupn3KIBIqw+c0rXVTEqbqHFkOurJc/o8iG/cVB5KXjMGZUo0svzaCjYhiCv7mWAQNX1Tbvpz2b4yIWo0N3KghbX50ENCd5T781ziAaDlSuqZ+6KWzvNB7GGxvx6aPCIQTvETkMwq6+NtuvOFWoNFKreLEdmc3DEsfwGv3PDaY/xKzQr2byXIxpGMFd50ym3hymwEvXs3vd2IBmZ3lL+jYwTE9+hs9AYcjQIDAQAB\",\"publicKeyType\":\"Rsa\",\"fingerprint\":\"i-0fee0000000000003\"},\"responseElements\":{\"instanceId\":\"i-0fee0000000000003\"},\"requestID\":\"bb3c341c-157a-4836-9b94-5c226e69d98d\",\"eventID\":\"79fa2bae-fd40-4b12-a92a-7d57a586ed56\",\"readOnly\":false,\"eventType\":\"AwsApiCall\",\"managementEvent\":true,\"recipientAccountId\":\"000000000000\",\"eventCategory\":\"Management\",\"tlsDetails\":{\"tlsVersion\":\"TLSv1.2\",\"cipherSuite\":\"ECDHE-RSA-AES128-GCM-SHA256\",\"clientProvidedHostHeader\":\"ssm.us-east-1.amazonaws.com\"}}",
+   "EventId": "79fa2bae-fd40-4b12-a92a-7d57a586ed56",
+   "EventName": "RegisterManagedInstance",
+   "EventSource": "ssm.amazonaws.com",
+   "EventTime": "2026-09-26T17:06:00Z",
+   "ReadOnly": "false",
+   "Resources": [],
+   "Username": "i-0fee0000000000003"
+  }
+ ]
+}

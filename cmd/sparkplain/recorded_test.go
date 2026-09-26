@@ -70,7 +70,8 @@ func replayAWS(t *testing.T, name string) *awsfake.Recording {
 	if !ok {
 		t.Fatalf("recording's log URI %q is not on S3", aws.ToString(rec.Cluster.LogUri))
 	}
-	store := routeStore{bucket: bucket, routes: map[string]string{"emr-logs": emrlogs, "spark-events": fx}}
+	// The phase 3 jobs' scripts sat in the bucket under p3/.
+	store := routeStore{bucket: bucket, routes: map[string]string{"emr-logs": emrlogs, "spark-events": fx, "p3": "../../testdata/emrscripts/p3"}}
 	saved := awsDeps
 	t.Cleanup(func() { awsDeps = saved })
 	awsDeps.config = func(context.Context, string, string) (aws.Config, error) { return aws.Config{Region: "us-east-1"}, nil }
@@ -139,6 +140,65 @@ func TestRecordedDeadlock(t *testing.T) {
 		}
 		if r.Nodes.Coverage == "needs-event-log" || len(r.Nodes.Hosts) != 3 || r.Metrics == nil || len(r.Metrics.Summary) != 3 {
 			t.Errorf("%s: nodes %v (%d hosts), metrics %+v", app, r.Nodes.Coverage, len(r.Nodes.Hosts), r.Metrics)
+		}
+	}
+}
+
+// The second phase 3 test cluster: a busy job beside one refused an STS
+// call, a job whose settings SparkContext refused, a heap that ran out, and
+// a Python job that allocated 3 GiB too briefly for YARN to notice.
+func TestRecordedPhase3(t *testing.T) {
+	replayAWS(t, "j-FIXTURE0062CLUSTER")
+	type want struct {
+		code   int
+		status string
+		has    map[string]string // rule → title prefix
+		hasNot []string
+	}
+	cfg := "First error: IllegalArgumentException: spark.excludeOnFailure.task.maxTaskAttemptsPerNode ( = 2) was >= spark.task.maxFailures ( = 2 )"
+	for n, w := range map[string]want{
+		"0061": {exitPartial, "failed", map[string]string{ // the access job: refused by STS; CloudTrail never recorded it
+			"log-first-failure": "First error: AWSSecurityTokenServiceException: User: arn:aws:sts::000000000000:assumed-role/EMR_EC2_DefaultRole/",
+			"access-denied":     "AWS refused access 2 times: sts:AssumeRole on arn:aws:iam::000000000000:role/fixture-no-such-role",
+		}, nil},
+		"0062": {exitOK, "succeeded", map[string]string{"idle-nodes": "1 worker node of 2 ran no executors", "shared-cluster": "2 applications shared the cluster"}, []string{"log-first-failure"}},
+		"0063": {exitPartial, "failed", map[string]string{"log-first-failure": cfg}, []string{"waited-for-capacity", "idle-nodes"}},
+		"0064": {exitPartial, "failed", map[string]string{"log-first-failure": cfg}, []string{"waited-for-capacity", "idle-nodes"}},
+		"0065": {exitPartial, "failed", map[string]string{ // the heap ran out; each executor killed itself, exit 137
+			"log-first-failure": "First error: OutOfMemoryError: GC overhead limit exceeded",
+			"out-of-memory":     "8 executors ran out of memory (GC overhead limit exceeded)",
+		}, []string{"executor-memory-kill"}},
+		"0066": {exitOK, "succeeded", map[string]string{}, []string{"executor-memory-kill", "log-first-failure"}}, // 3 GiB for 3 s: YARN never saw it
+	} {
+		app := "application_1790380000000_" + n
+		dir := t.TempDir()
+		code, _, errs := runCLI(t, "-app-id", app, "-cluster-id", "j-FIXTURE0062CLUSTER", "-profile", "test", "-out", dir, "-format", "json,html,explorer")
+		r := readReport(t, dir)
+		if code != w.code {
+			var bad []string
+			for _, s := range r.Sources {
+				if s.Status == "partial" || s.Status == "error" || s.Status == "not-supplied" {
+					bad = append(bad, s.Name+": "+s.Status+" "+s.Detail)
+				}
+			}
+			t.Errorf("%s: exit %d, want %d: %s %v", n, code, w.code, errs, bad)
+		}
+		if r.Application.Status != w.status {
+			t.Errorf("%s: status %q, want %q", n, r.Application.Status, w.status)
+		}
+		got := findingRules(t, dir)
+		for rule, title := range w.has {
+			if !strings.HasPrefix(got[rule], title) {
+				t.Errorf("%s: %s = %q, want %q…", n, rule, got[rule], title)
+			}
+		}
+		for _, rule := range w.hasNot {
+			if _, ok := got[rule]; ok {
+				t.Errorf("%s: unexpected %s: %q", n, rule, got[rule])
+			}
+		}
+		if len(r.Cluster.Instances) != 5 || r.Cluster.Instances[0].VCPU != 4 || r.AWSCalls == nil || r.Metrics == nil {
+			t.Errorf("%s: cluster %+v, calls %v, metrics %v", n, r.Cluster, r.AWSCalls != nil, r.Metrics != nil)
 		}
 	}
 }

@@ -274,6 +274,11 @@ func firstFailure(c *ctx, r *model.Report) {
 	}
 	var cands []hit
 	for _, h := range c.logs.hits {
+		// spark-submit's "Application … finished with failed status" only
+		// reports that the application failed.
+		if h.f.Kind == "step-stderr" && strings.Contains(h.l.Text, "finished with failed status") {
+			continue
+		}
 		if _, ok := causeKinds[h.l.Kind]; ok && h.l.Severity == model.Critical {
 			cands = append(cands, h)
 		}

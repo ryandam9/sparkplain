@@ -28,6 +28,16 @@ func analyzeMetrics(c *ctx, r *model.Report) {
 	}
 	start, end := r.Application.Start, r.Application.End
 	if start.IsZero() {
+		// Without the application's own times, its step's are the next
+		// best; the padded metrics window would count other work as its.
+		for _, st := range r.Steps {
+			if st.AppID != "" && !st.Started.IsZero() {
+				start, end = st.Started, st.Ended
+			}
+		}
+	}
+	timed := !start.IsZero()
+	if !timed {
 		start, end = m.From, m.To
 	}
 	if end.IsZero() || end.Before(start) {
@@ -110,7 +120,7 @@ func analyzeMetrics(c *ctx, r *model.Report) {
 		waitMin = min(waitMin, runMin)
 		m.Summary = append(m.Summary, model.Fact{Label: "Containers waiting", Value: fmt.Sprintf("%.0f at most, for %s", peak, model.Duration(int64(waitMin*60000))),
 			Explain: "Containers YARN had been asked for but had not placed, across the whole cluster.", Source: src(pending)})
-		if waitMin >= pendingMinMinutes && runMin > 0 && waitMin/runMin >= pendingMinShare {
+		if timed && waitMin >= pendingMinMinutes && runMin > 0 && waitMin/runMin >= pendingMinShare {
 			ev := []model.Evidence{{Source: src(pending), Text: fmt.Sprintf("CloudWatch: up to %.0f containers waiting, for %s of the %s run", peak, model.Duration(int64(waitMin*60000)), model.Duration(int64(runMin*60000)))}}
 			f := model.Finding{Rule: "waited-for-capacity", Severity: model.Warning, Section: "nodes"}
 			avgFree := -1.0
