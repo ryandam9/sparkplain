@@ -57,6 +57,7 @@ type parser struct {
 	ex         *explorerAcc   // nil unless Options.Explorer is set
 	nestedSeen map[string]int // events of each type checked against the inventory
 	running    map[int64]*model.RunningTask
+	sparkProps map[string]string // the application's Spark settings, to find job-local ones
 	exclusions []*model.Exclusion
 	blockKinds map[string]*model.BlockKind
 }
@@ -173,7 +174,12 @@ func (p *parser) line(line []byte, src model.Source) error {
 		})
 	case evStageSubmitted, evStageCompleted:
 		var e stageEvent
-		return p.decode(line, &e, func() { p.stage(&e.Info, name == evStageCompleted, src) })
+		return p.decode(line, &e, func() {
+			p.stage(&e.Info, name == evStageCompleted, src)
+			if len(e.Properties) > 0 {
+				p.stageProps(e.Info.ID, e.Info.Attempt, e.Properties, src)
+			}
+		})
 	case evJobStart:
 		var e jobStartEvent
 		return p.decode(line, &e, func() { p.jobStart(&e, src) })
@@ -625,6 +631,7 @@ func (p *parser) stage(si *stageInfo, completed bool, src model.Source) {
 	st.Name = redact.Text(callSite(si.Name))
 	st.NumTasks = si.NumTasks
 	st.ParentIDs = si.ParentIDs
+	p.stageDetail(st, si)
 	if si.SubmissionTime != nil {
 		st.Submitted = ms(*si.SubmissionTime)
 		p.seen(*si.SubmissionTime)
@@ -705,14 +712,17 @@ func (p *parser) jobStart(e *jobStartEvent, src model.Source) {
 		j.SQLExecutionID = &id
 		p.sqlJobs[id] = append(p.sqlJobs[id], e.JobID)
 	}
+	j.Properties = localProps(e.Properties, p.sparkProps, nil)
 	last := -1
-	for _, si := range e.StageInfos {
+	for i := range e.StageInfos {
+		si := &e.StageInfos[i]
 		a := p.stageAcc(si.ID, si.Attempt, src)
 		if a.st.Name == "" {
 			a.st.Name = redact.Text(callSite(si.Name))
 			a.st.NumTasks = si.NumTasks
 			a.st.ParentIDs = si.ParentIDs
 		}
+		p.stageDetail(a.st, si)
 		if si.ID > last {
 			last, j.Name = si.ID, redact.Text(callSite(si.Name))
 		}
@@ -756,6 +766,7 @@ func (p *parser) resourceProfile(e *resourceProfileEvent, src model.Source) {
 }
 
 func (p *parser) environment(e *envEvent, src model.Source) {
+	p.sparkProps = e.Spark
 	add := func(origin string, m map[string]string) {
 		keys := make([]string, 0, len(m))
 		for k := range m {
@@ -1164,4 +1175,93 @@ func (p *parser) exclusion(kind string, lift, stage bool, e *exclusionEvent, src
 		x.StageID, x.StageAttempt = e.StageID, e.StageAttempt
 	}
 	p.exclusions = append(p.exclusions, x)
+}
+
+// Caps on what each stage and job keeps.
+const (
+	maxStageRDDs  = 200
+	maxDetails    = 8 << 10
+	maxLocalProps = 100
+)
+
+// stageDetail records what a stage computes, the first time it is seen.
+func (p *parser) stageDetail(st *model.Stage, si *stageInfo) {
+	if st.RDDs != nil || st.Details != "" {
+		return
+	}
+	st.Details = redact.Text(truncate(si.Details, maxDetails))
+	st.ResourceProfile, st.ShufflePush, st.PushMergers = si.ResourceProf, si.PushEnabled, si.PushMergers
+	for _, r := range si.RDDs {
+		if len(st.RDDs) >= maxStageRDDs {
+			st.RDDsCapped = true
+			break
+		}
+		op, opID := scopeOf(r.Scope)
+		sr := model.StageRDD{ID: r.ID, Name: redact.Text(truncate(firstLine(r.Name), 200)), Operation: redact.Text(op), OperationID: opID,
+			Callsite: redact.Text(callSite(r.Callsite)), Parents: r.ParentIDs, Partitions: r.NumPartitions,
+			CachedPartitions: r.CachedPartitions, Barrier: r.Barrier, Deterministic: r.Deterministic}
+		if l := r.StorageLevel; l.UseDisk || l.UseMemory || l.UseOffHeap {
+			sr.StorageLevel = levelName(l)
+		}
+		st.RDDs = append(st.RDDs, sr)
+	}
+	sort.Slice(st.RDDs, func(i, j int) bool { return st.RDDs[i].ID < st.RDDs[j].ID })
+}
+
+// scopeOf reads an RDD's scope, JSON such as {"id":"12","name":"Exchange"}.
+func scopeOf(scope string) (name, id string) {
+	if scope == "" {
+		return "", ""
+	}
+	var sc struct{ ID, Name string }
+	if json.Unmarshal([]byte(scope), &sc) != nil {
+		return "", ""
+	}
+	return sc.Name, sc.ID
+}
+
+// localProps returns the properties that differ from base (the app's
+// settings) and, when also given, from other (the job's), redacted by key.
+func localProps(props, base, other map[string]string) map[string]string {
+	var out map[string]string
+	keys := make([]string, 0, len(props))
+	for k := range props {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		v := props[k]
+		if b, ok := base[k]; ok && b == v {
+			continue
+		}
+		rv, _ := redact.Value(k, v)
+		rv = truncate(rv, 2000)
+		if o, ok := other[k]; ok && o == rv {
+			continue
+		}
+		if out == nil {
+			out = map[string]string{}
+		}
+		if len(out) >= maxLocalProps {
+			out["…"] = fmt.Sprintf("%d more", len(keys)-maxLocalProps)
+			break
+		}
+		out[redact.Text(k)] = rv
+	}
+	return out
+}
+
+// stageProps keeps a stage's properties only where they differ from its
+// job's: normally a stage inherits them unchanged.
+func (p *parser) stageProps(id, attempt int, props map[string]string, src model.Source) {
+	var jobProps map[string]string
+	if jobs := p.stageJobs[id]; len(jobs) > 0 {
+		if j := p.jobs[jobs[0]]; j != nil {
+			jobProps = j.Properties
+		}
+	}
+	diff := localProps(props, p.sparkProps, jobProps)
+	if len(diff) > 0 && jobProps != nil {
+		p.stageAcc(id, attempt, src).st.Properties = diff
+	}
 }

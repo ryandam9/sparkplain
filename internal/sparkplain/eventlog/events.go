@@ -133,13 +133,18 @@ type storageLevel struct {
 }
 
 type rddInfo struct {
-	ID            int          `json:"RDD ID"`
-	Name          string       `json:"Name"`
-	Callsite      string       `json:"Callsite"`
-	StorageLevel  storageLevel `json:"Storage Level"`
-	NumPartitions int          `json:"Number of Partitions"`
-	MemorySize    int64        `json:"Memory Size"`
-	DiskSize      int64        `json:"Disk Size"`
+	ID               int          `json:"RDD ID"`
+	Name             string       `json:"Name"`
+	Scope            string       `json:"Scope"` // JSON: {"id":"12","name":"Exchange"}
+	ParentIDs        []int        `json:"Parent IDs"`
+	CachedPartitions int          `json:"Number of Cached Partitions"`
+	Barrier          bool         `json:"Barrier"`
+	Deterministic    string       `json:"DeterministicLevel"`
+	Callsite         string       `json:"Callsite"`
+	StorageLevel     storageLevel `json:"Storage Level"`
+	NumPartitions    int          `json:"Number of Partitions"`
+	MemorySize       int64        `json:"Memory Size"`
+	DiskSize         int64        `json:"Disk Size"`
 }
 
 type stageInfo struct {
@@ -153,10 +158,15 @@ type stageInfo struct {
 	CompletionTime *int64        `json:"Completion Time"`
 	FailureReason  *string       `json:"Failure Reason"`
 	Accumulables   []accumulable `json:"Accumulables"`
+	Details        string        `json:"Details"`
+	ResourceProf   int           `json:"Resource Profile Id"`
+	PushEnabled    bool          `json:"Shuffle Push Enabled"`
+	PushMergers    int           `json:"Shuffle Push Mergers Count"`
 }
 
 type stageEvent struct {
-	Info stageInfo `json:"Stage Info"`
+	Info       stageInfo         `json:"Stage Info"`
+	Properties map[string]string `json:"Properties"`
 }
 
 type jobStartEvent struct {

@@ -190,34 +190,34 @@ SparkListenerJobStart
     Event | used | event type
     Job ID | used | job identity and timing
     Properties | used | description, group, SQL execution ID
-    Properties/* | planned:4 | only keys that differ from the app's settings are shown, redacted
+    Properties/* | used | only keys that differ from the app's (or, for a stage, its job's) settings are kept, redacted
     Stage IDs | used | job identity and timing
     Stage Infos | used | stages the job plans
     Stage Infos[]/Accumulables | aside | always empty before the stage runs
-    Stage Infos[]/Details | planned:4 | long call site
+    Stage Infos[]/Details | used | long call site
     Stage Infos[]/Number of Tasks | used | stage identity, size, lineage, timing and failure
     Stage Infos[]/Parent IDs | used | stage identity, size, lineage, timing and failure
     Stage Infos[]/RDD Info | used | RDDs the stage computes
-    Stage Infos[]/RDD Info[]/Barrier | planned:4 | the stage's operation graph
-    Stage Infos[]/RDD Info[]/Callsite | planned:4 | the stage's operation graph
-    Stage Infos[]/RDD Info[]/DeterministicLevel | planned:4 | the stage's operation graph
+    Stage Infos[]/RDD Info[]/Barrier | used | the stage's operation graph
+    Stage Infos[]/RDD Info[]/Callsite | used | the stage's operation graph
+    Stage Infos[]/RDD Info[]/DeterministicLevel | used | the stage's operation graph
     Stage Infos[]/RDD Info[]/Disk Size | used | cached RDDs and their size
     Stage Infos[]/RDD Info[]/Memory Size | used | cached RDDs and their size
     Stage Infos[]/RDD Info[]/Name | used | cached RDDs and their size
-    Stage Infos[]/RDD Info[]/Number of Cached Partitions | planned:4 | the stage's operation graph
+    Stage Infos[]/RDD Info[]/Number of Cached Partitions | used | the stage's operation graph
     Stage Infos[]/RDD Info[]/Number of Partitions | used | cached RDDs and their size
-    Stage Infos[]/RDD Info[]/Parent IDs | planned:4 | the stage's operation graph
+    Stage Infos[]/RDD Info[]/Parent IDs | used | the stage's operation graph
     Stage Infos[]/RDD Info[]/RDD ID | used | cached RDDs and their size
-    Stage Infos[]/RDD Info[]/Scope | planned:4 | the stage's operation graph
+    Stage Infos[]/RDD Info[]/Scope | used | the stage's operation graph
     Stage Infos[]/RDD Info[]/Storage Level | used | cached RDDs and their size
     Stage Infos[]/RDD Info[]/Storage Level/Deserialized | used | cached RDDs and their size
     Stage Infos[]/RDD Info[]/Storage Level/Replication | used | cached RDDs and their size
     Stage Infos[]/RDD Info[]/Storage Level/Use Disk | used | cached RDDs and their size
     Stage Infos[]/RDD Info[]/Storage Level/Use Memory | used | cached RDDs and their size
     Stage Infos[]/RDD Info[]/Storage Level/Use Off Heap | used | cached RDDs and their size
-    Stage Infos[]/Resource Profile Id | planned:4 | resource profile and push-based shuffle settings
-    Stage Infos[]/Shuffle Push Enabled | planned:4 | resource profile and push-based shuffle settings
-    Stage Infos[]/Shuffle Push Mergers Count | planned:4 | resource profile and push-based shuffle settings
+    Stage Infos[]/Resource Profile Id | used | resource profile and push-based shuffle settings
+    Stage Infos[]/Shuffle Push Enabled | used | resource profile and push-based shuffle settings
+    Stage Infos[]/Shuffle Push Mergers Count | used | resource profile and push-based shuffle settings
     Stage Infos[]/Stage Attempt ID | used | stage identity, size, lineage, timing and failure
     Stage Infos[]/Stage ID | used | stage identity, size, lineage, timing and failure
     Stage Infos[]/Stage Name | used | stage identity, size, lineage, timing and failure
@@ -353,31 +353,31 @@ SparkListenerStageCompleted
     Stage Info/Accumulables[]/Name | aside | the plan names each metric; bookkeeping flags
     Stage Info/Accumulables[]/Value | used | which metric, its total, and the sql marker
     Stage Info/Completion Time | used | stage identity, size, lineage, timing and failure
-    Stage Info/Details | planned:4 | long call site
+    Stage Info/Details | used | long call site
     Stage Info/Failure Reason | used | stage identity, size, lineage, timing and failure
     Stage Info/Number of Tasks | used | stage identity, size, lineage, timing and failure
     Stage Info/Parent IDs | used | stage identity, size, lineage, timing and failure
     Stage Info/RDD Info | used | RDDs the stage computes
-    Stage Info/RDD Info[]/Barrier | planned:4 | the stage's operation graph
-    Stage Info/RDD Info[]/Callsite | planned:4 | the stage's operation graph
-    Stage Info/RDD Info[]/DeterministicLevel | planned:4 | the stage's operation graph
+    Stage Info/RDD Info[]/Barrier | used | the stage's operation graph
+    Stage Info/RDD Info[]/Callsite | used | the stage's operation graph
+    Stage Info/RDD Info[]/DeterministicLevel | used | the stage's operation graph
     Stage Info/RDD Info[]/Disk Size | used | cached RDDs and their size
     Stage Info/RDD Info[]/Memory Size | used | cached RDDs and their size
     Stage Info/RDD Info[]/Name | used | cached RDDs and their size
-    Stage Info/RDD Info[]/Number of Cached Partitions | planned:4 | the stage's operation graph
+    Stage Info/RDD Info[]/Number of Cached Partitions | used | the stage's operation graph
     Stage Info/RDD Info[]/Number of Partitions | used | cached RDDs and their size
-    Stage Info/RDD Info[]/Parent IDs | planned:4 | the stage's operation graph
+    Stage Info/RDD Info[]/Parent IDs | used | the stage's operation graph
     Stage Info/RDD Info[]/RDD ID | used | cached RDDs and their size
-    Stage Info/RDD Info[]/Scope | planned:4 | the stage's operation graph
+    Stage Info/RDD Info[]/Scope | used | the stage's operation graph
     Stage Info/RDD Info[]/Storage Level | used | cached RDDs and their size
     Stage Info/RDD Info[]/Storage Level/Deserialized | used | cached RDDs and their size
     Stage Info/RDD Info[]/Storage Level/Replication | used | cached RDDs and their size
     Stage Info/RDD Info[]/Storage Level/Use Disk | used | cached RDDs and their size
     Stage Info/RDD Info[]/Storage Level/Use Memory | used | cached RDDs and their size
     Stage Info/RDD Info[]/Storage Level/Use Off Heap | used | cached RDDs and their size
-    Stage Info/Resource Profile Id | planned:4 | resource profile and push-based shuffle settings
-    Stage Info/Shuffle Push Enabled | planned:4 | resource profile and push-based shuffle settings
-    Stage Info/Shuffle Push Mergers Count | planned:4 | resource profile and push-based shuffle settings
+    Stage Info/Resource Profile Id | used | resource profile and push-based shuffle settings
+    Stage Info/Shuffle Push Enabled | used | resource profile and push-based shuffle settings
+    Stage Info/Shuffle Push Mergers Count | used | resource profile and push-based shuffle settings
     Stage Info/Stage Attempt ID | used | stage identity, size, lineage, timing and failure
     Stage Info/Stage ID | used | stage identity, size, lineage, timing and failure
     Stage Info/Stage Name | used | stage identity, size, lineage, timing and failure
@@ -413,34 +413,34 @@ SparkListenerStageExecutorMetrics
 
 SparkListenerStageSubmitted
     Event | used | event type
-    Properties | planned:4 | job-local properties, compared with the app's settings
-    Properties/* | planned:4 | only keys that differ from the app's settings are shown, redacted
+    Properties | used | stage properties, kept only where they differ from its job's
+    Properties/* | used | only keys that differ from the app's (or, for a stage, its job's) settings are kept, redacted
     Stage Info | used | stage
     Stage Info/Accumulables | aside | always empty before the stage runs
-    Stage Info/Details | planned:4 | long call site
+    Stage Info/Details | used | long call site
     Stage Info/Number of Tasks | used | stage identity, size, lineage, timing and failure
     Stage Info/Parent IDs | used | stage identity, size, lineage, timing and failure
     Stage Info/RDD Info | used | RDDs the stage computes
-    Stage Info/RDD Info[]/Barrier | planned:4 | the stage's operation graph
-    Stage Info/RDD Info[]/Callsite | planned:4 | the stage's operation graph
-    Stage Info/RDD Info[]/DeterministicLevel | planned:4 | the stage's operation graph
+    Stage Info/RDD Info[]/Barrier | used | the stage's operation graph
+    Stage Info/RDD Info[]/Callsite | used | the stage's operation graph
+    Stage Info/RDD Info[]/DeterministicLevel | used | the stage's operation graph
     Stage Info/RDD Info[]/Disk Size | used | cached RDDs and their size
     Stage Info/RDD Info[]/Memory Size | used | cached RDDs and their size
     Stage Info/RDD Info[]/Name | used | cached RDDs and their size
-    Stage Info/RDD Info[]/Number of Cached Partitions | planned:4 | the stage's operation graph
+    Stage Info/RDD Info[]/Number of Cached Partitions | used | the stage's operation graph
     Stage Info/RDD Info[]/Number of Partitions | used | cached RDDs and their size
-    Stage Info/RDD Info[]/Parent IDs | planned:4 | the stage's operation graph
+    Stage Info/RDD Info[]/Parent IDs | used | the stage's operation graph
     Stage Info/RDD Info[]/RDD ID | used | cached RDDs and their size
-    Stage Info/RDD Info[]/Scope | planned:4 | the stage's operation graph
+    Stage Info/RDD Info[]/Scope | used | the stage's operation graph
     Stage Info/RDD Info[]/Storage Level | used | cached RDDs and their size
     Stage Info/RDD Info[]/Storage Level/Deserialized | used | cached RDDs and their size
     Stage Info/RDD Info[]/Storage Level/Replication | used | cached RDDs and their size
     Stage Info/RDD Info[]/Storage Level/Use Disk | used | cached RDDs and their size
     Stage Info/RDD Info[]/Storage Level/Use Memory | used | cached RDDs and their size
     Stage Info/RDD Info[]/Storage Level/Use Off Heap | used | cached RDDs and their size
-    Stage Info/Resource Profile Id | planned:4 | resource profile and push-based shuffle settings
-    Stage Info/Shuffle Push Enabled | planned:4 | resource profile and push-based shuffle settings
-    Stage Info/Shuffle Push Mergers Count | planned:4 | resource profile and push-based shuffle settings
+    Stage Info/Resource Profile Id | used | resource profile and push-based shuffle settings
+    Stage Info/Shuffle Push Enabled | used | resource profile and push-based shuffle settings
+    Stage Info/Shuffle Push Mergers Count | used | resource profile and push-based shuffle settings
     Stage Info/Stage Attempt ID | used | stage identity, size, lineage, timing and failure
     Stage Info/Stage ID | used | stage identity, size, lineage, timing and failure
     Stage Info/Stage Name | used | stage identity, size, lineage, timing and failure

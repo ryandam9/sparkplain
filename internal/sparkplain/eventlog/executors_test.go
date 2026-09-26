@@ -197,3 +197,92 @@ func TestCachedPlacement(t *testing.T) {
 		t.Errorf("placed %d RDDs; block kinds %v", placed, kinds)
 	}
 }
+
+// Each stage keeps the RDDs it computes, with the operation that made each,
+// as the raw StageSubmitted event lists them.
+func TestStageOperations(t *testing.T) {
+	const name = "application_1790380000000_0046"
+	type rdd struct {
+		op      string
+		parents int
+	}
+	want := map[int]map[int64]rdd{}
+	for _, e := range rawEvents(t, name) {
+		if e["Event"] != "SparkListenerStageSubmitted" {
+			continue
+		}
+		si := obj(e, "Stage Info")
+		m := map[int64]rdd{}
+		for _, r := range si["RDD Info"].([]any) {
+			ri := r.(map[string]any)
+			var sc struct{ Name string }
+			if s, ok := ri["Scope"].(string); ok {
+				json.Unmarshal([]byte(s), &sc)
+			}
+			m[num(ri["RDD ID"])] = rdd{sc.Name, len(ri["Parent IDs"].([]any))}
+		}
+		want[int(num(si["Stage ID"]))] = m
+	}
+	l := parseFixture(t, name, name)
+	for _, st := range l.Stages {
+		w, ok := want[st.ID]
+		if !ok {
+			continue
+		}
+		if len(st.RDDs) != len(w) || st.Details == "" {
+			t.Errorf("stage %d: %d RDDs (want %d), details %d bytes", st.ID, len(st.RDDs), len(w), len(st.Details))
+			continue
+		}
+		for _, r := range st.RDDs {
+			if got := (rdd{r.Operation, len(r.Parents)}); got != w[int64(r.ID)] {
+				t.Errorf("stage %d rdd %d: %+v, want %+v", st.ID, r.ID, got, w[int64(r.ID)])
+			}
+		}
+	}
+}
+
+// A job keeps exactly the properties that differ from the app's settings,
+// redacted.
+func TestJobLocalProperties(t *testing.T) {
+	const name = "application_1790380000000_0046"
+	var env map[string]any
+	want := map[int64]map[string]bool{}
+	for _, e := range rawEvents(t, name) {
+		switch e["Event"] {
+		case "SparkListenerEnvironmentUpdate":
+			env = obj(e, "Spark Properties")
+		case "SparkListenerJobStart":
+			keys := map[string]bool{}
+			for k, v := range obj(e, "Properties") {
+				if env[k] != v {
+					keys[k] = true
+				}
+			}
+			want[num(e["Job ID"])] = keys
+		}
+	}
+	l := parseFixture(t, name, name)
+	var pools, tokens int
+	for _, j := range l.Jobs {
+		if len(j.Properties) != len(want[int64(j.ID)]) {
+			t.Errorf("job %d: %d local properties, want %d", j.ID, len(j.Properties), len(want[int64(j.ID)]))
+		}
+		for k, v := range j.Properties {
+			if !want[int64(j.ID)][k] {
+				t.Errorf("job %d: %s kept although it matches the app's setting", j.ID, k)
+			}
+			if k == "spark.scheduler.pool" && v == "etl" {
+				pools++
+			}
+			if k == "spark.myapp.session.token" {
+				tokens++
+				if v != "[redacted]" {
+					t.Errorf("job %d: session token shown as %q", j.ID, v)
+				}
+			}
+		}
+	}
+	if pools == 0 || tokens == 0 {
+		t.Errorf("scheduler pool seen on %d jobs, session token on %d", pools, tokens)
+	}
+}

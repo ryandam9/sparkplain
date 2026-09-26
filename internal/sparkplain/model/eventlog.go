@@ -403,28 +403,37 @@ type TaskFailure struct {
 
 // Stage is one stage attempt.
 type Stage struct {
-	ID            int           `json:"id"`
-	Attempt       int           `json:"attempt"`
-	Name          string        `json:"name"`
-	NumTasks      int           `json:"numTasks"`
-	JobIDs        []int         `json:"jobIds"`
-	ParentIDs     []int         `json:"parentIds,omitempty"`
-	Submitted     time.Time     `json:"submitted,omitzero"`
-	Completed     time.Time     `json:"completed,omitzero"`
-	Status        string        `json:"status"`
-	FailureReason string        `json:"failureReason,omitempty"`
-	Totals        TaskTotals    `json:"totals"`
-	TaskType      string        `json:"taskType,omitempty"` // ResultTask or ShuffleMapTask
-	TaskDuration  Dist          `json:"taskDurationMs"`
-	TaskInput     Dist          `json:"taskInputBytes"`
-	TaskShuffle   Dist          `json:"taskShuffleReadBytes"`
-	TaskRecords   Dist          `json:"taskRecordsRead"` // input plus shuffle rows per task
-	Slowest       *TaskRef      `json:"slowestTask,omitempty"`
-	Failures      []TaskFailure `json:"failures,omitempty"`
-	CachedRDDs    []int         `json:"cachedRdds,omitempty"`
-	Source        Source        `json:"source"`
-	TaskSource    Source        `json:"taskSource,omitzero"`
-	EndSource     Source        `json:"endSource,omitzero"`
+	ID            int        `json:"id"`
+	Attempt       int        `json:"attempt"`
+	Name          string     `json:"name"`
+	NumTasks      int        `json:"numTasks"`
+	JobIDs        []int      `json:"jobIds"`
+	ParentIDs     []int      `json:"parentIds,omitempty"`
+	Submitted     time.Time  `json:"submitted,omitzero"`
+	Completed     time.Time  `json:"completed,omitzero"`
+	Status        string     `json:"status"`
+	FailureReason string     `json:"failureReason,omitempty"`
+	Totals        TaskTotals `json:"totals"`
+	TaskType      string     `json:"taskType,omitempty"` // ResultTask or ShuffleMapTask
+	// What the stage computes: its RDDs (capped), the long call site, its
+	// resource profile, and push-based shuffle settings.
+	RDDs            []StageRDD        `json:"rdds,omitempty"`
+	RDDsCapped      bool              `json:"rddsCapped,omitempty"`
+	Details         string            `json:"details,omitempty"`
+	ResourceProfile int               `json:"resourceProfile,omitempty"`
+	ShufflePush     bool              `json:"shufflePush,omitempty"`
+	PushMergers     int               `json:"pushMergers,omitempty"`
+	Properties      map[string]string `json:"properties,omitempty"` // only where they differ from the job's
+	TaskDuration    Dist              `json:"taskDurationMs"`
+	TaskInput       Dist              `json:"taskInputBytes"`
+	TaskShuffle     Dist              `json:"taskShuffleReadBytes"`
+	TaskRecords     Dist              `json:"taskRecordsRead"` // input plus shuffle rows per task
+	Slowest         *TaskRef          `json:"slowestTask,omitempty"`
+	Failures        []TaskFailure     `json:"failures,omitempty"`
+	CachedRDDs      []int             `json:"cachedRdds,omitempty"`
+	Source          Source            `json:"source"`
+	TaskSource      Source            `json:"taskSource,omitzero"`
+	EndSource       Source            `json:"endSource,omitzero"`
 }
 
 // DurationMs is the wall-clock time of the stage attempt, or 0 if unknown.
@@ -448,8 +457,12 @@ type Job struct {
 	Status         string    `json:"status"`
 	Failure        string    `json:"failure,omitempty"`
 	FailureStack   string    `json:"failureStack,omitempty"` // stack trace of the job's exception, redacted
-	Source         Source    `json:"source"`
-	EndSource      Source    `json:"endSource,omitzero"`
+	// Properties are the job's local properties that differ from the
+	// application's settings (scheduler pool, job group, settings changed in
+	// the session), redacted.
+	Properties map[string]string `json:"properties,omitempty"`
+	Source     Source            `json:"source"`
+	EndSource  Source            `json:"endSource,omitzero"`
 }
 
 // DurationMs is the wall-clock time of the job, or 0 if unknown.
@@ -519,4 +532,21 @@ type ConfigEntry struct {
 	Origin   string `json:"origin"` // the event log section it came from
 	Redacted bool   `json:"redacted,omitempty"`
 	Source   Source `json:"source"`
+}
+
+// StageRDD is one RDD a stage computes, as the Spark UI's stage graph shows
+// it: the operation (scope) that made it, its parents, and where in the
+// code it came from.
+type StageRDD struct {
+	ID               int    `json:"id"`
+	Name             string `json:"name"`
+	Operation        string `json:"operation,omitempty"` // scope name, e.g. Exchange or WholeStageCodegen (1)
+	OperationID      string `json:"operationId,omitempty"`
+	Callsite         string `json:"callsite,omitempty"`
+	Parents          []int  `json:"parents,omitempty"`
+	Partitions       int    `json:"partitions"`
+	CachedPartitions int    `json:"cachedPartitions,omitempty"`
+	StorageLevel     string `json:"storageLevel,omitempty"`
+	Barrier          bool   `json:"barrier,omitempty"`
+	Deterministic    string `json:"deterministic,omitempty"` // DETERMINATE, UNORDERED or INDETERMINATE
 }

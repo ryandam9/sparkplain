@@ -118,6 +118,7 @@ type xData struct {
 	Graphs     map[string][]xNode   `json:"graphs"`      // by query ID
 	PlanLays   map[string]xLayout   `json:"planLayouts"` // by query ID, for graphs small enough to draw
 	JobDags    map[string]xJobDag   `json:"jobDags"`     // by job ID, for jobs with 2 to maxGraphNodes stages
+	StageOps   map[string]xStageOps `json:"stageOps"`    // by "id.attempt": the RDDs each stage computes, laid out as a graph
 	RDDs       table                `json:"rdds"`
 	Runtime    table                `json:"runtime"`
 	Config     []xConfigGroup       `json:"config"`
@@ -176,6 +177,20 @@ type xJobDag struct {
 // tables only.
 const maxGraphNodes = 300
 
+// Stage operation graphs are kept for stages of up to maxStageOpNodes RDDs,
+// and for at most maxStageOpStages stages, to keep the page small.
+const (
+	maxStageOpNodes  = 100
+	maxStageOpStages = 3000
+)
+
+// xStageOps is a stage's RDDs (id, name, operation, call site, partitions,
+// cached partitions, storage level, barrier, determinism) and their layout.
+type xStageOps struct {
+	RDDs   [][]any `json:"rdds"`
+	Layout xLayout `json:"layout"`
+}
+
 type xRunning struct {
 	Start    int64   `json:"start"`
 	BucketMs int64   `json:"bucketMs"`
@@ -211,7 +226,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		Summary: r.Summary.Sentences, KPIs: r.Summary.KPIs, HeapBytes: r.Memory.Config.HeapBytes,
 		Detail: map[string]xDetail{}, TaskCols: taskCols, CellCols: cellCols, Graphs: map[string][]xNode{},
 		Findings: []xFinding{}, Files: []string{}, Execs: []string{}, Notes: []string{},
-		PlanLays: map[string]xLayout{}, JobDags: map[string]xJobDag{},
+		PlanLays: map[string]xLayout{}, JobDags: map[string]xJobDag{}, StageOps: map[string]xStageOps{},
 	}
 	files := map[string]int{}
 	fileIdx := func(s model.Source) int64 {
@@ -278,14 +293,14 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 			e.StartupMs, orMap(e.LogURLs), orMap(e.Attributes), orMap(e.Resources), unixMs(e.BlockManagerRemoved))
 	}
 
-	d.Jobs = newTable("id", "name", "desc", "group", "submitted", "completed", "status", "stages", "sql", "failure", "src", "failureStack")
+	d.Jobs = newTable("id", "name", "desc", "group", "submitted", "completed", "status", "stages", "sql", "failure", "src", "failureStack", "props")
 	for _, j := range r.Jobs.Jobs {
 		var sql any
 		if j.SQLExecutionID != nil {
 			sql = *j.SQLExecutionID
 		}
 		d.Jobs.add(j.ID, j.Name, j.Description, j.Group, unixMs(j.Submitted), unixMs(j.Completed), j.Status,
-			orEmpty(j.StageIDs), sql, capText(j.Failure, 2000), src(j.Source), capText(j.FailureStack, maxStackText))
+			orEmpty(j.StageIDs), sql, capText(j.Failure, 2000), src(j.Source), capText(j.FailureStack, maxStackText), orMap(j.Properties))
 	}
 
 	parents := map[int][]int{}
@@ -315,7 +330,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		"tasks", "ok", "failed", "killed", "dur", "run", "gc", "input", "inputRows", "output", "outputRows",
 		"shRead", "shReadRows", "shWrite", "shWriteRows", "memSpill", "diskSpill", "p50", "max", "failure", "cached", "src",
 		"taskType", "loc", "sched", "resultSize", "gettingMs", "shWriteMs", "shRemote", "shRemoteDisk", "shLocalBlocks", "shRemoteBlocks",
-		"push", "cacheWrites", "failures")
+		"push", "cacheWrites", "failures", "details", "rp", "pushOn", "pushMergers", "barrier", "props")
 	for _, st := range r.Jobs.Stages {
 		t := st.Totals
 		d.Stages.add(st.ID, st.Attempt, st.Name, st.Status, unixMs(st.Submitted), unixMs(st.Completed), st.NumTasks,
@@ -327,7 +342,11 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 			t.SchedulerDelayMs, t.ResultSizeBytes, t.GettingResultMs, t.ShuffleWriteTimeNs/1e6, t.ShuffleRemoteBytes,
 			t.ShuffleRemoteToDiskBytes, t.ShuffleLocalBlocks, t.ShuffleRemoteBlocks,
 			[]int64{t.PushMergedLocalBlocks, t.PushMergedLocalBytes, t.PushMergedRemoteBlocks, t.PushMergedRemoteBytes, t.PushFallbacks, t.PushCorruptChunks, t.PushMergedRemoteReqsMs},
-			[]int64{t.UpdatedBlocks, t.UpdatedBlockBytes}, stageFailures(st))
+			[]int64{t.UpdatedBlocks, t.UpdatedBlockBytes}, stageFailures(st),
+			st.Details, st.ResourceProfile, st.ShufflePush, st.PushMergers, isBarrier(st), orMap(st.Properties))
+		if len(st.RDDs) > 0 && len(st.RDDs) <= maxStageOpNodes && len(d.StageOps) < maxStageOpStages {
+			d.StageOps[strconv.Itoa(st.ID)+"."+strconv.Itoa(st.Attempt)] = stageOps(st)
+		}
 	}
 
 	d.SQL = newTable("id", "desc", "start", "end", "error", "jobs", "reads", "writes", "plan", "planCut", "src")
@@ -512,4 +531,34 @@ func orMap[V any](m map[string]V) map[string]V {
 		return map[string]V{}
 	}
 	return m
+}
+
+func isBarrier(st *model.Stage) bool {
+	for _, r := range st.RDDs {
+		if r.Barrier {
+			return true
+		}
+	}
+	return false
+}
+
+// stageOps lays out a stage's RDDs as a graph, each edge from a parent RDD
+// to the RDD computed from it.
+func stageOps(st *model.Stage) xStageOps {
+	idx := map[int]int{}
+	for i, r := range st.RDDs {
+		idx[r.ID] = i
+	}
+	var edges [][2]int
+	ops := xStageOps{RDDs: [][]any{}}
+	for i, r := range st.RDDs {
+		for _, p := range r.Parents {
+			if pi, ok := idx[p]; ok {
+				edges = append(edges, [2]int{pi, i})
+			}
+		}
+		ops.RDDs = append(ops.RDDs, []any{r.ID, r.Name, r.Operation, r.Callsite, r.Partitions, r.CachedPartitions, r.StorageLevel, r.Barrier, r.Deterministic})
+	}
+	ops.Layout = layered(len(st.RDDs), edges)
+	return ops
 }

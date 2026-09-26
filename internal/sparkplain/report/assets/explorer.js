@@ -345,6 +345,13 @@
       j.group ? fact("Job group", j.group) : null,
       fact("Code", j.name, "Where in the code the action ran.")));
     if (j.failure) s.appendChild(el("pre", { cls: "plan", text: j.failure }));
+    var jp = Object.keys(j.props || {}).sort();
+    if (jp.length) {
+      s.appendChild(el("h3", { text: "Settings for this job" }));
+      s.appendChild(explain("Properties this job carried that differ from the application's settings: the scheduler pool, job group, and settings the code changed in its session. Values of keys that look like secrets are redacted."));
+      s.appendChild(el("div", { cls: "tbl" }, el("table", null, el("thead", null, el("tr", null, el("th", { text: "Property" }), el("th", { text: "Value" }))),
+        el("tbody", null, jp.map(function (k) { return el("tr", null, el("td", { cls: "mono", text: k }), el("td", { cls: "mono", text: j.props[k] })); })))));
+    }
     if (j.failureStack) s.appendChild(el("details", null, el("summary", { text: "Stack trace of the job's failure" }), el("div", { cls: "inner" }, el("pre", { cls: "plan", text: j.failureStack }))));
     var jw = el("div", { cls: "dagwrap", hidden: true });
     s.appendChild(jw);
@@ -492,6 +499,25 @@
     var sw = el("div", { cls: "dagwrap", hidden: true });
     s.appendChild(sw);
     st.jobs.some(function (jid) { return jobDag(sw, jid, st.id); });
+    var ops = D.stageOps[st.key];
+    if (ops) {
+      s.appendChild(el("h3", { text: "What this stage computes" }));
+      var ow = el("div", { cls: "dagwrap", hidden: true });
+      s.appendChild(ow);
+      drawGraph(ow, ops.layout, function (i) {
+        var r = ops.rdds[i];
+        return { title: r[2] || r[1], sub: "RDD " + r[0] + (r[2] ? " · " + r[1] : "") + (r[5] ? " · " + num(r[5]) + " cached" : ""),
+          cls: r[6] ? "hot" : "", tip: "RDD " + r[0] + " (" + r[1] + ")" + (r[2] ? ", made by " + r[2] : "") + "\n" + (r[3] || "") + "\n" + num(r[4]) + " partitions" + (r[6] ? ", cached as " + r[6] : "") + (r[8] && r[8] !== "DETERMINATE" ? ", output " + r[8].toLowerCase() : "") + (r[7] ? ", barrier" : "") };
+      }, "The RDDs this stage computes, named by the operation that made each (Spark's stage graph). Data flows down the arrows. Cached RDDs are outlined.");
+    }
+    if (st.details) s.appendChild(el("details", null, el("summary", { text: "Where in the code: the full call stack Spark recorded" }), el("div", { cls: "inner" }, el("pre", { cls: "plan", text: st.details }))));
+    if (st.rp || st.pushOn || st.barrier || Object.keys(st.props || {}).length) {
+      s.appendChild(el("div", { cls: "facts" },
+        st.rp ? fact("Resource profile", "Profile " + st.rp, "The stage ran with stage-level resources rather than the default profile.") : null,
+        st.pushOn ? fact("Push-based shuffle", "On, " + num(st.pushMergers) + " merger locations", "Map outputs were pushed to merger services and merged before the reduce side read them.") : null,
+        st.barrier ? fact("Barrier stage", "Yes", "All its tasks start together and are retried together, as some ML libraries need.") : null,
+        Object.keys(st.props || {}).length ? fact("Own settings", Object.keys(st.props).map(function (k) { return k + " = " + st.props[k]; }).join("; "), "Properties this stage had that its job did not.") : null));
+    }
     if (!det || !det.from) {
       s.appendChild(explain(D.collected ? "No task finished in this stage, so there is no task summary." : "Per-task detail was not collected for this run."));
       return s;
