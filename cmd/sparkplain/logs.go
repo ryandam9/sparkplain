@@ -431,7 +431,7 @@ func runWindow(log *model.EventLog, files []model.LogFile, steps []model.Step) (
 		if st.AppID != "" && !st.Started.IsZero() {
 			to = st.Ended
 			if to.IsZero() {
-				to = time.Now()
+				to = awsDeps.now()
 			}
 			return st.Started, to, true
 		}
@@ -466,7 +466,7 @@ func (out *clusterLogs) readMetrics(ctx context.Context, cloud *awsSession, log 
 	}
 	cfg, err := cloud.config(ctx)
 	if err == nil {
-		out.metrics, err = awsmeta.Metrics(ctx, awsDeps.cloudwatch(cfg), out.cluster.ID, ids, from, to, time.Now())
+		out.metrics, err = awsmeta.Metrics(ctx, awsDeps.cloudwatch(cfg), out.cluster.ID, ids, from, to, awsDeps.now())
 	}
 	if err != nil {
 		row.Status, row.Class, row.Detail = "error", awsmeta.ErrorClass(err), "Could not read metrics (needs cloudwatch:GetMetricData and cloudwatch:ListMetrics): "+err.Error()
@@ -507,7 +507,7 @@ func (out *clusterLogs) readCalls(ctx context.Context, cloud *awsSession, log *m
 	}
 	cfg, err := cloud.config(ctx)
 	if err == nil {
-		out.calls, err = awsmeta.Calls(ctx, awsDeps.cloudtrail(cfg), users, from, to, time.Now())
+		out.calls, err = awsmeta.Calls(ctx, awsDeps.cloudtrail(cfg), users, from, to, awsDeps.now())
 	}
 	if err != nil {
 		row.Status, row.Class, row.Detail = "error", awsmeta.ErrorClass(err), "Could not look up AWS calls (needs cloudtrail:LookupEvents): "+err.Error()

@@ -24,16 +24,22 @@ type CloudWatchAPI interface {
 // NewCloudWatch makes a client from a loaded AWS config.
 func NewCloudWatch(cfg aws.Config) CloudWatchAPI { return cloudwatch.NewFromConfig(cfg) }
 
-// metricSpec is one metric sparkplain reads.
-type metricSpec struct {
-	namespace, name, stat, unit string
+// MetricSpec is one metric sparkplain reads.
+type MetricSpec struct {
+	Namespace, Name, Stat, Unit string
+}
+
+// MetricSpecs lists the cluster-wide and per-node metrics sparkplain reads
+// (scripts/recordaws records the same).
+func MetricSpecs() (cluster, host []MetricSpec) {
+	return append([]MetricSpec{}, clusterMetrics...), append([]MetricSpec{}, hostMetrics...)
 }
 
 // The cluster's metrics, published every minute by EMR 7 (checked on the
 // test clusters), and each node's, every 5 minutes with EC2's basic
 // monitoring.
 var (
-	clusterMetrics = []metricSpec{
+	clusterMetrics = []MetricSpec{
 		{"AWS/ElasticMapReduce", "ContainerPending", "Maximum", "count"},
 		{"AWS/ElasticMapReduce", "ContainerAllocated", "Maximum", "count"},
 		{"AWS/ElasticMapReduce", "AppsRunning", "Maximum", "count"},
@@ -46,7 +52,7 @@ var (
 		{"AWS/ElasticMapReduce", "S3BytesRead", "Sum", "bytes"},
 		{"AWS/ElasticMapReduce", "S3BytesWritten", "Sum", "bytes"},
 	}
-	hostMetrics = []metricSpec{
+	hostMetrics = []MetricSpec{
 		{"AWS/EC2", "CPUUtilization", "Average", "percent"},
 		{"AWS/EC2", "CPUUtilization", "Maximum", "percent"},
 		{"AWS/EC2", "NetworkIn", "Sum", "bytes"},
@@ -80,7 +86,7 @@ func Metrics(ctx context.Context, api CloudWatchAPI, clusterID string, instances
 		return sec, nil
 	}
 	type query struct {
-		spec     metricSpec
+		spec     MetricSpec
 		dimName  string
 		dimValue string
 		host     bool
@@ -111,7 +117,7 @@ func Metrics(ctx context.Context, api CloudWatchAPI, clusterID string, instances
 					continue
 				}
 				agent[len(qs)] = m
-				qs = append(qs, query{metricSpec{"CWAgent", aws.ToString(m.MetricName), "Maximum", unit}, "InstanceId", id, true})
+				qs = append(qs, query{MetricSpec{"CWAgent", aws.ToString(m.MetricName), "Maximum", unit}, "InstanceId", id, true})
 			}
 		}
 	}
@@ -122,15 +128,15 @@ func Metrics(ctx context.Context, api CloudWatchAPI, clusterID string, instances
 	series := make([]model.Series, len(qs))
 	var mq []cwtypes.MetricDataQuery
 	for i, q := range qs {
-		metric := &cwtypes.Metric{Namespace: aws.String(q.spec.namespace), MetricName: aws.String(q.spec.name),
+		metric := &cwtypes.Metric{Namespace: aws.String(q.spec.Namespace), MetricName: aws.String(q.spec.Name),
 			Dimensions: []cwtypes.Dimension{{Name: aws.String(q.dimName), Value: aws.String(q.dimValue)}}}
 		if m, ok := agent[i]; ok {
 			metric.Dimensions = m.Dimensions
 		}
 		mq = append(mq, cwtypes.MetricDataQuery{Id: aws.String("q" + strconv.Itoa(i)), ReturnData: aws.Bool(true),
-			MetricStat: &cwtypes.MetricStat{Metric: metric, Period: aws.Int32(int32(period)), Stat: aws.String(q.spec.stat)}})
-		series[i] = model.Series{Namespace: q.spec.namespace, Name: q.spec.name, Stat: q.spec.stat, Scope: q.dimValue, Unit: q.spec.unit, PeriodS: period,
-			Points: []model.Point{}, Source: fmt.Sprintf("CloudWatch %s %s (%s, %s=%s)", q.spec.namespace, q.spec.name, q.spec.stat, q.dimName, q.dimValue)}
+			MetricStat: &cwtypes.MetricStat{Metric: metric, Period: aws.Int32(int32(period)), Stat: aws.String(q.spec.Stat)}})
+		series[i] = model.Series{Namespace: q.spec.Namespace, Name: q.spec.Name, Stat: q.spec.Stat, Scope: q.dimValue, Unit: q.spec.Unit, PeriodS: period,
+			Points: []model.Point{}, Source: fmt.Sprintf("CloudWatch %s %s (%s, %s=%s)", q.spec.Namespace, q.spec.Name, q.spec.Stat, q.dimName, q.dimValue)}
 	}
 	// GetMetricData takes up to 500 queries a call.
 	for startQ := 0; startQ < len(mq); startQ += 500 {

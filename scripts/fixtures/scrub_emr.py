@@ -40,6 +40,51 @@ class Scrubber:
         ]
         self.forbidden = ["172-31", "172.31.", "sparkplain-test-", "ap-southeast-2", old_ts, "hunter2"]
 
+    def add_aws_rules(self, accounts):
+        """Rules for AWS API recordings and logs that quote ARNs: account
+        numbers, public addresses, network and resource IDs, temporary key
+        and role IDs, and the SSH key pair's name."""
+        ids = {}
+
+        def rename(prefix):
+            def fn(m):
+                if m.group(0) not in ids:
+                    n = sum(1 for k in ids if k.startswith(prefix)) + 1
+                    width = len(m.group(0)) - len(prefix) - 1
+                    ids[m.group(0)] = "%s-%s" % (prefix, ("0f1e%0*x" % (max(width - 4, 1), n))[:width])
+                return ids[m.group(0)]
+            return fn
+
+        public = {}
+
+        def pub(ip):
+            if ip not in public:
+                public[ip] = "192.0.2.%d" % (10 + len(public))
+            return public[ip]
+
+        def private_ip(m):
+            # The same number as the host name, so a node's name and address
+            # still match: 172.31.13.227 goes with ip-172-31-13-227.
+            name = self._host(re.match(r".*", "ip-" + m.group(0).replace(".", "-")))
+            return name[3:].replace("-", ".")
+
+        # Before the base rule, which gives every private address 10.0.2.99.
+        self.replace.insert(0, (re.compile(r"\b172\.31\.\d+\.\d+\b"), private_ip))
+        for acct in accounts:
+            self.replace.append((re.compile(re.escape(acct)), lambda m: "000000000000"))
+            self.forbidden.append(acct)
+        for prefix in ["subnet", "sg", "vol", "ami", "eni", "vpc", "vpce", "igw", "rtb"]:
+            self.replace.append((re.compile(r"\b%s-[0-9a-f]{8,17}\b" % prefix), rename(prefix)))
+        self.replace += [
+            (re.compile(r"ec2-(\d+-\d+-\d+-\d+)\.([a-z0-9-]+\.)?compute\.amazonaws\.com"), lambda m: "ec2-%s.compute.amazonaws.com" % pub(m.group(1).replace("-", ".")).replace(".", "-")),
+            (re.compile(r'((?:sourceIPAddress|PublicIpAddress|publicIp)\\?"\s*:\s*\\?")(\d+\.\d+\.\d+\.\d+)'), lambda m: m.group(1) + pub(m.group(2))),
+            (re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"), lambda m: "ASIAFIXTUREFIXTURE01"),
+            (re.compile(r"\b(?:AROA|AIDA|ANPA|AGPA)[A-Z0-9]{16,}\b"), lambda m: "AROAFIXTUREFIXTURE01"),
+            (re.compile(r'("Ec2KeyName"\s*:\s*")[^"]*'), lambda m: m.group(1) + "fixture-key"),
+            # The role the phase 3 access job was refused (it does not exist).
+            (re.compile(r"sparkplain-test-no-such-role"), lambda m: "fixture-no-such-role"),
+        ]
+
     def _host(self, m):
         h = m.group(0)
         if h not in self.hosts:

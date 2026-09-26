@@ -318,6 +318,7 @@ func fakeAWS(t *testing.T, buckets map[string]string, clusters map[string]*emrty
 	awsDeps.ec2 = func(aws.Config) awsmeta.EC2API { return stubEC2{} }
 	awsDeps.cloudwatch = func(aws.Config) awsmeta.CloudWatchAPI { return stubCloudWatch{} }
 	awsDeps.cloudtrail = func(aws.Config) awsmeta.CloudTrailAPI { return stubCloudTrail{} }
+	awsDeps.now = func() time.Time { return time.Date(2026, 9, 27, 0, 0, 0, 0, time.UTC) }
 	interval := awsmeta.LookupInterval
 	awsmeta.LookupInterval = 0
 	t.Cleanup(func() { awsmeta.LookupInterval = interval })

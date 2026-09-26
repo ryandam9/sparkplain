@@ -509,13 +509,16 @@ var awsDeps = struct {
 	ec2        func(cfg aws.Config) awsmeta.EC2API
 	cloudwatch func(cfg aws.Config) awsmeta.CloudWatchAPI
 	cloudtrail func(cfg aws.Config) awsmeta.CloudTrailAPI
-	s3         func(ctx context.Context, cfg aws.Config, bucket string) (source.Store, error)
+	// now is the clock AWS retention windows are measured against.
+	now func() time.Time
+	s3  func(ctx context.Context, cfg aws.Config, bucket string) (source.Store, error)
 }{
 	config:     source.LoadAWS,
 	emr:        awsmeta.NewEMR,
 	ec2:        awsmeta.NewEC2,
 	cloudwatch: awsmeta.NewCloudWatch,
 	cloudtrail: awsmeta.NewCloudTrail,
+	now:        time.Now,
 	s3: func(ctx context.Context, cfg aws.Config, bucket string) (source.Store, error) {
 		return source.OpenS3(ctx, cfg, bucket)
 	},
