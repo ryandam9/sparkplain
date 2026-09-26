@@ -1,0 +1,111 @@
+// Package redact removes secrets and unsafe characters from text before it
+// reaches the model, the report or the logs.
+//
+// Keys that look like password, secret, token, key or credential have their
+// values hidden entirely. Free text (log lines, exception messages, SQL plans)
+// has key=value pairs with such keys, URL passwords and AWS access key IDs
+// hidden. Control characters and characters that can disguise text (bidi
+// overrides, zero-width marks) are stripped.
+package redact
+
+import (
+	"regexp"
+	"strings"
+	"unicode/utf8"
+)
+
+// Mask replaces every hidden value.
+const Mask = "[redacted]"
+
+var (
+	sensitiveKey = regexp.MustCompile(`(?i)passw(or)?d|secret|token|key|credential`)
+
+	// key=value, key: value, "key":"value" and -Dkey=value inside free text.
+	// Values starting with [ or ( are left alone: in Spark plans they are
+	// column lists such as keys=[region#12], not secrets.
+	pairRE = regexp.MustCompile(`(?i)([A-Za-z0-9_.\-]*(?:passw(?:or)?d|secret|token|credential|key)[A-Za-z0-9_.\-]*)("?\s*[=:]\s*"?)([^\s"',;&\[\(\]\)][^\s"',;&]*)`)
+
+	// scheme://user:password@host
+	urlPassRE = regexp.MustCompile(`([A-Za-z][A-Za-z0-9+.\-]*://[^\s/:@]+:)([^\s/@]+)(@)`)
+
+	// AWS access key IDs.
+	awsKeyRE = regexp.MustCompile(`\b(?:AKIA|ASIA|AROA|AIDA)[A-Z0-9]{16}\b`)
+)
+
+// IsSensitiveKey reports whether a setting's value must never be shown.
+func IsSensitiveKey(key string) bool { return sensitiveKey.MatchString(key) }
+
+// Value returns the value to show for a setting, and whether it was hidden.
+// Values of sensitive keys are hidden entirely; others are cleaned and have
+// embedded secrets hidden.
+func Value(key, value string) (string, bool) {
+	if IsSensitiveKey(key) && value != "" {
+		return Mask, true
+	}
+	out := Text(value)
+	return out, out != Clean(value)
+}
+
+// Text cleans s and hides any secrets embedded in it.
+func Text(s string) string {
+	s = Clean(s)
+	if s == "" {
+		return s
+	}
+	s = urlPassRE.ReplaceAllString(s, "${1}"+Mask+"${3}")
+	s = awsKeyRE.ReplaceAllString(s, Mask)
+	s = pairRE.ReplaceAllStringFunc(s, func(m string) string {
+		sub := pairRE.FindStringSubmatch(m)
+		if sub[3] == Mask || strings.HasPrefix(sub[3], "*") { // already hidden (by us or by Spark)
+			return m
+		}
+		return sub[1] + sub[2] + Mask
+	})
+	return s
+}
+
+// Clean makes s valid UTF-8 and strips control characters (except tab and
+// newline) and characters that can make text look like something else.
+func Clean(s string) string {
+	if isClean(s) {
+		return s
+	}
+	s = strings.ToValidUTF8(s, "�")
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if !dropRune(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func isClean(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 0x80 || (c < 0x20 && c != '\n' && c != '\t') || c == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+func dropRune(r rune) bool {
+	switch {
+	case r == '\n' || r == '\t':
+		return false
+	case r == '\r':
+		return true
+	case r < 0x20 || (r >= 0x7f && r <= 0x9f):
+		return true
+	case r >= 0x200b && r <= 0x200f, // zero-width and direction marks
+		r >= 0x202a && r <= 0x202e, // bidi embedding and overrides
+		r >= 0x2060 && r <= 0x2069, // word joiner, invisible operators, bidi isolates
+		r == 0x061c, r == 0xfeff, r == 0x00ad:
+		return true
+	case r == utf8.RuneError:
+		return false
+	}
+	return false
+}
