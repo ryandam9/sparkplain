@@ -453,10 +453,34 @@ func truncate(s string, n int) string {
 	return s[:cut] + "…"
 }
 
+// callSite shortens Spark's "collect at /some/dir/job.py:32" to "collect at
+// job.py:32". On YARN the directory is the container's scratch folder, which
+// is long and says nothing. Names not ending in a path:line are left alone.
+func callSite(s string) string {
+	i := strings.LastIndex(s, " at ")
+	if i < 0 {
+		return s
+	}
+	loc := s[i+len(" at "):]
+	slash := strings.LastIndexAny(loc, `/\`)
+	if slash < 0 || strings.ContainsAny(loc, " \t") {
+		return s
+	}
+	base := loc[slash+1:]
+	colon := strings.LastIndexByte(base, ':')
+	if colon <= 0 {
+		return s
+	}
+	if _, err := strconv.Atoi(base[colon+1:]); err != nil {
+		return s
+	}
+	return s[:i+len(" at ")] + base
+}
+
 func (p *parser) stage(si *stageInfo, completed bool, src model.Source) {
 	a := p.stageAcc(si.ID, si.Attempt, src)
 	st := a.st
-	st.Name = redact.Text(si.Name)
+	st.Name = redact.Text(callSite(si.Name))
 	st.NumTasks = si.NumTasks
 	st.ParentIDs = si.ParentIDs
 	if si.SubmissionTime != nil {
@@ -540,12 +564,12 @@ func (p *parser) jobStart(e *jobStartEvent, src model.Source) {
 	for _, si := range e.StageInfos {
 		a := p.stageAcc(si.ID, si.Attempt, src)
 		if a.st.Name == "" {
-			a.st.Name = redact.Text(si.Name)
+			a.st.Name = redact.Text(callSite(si.Name))
 			a.st.NumTasks = si.NumTasks
 			a.st.ParentIDs = si.ParentIDs
 		}
 		if si.ID > last {
-			last, j.Name = si.ID, redact.Text(si.Name)
+			last, j.Name = si.ID, redact.Text(callSite(si.Name))
 		}
 	}
 	for _, id := range e.StageIDs {
@@ -654,7 +678,7 @@ func (p *parser) query(id int64, src model.Source) *model.SQLQuery {
 func (p *parser) sqlStart(e *sqlStartEvent, src model.Source) {
 	q := p.query(e.ID, src)
 	q.Source = src
-	q.Description = redact.Text(truncate(e.Description, 500))
+	q.Description = redact.Text(truncate(callSite(e.Description), 500))
 	q.Start = ms(e.Time)
 	p.seen(e.Time)
 	p.sqlPlan(e.ID, e.Plan, e.PlanInfo, src)

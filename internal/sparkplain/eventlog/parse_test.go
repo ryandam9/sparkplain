@@ -253,6 +253,24 @@ func TestRemovalKind(t *testing.T) {
 	}
 }
 
+func TestCallSite(t *testing.T) {
+	cases := map[string]string{
+		"collect at /mnt1/yarn/usercache/hadoop/appcache/application_1_0001/container_1_0001_01_000001/job.py:32": "collect at job.py:32",
+		`count at C:\work\job.py:7`:                  "count at job.py:7",
+		"parquet at NativeMethodAccessorImpl.java:0": "parquet at NativeMethodAccessorImpl.java:0",
+		"collect at <stdin>:36":                      "collect at <stdin>:36",
+		"load daily data at s3://bucket/2026/09/26":  "load daily data at s3://bucket/2026/09/26",
+		"save at /data/out dir/job.py:3":             "save at /data/out dir/job.py:3",
+		"my job":                                     "my job",
+		"":                                           "",
+	}
+	for in, want := range cases {
+		if got := callSite(in); got != want {
+			t.Errorf("callSite(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func FuzzParseLine(f *testing.F) {
 	data, err := os.ReadFile(filepath.Join(fixtures, "application_1790380000000_0044"))
 	if err != nil {
