@@ -119,6 +119,7 @@ type xData struct {
 	PlanLays   map[string]xLayout   `json:"planLayouts"` // by query ID, for graphs small enough to draw
 	JobDags    map[string]xJobDag   `json:"jobDags"`     // by job ID, for jobs with 2 to maxGraphNodes stages
 	StageOps   map[string]xStageOps `json:"stageOps"`    // by "id.attempt": the RDDs each stage computes, laid out as a graph
+	Adaptive   map[string][][]any   `json:"adaptive"`    // by query ID: metrics adaptive execution added, rows as in a plan node
 	RDDs       table                `json:"rdds"`
 	Runtime    table                `json:"runtime"`
 	Config     []xConfigGroup       `json:"config"`
@@ -226,7 +227,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		Summary: r.Summary.Sentences, KPIs: r.Summary.KPIs, HeapBytes: r.Memory.Config.HeapBytes,
 		Detail: map[string]xDetail{}, TaskCols: taskCols, CellCols: cellCols, Graphs: map[string][]xNode{},
 		Findings: []xFinding{}, Files: []string{}, Execs: []string{}, Notes: []string{},
-		PlanLays: map[string]xLayout{}, JobDags: map[string]xJobDag{}, StageOps: map[string]xStageOps{},
+		PlanLays: map[string]xLayout{}, JobDags: map[string]xJobDag{}, StageOps: map[string]xStageOps{}, Adaptive: map[string][][]any{},
 	}
 	files := map[string]int{}
 	fileIdx := func(s model.Source) int64 {
@@ -349,7 +350,8 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		}
 	}
 
-	d.SQL = newTable("id", "desc", "start", "end", "error", "jobs", "reads", "writes", "plan", "planCut", "src")
+	d.SQL = newTable("id", "desc", "start", "end", "error", "jobs", "reads", "writes", "plan", "planCut", "src",
+		"root", "tags", "details", "modified", "optimizer")
 	planBudget := maxPlanTextTotal
 	for _, q := range r.Jobs.SQL {
 		plan, cut := q.Plan, q.PlanTruncated
@@ -357,8 +359,13 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 			plan, cut = capText(plan, min(maxPlanText, max(0, planBudget))), true
 		}
 		planBudget -= len(plan)
+		var root any
+		if q.RootID != nil {
+			root = *q.RootID
+		}
 		d.SQL.add(q.ID, q.Description, unixMs(q.Start), unixMs(q.End), capText(q.Error, 2000), orEmpty(q.JobIDs),
-			refNames(q.Reads), refNames(q.Writes), plan, cut, src(q.Source))
+			refNames(q.Reads), refNames(q.Writes), plan, cut, src(q.Source),
+			root, orEmpty(q.JobTags), q.Details, orMap(q.ModifiedConfigs), optimizerRows(q.Optimizer))
 	}
 
 	d.RDDs = newTable("id", "name", "level", "partitions", "firstStage", "unpersisted", "mem", "disk", "sizeKnown", "executors")
@@ -461,20 +468,13 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		nodes := make([]xNode, len(g.Nodes))
 		for i, n := range g.Nodes {
 			xn := xNode{Name: n.Name, Detail: n.Detail, Children: n.Children}
-			for _, m := range n.Metrics {
-				var v any
-				if m.Known {
-					v = m.Value
-				}
-				row := []any{m.Name, m.Type, v}
-				if m.Tasks > 0 {
-					row = append(row, m.Tasks, m.Min, m.Median, m.Max, m.MaxTaskID, m.MaxStage)
-				}
-				xn.Metrics = append(xn.Metrics, row)
-			}
+			xn.Metrics = metricRows(n.Metrics)
 			nodes[i] = xn
 		}
 		d.Graphs[strconv.FormatInt(g.QueryID, 10)] = nodes
+		if len(g.Adaptive) > 0 {
+			d.Adaptive[strconv.FormatInt(g.QueryID, 10)] = metricRows(g.Adaptive)
+		}
 		if len(nodes) <= maxGraphNodes {
 			var edges [][2]int // data flows from each child up to its parent
 			for i, n := range g.Nodes {
@@ -561,4 +561,44 @@ func stageOps(st *model.Stage) xStageOps {
 	}
 	ops.Layout = layered(len(st.RDDs), edges)
 	return ops
+}
+
+// metricRows encodes SQL metrics as name, type, value (null when not
+// recorded), then tasks, min, median, max, max task and max stage when
+// tasks reported them.
+func metricRows(ms []model.SQLMetric) [][]any {
+	var out [][]any
+	for _, m := range ms {
+		var v any
+		if m.Known {
+			v = m.Value
+		}
+		row := []any{m.Name, m.Type, v}
+		if m.Tasks > 0 {
+			row = append(row, m.Tasks, m.Min, m.Median, m.Max, m.MaxTaskID, m.MaxStage)
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+// maxOptimizerRulesShown is how many of EMR's optimizer rules the page lists
+// per query, slowest first; report.json keeps them all.
+const maxOptimizerRulesShown = 30
+
+// optimizerRows encodes EMR's optimizer report: total ns, rules run, rules
+// that changed the plan, the slowest rules (name, ns, runs, effective runs,
+// effective ns) and any counters, timers or stats. Nil when absent.
+func optimizerRows(o *model.OptimizerStats) any {
+	if o == nil {
+		return nil
+	}
+	rules := [][]any{}
+	for i, r := range o.Rules {
+		if i == maxOptimizerRulesShown {
+			break
+		}
+		rules = append(rules, []any{r.Name, r.TimeNs, r.Runs, r.EffectiveRuns, r.EffectiveTimeNs})
+	}
+	return []any{o.TotalNs, o.RulesRun, o.RulesUseful, rules, orMap(o.Other)}
 }

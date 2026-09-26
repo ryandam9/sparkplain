@@ -345,7 +345,17 @@ func (x *explorerAcc) build(l *model.EventLog) *model.Explorer {
 				}
 			}
 		}
-		out.SQL = append(out.SQL, model.SQLGraph{QueryID: q.ID, Nodes: g.nodes, Truncated: g.truncated})
+		sg := model.SQLGraph{QueryID: q.ID, Nodes: g.nodes, Truncated: g.truncated}
+		for _, am := range q.AdaptiveMetrics {
+			m := model.SQLMetric{Name: am.Name, Type: am.Type}
+			m.Value, m.Known = x.accVals[am.AccumulatorID]
+			if o := x.accTasks[am.AccumulatorID]; o != nil && o.d.n > 0 {
+				m.Tasks, m.Min, m.Median, m.Max = o.d.n, o.d.min, o.d.quantile(0.5), o.d.max
+				m.MaxTaskID, m.MaxStage = o.maxTask, int(o.maxStage)
+			}
+			sg.Adaptive = append(sg.Adaptive, m)
+		}
+		out.SQL = append(out.SQL, sg)
 	}
 	return out
 }

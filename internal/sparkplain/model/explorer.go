@@ -161,6 +161,9 @@ type SQLGraph struct {
 	QueryID   int64     `json:"queryId"`
 	Nodes     []SQLNode `json:"nodes"` // Nodes[0] is the root
 	Truncated bool      `json:"truncated,omitempty"`
+	// Adaptive are metrics adaptive execution added after planning, which
+	// the log does not tie to an operator.
+	Adaptive []SQLMetric `json:"adaptive,omitempty"`
 }
 
 // SQLNode is one plan operator.

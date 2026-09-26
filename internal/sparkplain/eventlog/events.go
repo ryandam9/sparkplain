@@ -310,11 +310,15 @@ type driverAccumEvent struct {
 }
 
 type sqlStartEvent struct {
-	ID          int64    `json:"executionId"`
-	Description string   `json:"description"`
-	Plan        string   `json:"physicalPlanDescription"`
-	PlanInfo    planNode `json:"sparkPlanInfo"`
-	Time        int64    `json:"time"`
+	RootID      *int64            `json:"rootExecutionId"`
+	Details     string            `json:"details"`
+	Modified    map[string]string `json:"modifiedConfigs"`
+	JobTags     []string          `json:"jobTags"`
+	ID          int64             `json:"executionId"`
+	Description string            `json:"description"`
+	Plan        string            `json:"physicalPlanDescription"`
+	PlanInfo    planNode          `json:"sparkPlanInfo"`
+	Time        int64             `json:"time"`
 }
 
 type sqlEndEvent struct {
@@ -357,4 +361,22 @@ type exclusionEvent struct {
 	ExecutorFailures int    `json:"executorFailures"`
 	StageID          int    `json:"stageId"`
 	StageAttempt     int    `json:"stageAttemptId"`
+}
+
+type sqlMetricUpdatesEvent struct {
+	ID      int64        `json:"executionId"`
+	Metrics []planMetric `json:"sqlPlanMetrics"`
+}
+
+// queryExecMetricsEvent is EMR's optimizer report for one query: time (ns)
+// and runs per optimizer rule. executionId is written as a string.
+type queryExecMetricsEvent struct {
+	ID          any              `json:"executionId"`
+	TimePerRule map[string]int64 `json:"timePerRule"`
+	RunsPerRule map[string]int64 `json:"numRunsPerRule"`
+	EffRuns     map[string]int64 `json:"numEffectiveRunsPerRule"`
+	EffTime     map[string]int64 `json:"timeEffectiveRunsPerRule"`
+	Counters    map[string]any   `json:"counters"`
+	Timers      map[string]any   `json:"timers"`
+	Stats       map[string]any   `json:"stats"`
 }

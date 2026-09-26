@@ -296,6 +296,23 @@ func (p *parser) line(line []byte, src model.Source) error {
 			q.Error = redact.Text(truncate(e.Error, 4000))
 			p.seen(e.Time)
 		})
+	case evSQLMetricsAdd:
+		var e sqlMetricUpdatesEvent
+		return p.decode(line, &e, func() {
+			q := p.query(e.ID, src)
+			for _, m := range e.Metrics {
+				if len(q.AdaptiveMetrics) >= maxPlanNodes {
+					break
+				}
+				q.AdaptiveMetrics = append(q.AdaptiveMetrics, model.PlanMetric{Name: redact.Text(m.Name), Type: m.Type, AccumulatorID: m.AccumulatorID})
+				if p.ex != nil {
+					p.ex.wanted[m.AccumulatorID] = true
+				}
+			}
+		})
+	case evQueryExecStats:
+		var e queryExecMetricsEvent
+		return p.decode(line, &e, func() { p.optimizer(&e, src) })
 	case evDriverAccum:
 		if p.ex == nil {
 			return nil
@@ -837,6 +854,15 @@ func (p *parser) sqlStart(e *sqlStartEvent, src model.Source) {
 	q.Source = src
 	q.Description = redact.Text(truncate(callSite(e.Description), 500))
 	q.Start = ms(e.Time)
+	if e.RootID != nil && *e.RootID != e.ID {
+		root := *e.RootID
+		q.RootID = &root
+	}
+	q.Details = redact.Text(truncate(e.Details, maxDetails))
+	q.ModifiedConfigs = localProps(e.Modified, nil, nil)
+	for _, t := range e.JobTags {
+		q.JobTags = append(q.JobTags, redact.Text(t))
+	}
 	p.seen(e.Time)
 	p.sqlPlan(e.ID, e.Plan, e.PlanInfo, src)
 }
@@ -1264,4 +1290,43 @@ func (p *parser) stageProps(id, attempt int, props map[string]string, src model.
 	if len(diff) > 0 && jobProps != nil {
 		p.stageAcc(id, attempt, src).st.Properties = diff
 	}
+}
+
+// maxOptimizerRules caps the rules kept per query in EMR's optimizer report.
+const maxOptimizerRules = 300
+
+// optimizer records EMR's per-query optimizer report.
+func (p *parser) optimizer(e *queryExecMetricsEvent, src model.Source) {
+	id, ok := anyInt(e.ID)
+	if !ok {
+		return
+	}
+	o := &model.OptimizerStats{Source: src}
+	for name, ns := range e.TimePerRule {
+		o.TotalNs += ns
+		o.RulesRun++
+		if e.EffRuns[name] > 0 {
+			o.RulesUseful++
+		}
+		o.Rules = append(o.Rules, model.OptimizerRule{Name: redact.Text(name), TimeNs: ns, Runs: e.RunsPerRule[name],
+			EffectiveRuns: e.EffRuns[name], EffectiveTimeNs: e.EffTime[name]})
+	}
+	sort.Slice(o.Rules, func(i, j int) bool {
+		if o.Rules[i].TimeNs != o.Rules[j].TimeNs {
+			return o.Rules[i].TimeNs > o.Rules[j].TimeNs
+		}
+		return o.Rules[i].Name < o.Rules[j].Name
+	})
+	if len(o.Rules) > maxOptimizerRules {
+		o.Rules, o.RulesCapped = o.Rules[:maxOptimizerRules], true
+	}
+	for group, m := range map[string]map[string]any{"counter": e.Counters, "timer": e.Timers, "stat": e.Stats} {
+		for k, v := range m {
+			if o.Other == nil {
+				o.Other = map[string]string{}
+			}
+			o.Other[group+" "+redact.Text(k)] = redact.Text(fmt.Sprint(v))
+		}
+	}
+	p.query(id, src).Optimizer = o
 }

@@ -495,6 +495,47 @@ type SQLQuery struct {
 	Writes        []DataRef `json:"writes,omitempty"`
 	JobIDs        []int     `json:"jobIds,omitempty"`
 	Source        Source    `json:"source"`
+	// RootID is the query this one ran inside (a sub-query or nested
+	// command); nil for a top-level query.
+	RootID  *int64   `json:"rootId,omitempty"`
+	JobTags []string `json:"jobTags,omitempty"`
+	// Details is the long call site; ModifiedConfigs the session settings
+	// in force that differ from defaults, redacted.
+	Details         string            `json:"details,omitempty"`
+	ModifiedConfigs map[string]string `json:"modifiedConfigs,omitempty"`
+	// AdaptiveMetrics are metrics adaptive execution registered for the
+	// query after planning; the explorer resolves their values.
+	AdaptiveMetrics []PlanMetric `json:"adaptiveMetrics,omitempty"`
+	// Optimizer is EMR's report of optimizer time per rule.
+	Optimizer *OptimizerStats `json:"optimizer,omitempty"`
+}
+
+// PlanMetric names one SQL metric by its accumulator.
+type PlanMetric struct {
+	Name          string `json:"name"`
+	Type          string `json:"type"`
+	AccumulatorID int64  `json:"accumulatorId"`
+}
+
+// OptimizerStats is EMR's per-query optimizer report
+// (SparkListenerQueryExecutionMetrics): time and runs per rule.
+type OptimizerStats struct {
+	TotalNs     int64             `json:"totalNs"`
+	RulesRun    int               `json:"rulesRun"`
+	RulesUseful int               `json:"rulesUseful"` // rules that changed the plan at least once
+	Rules       []OptimizerRule   `json:"rules"`       // slowest first, capped
+	RulesCapped bool              `json:"rulesCapped,omitempty"`
+	Other       map[string]string `json:"other,omitempty"` // counters, timers and stats, when EMR fills them
+	Source      Source            `json:"source"`
+}
+
+// OptimizerRule is one optimizer rule's work on a query.
+type OptimizerRule struct {
+	Name            string `json:"name"`
+	TimeNs          int64  `json:"timeNs"`
+	Runs            int64  `json:"runs"`
+	EffectiveRuns   int64  `json:"effectiveRuns"`
+	EffectiveTimeNs int64  `json:"effectiveTimeNs"`
 }
 
 // CachedRDD is an RDD or DataFrame that was persisted.

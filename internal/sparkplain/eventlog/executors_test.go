@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
 )
 
 // rawEvents decodes every event of a plain fixture generically.
@@ -284,5 +286,100 @@ func TestJobLocalProperties(t *testing.T) {
 	}
 	if pools == 0 || tokens == 0 {
 		t.Errorf("scheduler pool seen on %d jobs, session token on %d", pools, tokens)
+	}
+}
+
+// Queries keep their parent (for sub-queries and nested commands), session
+// settings (redacted) and long call site.
+func TestSQLQueryDetail(t *testing.T) {
+	const name = "application_1790380000000_0046"
+	roots := map[int64]int64{}
+	for _, e := range rawEvents(t, name) {
+		if strings.HasSuffix(e["Event"].(string), "SQLExecutionStart") {
+			if r := num(e["rootExecutionId"]); r != num(e["executionId"]) {
+				roots[num(e["executionId"])] = r
+			}
+		}
+	}
+	l := parseFixture(t, name, name)
+	nested := 0
+	for _, q := range l.SQL {
+		want, isSub := roots[q.ID]
+		if isSub != (q.RootID != nil) || isSub && *q.RootID != want {
+			t.Errorf("query %d: root %v, want %v", q.ID, q.RootID, want)
+		}
+		if isSub {
+			nested++
+		}
+		if q.Details == "" {
+			t.Errorf("query %d: no call stack", q.ID)
+		}
+		if v, ok := q.ModifiedConfigs["spark.myapp.session.token"]; ok && v != "[redacted]" {
+			t.Errorf("query %d: token shown as %q", q.ID, v)
+		}
+	}
+	if nested == 0 || l.SQL[1].ModifiedConfigs["spark.sql.shuffle.partitions"] != "7" {
+		t.Errorf("%d nested queries; query 1 settings %v", nested, l.SQL[1].ModifiedConfigs)
+	}
+}
+
+// Metrics adaptive execution added after planning are resolved.
+func TestAdaptiveMetricsResolved(t *testing.T) {
+	const name = "application_1790380000000_0046"
+	l := parseExplorer(t, name, name, model.ExplorerLimits{})
+	var registered, known int
+	for _, q := range l.SQL {
+		registered += len(q.AdaptiveMetrics)
+	}
+	for _, g := range l.Explorer.SQL {
+		for _, m := range g.Adaptive {
+			if m.Known {
+				known++
+			}
+		}
+	}
+	if registered == 0 || known == 0 {
+		t.Errorf("%d adaptive metrics registered, %d with values", registered, known)
+	}
+}
+
+// EMR's optimizer report: totals and rule counts match the raw event.
+func TestOptimizerStats(t *testing.T) {
+	const name = "application_1790380000000_0049"
+	type want struct{ total, rules, useful int64 }
+	exp := map[int64]want{}
+	for _, e := range rawEvents(t, name) {
+		if !strings.HasSuffix(e["Event"].(string), "SparkListenerQueryExecutionMetrics") {
+			continue
+		}
+		var w want
+		for rule, ns := range e["timePerRule"].(map[string]any) {
+			w.total += num(ns)
+			w.rules++
+			if num(e["numEffectiveRunsPerRule"].(map[string]any)[rule]) > 0 {
+				w.useful++
+			}
+		}
+		exp[num(e["executionId"])] = w
+	}
+	l := parseFixture(t, name, name)
+	seen := 0
+	for _, q := range l.SQL {
+		w, ok := exp[q.ID]
+		if !ok {
+			continue
+		}
+		o := q.Optimizer
+		if o == nil || (want{o.TotalNs, int64(o.RulesRun), int64(o.RulesUseful)}) != w {
+			t.Errorf("query %d: optimizer %+v, want %+v", q.ID, o, w)
+			continue
+		}
+		if len(o.Rules) > 1 && o.Rules[0].TimeNs < o.Rules[1].TimeNs {
+			t.Errorf("query %d: rules not slowest first", q.ID)
+		}
+		seen++
+	}
+	if seen == 0 {
+		t.Error("no optimizer reports parsed")
 	}
 }

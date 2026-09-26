@@ -655,7 +655,7 @@
       rowCls: function (q) { return q.error ? "failedrow" : null; },
       cols: [
         { h: "Query", num: true, v: function (q) { return q.id; }, f: function (q) { return link("#query/" + q.id, String(q.id)); } },
-        { h: "Description", v: function (q) { return q.desc; }, f: function (q) { return q.desc; } },
+        { h: "Description", v: function (q) { return q.desc; }, f: function (q) { return el("span", null, q.desc, q.root != null ? el("span", { cls: "sub" }, "Runs inside ", link("#query/" + q.root, "query " + q.root)) : null); } },
         { h: "Status", v: queryStatus, f: function (q) { return status(queryStatus(q)); } },
         { h: "Started", num: true, v: function (q) { return q.start; }, f: function (q) { return when(q.start); } },
         { h: "Duration", num: true, v: function (q) { return span(q.start, q.end); }, f: function (q) { return dur(span(q.start, q.end)); } },
@@ -698,7 +698,41 @@
       fact("Ran", el("span", null, when(q.start, true), " → ", when(q.end)), dur(span(q.start, q.end))),
       fact("Jobs", q.jobs.length ? el("span", null, q.jobs.map(function (id, i) { return [i ? ", " : "", link("#job/" + id, "Job " + id)]; })) : "None", "The Spark jobs this query ran."),
       fact("Data", (q.reads.length ? "Reads " + q.reads.join(", ") : "Reads no tables or files") + (q.writes.length ? "; writes " + q.writes.join(", ") : ""))));
+    var kids = queries.filter(function (c) { return c.root === q.id; });
+    if (q.root != null || kids.length || (q.tags && q.tags.length)) s.appendChild(el("div", { cls: "facts" },
+      q.root != null ? fact("Runs inside", link("#query/" + q.root, "Query " + q.root), "This is a sub-query or a command's inner query; its time is part of the parent's.") : null,
+      kids.length ? fact("Inner queries", el("span", null, kids.map(function (c, i) { return [i ? ", " : "", link("#query/" + c.id, "Query " + c.id)]; })), "Queries that ran inside this one.") : null,
+      q.tags && q.tags.length ? fact("Job tags", q.tags.join(", "), "Tags the code set on this query's jobs.") : null));
     if (q.error) { s.appendChild(el("h3", { text: "Error" })); s.appendChild(el("pre", { cls: "plan", text: q.error })); }
+    var mk = Object.keys(q.modified || {}).sort();
+    if (mk.length) {
+      s.appendChild(el("h3", { text: "Session settings in force" }));
+      s.appendChild(explain("SQL settings the session had changed from their defaults when this query ran. Values of keys that look like secrets are redacted."));
+      s.appendChild(el("div", { cls: "tbl" }, el("table", null, el("thead", null, el("tr", null, el("th", { text: "Setting" }), el("th", { text: "Value" }))),
+        el("tbody", null, mk.map(function (k) { return el("tr", null, el("td", { cls: "mono", text: k }), el("td", { cls: "mono", text: q.modified[k] })); })))));
+    }
+    var ad = D.adaptive[String(q.id)];
+    if (ad && ad.length) {
+      s.appendChild(el("h3", { text: "Metrics adaptive execution added" }));
+      s.appendChild(explain("Adaptive execution registered these after planning; the log does not say which operator each belongs to."));
+      s.appendChild(el("p", { cls: "metricv" }, ad.map(function (m, i) {
+        var v = m[1] === "average" && m.length > 3 ? spreadText(m) : metricText(m);
+        return v == null ? null : [i ? " · " : "", m[0] + " ", el("b", { text: v }), m.length > 3 && m[1] !== "average" ? " (" + spreadText(m) + ")" : ""];
+      })));
+    }
+    var op = q.optimizer;
+    if (op) {
+      s.appendChild(el("h3", { text: "Optimizer (EMR)" }));
+      s.appendChild(explain("EMR records how long Spark's query optimizer spent on each rule. " + num(op[1]) + " rules ran for " + dur(op[0] / 1e6) + " in all; " + num(op[2]) + " of them changed the plan. The slowest " + num(op[3].length) + " are listed; report.json has all of them."));
+      s.appendChild(table({ rows: op[3], sort: 1, dir: "desc", page: 30, cols: [
+        { h: "Rule", v: function (r) { return r[0]; }, f: function (r) { return el("span", { cls: "mono", text: r[0] }); } },
+        { h: "Time", num: true, v: function (r) { return r[1]; }, f: function (r) { return dur(r[1] / 1e6); } },
+        { h: "Runs", num: true, v: function (r) { return r[2]; }, f: function (r) { return num(r[2]); } },
+        { h: "Changed the plan", num: true, title: "Runs that changed the plan, and their time", v: function (r) { return r[3]; }, f: function (r) { return r[3] ? num(r[3]) + " (" + dur(r[4] / 1e6) + ")" : "—"; } }
+      ] }));
+      var ok2 = Object.keys(op[4] || {});
+      if (ok2.length) s.appendChild(el("p", { cls: "metricv", text: ok2.map(function (k) { return k + ": " + op[4][k]; }).join(" · ") }));
+    }
     var g = D.graphs[String(q.id)];
     if (g && g.length) {
       s.appendChild(el("h3", { text: "Plan" }));
@@ -729,6 +763,7 @@
         ]
       }));
     } else s.appendChild(explain(D.collected ? "No plan was kept for this query." : "Per-task detail was not collected for this run, so there is no plan graph."));
+    if (q.details) s.appendChild(el("details", null, el("summary", { text: "Where in the code: the full call stack Spark recorded" }), el("div", { cls: "inner" }, el("pre", { cls: "plan", text: q.details }))));
     if (q.plan) {
       s.appendChild(el("details", null, el("summary", { text: "Physical plan text" + (q.planCut ? " (cut; the JSON export has the full text)" : "") }), el("div", { cls: "inner" }, el("pre", { cls: "plan", text: q.plan }))));
     }

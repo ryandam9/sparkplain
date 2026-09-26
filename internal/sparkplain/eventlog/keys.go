@@ -26,6 +26,8 @@ const (
 	evSQLEnd          = "org.apache.spark.sql.execution.ui.SparkListenerSQLExecutionEnd"
 	evSQLAdaptive     = "org.apache.spark.sql.execution.ui.SparkListenerSQLAdaptiveExecutionUpdate"
 	evDriverAccum     = "org.apache.spark.sql.execution.ui.SparkListenerDriverAccumUpdates"
+	evSQLMetricsAdd   = "org.apache.spark.sql.execution.ui.SparkListenerSQLAdaptiveSQLMetricUpdates"
+	evQueryExecStats  = "org.apache.spark.sql.execution.ui.SparkListenerQueryExecutionMetrics"
 	catalogPrefix     = "org.apache.spark.sql.catalyst.catalog."
 )
 

@@ -267,21 +267,21 @@ org.apache.spark.scheduler.SparkListenerNodeUnexcluded
 
 org.apache.spark.sql.execution.ui.SparkListenerQueryExecutionMetrics
     Event | used | event type
-    counters | planned:5 | EMR: optimizer counters (empty in the fixture)
-    counters/* | planned:5 | EMR: optimizer counters (empty in the fixture); not seen in a fixture
-    executionId | planned:5 | EMR: optimizer time and runs per rule
-    numEffectiveRunsPerRule | planned:5 | EMR: optimizer time and runs per rule
-    numEffectiveRunsPerRule/* | planned:5 | EMR: optimizer time and runs per rule
-    numRunsPerRule | planned:5 | EMR: optimizer time and runs per rule
-    numRunsPerRule/* | planned:5 | EMR: optimizer time and runs per rule
-    stats | planned:5 | EMR: optimizer counters (empty in the fixture)
-    stats/* | planned:5 | EMR: optimizer counters (empty in the fixture); not seen in a fixture
-    timeEffectiveRunsPerRule | planned:5 | EMR: optimizer time and runs per rule
-    timeEffectiveRunsPerRule/* | planned:5 | EMR: optimizer time and runs per rule
-    timePerRule | planned:5 | EMR: optimizer time and runs per rule
-    timePerRule/* | planned:5 | EMR: optimizer time and runs per rule
-    timers | planned:5 | EMR: optimizer counters (empty in the fixture)
-    timers/* | planned:5 | EMR: optimizer counters (empty in the fixture); not seen in a fixture
+    counters | used | EMR: optimizer counters, timers and stats (empty in the fixtures)
+    counters/* | used | EMR: optimizer counters, timers and stats (empty in the fixtures); not seen in a fixture
+    executionId | used | EMR: optimizer time and runs per rule
+    numEffectiveRunsPerRule | used | EMR: optimizer time and runs per rule
+    numEffectiveRunsPerRule/* | used | EMR: optimizer time and runs per rule
+    numRunsPerRule | used | EMR: optimizer time and runs per rule
+    numRunsPerRule/* | used | EMR: optimizer time and runs per rule
+    stats | used | EMR: optimizer counters, timers and stats (empty in the fixtures)
+    stats/* | used | EMR: optimizer counters, timers and stats (empty in the fixtures); not seen in a fixture
+    timeEffectiveRunsPerRule | used | EMR: optimizer time and runs per rule
+    timeEffectiveRunsPerRule/* | used | EMR: optimizer time and runs per rule
+    timePerRule | used | EMR: optimizer time and runs per rule
+    timePerRule/* | used | EMR: optimizer time and runs per rule
+    timers | used | EMR: optimizer counters, timers and stats (empty in the fixtures)
+    timers/* | used | EMR: optimizer counters, timers and stats (empty in the fixtures); not seen in a fixture
 
 SparkListenerResourceProfileAdded
     Event | used | event type
@@ -308,11 +308,11 @@ org.apache.spark.sql.execution.ui.SparkListenerSQLAdaptiveExecutionUpdate
 
 org.apache.spark.sql.execution.ui.SparkListenerSQLAdaptiveSQLMetricUpdates
     Event | used | event type
-    executionId | planned:5 | metrics adaptive execution added to a plan
-    sqlPlanMetrics | planned:5 | metrics adaptive execution added to a plan
-    sqlPlanMetrics[]/accumulatorId | planned:5 | metrics adaptive execution added to a plan
-    sqlPlanMetrics[]/metricType | planned:5 | metrics adaptive execution added to a plan
-    sqlPlanMetrics[]/name | planned:5 | metrics adaptive execution added to a plan
+    executionId | used | metrics adaptive execution added to a plan
+    sqlPlanMetrics | used | metrics adaptive execution added to a plan
+    sqlPlanMetrics[]/accumulatorId | used | metrics adaptive execution added to a plan
+    sqlPlanMetrics[]/metricType | used | metrics adaptive execution added to a plan
+    sqlPlanMetrics[]/name | used | metrics adaptive execution added to a plan
 
 org.apache.spark.sql.execution.ui.SparkListenerSQLExecutionEnd
     Event | used | event type
@@ -323,13 +323,13 @@ org.apache.spark.sql.execution.ui.SparkListenerSQLExecutionEnd
 org.apache.spark.sql.execution.ui.SparkListenerSQLExecutionStart
     Event | used | event type
     description | used | query, plan and start
-    details | planned:5 | long call site of the query
+    details | used | long call site of the query
     executionId | used | query, plan and start
-    jobTags | planned:5 | tags set on the query's jobs
-    modifiedConfigs | planned:5 | settings changed for this query, redacted
-    modifiedConfigs/* | planned:5 | settings changed for this query, redacted
+    jobTags | used | tags set on the query's jobs
+    modifiedConfigs | used | settings changed for this query, redacted
+    modifiedConfigs/* | used | settings changed for this query, redacted
     physicalPlanDescription | used | query, plan and start
-    rootExecutionId | planned:5 | parent query of a sub-query
+    rootExecutionId | used | parent query of a sub-query
     sparkPlanInfo | used | query, plan and start
     sparkPlanInfo/children | used | plan operators and their metric IDs
     sparkPlanInfo/metadata | used | plan operators and their metric IDs

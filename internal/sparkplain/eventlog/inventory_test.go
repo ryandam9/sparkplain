@@ -99,7 +99,9 @@ func TestFieldInventory(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("fields still planned, by phase 1c step: %v", planned)
+	if len(planned) > 0 {
+		t.Errorf("fields still planned, by phase 1c step: %v; every field must be used or set aside with a reason", planned)
+	}
 }
 
 // Parsing every fixture must find no unknown events or fields: the runtime
