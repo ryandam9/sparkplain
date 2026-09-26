@@ -1,0 +1,517 @@
+<title>sparkplain sample report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#F4F6F8; --surface:#FFFFFF; --surface-2:#EEF2F5; --ink:#15212B; --muted:#586674; --faint:#8794A1; --line:#D9E0E6;
+  --accent:#1D6A86; --accent-soft:#DCEDF3;
+  --ok:#2F7A4E; --ok-soft:#E1F1E7; --warn:#9A5F0C; --warn-soft:#FBEFD9; --crit:#B83227; --crit-soft:#F8E1DE; --na:#6F7C88; --na-soft:#E9EDF1;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --cond:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0E1419; --surface:#151D24; --surface-2:#1B252E; --ink:#E3E9EE; --muted:#9CA9B5; --faint:#6C7A87; --line:#26323C;
+    --accent:#5DB1CE; --accent-soft:#16323D;
+    --ok:#5CC08A; --ok-soft:#15301F; --warn:#E3A845; --warn-soft:#3A2B12; --crit:#EE7466; --crit-soft:#3D1B17; --na:#8C99A5; --na-soft:#1F2830;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0E1419; --surface:#151D24; --surface-2:#1B252E; --ink:#E3E9EE; --muted:#9CA9B5; --faint:#6C7A87; --line:#26323C;
+  --accent:#5DB1CE; --accent-soft:#16323D;
+  --ok:#5CC08A; --ok-soft:#15301F; --warn:#E3A845; --warn-soft:#3A2B12; --crit:#EE7466; --crit-soft:#3D1B17; --na:#8C99A5; --na-soft:#1F2830;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:20px;padding-block:24px 64px}
+h1,h2,h3{font-family:var(--cond);font-weight:600;text-wrap:balance;margin:0;letter-spacing:-.005em}
+h1{font-size:30px;line-height:1.15}
+h2{font-size:21px;line-height:1.25}
+h3{font-size:15px}
+p{margin:0}
+code,.mono{font-family:var(--mono);font-size:.86em}
+.num{font-variant-numeric:tabular-nums}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* header */
+.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.brand{font-family:var(--mono);font-weight:500;font-size:14px;color:var(--muted)}
+.brand b{color:var(--accent);font-weight:500}
+.sample{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--warn);background:var(--warn-soft);padding:3px 9px;border-radius:4px}
+.head{display:grid;gap:10px;padding-block:22px 18px}
+.idline{display:flex;flex-wrap:wrap;gap:6px 18px;color:var(--muted);font-size:13.5px}
+.idline span b{color:var(--ink);font-weight:500}
+.status{display:inline-flex;align-items:center;gap:6px;font-family:var(--cond);font-weight:600;font-size:14px;padding:3px 10px;border-radius:4px;background:var(--crit-soft);color:var(--crit);vertical-align:middle;margin-left:10px}
+.status::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+
+.mode{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline;padding:12px 16px;border:1px dashed var(--na);border-radius:6px;background:var(--na-soft);font-size:14px}
+.mode strong{font-family:var(--cond);font-weight:600}
+
+/* layout */
+.layout{display:grid;grid-template-columns:200px minmax(0,1fr);gap:36px;margin-top:26px}
+nav.toc{position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px);align-self:start;display:grid;gap:2px;font-size:13.5px}
+nav.toc a{display:flex;justify-content:space-between;gap:8px;text-decoration:none;color:var(--muted);padding:5px 8px;border-radius:4px}
+nav.toc a:hover{background:var(--surface-2);color:var(--ink)}
+nav.toc .dot{width:8px;height:8px;border-radius:50%;margin-top:7px;flex:none}
+.dot.full{background:var(--ok)} .dot.part{background:var(--warn)} .dot.none{background:transparent;border:1.5px solid var(--na)}
+main{display:grid;gap:44px;min-width:0}
+section{display:grid;gap:14px;scroll-margin-top:16px}
+.sechead{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px}
+.lede{max-width:68ch;color:var(--ink)}
+.note{max-width:72ch;color:var(--muted);font-size:13.5px}
+
+/* pills */
+.pill{display:inline-block;font-size:12px;font-weight:500;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.pill.full{background:var(--ok-soft);color:var(--ok)}
+.pill.part{background:var(--warn-soft);color:var(--warn)}
+.pill.none{background:transparent;color:var(--na);border:1px dashed var(--na);padding:1px 7px}
+.pill.crit{background:var(--crit-soft);color:var(--crit)}
+
+/* summary */
+.story{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:20px 22px;display:grid;gap:10px}
+.story p{max-width:70ch;font-size:16px;line-height:1.6}
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.kpi{background:var(--surface);padding:14px 16px;display:grid;gap:2px;align-content:start}
+.kpi .l{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.kpi .v{font-family:var(--cond);font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.2}
+.kpi .v small{font-family:var(--sans);font-size:14px;font-weight:400;color:var(--muted)}
+.kpi .v.crit{color:var(--crit)}
+.kpi .x{font-size:13px;color:var(--muted)}
+
+/* tables */
+.tbl{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:8px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:500;color:var(--muted);font-size:12px;letter-spacing:.03em;background:var(--surface-2);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.r,th.r{text-align:right}
+td .sub{display:block;color:var(--muted);font-size:12.5px}
+tr.lost td{color:var(--muted)}
+.cpu{display:flex;align-items:center;gap:8px;min-width:150px}
+.bar{position:relative;flex:1;height:8px;background:var(--surface-2);border-radius:2px}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:2px;opacity:.8}
+.bar b{position:absolute;top:-3px;width:2px;height:14px;background:var(--ink)}
+.cpu .t{font-family:var(--mono);font-size:12px;color:var(--muted);width:58px;text-align:right}
+
+/* chart */
+.chart{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 12px 8px}
+.chart svg{display:block;width:100%;height:auto}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12.5px;color:var(--muted);padding:6px 6px 4px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:12px;height:12px;display:inline-block}
+.ax{fill:var(--muted);font:11px var(--mono)}
+.grid{stroke:var(--line);stroke-width:1}
+
+/* findings */
+.findings{display:grid;gap:10px}
+.finding{display:grid;grid-template-columns:4px minmax(0,1fr);background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.finding .stripe{background:var(--faint)}
+.finding.crit .stripe{background:var(--crit)} .finding.warn .stripe{background:var(--warn)} .finding.info .stripe{background:var(--accent)}
+.finding .body{padding:14px 16px;display:grid;gap:6px}
+.finding .t{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline}
+.finding .t h3{font-size:16px}
+.finding p{max-width:72ch}
+.ev{font-family:var(--mono);font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.ev::before{content:"Evidence  ";font-family:var(--sans);letter-spacing:.04em;text-transform:uppercase;font-size:11px;color:var(--faint)}
+.fix{font-size:14px}
+.fix::before{content:"Try  ";letter-spacing:.04em;text-transform:uppercase;font-size:11px;color:var(--faint)}
+
+/* two-col facts */
+.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.fact{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;display:grid;gap:4px;align-content:start}
+.fact .l{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.fact .v{font-weight:500}
+.fact .x{font-size:13px;color:var(--muted)}
+
+.missing{border:1px dashed var(--na);border-radius:8px;padding:14px 16px;display:grid;gap:8px;background:transparent}
+.missing h3{color:var(--na);font-size:13px;letter-spacing:.05em;text-transform:uppercase;font-family:var(--sans);font-weight:500}
+.missing ul{margin:0;padding-left:18px;display:grid;gap:4px;font-size:14px;color:var(--muted)}
+
+.explain{font-size:13.5px;color:var(--muted);max-width:72ch;border-left:2px solid var(--accent-soft);padding-left:12px}
+.explain b{color:var(--ink);font-weight:500}
+
+footer{margin-top:40px;padding-top:14px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px;display:flex;flex-wrap:wrap;gap:6px 18px;justify-content:space-between}
+
+@media (max-width:900px){
+  .layout{grid-template-columns:minmax(0,1fr);gap:20px}
+  nav.toc{position:static;display:flex;overflow-x:auto;gap:4px;padding-bottom:4px}
+  nav.toc a{white-space:nowrap;background:var(--surface);border:1px solid var(--line)}
+  nav.toc .dot{margin-top:6px}
+}
+@media (max-width:640px){
+  .wrap{padding-inline:16px}
+  h1{font-size:24px}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .facts{grid-template-columns:minmax(0,1fr)}
+}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+html{scroll-behavior:smooth}
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <div class="brand"><b>sparkplain</b> report · v0.1 · generated 2026-09-26 08:12 AEST</div>
+    <span class="sample">Sample report · fictional data</span>
+  </div>
+
+  <header class="head">
+    <h1>daily_claims_enrich <span class="status">Failed</span></h1>
+    <div class="idline">
+      <span>App <b class="mono">application_1727312400000_0187</b></span>
+      <span>Step <b class="mono">s-3PX0QJ7N2KD1B</b></span>
+      <span>Cluster <b>etl-prod-nightly</b> <span class="mono">j-2X9KQ4PLM0R7E</span></span>
+      <span><b>EMR 7.3.0</b> · Spark 3.5.1 · PySpark</span>
+      <span><b class="num">01:48:03 → 02:35:15</b> AEST, 26 Sep 2026</span>
+    </div>
+    <div class="mode">
+      <strong>Event log: not supplied.</strong>
+      <span>This report is built from container, step and node logs plus the EMR, CloudWatch and CloudTrail APIs. 4 sections are complete, 5 are partial, 1 needs the event log. Exit code 3 (partial).</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="toc" aria-label="Sections">
+      <a href="#summary">What happened <span class="dot full"></span></a>
+      <a href="#coverage">What this report covers <span class="dot full"></span></a>
+      <a href="#findings">Findings <span class="dot full"></span></a>
+      <a href="#timeline">Timeline <span class="dot part"></span></a>
+      <a href="#nodes">Cluster and nodes <span class="dot full"></span></a>
+      <a href="#executors">Executors <span class="dot part"></span></a>
+      <a href="#memory">Memory <span class="dot part"></span></a>
+      <a href="#io">Storage and I/O <span class="dot part"></span></a>
+      <a href="#stages">Jobs and stages <span class="dot none"></span></a>
+      <a href="#config">Configuration <span class="dot part"></span></a>
+      <a href="#access">Identity and access <span class="dot full"></span></a>
+      <a href="#sources">Sources <span class="dot full"></span></a>
+    </nav>
+
+    <main>
+      <!-- SUMMARY -->
+      <section id="summary">
+        <div class="story">
+          <h2>What happened</h2>
+          <p>The step <b>daily_claims_enrich</b> ran for 47 min 12 s on <b>etl-prod-nightly</b> and failed. Executors kept running out of memory: YARN killed 6 executor containers for using more than their 12 GB limit, and Spark gave up when task 112 in stage 14 failed 4 times.</p>
+          <p>A spot task node was also reclaimed by AWS at 02:31, taking 4 executors with it. Earlier, at 02:14, the job was refused access to one Glue table. Without the event log, this report can't show which stage used the memory or whether the data was skewed.</p>
+        </div>
+        <div class="kpis">
+          <div class="kpi"><span class="l">Ran for</span><span class="v">47<small> min </small>12<small> s</small></span><span class="x">From step start to application end.</span></div>
+          <div class="kpi"><span class="l">Nodes</span><span class="v">11 <small>· 10 ran work</small></span><span class="x">The primary node only coordinates.</span></div>
+          <div class="kpi"><span class="l">Executors</span><span class="v">36 <small>started · 32 peak</small></span><span class="x">Worker processes Spark launched, and most at once.</span></div>
+          <div class="kpi"><span class="l">Executor size</span><span class="v">4 <small>cores ·</small> 12 <small>GB</small></span><span class="x">10 GB Java heap plus 2 GB for everything else.</span></div>
+          <div class="kpi"><span class="l">Killed for memory</span><span class="v crit">6</span><span class="x">Containers stopped by YARN (exit code 137).</span></div>
+          <div class="kpi"><span class="l">Access denied</span><span class="v">1</span><span class="x">AWS calls refused, from CloudTrail.</span></div>
+        </div>
+      </section>
+
+      <!-- COVERAGE -->
+      <section id="coverage">
+        <div class="sechead"><h2>What this report covers without an event log</h2></div>
+        <p class="lede">Every section still appears. Each one says where its data came from and what it can't show yet.</p>
+        <div class="tbl">
+          <table>
+            <thead><tr><th>Section</th><th>Status</th><th>Shown from logs and APIs</th><th>Needs the event log</th></tr></thead>
+            <tbody>
+              <tr><td>Application summary</td><td><span class="pill full">Complete</span></td><td>Name, IDs, versions, who submitted it, start, end, final status, the error that ended it</td><td>—</td></tr>
+              <tr><td>Cluster and nodes</td><td><span class="pill full">Complete</span></td><td>Every instance: type, spot or on-demand, group, when it joined or left, what ran on it</td><td>—</td></tr>
+              <tr><td>Executors</td><td><span class="pill part">Partial</span></td><td>How many, on which host, when each started and ended, why it ended</td><td>Tasks run, CPU time and data handled per executor</td></tr>
+              <tr><td>Memory</td><td><span class="pill part">Partial</span></td><td>Configured sizes, YARN memory kills, Java OutOfMemoryError lines, host memory</td><td>Peak heap and off-heap per executor, spill to disk, garbage collection time</td></tr>
+              <tr><td>CPU</td><td><span class="pill part">Partial</span></td><td>Host CPU per node, from the CloudWatch agent</td><td>CPU time per stage and per executor</td></tr>
+              <tr><td>Storage and I/O</td><td><span class="pill part">Partial</span></td><td>S3 paths from step arguments, Glue tables from CloudTrail, host disk use</td><td>Bytes and rows read, written and shuffled; cached data</td></tr>
+              <tr><td>Jobs, stages, tasks</td><td><span class="pill none">Needs event log</span></td><td>Only the failing stage and task named in the driver error</td><td>Timeline of every job and stage, slow tasks, skew, retries</td></tr>
+              <tr><td>Configuration</td><td><span class="pill part">Partial</span></td><td>spark-submit options, cluster configuration, EMR defaults</td><td>Settings made inside the code</td></tr>
+              <tr><td>Identity and access</td><td><span class="pill full">Complete</span></td><td>Submitter, AWS roles, security configuration, Hive and HBase connections, AWS calls and denials</td><td>—</td></tr>
+              <tr><td>Findings</td><td><span class="pill full">Complete</span></td><td>Rules that read logs and APIs: memory kills, lost nodes, denials, idle CPU</td><td>Rules for skew, spill and garbage collection</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- FINDINGS -->
+      <section id="findings">
+        <div class="sechead"><h2>Findings</h2><span class="note">Ranked by severity. Each one links to the log line it came from.</span></div>
+        <div class="findings">
+          <article class="finding crit"><div class="stripe"></div><div class="body">
+            <div class="t"><span class="pill crit">Critical</span><h3>Executors exceeded their 12 GB memory limit 6 times</h3></div>
+            <p>YARN killed 6 executor containers between 02:17 and 02:33. No Java <code>OutOfMemoryError</code> appears, so the 10 GB heap did not fill. The container as a whole went over, which in PySpark usually means the Python worker processes used more than the 2 GB overhead allowance.</p>
+            <p class="ev">containers/application_1727312400000_0187/container_1727312400000_0187_01_000023/stderr.gz:4127 “Container killed by YARN for exceeding physical memory limits. 12.1 GB of 12 GB physical memory used.”</p>
+            <p class="fix">Raise <code>spark.executor.memoryOverhead</code> to 4g, or lower <code>spark.executor.cores</code> to 2 so fewer Python workers share each container.</p>
+          </div></article>
+          <article class="finding crit"><div class="stripe"></div><div class="body">
+            <div class="t"><span class="pill crit">Critical</span><h3>Stage 14 aborted after task 112 failed 4 times</h3></div>
+            <p>Each attempt of task 112 ran on an executor that was then killed for memory. Spark allows 4 attempts per task by default, so the job stopped at 02:34:58. One task failing repeatedly often points to one oversized partition.</p>
+            <p class="ev">containers/…/container_1727312400000_0187_01_000001/stderr.gz:9862 “Job aborted due to stage failure: Task 112 in stage 14.0 failed 4 times”</p>
+            <p class="fix">Supply the event log to confirm skew: it holds the input size of every task in stage 14.</p>
+          </div></article>
+          <article class="finding warn"><div class="stripe"></div><div class="body">
+            <div class="t"><span class="pill part">Warning</span><h3>Spot task node reclaimed at 02:31, 4 executors lost</h3></div>
+            <p>AWS reclaimed <code>i-0c2e8d41a7f35b906</code> (ip-10-0-3-52). Its 4 executors were not replaced, and their running tasks had to start again elsewhere.</p>
+            <p class="ev">EMR ListInstances: state TERMINATED, reason Spot instance interruption, 02:31:02</p>
+          </div></article>
+          <article class="finding warn"><div class="stripe"></div><div class="body">
+            <div class="t"><span class="pill part">Warning</span><h3>Access denied to Glue table finance_restricted.gl_postings</h3></div>
+            <p>The instance profile role could not read this table's definition. The job continued, but any output that depends on this table may be incomplete.</p>
+            <p class="ev">CloudTrail 02:14:09 glue:GetTable AccessDeniedException, role EMR_EC2_ProdRole</p>
+          </div></article>
+          <article class="finding info"><div class="stripe"></div><div class="body">
+            <div class="t"><span class="pill" style="background:var(--accent-soft);color:var(--accent)">Info</span><h3>Core nodes averaged 32% CPU</h3></div>
+            <p>The core nodes spent most of the run waiting. This fits a job slowed by retries rather than one short of CPU.</p>
+            <p class="ev">CloudWatch agent CWAgent/cpu_usage_active, 1-minute averages</p>
+          </div></article>
+        </div>
+      </section>
+
+      <!-- TIMELINE -->
+      <section id="timeline">
+        <div class="sechead"><h2>Timeline</h2><span class="pill part">Partial</span></div>
+        <p class="lede">Executors running each minute, rebuilt from when each container's log starts and ends. Markers show events found in the logs and APIs.</p>
+        <div class="chart">
+          <svg id="execChart" viewBox="0 0 820 260" role="img" aria-label="Executors running per minute from 01:48 to 02:35, rising to 32 and dropping after memory kills and a spot interruption"></svg>
+          <div class="legend">
+            <span><i class="sw" style="background:var(--accent);opacity:.35"></i>Executors running</span>
+            <span><svg width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="4.5" fill="var(--crit)"/></svg>Killed for memory</span>
+            <span><svg width="12" height="12" aria-hidden="true"><rect x="2" y="2" width="8" height="8" transform="rotate(45 6 6)" fill="var(--warn)"/></svg>Spot node lost</span>
+            <span><svg width="12" height="12" aria-hidden="true"><rect x="1" y="1" width="10" height="10" fill="var(--warn)" opacity=".55"/></svg>Access denied</span>
+            <span><svg width="12" height="12" aria-hidden="true"><rect x="1" y="1" width="10" height="10" fill="var(--crit)"/></svg>Job failed</span>
+          </div>
+        </div>
+        <div class="tbl">
+          <table>
+            <thead><tr><th>Time (AEST)</th><th>Event</th><th>Source</th></tr></thead>
+            <tbody class="num">
+              <tr><td>01:48:03</td><td>Step started; <code>spark-submit</code> in cluster mode</td><td class="mono">steps/s-3PX0QJ7N2KD1B/stderr.gz</td></tr>
+              <tr><td>01:48:41</td><td>Driver started on ip-10-0-1-18</td><td class="mono">container_…_000001</td></tr>
+              <tr><td>01:49 – 01:53</td><td>Executors ramped up to 28 (dynamic allocation)</td><td class="mono">container logs</td></tr>
+              <tr><td>02:14:09</td><td>Access denied: glue:GetTable finance_restricted.gl_postings</td><td class="mono">CloudTrail</td></tr>
+              <tr><td>02:17:26</td><td>First executor killed for memory, on ip-10-0-3-41</td><td class="mono">container_…_000023</td></tr>
+              <tr><td>02:21 · 02:24 · 02:28</td><td>Three more executors killed for memory; each replaced</td><td class="mono">container logs</td></tr>
+              <tr><td>02:31:02</td><td>Spot task node ip-10-0-3-52 reclaimed; 4 executors lost</td><td class="mono">EMR API, node logs</td></tr>
+              <tr><td>02:32 · 02:33</td><td>Two more executors killed for memory; not replaced</td><td class="mono">container logs</td></tr>
+              <tr><td>02:34:58</td><td>Stage 14 aborted: task 112 failed 4 times</td><td class="mono">driver stderr</td></tr>
+              <tr><td>02:35:15</td><td>Application ended FAILED; step marked FAILED</td><td class="mono">EMR API</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- NODES -->
+      <section id="nodes">
+        <div class="sechead"><h2>Cluster and nodes</h2><span class="pill full">Complete</span></div>
+        <p class="lede">11 instances: 1 primary, 4 core on-demand, 6 task on spot. Every r5.4xlarge has 16 vCPU and 128 GiB of memory.</p>
+        <div class="tbl">
+          <table>
+            <thead><tr><th>Host</th><th>Group · type</th><th>Market</th><th class="r">Executors</th><th class="r">Killed</th><th>CPU avg · peak</th><th class="r">Memory peak</th></tr></thead>
+            <tbody class="num" id="nodeRows"></tbody>
+          </table>
+        </div>
+        <p class="explain"><b>How to read CPU:</b> the bar is the average over the run, the black tick is the busiest minute. A node that averages low but peaks high did its work in bursts.</p>
+      </section>
+
+      <!-- EXECUTORS -->
+      <section id="executors">
+        <div class="sechead"><h2>Executors</h2><span class="pill part">Partial</span></div>
+        <div class="facts">
+          <div class="fact"><span class="l">Started</span><span class="v num">36 executors + 1 driver</span><span class="x">32 at the start, 4 replacements after memory kills.</span></div>
+          <div class="fact"><span class="l">Most running at once</span><span class="v num">32, from 02:09 to 02:30</span><span class="x">Dynamic allocation allowed up to 40.</span></div>
+          <div class="fact"><span class="l">How they ended</span><span class="v num">24 at job end · 6 memory · 4 node lost · 2 idle</span><span class="x">From YARN exit codes and container log last lines.</span></div>
+          <div class="fact"><span class="l">Driver</span><span class="v">ip-10-0-1-18 (core), 8 GB</span><span class="x">In cluster mode the driver runs inside YARN, on a core node.</span></div>
+        </div>
+        <div class="missing">
+          <h3>Needs the event log</h3>
+          <ul><li>Tasks completed and failed per executor</li><li>CPU time, input, shuffle and spill per executor</li><li>Peak memory per executor</li></ul>
+        </div>
+      </section>
+
+      <!-- MEMORY -->
+      <section id="memory">
+        <div class="sechead"><h2>Memory</h2><span class="pill part">Partial</span></div>
+        <p class="lede">Each executor container is 12 GB. The Java heap gets 10 GB. The remaining 2 GB covers Python workers, network buffers and the JVM's own needs.</p>
+        <div class="facts">
+          <div class="fact"><span class="l">Heap per core</span><span class="v num">2.5 GB</span><span class="x">10 GB heap shared by 4 concurrent tasks.</span></div>
+          <div class="fact"><span class="l">Overhead per core</span><span class="v num">0.5 GB</span><span class="x">Each running task has its own Python worker. 0.5 GB each is tight for PySpark.</span></div>
+          <div class="fact"><span class="l">Java OutOfMemoryError</span><span class="v num">0</span><span class="x">The heap never filled.</span></div>
+          <div class="fact"><span class="l">YARN memory kills</span><span class="v num" style="color:var(--crit)">6 · all at 12.1 of 12 GB</span><span class="x">On ip-10-0-3-41 (2), -1-22, -3-44, -3-58, -3-63.</span></div>
+        </div>
+        <div class="missing">
+          <h3>Needs the event log</h3>
+          <ul><li>Peak heap, off-heap and process memory per executor</li><li>Spill to memory and disk per stage</li><li>Garbage collection time</li></ul>
+        </div>
+      </section>
+
+      <!-- IO -->
+      <section id="io">
+        <div class="sechead"><h2>Storage and I/O</h2><span class="pill part">Partial</span></div>
+        <div class="tbl">
+          <table>
+            <thead><tr><th>What</th><th>Where</th><th>Found in</th></tr></thead>
+            <tbody>
+              <tr><td>Input</td><td class="mono">s3://claims-raw/2026/09/25/</td><td>Step arguments</td></tr>
+              <tr><td>Output</td><td class="mono">s3://claims-curated/enriched/dt=2026-09-25/</td><td>Step arguments</td></tr>
+              <tr><td>Glue tables read</td><td>claims.policy_dim, claims.provider_dim, claims.member_dim <span class="sub">finance_restricted.gl_postings refused</span></td><td>CloudTrail glue:GetTable</td></tr>
+              <tr><td>HBase</td><td>Lookups against table <code>provider_flags</code></td><td>Driver stderr</td></tr>
+              <tr><td>Local disk</td><td>Peak 61% on ip-10-0-3-41, others under 40%</td><td>CloudWatch agent</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="missing">
+          <h3>Needs the event log</h3>
+          <ul><li>Bytes and rows read and written per stage</li><li>Shuffle read and write</li><li>Cached tables and their size</li></ul>
+        </div>
+      </section>
+
+      <!-- STAGES -->
+      <section id="stages">
+        <div class="sechead"><h2>Jobs and stages</h2><span class="pill none">Needs event log</span></div>
+        <p class="lede">Only the failing stage is known, from the driver's error message: stage 14, task 112, 4 failed attempts.</p>
+        <div class="missing">
+          <h3>Supply the event log to see</h3>
+          <ul>
+            <li>Every job and stage on a timeline, and which ones took longest</li>
+            <li>Whether one task in stage 14 read far more data than the others (skew)</li>
+            <li>The SQL queries run, with their plans and tables</li>
+          </ul>
+          <p class="note">Run again with <code>-eventlog s3://…/sparklogs/</code> or <code>-eventlog ./application_1727312400000_0187.zip</code>.</p>
+        </div>
+      </section>
+
+      <!-- CONFIG -->
+      <section id="config">
+        <div class="sechead"><h2>Configuration</h2><span class="pill part">Partial</span></div>
+        <div class="tbl">
+          <table>
+            <thead><tr><th>Setting</th><th>Value</th><th>Set by</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">spark.submit.deployMode</td><td class="mono">cluster</td><td>spark-submit</td></tr>
+              <tr><td class="mono">spark.executor.memory</td><td class="mono">10g</td><td>spark-submit</td></tr>
+              <tr><td class="mono">spark.executor.memoryOverhead</td><td class="mono">2g</td><td>spark-submit</td></tr>
+              <tr><td class="mono">spark.executor.cores</td><td class="mono">4</td><td>spark-submit</td></tr>
+              <tr><td class="mono">spark.driver.memory</td><td class="mono">8g</td><td>spark-submit</td></tr>
+              <tr><td class="mono">spark.dynamicAllocation.enabled</td><td class="mono">true</td><td>EMR default</td></tr>
+              <tr><td class="mono">spark.dynamicAllocation.maxExecutors</td><td class="mono">40</td><td>Cluster configuration</td></tr>
+              <tr><td class="mono">spark.sql.shuffle.partitions</td><td class="mono">400</td><td>Cluster configuration</td></tr>
+              <tr><td class="mono">spark.eventLog.dir</td><td class="mono">hdfs:///var/log/spark/apps</td><td>EMR default</td></tr>
+              <tr><td class="mono">hive.metastore.client.factory.class</td><td class="mono">…AWSGlueDataCatalogHiveClientFactory</td><td>Cluster configuration (hive-site)</td></tr>
+              <tr><td class="mono">spark.hbase.client.password</td><td>Set · value hidden</td><td>spark-submit</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">Settings made inside the PySpark code are not visible without the event log.</p>
+      </section>
+
+      <!-- ACCESS -->
+      <section id="access">
+        <div class="sechead"><h2>Identity and access</h2><span class="pill full">Complete</span></div>
+        <div class="facts">
+          <div class="fact"><span class="l">Submitted by</span><span class="v mono">assumed-role/airflow-prod-runner</span><span class="x">CloudTrail AddJobFlowSteps, 01:47:58.</span></div>
+          <div class="fact"><span class="l">Ran as</span><span class="v">OS user <code>hadoop</code> · YARN queue <code>default</code></span><span class="x">From the step and container logs.</span></div>
+          <div class="fact"><span class="l">AWS roles</span><span class="v mono">EMR_EC2_ProdRole</span><span class="x">Instance profile used for S3, Glue and KMS. Service role EMR_ServiceRole_Prod. No runtime role.</span></div>
+          <div class="fact"><span class="l">Security configuration</span><span class="v">prod-sec-cfg-v4</span><span class="x">S3 encryption SSE-KMS, TLS in transit on, Kerberos off, Lake Formation off.</span></div>
+          <div class="fact"><span class="l">Hive tables</span><span class="v">AWS Glue Data Catalog</span><span class="x">Not a Hive metastore server; access is controlled by IAM.</span></div>
+          <div class="fact"><span class="l">HBase</span><span class="v">hbase-prod, 3 ZooKeeper hosts</span><span class="x">Simple authentication, no Kerberos. 0 connection errors.</span></div>
+        </div>
+        <div class="tbl">
+          <table>
+            <thead><tr><th>AWS call (by EMR_EC2_ProdRole)</th><th class="r">Calls</th><th class="r">Denied</th></tr></thead>
+            <tbody class="num">
+              <tr><td>kms:Decrypt</td><td class="r">1,322</td><td class="r">0</td></tr>
+              <tr><td>glue:GetTable</td><td class="r">214</td><td class="r" style="color:var(--crit)">1</td></tr>
+              <tr><td>glue:GetPartitions</td><td class="r">88</td><td class="r">0</td></tr>
+              <tr><td>glue:GetDatabase</td><td class="r">12</td><td class="r">0</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">S3 object reads and writes are not listed: this account's CloudTrail does not record S3 data events.</p>
+      </section>
+
+      <!-- SOURCES -->
+      <section id="sources">
+        <div class="sechead"><h2>Sources</h2></div>
+        <div class="tbl">
+          <table>
+            <thead><tr><th>Source</th><th>Status</th><th>Read</th></tr></thead>
+            <tbody class="num">
+              <tr><td>Spark event log</td><td><span class="pill none">Not supplied</span></td><td>—</td></tr>
+              <tr><td>Container logs</td><td><span class="pill full">Read</span></td><td>37 containers, 74 files, 1.9 GiB</td></tr>
+              <tr><td>Step logs</td><td><span class="pill full">Read</span></td><td>3 files, 41 KiB</td></tr>
+              <tr><td>Node logs</td><td><span class="pill full">Read</span></td><td>11 nodes, 132 files, 88 MiB</td></tr>
+              <tr><td>EMR API</td><td><span class="pill full">Read</span></td><td>DescribeCluster, ListInstances, ListInstanceGroups, ListSteps</td></tr>
+              <tr><td>CloudWatch</td><td><span class="pill full">Read</span></td><td>AWS/ElasticMapReduce and CWAgent, 01:43 – 02:40</td></tr>
+              <tr><td>CloudTrail</td><td><span class="pill full">Read</span></td><td>1,736 events for EMR_EC2_ProdRole and the step submitter</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer>
+    <span>sparkplain sample · every value on this page is fictional</span>
+    <span>Times in AEST (UTC+10)</span>
+  </footer>
+</div>
+
+<script>
+(function(){
+  // Executors running per minute, minute 0 = 01:48
+  var series=[0,2,8,18,26,28,28,28,28,28,28,28,28,30,30,30,30,30,30,30,30,32,32,32,32,32,32,32,32,31,32,32,32,31,32,32,31,32,32,32,31,32,32,28,27,26,12,0];
+  var kills=[29,33,36,40,44,45], spot=43, denied=26, fail=46.9;
+  var W=820,H=260,m={l:40,r:18,t:30,b:34};
+  var iw=W-m.l-m.r, ih=H-m.t-m.b, xmax=47.2, ymax=36;
+  function x(v){return m.l+v/xmax*iw}
+  function y(v){return m.t+ih-v/ymax*ih}
+  var s='';
+  [0,8,16,24,32].forEach(function(t){
+    s+='<line class="grid" x1="'+m.l+'" x2="'+(W-m.r)+'" y1="'+y(t)+'" y2="'+y(t)+'"/>';
+    s+='<text class="ax" x="'+(m.l-8)+'" y="'+(y(t)+4)+'" text-anchor="end">'+t+'</text>';
+  });
+  for(var mi=0;mi<=45;mi+=5){
+    var hh=1+Math.floor((48+mi)/60), mm=(48+mi)%60;
+    var lbl=('0'+hh).slice(-2)+':'+('0'+mm).slice(-2);
+    s+='<line class="grid" x1="'+x(mi)+'" x2="'+x(mi)+'" y1="'+(m.t+ih)+'" y2="'+(m.t+ih+4)+'"/>';
+    s+='<text class="ax" x="'+x(mi)+'" y="'+(H-12)+'" text-anchor="middle">'+lbl+'</text>';
+  }
+  var d='M'+x(0)+' '+y(0);
+  series.forEach(function(v,i){d+=' L'+x(i)+' '+y(v)});
+  s+='<path d="'+d+' L'+x(47)+' '+y(0)+' Z" fill="var(--accent)" opacity=".16"/>';
+  s+='<path d="'+d+'" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>';
+  // peak label
+  s+='<circle cx="'+x(21)+'" cy="'+y(32)+'" r="3.5" fill="var(--accent)"/>';
+  s+='<text x="'+x(21)+'" y="'+(y(32)-8)+'" text-anchor="middle" style="fill:var(--ink);font:500 11px var(--mono)">peak 32</text>';
+  // markers
+  function vline(v,color,dash){return '<line x1="'+x(v)+'" x2="'+x(v)+'" y1="'+(m.t-12)+'" y2="'+(m.t+ih)+'" stroke="'+color+'" stroke-width="1" '+(dash?'stroke-dasharray="3 3"':'')+' opacity=".7"/>'}
+  s+=vline(denied,'var(--warn)',true)+'<rect x="'+(x(denied)-5)+'" y="'+(m.t-17)+'" width="10" height="10" fill="var(--warn)" opacity=".55"/>';
+  kills.forEach(function(k){s+=vline(k,'var(--crit)',true)+'<circle cx="'+x(k)+'" cy="'+(m.t-12)+'" r="4.5" fill="var(--crit)"/>'});
+  s+=vline(spot,'var(--warn)',true)+'<rect x="'+(x(spot)-4)+'" y="'+(m.t-16)+'" width="8" height="8" transform="rotate(45 '+x(spot)+' '+(m.t-12)+')" fill="var(--warn)"/>';
+  s+=vline(fail,'var(--crit)',false)+'<rect x="'+(x(fail)-5)+'" y="'+(m.t-17)+'" width="10" height="10" fill="var(--crit)"/>';
+  document.getElementById('execChart').innerHTML=s;
+
+  // node table
+  var nodes=[
+    ['ip-10-0-1-10','i-0a1f3c7b2e9d04158','Primary · m5.2xlarge','On-demand',0,0,9,18,34,''],
+    ['ip-10-0-1-18','i-0b7d21e5c4a93f602','Core · r5.4xlarge','On-demand','3 + driver',0,31,64,71,''],
+    ['ip-10-0-1-22','i-06e4a9d1f7b28c3e5','Core · r5.4xlarge','On-demand',4,1,38,81,93,''],
+    ['ip-10-0-1-27','i-0f13c8b6a2d57e941','Core · r5.4xlarge','On-demand',4,0,35,77,86,''],
+    ['ip-10-0-1-35','i-09a2e7f4b1c6d8530','Core · r5.4xlarge','On-demand',3,0,22,55,64,''],
+    ['ip-10-0-3-41','i-0d58b3e2a9f1c7064','Task · r5.4xlarge','Spot',4,2,41,92,97,''],
+    ['ip-10-0-3-44','i-03c9f6a1e8b4d2759','Task · r5.4xlarge','Spot',4,1,39,88,95,''],
+    ['ip-10-0-3-47','i-0e7a4d2c5b9f13086','Task · r5.4xlarge','Spot',3,0,33,70,79,''],
+    ['ip-10-0-3-52','i-0c2e8d41a7f35b906','Task · r5.4xlarge','Spot',4,0,36,79,88,'Reclaimed 02:31'],
+    ['ip-10-0-3-58','i-07b1f5e3d8a2c6419','Task · r5.4xlarge','Spot',4,1,37,85,94,''],
+    ['ip-10-0-3-63','i-0a6d9c2f4e7b18357','Task · r5.4xlarge','Spot',3,1,34,83,91,'']
+  ];
+  var rows='';
+  nodes.forEach(function(n){
+    var lost=!!n[9];
+    rows+='<tr'+(lost?' class="lost"':'')+'><td><span class="mono">'+n[0]+'</span><span class="sub mono">'+n[1]+'</span>'+(lost?'<span class="pill part" style="margin-top:4px">'+n[9]+'</span>':'')+'</td>'+
+      '<td>'+n[2]+'</td><td>'+n[3]+'</td><td class="r">'+n[4]+'</td>'+
+      '<td class="r"'+(n[5]>0?' style="color:var(--crit);font-weight:500"':'')+'>'+n[5]+'</td>'+
+      '<td><div class="cpu"><div class="bar"><i style="width:'+n[6]+'%"></i><b style="left:calc('+n[7]+'% - 1px)"></b></div><span class="t">'+n[6]+' · '+n[7]+'%</span></div></td>'+
+      '<td class="r">'+n[8]+'%</td></tr>';
+  });
+  document.getElementById('nodeRows').innerHTML=rows;
+})();
+</script>
