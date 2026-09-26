@@ -173,7 +173,7 @@ func share(a, b int64) float64 {
 func rulePriority(rule string) int {
 	for i, r := range []string{
 		"log-first-failure", "job-failed", "step-failed", "bootstrap-failed", "executor-memory-kill", "out-of-memory", "access-denied",
-		"kerberos-failure", "metastore-failure", "hbase-failure", "executor-lost", "app-retried", "executor-decommissioned", "stage-retried",
+		"kerberos-failure", "metastore-failure", "hbase-failure", "executor-lost", "spot-interrupted", "app-retried", "idle-nodes", "executor-decommissioned", "stage-retried",
 		"access-static-keys", "stage-skew", "memory-spill", "memory-gc-pressure", "memory-heap-near-limit",
 		"config-unlimited-result", "config-dynalloc-no-shuffle",
 	} {

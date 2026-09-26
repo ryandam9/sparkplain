@@ -125,7 +125,9 @@ type TimelineEvent struct {
 
 // Host is one machine that ran the driver or executors.
 type Host struct {
-	Name          string     `json:"name"`
+	Name string `json:"name"`
+	// Instance is the EC2 instance behind the host (EMR API runs only).
+	Instance      *Instance  `json:"instance,omitempty"`
 	Driver        bool       `json:"driver"`
 	Executors     []string   `json:"executors"`
 	Cores         int        `json:"cores"`
@@ -383,6 +385,39 @@ type Cluster struct {
 	Configurations  map[string]string `json:"configurations,omitempty"` // "classification/key" → value, redacted
 	Source          string            `json:"source"`                   // the API call it came from
 	Instances       []Instance        `json:"instances,omitempty"`      // from ListInstances
+	Groups          []InstanceGroup   `json:"groups,omitempty"`         // instance groups or fleets
+	Fleets          bool              `json:"fleets,omitempty"`         // the cluster uses instance fleets
+	KerberosRealm   string            `json:"kerberosRealm,omitempty"`
+	// Security is what the cluster's EMR security configuration turns on.
+	Security *SecurityPosture `json:"security,omitempty"`
+}
+
+// InstanceGroup is one instance group or fleet: the primary, core or task
+// nodes.
+type InstanceGroup struct {
+	ID            string   `json:"id"`
+	Fleet         bool     `json:"fleet,omitempty"`
+	Role          string   `json:"role"` // MASTER, CORE or TASK
+	Name          string   `json:"name,omitempty"`
+	InstanceTypes []string `json:"instanceTypes"`
+	Market        string   `json:"market,omitempty"` // ON_DEMAND or SPOT (groups; fleets mix both)
+	Requested     int      `json:"requested"`
+	Running       int      `json:"running"`
+}
+
+// SecurityPosture is the parts of an EMR security configuration the report
+// explains. Keys, passwords and certificates are never read.
+type SecurityPosture struct {
+	Name                string `json:"name"`
+	AtRestEncryption    bool   `json:"atRestEncryption"`
+	S3Encryption        string `json:"s3Encryption,omitempty"` // SSE-S3, SSE-KMS, CSE-KMS, CSE-Custom
+	LocalDiskEncryption bool   `json:"localDiskEncryption"`
+	EBSEncryption       bool   `json:"ebsEncryption"`
+	InTransitEncryption bool   `json:"inTransitEncryption"`
+	Kerberos            string `json:"kerberos,omitempty"` // ClusterDedicatedKdc or ExternalKdc
+	LakeFormation       bool   `json:"lakeFormation"`
+	RuntimeRoles        bool   `json:"runtimeRoles"` // EnableApplicationScopedIAMRole
+	Source              string `json:"source"`
 }
 
 // Step is one EMR step: a spark-submit or other command the cluster ran.
@@ -398,8 +433,10 @@ type Step struct {
 	FailureMessage string    `json:"failureMessage,omitempty"`
 	FailureLog     string    `json:"failureLog,omitempty"`
 	// AppID is the Spark application the step started, found in its stderr.
-	AppID  string `json:"appId,omitempty"`
-	Source string `json:"source"`
+	AppID string `json:"appId,omitempty"`
+	// ExecutionRole is the step's runtime role (DescribeStep), when it had one.
+	ExecutionRole string `json:"executionRole,omitempty"`
+	Source        string `json:"source"`
 }
 
 // Instance is one EC2 instance of a cluster, from the EMR API. Node logs
@@ -414,6 +451,10 @@ type Instance struct {
 	State       string    `json:"state,omitempty"`
 	StateReason string    `json:"stateReason,omitempty"`
 	Primary     bool      `json:"primary,omitempty"`
+	GroupID     string    `json:"groupId,omitempty"` // instance group or fleet
+	Role        string    `json:"role,omitempty"`    // MASTER, CORE or TASK, from its group
+	VCPU        int       `json:"vcpu,omitempty"`    // from EC2 DescribeInstanceTypes
+	MemoryBytes int64     `json:"memoryBytes,omitempty"`
 	Created     time.Time `json:"created,omitzero"`
 	Ended       time.Time `json:"ended,omitzero"`
 }

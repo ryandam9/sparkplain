@@ -178,6 +178,9 @@ func funcs(loc *time.Location) template.FuncMap {
 			return map[string]string{"read": "Read", "partial": "Partly read", "error": "Could not read", "not-supplied": "Not supplied", "not-yet": "Not in this version",
 				"none": "Nothing for this app", "not-requested": "Not requested"}[s]
 		},
+		"market": func(m string) string {
+			return map[string]string{"SPOT": "spot", "ON_DEMAND": "on-demand"}[m]
+		},
 		"fileCounts": func(fs []model.SourceFile) map[string]int {
 			out := map[string]int{"read": 0, "skipped": 0, "error": 0}
 			for _, f := range fs {

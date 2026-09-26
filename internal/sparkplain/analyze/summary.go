@@ -134,6 +134,43 @@ func identityFromLogs(c *ctx, r *model.Report, add func(label, value, explain st
 		add("EC2 instance profile", orNone(cl.InstanceProfile), "The IAM role every node's processes use for AWS calls, including S3 reads and writes, unless the job carries other credentials.", api)
 		add("EMR service role", orNone(cl.ServiceRole), "The role EMR itself uses to create and manage the cluster's instances.", api)
 		add("EMR security configuration", orNone(cl.SecurityConfig), "Where EMR's encryption, Kerberos and Lake Formation settings are defined.", api)
+		if p := cl.Security; p != nil {
+			sec := model.Source{File: p.Source}
+			rest := "off"
+			if p.AtRestEncryption {
+				rest = "on"
+				var parts []string
+				if p.S3Encryption != "" {
+					parts = append(parts, "S3 "+p.S3Encryption)
+				}
+				if p.LocalDiskEncryption {
+					disk := "local disks"
+					if p.EBSEncryption {
+						disk += " and EBS volumes"
+					}
+					parts = append(parts, disk)
+				}
+				if len(parts) > 0 {
+					rest += ": " + strings.Join(parts, ", ")
+				}
+			}
+			add("Encryption at rest", rest, "Whether EMRFS data on S3 and the nodes' disks are encrypted by the security configuration.", sec)
+			add("Encryption in transit", onOff(p.InTransitEncryption), "Whether traffic between the cluster's services is encrypted with TLS.", sec)
+			if p.Kerberos != "" {
+				v := p.Kerberos
+				if cl.KerberosRealm != "" {
+					v += ", realm " + cl.KerberosRealm
+				}
+				add("EMR Kerberos", v, "Hadoop services on the cluster require Kerberos tickets.", sec)
+			}
+			add("Lake Formation", onOff(p.LakeFormation), "Whether Lake Formation grants control access to tables, on top of IAM.", sec)
+			add("Runtime roles", onOff(p.RuntimeRoles), "Whether steps can run as their own IAM role instead of the instance profile.", sec)
+		}
+	}
+	for _, st := range r.Steps {
+		if st.AppID != "" && st.ExecutionRole != "" {
+			add("Step runtime role", st.ExecutionRole, "Step "+st.ID+" ran as this role, so the application's AWS calls used it rather than the instance profile.", model.Source{File: "EMR DescribeStep " + st.ID})
+		}
 	}
 	if c.logs == nil {
 		return
@@ -188,6 +225,13 @@ func identityFromLogs(c *ctx, r *model.Report, add func(label, value, explain st
 	if len(hbase) > 0 {
 		once("HBase connection", "ZooKeeper "+hbase[0], "The ZooKeeper quorum a process connected to for HBase, from the logs.", hbaseSrc)
 	}
+}
+
+func onOff(b bool) string {
+	if b {
+		return "on"
+	}
+	return "off"
 }
 
 func orNone(s string) string {

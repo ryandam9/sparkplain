@@ -30,6 +30,10 @@ type EMRAPI interface {
 	ListClusters(ctx context.Context, in *emr.ListClustersInput, opts ...func(*emr.Options)) (*emr.ListClustersOutput, error)
 	ListSteps(ctx context.Context, in *emr.ListStepsInput, opts ...func(*emr.Options)) (*emr.ListStepsOutput, error)
 	ListInstances(ctx context.Context, in *emr.ListInstancesInput, opts ...func(*emr.Options)) (*emr.ListInstancesOutput, error)
+	ListInstanceGroups(ctx context.Context, in *emr.ListInstanceGroupsInput, opts ...func(*emr.Options)) (*emr.ListInstanceGroupsOutput, error)
+	ListInstanceFleets(ctx context.Context, in *emr.ListInstanceFleetsInput, opts ...func(*emr.Options)) (*emr.ListInstanceFleetsOutput, error)
+	DescribeSecurityConfiguration(ctx context.Context, in *emr.DescribeSecurityConfigurationInput, opts ...func(*emr.Options)) (*emr.DescribeSecurityConfigurationOutput, error)
+	DescribeStep(ctx context.Context, in *emr.DescribeStepInput, opts ...func(*emr.Options)) (*emr.DescribeStepOutput, error)
 }
 
 // NewEMR makes a client from a loaded AWS config.
@@ -56,6 +60,10 @@ func Describe(ctx context.Context, api EMRAPI, id string) (model.Cluster, error)
 	if c.Ec2InstanceAttributes != nil {
 		cl.InstanceProfile = aws.ToString(c.Ec2InstanceAttributes.IamInstanceProfile)
 	}
+	if k := c.KerberosAttributes; k != nil {
+		cl.KerberosRealm = aws.ToString(k.Realm) // never the KDC or cross-realm passwords
+	}
+	cl.Fleets = c.InstanceCollectionType == types.InstanceCollectionTypeInstanceFleet
 	if c.Status != nil {
 		cl.State = string(c.Status.State)
 		if c.Status.StateChangeReason != nil {
@@ -167,7 +175,11 @@ func Instances(ctx context.Context, api EMRAPI, cl model.Cluster) ([]model.Insta
 		}
 		for _, i := range page.Instances {
 			in := model.Instance{ID: aws.ToString(i.Ec2InstanceId), PrivateDNS: aws.ToString(i.PrivateDnsName),
-				PrivateIP: aws.ToString(i.PrivateIpAddress), Type: aws.ToString(i.InstanceType), Market: string(i.Market)}
+				PrivateIP: aws.ToString(i.PrivateIpAddress), Type: aws.ToString(i.InstanceType), Market: string(i.Market),
+				GroupID: aws.ToString(i.InstanceGroupId)}
+			if in.GroupID == "" {
+				in.GroupID = aws.ToString(i.InstanceFleetId)
+			}
 			if st := i.Status; st != nil {
 				in.State = string(st.State)
 				if st.StateChangeReason != nil {

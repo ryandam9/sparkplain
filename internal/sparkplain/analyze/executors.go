@@ -3,6 +3,7 @@ package analyze
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
@@ -192,9 +193,21 @@ func pronoun(n int) string {
 
 func analyzeNodes(c *ctx, r *model.Report) {
 	s := &r.Nodes
-	s.Missing = []string{"Instance ID, type, vCPU and memory, spot or on-demand, and instance group (needs the EMR API)", "Hosts in the cluster that ran no executors"}
+	s.Missing = []string{"Instance ID, type, vCPU and memory, spot or on-demand, and instance group (needs -cluster-id)", "Hosts in the cluster that ran no executors (needs -cluster-id)"}
+	if r.Cluster != nil && len(r.Cluster.Instances) > 0 {
+		s.Missing = nil
+	}
 	if !c.has() {
 		s.Coverage = model.NeedsEventLog
+		if r.Cluster != nil && len(r.Cluster.Instances) > 0 {
+			s.Coverage = model.Partial
+			s.Missing = []string{"Which nodes ran executors and what they did (the event log)"}
+			for _, in := range r.Cluster.Instances {
+				in := in
+				s.Hosts = append(s.Hosts, model.Host{Name: orID(in.PrivateDNS, in.ID), Instance: &in, Executors: []string{}})
+			}
+			s.Lede = fmt.Sprintf("The cluster had %s. Without the event log, which of them ran this application is not known.", model.Plural(len(s.Hosts), "node", "nodes"))
+		}
 		return
 	}
 	s.Coverage = model.Partial
@@ -245,6 +258,7 @@ func analyzeNodes(c *ctx, r *model.Report) {
 			h.Source = d.AddedSource
 		}
 	}
+	idle := joinInstances(c, r, hosts, get)
 	for name, h := range hosts {
 		h.CPUShare = share(h.Tasks.CPUTimeNs/1e6, h.Tasks.RunTimeMs)
 		h.AllocatedCore = share(h.Tasks.RunTimeMs, allocated[name])
@@ -273,7 +287,139 @@ func analyzeNodes(c *ctx, r *model.Report) {
 	if c.log.Application.DeployMode == "client" {
 		lede += " In client mode the driver runs where spark-submit ran (on EMR, usually the primary node)."
 	}
+	if r.Cluster != nil && len(r.Cluster.Instances) > 0 {
+		up := 0
+		for _, h := range s.Hosts {
+			if h.Instance != nil {
+				up++
+			}
+		}
+		lede += fmt.Sprintf(" The cluster had %s up while it ran.", model.Plural(up, "node", "nodes"))
+		if len(idle) > 0 {
+			lede += fmt.Sprintf(" %s ran no executors.", model.Plural(len(idle), "worker node", "worker nodes"))
+		}
+		if !hasUnjoined(s.Hosts) {
+			s.Coverage = model.Complete
+		}
+	}
 	s.Lede = lede
+	nodeFindings(c, r, idle)
+}
+
+func orID(dns, id string) string {
+	if dns != "" {
+		return dns
+	}
+	return id
+}
+
+// hostKey is a host name without its domain, or an IP address as the name
+// EMR gives it, so the event log's and the EMR API's names match.
+func hostKey(h string) string {
+	h = strings.ToLower(strings.TrimSpace(h))
+	if strings.Count(h, ".") == 3 && strings.Trim(h, "0123456789.") == "" {
+		return "ip-" + strings.ReplaceAll(h, ".", "-")
+	}
+	if i := strings.IndexByte(h, '.'); i > 0 {
+		return h[:i]
+	}
+	return h
+}
+
+func hasUnjoined(hs []model.Host) bool {
+	for _, h := range hs {
+		if h.Instance == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// joinInstances attaches each host's EC2 instance and adds the instances
+// that were up during the run but ran nothing for it. It returns the
+// worker (core and task) nodes that ran no executors.
+func joinInstances(c *ctx, r *model.Report, hosts map[string]*model.Host, get func(string) *model.Host) []*model.Host {
+	if r.Cluster == nil {
+		return nil
+	}
+	start, end := c.log.Application.Start, c.end
+	byKey := map[string]string{}
+	for name := range hosts {
+		byKey[hostKey(name)] = name
+	}
+	var idle []*model.Host
+	for _, in := range r.Cluster.Instances {
+		in := in
+		name, ok := byKey[hostKey(in.PrivateDNS)]
+		if !ok {
+			name, ok = byKey[hostKey(in.PrivateIP)]
+		}
+		if !ok {
+			// Up at some point while the application ran?
+			if (!in.Ended.IsZero() && !start.IsZero() && in.Ended.Before(start)) || (!end.IsZero() && in.Created.After(end)) {
+				continue
+			}
+			name = orID(in.PrivateDNS, in.ID)
+		}
+		h := get(name)
+		h.Instance = &in
+		if len(h.Executors) == 0 && !in.Primary && in.Role != "MASTER" {
+			idle = append(idle, h)
+		}
+	}
+	return idle
+}
+
+// nodeFindings reports worker nodes that ran no executors, and spot nodes
+// that went away while the application ran.
+func nodeFindings(c *ctx, r *model.Report, idle []*model.Host) {
+	if len(idle) > 0 {
+		workers := 0
+		for _, h := range r.Nodes.Hosts {
+			if h.Instance != nil && !h.Instance.Primary && h.Instance.Role != "MASTER" {
+				workers++
+			}
+		}
+		var ev []model.Evidence
+		driverOnly := 0
+		for _, h := range idle {
+			in := h.Instance
+			what := "ran nothing for this application"
+			if h.Driver {
+				what = "ran only the driver"
+				driverOnly++
+			}
+			ev = append(ev, model.Evidence{Text: fmt.Sprintf("%s (%s, %s %s, %s): %s", in.ID, h.Name, strings.ToLower(in.Role), in.Type, strings.ToLower(strings.ReplaceAll(in.Market, "_", "-")), what)})
+		}
+		expl := fmt.Sprintf("%s of the %s the cluster had up during the run ran no executors, so the application used less of the cluster than was paid for.", model.Plural(len(idle), "worker node", "worker nodes"), model.Plural(workers, "worker node", "worker nodes"))
+		if driverOnly > 0 {
+			expl += " A node that ran only the driver had room left that no executor fitted into: executors are sized for a whole node, and the driver's container already took part of it."
+		}
+		c.add(model.Finding{Rule: "idle-nodes", Severity: model.Warning, Section: "nodes",
+			Title: fmt.Sprintf("%s of %s ran no executors", model.Plural(len(idle), "worker node", "worker nodes"), fmt.Sprint(workers)), Explanation: expl, Evidence: ev,
+			Fix: "Size executors so more than one fits on a node beside the driver (smaller spark.executor.memory and cores), let dynamic allocation ask for more, or run fewer nodes. If other applications shared the cluster, they may have used these nodes."})
+	}
+	if !c.has() {
+		return
+	}
+	start, end := c.log.Application.Start, c.end
+	for _, h := range r.Nodes.Hosts {
+		in := h.Instance
+		if in == nil || in.Market != "SPOT" || in.Ended.IsZero() || in.Ended.Before(start) || (!end.IsZero() && in.Ended.After(end)) {
+			continue
+		}
+		ev := []model.Evidence{{Text: fmt.Sprintf("EMR ListInstances: spot instance %s (%s) ended at %s: %s", in.ID, h.Name, in.Ended.UTC().Format("15:04:05 UTC"), orNone(in.StateReason))}}
+		for _, x := range c.log.Executors {
+			if hostKey(x.Host) == hostKey(h.Name) && x.RemovalKind != model.RemovalNone {
+				ev = append(ev, model.Evidence{Source: x.RemovedSource, Ref: model.ExecutorRef(x.ID), Text: fmt.Sprintf("executor %s removed: %s", x.ID, x.RemovedReason)})
+			}
+		}
+		c.add(model.Finding{Rule: "spot-interrupted", Severity: model.Warning, Section: "nodes",
+			Title:       fmt.Sprintf("Spot node %s went away while the application ran", in.ID),
+			Explanation: fmt.Sprintf("The node was a spot instance and ended before the application did, taking %s and the shuffle data on it with it; Spark had to redo that work. EMR reports every ended instance the same way, so a spot reclaim is inferred from the market and the timing.", model.Plural(len(h.Executors), "executor", "executors")),
+			Evidence:    ev,
+			Fix:         "Run core work and shuffle-heavy stages on on-demand nodes, keep spot for task nodes, or enable spark.decommission.enabled so Spark moves shuffle data off a node given notice."})
+	}
 }
 
 func analyzeTimeline(c *ctx, r *model.Report) {

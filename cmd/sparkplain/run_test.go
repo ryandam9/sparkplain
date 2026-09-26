@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/emr"
 	emrtypes "github.com/aws/aws-sdk-go-v2/service/emr/types"
 	"github.com/aws/smithy-go"
@@ -221,6 +223,7 @@ type stubEMR struct {
 	clusters  map[string]*emrtypes.Cluster
 	steps     []emrtypes.StepSummary
 	instances []emrtypes.Instance
+	groups    []emrtypes.InstanceGroup
 }
 
 func (s stubEMR) DescribeCluster(_ context.Context, in *emr.DescribeClusterInput, _ ...func(*emr.Options)) (*emr.DescribeClusterOutput, error) {
@@ -239,6 +242,32 @@ func (s stubEMR) ListSteps(context.Context, *emr.ListStepsInput, ...func(*emr.Op
 func (s stubEMR) ListInstances(context.Context, *emr.ListInstancesInput, ...func(*emr.Options)) (*emr.ListInstancesOutput, error) {
 	return &emr.ListInstancesOutput{Instances: s.instances}, nil
 }
+func (s stubEMR) ListInstanceGroups(context.Context, *emr.ListInstanceGroupsInput, ...func(*emr.Options)) (*emr.ListInstanceGroupsOutput, error) {
+	return &emr.ListInstanceGroupsOutput{InstanceGroups: s.groups}, nil
+}
+func (s stubEMR) ListInstanceFleets(context.Context, *emr.ListInstanceFleetsInput, ...func(*emr.Options)) (*emr.ListInstanceFleetsOutput, error) {
+	return &emr.ListInstanceFleetsOutput{}, nil
+}
+func (s stubEMR) DescribeSecurityConfiguration(_ context.Context, in *emr.DescribeSecurityConfigurationInput, _ ...func(*emr.Options)) (*emr.DescribeSecurityConfigurationOutput, error) {
+	return nil, &smithy.GenericAPIError{Code: "AccessDeniedException", Message: "not authorized to perform: elasticmapreduce:DescribeSecurityConfiguration"}
+}
+func (s stubEMR) DescribeStep(_ context.Context, in *emr.DescribeStepInput, _ ...func(*emr.Options)) (*emr.DescribeStepOutput, error) {
+	return &emr.DescribeStepOutput{Step: &emrtypes.Step{Id: in.StepId}}, nil
+}
+
+// stubEC2 answers DescribeInstanceTypes for m5.xlarge only.
+type stubEC2 struct{}
+
+func (stubEC2) DescribeInstanceTypes(_ context.Context, in *ec2.DescribeInstanceTypesInput, _ ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+	out := &ec2.DescribeInstanceTypesOutput{}
+	for _, t := range in.InstanceTypes {
+		if t == "m5.xlarge" {
+			out.InstanceTypes = append(out.InstanceTypes, ec2types.InstanceTypeInfo{InstanceType: t, VCpuInfo: &ec2types.VCpuInfo{DefaultVCpus: aws.Int32(4)},
+				MemoryInfo: &ec2types.MemoryInfo{SizeInMiB: aws.Int64(16384)}})
+		}
+	}
+	return out, nil
+}
 
 // fakeAWS points the CLI's AWS at local folders (one per bucket) and a
 // stubbed EMR, and restores it after the test.
@@ -248,6 +277,7 @@ func fakeAWS(t *testing.T, buckets map[string]string, clusters map[string]*emrty
 	t.Cleanup(func() { awsDeps = saved })
 	awsDeps.config = func(context.Context, string, string) (aws.Config, error) { return aws.Config{Region: "us-east-1"}, nil }
 	awsDeps.emr = func(aws.Config) awsmeta.EMRAPI { return stubEMR{clusters: clusters} }
+	awsDeps.ec2 = func(aws.Config) awsmeta.EC2API { return stubEC2{} }
 	awsDeps.s3 = func(_ context.Context, _ aws.Config, bucket string) (source.Store, error) {
 		root, ok := buckets[bucket]
 		if !ok {

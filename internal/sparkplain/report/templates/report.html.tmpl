@@ -121,10 +121,11 @@
         <div class="sechead"><h2>Cluster and nodes</h2><span class="pill {{cov $r.Nodes.Coverage}}">{{covLabel $r.Nodes.Coverage}}</span></div>
         {{if $r.Nodes.Lede}}<p class="lede">{{$r.Nodes.Lede}}</p>{{end}}
         {{if $r.Nodes.Hosts}}<div class="tbl"><table>
-          <thead><tr><th data-sort="text">Host</th><th data-sort="text">Role</th><th class="num" data-sort="num">Executors</th><th class="num" data-sort="num">Cores</th><th class="num" data-sort="num">Tasks</th><th class="num" data-sort="num">Failed</th><th class="num" data-sort="num">Lost</th><th data-sort="num">CPU share</th><th data-sort="num">Cores busy</th><th class="num" data-sort="num">Peak heap</th></tr></thead>
+          <thead><tr><th data-sort="text">Host</th><th data-sort="text">Role</th><th data-sort="text">Instance</th><th class="num" data-sort="num">Executors</th><th class="num" data-sort="num">Cores</th><th class="num" data-sort="num">Tasks</th><th class="num" data-sort="num">Failed</th><th class="num" data-sort="num">Lost</th><th data-sort="num">CPU share</th><th data-sort="num">Cores busy</th><th class="num" data-sort="num">Peak heap</th></tr></thead>
           <tbody>{{range $r.Nodes.Hosts}}<tr{{if gt .Lost 0}} class="lost"{{end}}>
             <td><span class="mono">{{.Name}}</span>{{if .Source.File}}<span class="sub srcref">{{src .Source}}</span>{{end}}</td>
-            <td>{{if and .Driver (gt (len .Executors) 0)}}Driver + executors{{else if .Driver}}Driver{{else}}Executors{{end}}</td>
+            <td>{{if and .Driver (gt (len .Executors) 0)}}Driver + executors{{else if .Driver}}Driver only{{else if gt (len .Executors) 0}}Executors{{else if and .Instance (or .Instance.Primary (eq .Instance.Role "MASTER"))}}Primary node{{else}}<span class="bad">Nothing</span>{{end}}</td>
+            <td>{{with .Instance}}<span class="mono">{{.ID}}</span><span class="sub">{{if .Role}}{{lower .Role}} · {{end}}{{.Type}}{{if .VCPU}} · {{.VCPU}} vCPU, {{bytes .MemoryBytes}}{{end}}{{if .Market}} · {{market .Market}}{{end}}{{if not .Ended.IsZero}} · ended {{time .Ended "hms"}}{{end}}</span>{{else}}—{{end}}</td>
             <td class="num" data-v="{{len .Executors}}">{{len .Executors}}</td><td class="num">{{.Cores}}</td>
             <td class="num" data-v="{{.Tasks.Tasks}}">{{num .Tasks.Tasks}}</td>
             <td class="num" data-v="{{.Tasks.Failed}}">{{if gt .Tasks.Failed 0}}<span class="bad">{{num .Tasks.Failed}}</span>{{else}}0{{end}}</td>
@@ -134,7 +135,7 @@
             <td class="num" data-v="{{.PeakHeap}}">{{if .PeakHeap}}{{bytes .PeakHeap}}{{else}}—{{end}}</td></tr>
           {{end}}</tbody>
         </table></div>
-        <p class="explain"><b>CPU share</b> is task CPU time divided by task run time: how much of the time tasks were computing rather than waiting. <b>Cores busy</b> is task run time divided by the core time the executors held: how much of what YARN gave them was used.</p>{{end}}
+        <p class="explain"><b>Instance</b> is the EC2 instance behind the host, from the EMR API: its group (primary, core or task), type, size and whether it was spot or on-demand. <b>CPU share</b> is task CPU time divided by task run time: how much of the time tasks were computing rather than waiting. <b>Cores busy</b> is task run time divided by the core time the executors held: how much of what YARN gave them was used.</p>{{end}}
         {{if $r.Nodes.Missing}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $r.Nodes.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
       </section>
 

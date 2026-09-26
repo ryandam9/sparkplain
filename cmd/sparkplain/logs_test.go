@@ -136,6 +136,7 @@ func TestOnlineReadsClusterLogs(t *testing.T) {
 	}
 	inst := func(id, dns string) emrtypes.Instance {
 		return emrtypes.Instance{Ec2InstanceId: aws.String(id), PrivateDnsName: aws.String(dns), PrivateIpAddress: aws.String("10.0.2.99"),
+			InstanceType: aws.String("m5.xlarge"), InstanceGroupId: aws.String("ig-core"), Market: emrtypes.MarketTypeOnDemand,
 			Status: &emrtypes.InstanceStatus{Timeline: &emrtypes.InstanceTimeline{CreationDateTime: aws.Time(t0.Add(-time.Hour))}}}
 	}
 	saved := awsDeps.emr
@@ -145,6 +146,7 @@ func TestOnlineReadsClusterLogs(t *testing.T) {
 			step("s-FIXTURESTEP0002", t0.Add(3*time.Hour), t0.Add(3*time.Hour+time.Minute)), // after the app: not searched
 			step("s-FIXTURESTEP0001", t0, t0.Add(5*time.Minute), "spark-submit", "--conf", "spark.eventLog.dir=s3://logs/job-events/", "s3://logs/code/emr_job.py", "s3://logs/in/"),
 		}
+		s.groups = []emrtypes.InstanceGroup{{Id: aws.String("ig-core"), InstanceGroupType: emrtypes.InstanceGroupTypeCore, InstanceType: aws.String("m5.xlarge")}}
 		s.instances = []emrtypes.Instance{inst("i-0fee0000000000001", "ip-10-0-2-10.us-east-1.compute.internal"),
 			inst("i-0fee0000000000002", "ip-10-0-2-11.us-east-1.compute.internal"), inst("i-0fee0000000000009", "ip-10-0-2-77.us-east-1.compute.internal")}
 		return s
@@ -162,8 +164,16 @@ func TestOnlineReadsClusterLogs(t *testing.T) {
 	if r.Mode != "online" || r.Cluster == nil || len(r.Cluster.Instances) != 3 || !r.Cluster.Instances[1].Primary {
 		t.Fatalf("cluster = %+v", r.Cluster)
 	}
-	if s := sourceOf(r, "EMR API"); s.Status != "read" || !strings.Contains(s.Detail, "ListSteps (2 steps), ListInstances (3 instances)") {
+	if s := sourceOf(r, "EMR API"); s.Status != "read" || !strings.Contains(s.Detail, "ListSteps (2 steps), ListInstances (3 instances), ListInstanceGroups (1 groups), DescribeStep s-FIXTURESTEP0001") {
 		t.Errorf("EMR API = %+v", s)
+	}
+	if s := sourceOf(r, "EC2 API"); s.Status != "read" {
+		t.Errorf("EC2 API = %+v", s)
+	}
+	for _, h := range r.Nodes.Hosts {
+		if h.Instance == nil || h.Instance.VCPU != 4 || h.Instance.Role != "CORE" {
+			t.Errorf("host %s instance %+v", h.Name, h.Instance)
+		}
 	}
 	var matched []string
 	for _, s := range r.Steps {
@@ -217,5 +227,24 @@ func TestShortHost(t *testing.T) {
 		if got := shortHost(in); got != want {
 			t.Errorf("shortHost(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// A security configuration the profile may not read degrades the run:
+// the report still comes out, the EMR API row says accessDenied, exit 3.
+func TestOnlineMissingPermissionDegrades(t *testing.T) {
+	bucket := t.TempDir()
+	cl := cluster("j-sec", "")
+	cl.SecurityConfiguration = aws.String("prod-sec")
+	fakeAWS(t, map[string]string{"logs": bucket}, map[string]*emrtypes.Cluster{"j-sec": cl})
+	dir := t.TempDir()
+	code, _, errs := runCLI(t, "-app-id", "application_1790380000000_0049", "-cluster-id", "j-sec", "-profile", "test",
+		"-eventlog", filepath.Join(fx, "application_1790380000000_0049"), "-out", dir, "-format", "json")
+	if code != exitPartial {
+		t.Fatalf("exit %d: %s", code, errs)
+	}
+	s := sourceOf(readReport(t, dir), "EMR API")
+	if s.Status != "partial" || s.Class != "accessDenied" || !strings.Contains(s.Detail, "DescribeSecurityConfiguration") {
+		t.Errorf("EMR API = %+v", s)
 	}
 }

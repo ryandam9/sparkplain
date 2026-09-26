@@ -26,6 +26,7 @@ type clusterLogs struct {
 	steps     []model.Step
 	instances []model.Instance
 	emr       *model.SourceStatus // the EMR API row; nil offline
+	ec2       *model.SourceStatus // the EC2 API row; nil offline
 	files     []model.LogFile
 	sources   []model.SourceStatus
 }
@@ -63,9 +64,33 @@ func emrMetadata(ctx context.Context, cloud *awsSession, cl *model.Cluster) clus
 	if inst, err := awsmeta.Instances(ctx, api, *cl); err != nil {
 		problems = append(problems, err)
 	} else {
-		out.instances = inst
+		cl.Instances = inst
 		calls = append(calls, fmt.Sprintf("ListInstances (%d instances)", len(inst)))
 	}
+	if err := awsmeta.Groups(ctx, api, cl); err != nil {
+		problems = append(problems, err)
+	} else if cl.Fleets {
+		calls = append(calls, fmt.Sprintf("ListInstanceFleets (%d fleets)", len(cl.Groups)))
+	} else {
+		calls = append(calls, fmt.Sprintf("ListInstanceGroups (%d groups)", len(cl.Groups)))
+	}
+	if cl.SecurityConfig != "" {
+		if sec, err := awsmeta.Security(ctx, api, cl.SecurityConfig); err != nil {
+			problems = append(problems, err)
+		} else {
+			cl.Security = sec
+			calls = append(calls, "DescribeSecurityConfiguration")
+		}
+	}
+	if len(cl.Instances) > 0 {
+		ec2Row := model.SourceStatus{Name: "EC2 API", Status: "read", Detail: "Called DescribeInstanceTypes for each instance type's vCPU and memory."}
+		if err := awsmeta.InstanceSizes(ctx, awsDeps.ec2(cfg), cl); err != nil {
+			ec2Row.Status, ec2Row.Class = "partial", awsmeta.ErrorClass(err)
+			ec2Row.Detail = "Could not read instance sizes, so the Nodes table leaves vCPU and memory out (needs ec2:DescribeInstanceTypes): " + err.Error()
+		}
+		out.ec2 = &ec2Row
+	}
+	out.instances = cl.Instances
 	emrRow.Detail = "Called " + strings.Join(calls, ", ") + "."
 	if len(problems) > 0 {
 		emrRow.Status, emrRow.Class = "partial", awsmeta.ErrorClass(problems[0])
@@ -109,10 +134,25 @@ func (out *clusterLogs) readLogs(ctx context.Context, cloud *awsSession, log *mo
 	plan.Steps, plan.Instances, plan.Since = narrow(out.steps, out.instances, log)
 	col := yarnlog.Collect(ctx, st, plan)
 	out.files, out.sources = col.Files, col.Sources
+	api := awsDeps.emr(cfg)
 	for i := range out.steps {
 		for _, s := range col.Steps {
-			if out.steps[i].ID == s {
-				out.steps[i].AppID = appID
+			if out.steps[i].ID != s {
+				continue
+			}
+			out.steps[i].AppID = appID
+			// The step's runtime role, if it had one, is the identity its
+			// AWS calls used instead of the instance profile.
+			role, err := awsmeta.StepRole(ctx, api, cl.ID, s)
+			switch {
+			case err != nil && out.emr != nil:
+				out.emr.Status, out.emr.Class = "partial", awsmeta.ErrorClass(err)
+				out.emr.Detail += " Failed: " + err.Error() + "."
+			case err == nil:
+				out.steps[i].ExecutionRole = role
+				if out.emr != nil {
+					out.emr.Detail = strings.TrimSuffix(out.emr.Detail, ".") + ", DescribeStep " + s + "."
+				}
 			}
 		}
 	}

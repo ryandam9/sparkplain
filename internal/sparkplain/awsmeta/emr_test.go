@@ -21,6 +21,27 @@ type stubEMR struct {
 	pages     [][]types.ClusterSummary
 	steps     []types.StepSummary
 	instances []types.Instance
+	groups    []types.InstanceGroup
+	fleets    []types.InstanceFleet
+	security  map[string]string
+	stepRoles map[string]string
+}
+
+func (s *stubEMR) ListInstanceGroups(context.Context, *emr.ListInstanceGroupsInput, ...func(*emr.Options)) (*emr.ListInstanceGroupsOutput, error) {
+	return &emr.ListInstanceGroupsOutput{InstanceGroups: s.groups}, nil
+}
+func (s *stubEMR) ListInstanceFleets(context.Context, *emr.ListInstanceFleetsInput, ...func(*emr.Options)) (*emr.ListInstanceFleetsOutput, error) {
+	return &emr.ListInstanceFleetsOutput{InstanceFleets: s.fleets}, nil
+}
+func (s *stubEMR) DescribeSecurityConfiguration(_ context.Context, in *emr.DescribeSecurityConfigurationInput, _ ...func(*emr.Options)) (*emr.DescribeSecurityConfigurationOutput, error) {
+	j, ok := s.security[aws.ToString(in.Name)]
+	if !ok {
+		return nil, &smithy.GenericAPIError{Code: "InvalidRequestException", Message: "not found"}
+	}
+	return &emr.DescribeSecurityConfigurationOutput{Name: in.Name, SecurityConfiguration: aws.String(j)}, nil
+}
+func (s *stubEMR) DescribeStep(_ context.Context, in *emr.DescribeStepInput, _ ...func(*emr.Options)) (*emr.DescribeStepOutput, error) {
+	return &emr.DescribeStepOutput{Step: &types.Step{Id: in.StepId, ExecutionRoleArn: aws.String(s.stepRoles[aws.ToString(in.StepId)])}}, nil
 }
 
 func (s *stubEMR) DescribeCluster(_ context.Context, in *emr.DescribeClusterInput, _ ...func(*emr.Options)) (*emr.DescribeClusterOutput, error) {

@@ -317,6 +317,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	if logs.emr != nil {
 		ain.LogSources = append(ain.LogSources, *logs.emr)
+		if logs.ec2 != nil {
+			ain.LogSources = append(ain.LogSources, *logs.ec2)
+		}
 	} else if ain.LogsRead {
 		ain.LogSources = append(ain.LogSources, model.SourceStatus{Name: "EMR API", Status: "not-requested", Detail: "Not called: -from reads local files only."})
 	}
@@ -496,10 +499,12 @@ func isS3(p string) bool { _, _, ok := source.ParseS3(p); return ok }
 var awsDeps = struct {
 	config func(ctx context.Context, profile, region string) (aws.Config, error)
 	emr    func(cfg aws.Config) awsmeta.EMRAPI
+	ec2    func(cfg aws.Config) awsmeta.EC2API
 	s3     func(ctx context.Context, cfg aws.Config, bucket string) (source.Store, error)
 }{
 	config: source.LoadAWS,
 	emr:    awsmeta.NewEMR,
+	ec2:    awsmeta.NewEC2,
 	s3: func(ctx context.Context, cfg aws.Config, bucket string) (source.Store, error) {
 		return source.OpenS3(ctx, cfg, bucket)
 	},
