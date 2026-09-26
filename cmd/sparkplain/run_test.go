@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
+	cttypes "github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	cwtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -275,6 +277,22 @@ func (stubCloudWatch) GetMetricData(_ context.Context, in *cloudwatch.GetMetricD
 	return out, nil
 }
 
+// stubCloudTrail answers each node's lookup with one call AWS allowed and
+// one it refused.
+type stubCloudTrail struct{}
+
+func (stubCloudTrail) LookupEvents(_ context.Context, in *cloudtrail.LookupEventsInput, _ ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error) {
+	user := aws.ToString(in.LookupAttributes[0].AttributeValue)
+	at := aws.ToTime(in.StartTime).Add(time.Minute)
+	return &cloudtrail.LookupEventsOutput{Events: []cttypes.Event{
+		{EventId: aws.String("ok-" + user), EventName: aws.String("GetCallerIdentity"), EventSource: aws.String("sts.amazonaws.com"), EventTime: aws.Time(at), Username: aws.String(user),
+			ReadOnly: aws.String("true"), CloudTrailEvent: aws.String(`{"eventVersion":"1.08"}`)},
+		{EventId: aws.String("denied-" + user), EventName: aws.String("AssumeRole"), EventSource: aws.String("sts.amazonaws.com"), EventTime: aws.Time(at), Username: aws.String(user),
+			ReadOnly: aws.String("true"), CloudTrailEvent: aws.String(`{"errorCode":"AccessDenied","errorMessage":"User: arn:aws:sts::000000000000:assumed-role/EMR_EC2_DefaultRole/` + user + ` is not authorized to perform: sts:AssumeRole on resource: arn:aws:iam::000000000000:role/nope","userIdentity":{"sessionContext":{"sessionIssuer":{"arn":"arn:aws:iam::000000000000:role/EMR_EC2_DefaultRole"}}}}`),
+			Resources: []cttypes.Resource{{ResourceName: aws.String("arn:aws:iam::000000000000:role/nope"), ResourceType: aws.String("AWS::IAM::Role")}}},
+	}}, nil
+}
+
 // stubEC2 answers DescribeInstanceTypes for m5.xlarge only.
 type stubEC2 struct{}
 
@@ -299,6 +317,10 @@ func fakeAWS(t *testing.T, buckets map[string]string, clusters map[string]*emrty
 	awsDeps.emr = func(aws.Config) awsmeta.EMRAPI { return stubEMR{clusters: clusters} }
 	awsDeps.ec2 = func(aws.Config) awsmeta.EC2API { return stubEC2{} }
 	awsDeps.cloudwatch = func(aws.Config) awsmeta.CloudWatchAPI { return stubCloudWatch{} }
+	awsDeps.cloudtrail = func(aws.Config) awsmeta.CloudTrailAPI { return stubCloudTrail{} }
+	interval := awsmeta.LookupInterval
+	awsmeta.LookupInterval = 0
+	t.Cleanup(func() { awsmeta.LookupInterval = interval })
 	awsDeps.s3 = func(_ context.Context, _ aws.Config, bucket string) (source.Store, error) {
 		root, ok := buckets[bucket]
 		if !ok {

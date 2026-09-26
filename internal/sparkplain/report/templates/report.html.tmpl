@@ -360,6 +360,14 @@
         {{if $r.Identity.Facts}}<div class="facts">
           {{range $r.Identity.Facts}}<div class="fact"><span class="l">{{.Label}}</span><span class="v">{{.Value}}</span><span class="x">{{.Explain}}</span></div>{{end}}
         </div>{{end}}
+        {{with $r.AWSCalls}}{{if .Denied}}<h3>Calls AWS refused</h3>
+        <div class="tbl"><table><thead><tr><th>Time <span class="tzlabel">{{$.Zone}}</span></th><th>Node</th><th>Call</th><th>Error</th></tr></thead>
+          <tbody>{{range .Denied}}<tr class="lost"><td class="num">{{time .Time "hms"}}</td><td class="mono">{{.User}}</td><td><span class="mono">{{.Service}} {{.Action}}</span>{{range .Resources}}<span class="sub mono">{{.}}</span>{{end}}{{if .Role}}<span class="sub">as {{.Role}}</span>{{end}}</td><td><span class="bad">{{.ErrorCode}}</span>{{if .Message}}<span class="sub">{{.Message}}</span>{{end}}</td></tr>{{end}}</tbody></table></div>{{end}}
+        {{if .Calls}}<details><summary>AWS calls from the application's nodes: {{len .Calls}} actions, {{num (int64 .Events)}} calls</summary><div class="inner">
+          <p class="explain">From CloudTrail's event history for the nodes' sessions (their instance profile) while the application ran, so EMR's own agents on those nodes are included. S3 object reads and writes are not.</p>
+          <div class="tbl"><table><thead><tr><th>Service</th><th>Action</th><th class="num">Calls</th><th class="num">Errors</th></tr></thead>
+          <tbody>{{range .Calls}}<tr><td class="mono">{{.Service}}</td><td class="mono">{{.Action}}{{if .ReadOnly}}<span class="sub">read-only</span>{{end}}</td><td class="num">{{.Count}}</td><td class="num">{{if .Errors}}<span class="bad">{{.Errors}}</span>{{else}}0{{end}}</td></tr>{{end}}</tbody></table></div>
+        </div></details>{{end}}{{end}}
         {{if $r.Identity.Missing}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $r.Identity.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
       </section>
 

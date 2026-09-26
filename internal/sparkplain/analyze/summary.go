@@ -9,11 +9,17 @@ import (
 
 func analyzeIdentity(c *ctx, r *model.Report) {
 	s := &r.Identity
-	s.Missing = []string{"AWS calls made by the job's role and every AccessDenied (needs CloudTrail, phase 3)"}
+	s.Missing = []string{"AWS calls made by the job's role and every AccessDenied (needs -cluster-id; CloudTrail)"}
+	if r.AWSCalls != nil && r.AWSCalls.Coverage != model.NoData {
+		s.Missing = append([]string{}, r.AWSCalls.Missing...)
+		for _, st := range r.Steps {
+			if st.AppID != "" && st.ExecutionRole != "" {
+				s.Missing = append(s.Missing, "Calls made under the step's runtime role: CloudTrail names those sessions after nothing sparkplain can look up, so only the nodes' instance-profile calls are listed")
+			}
+		}
+	}
 	if r.Cluster == nil {
 		s.Missing = append(s.Missing, "AWS roles: instance profile and EMR service role (needs -cluster-id)", "EMR security configuration (needs -cluster-id)")
-	} else {
-		s.Missing = append(s.Missing, "Runtime roles of individual steps, and what the security configuration turns on (phase 3)")
 	}
 	if c.logs == nil {
 		s.Missing = append(s.Missing, "Whether Hive metastore, HBase and Kerberos connections succeeded (needs the container logs: -cluster-id or -from)")

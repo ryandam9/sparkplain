@@ -49,10 +49,11 @@ type Input struct {
 	Thresholds  Thresholds
 
 	// From the EMR API and the cluster's logs (online and -from runs).
-	Cluster *model.Cluster
-	Steps   []model.Step
-	Logs    []model.LogFile
-	Metrics *model.MetricsSection // CloudWatch, when read
+	Cluster  *model.Cluster
+	Steps    []model.Step
+	Logs     []model.LogFile
+	Metrics  *model.MetricsSection  // CloudWatch, when read
+	AWSCalls *model.AWSCallsSection // CloudTrail, when read
 	// LogsRead says the run was asked to read the cluster's logs;
 	// LogSources are then its Sources rows (EMR API, container, step and
 	// node logs).
@@ -89,7 +90,7 @@ func Run(in Input) *model.Report {
 	if c.t == (Thresholds{}) {
 		c.t = DefaultThresholds()
 	}
-	r.Cluster, r.Steps, r.Metrics = in.Cluster, in.Steps, in.Metrics
+	r.Cluster, r.Steps, r.Metrics, r.AWSCalls = in.Cluster, in.Steps, in.Metrics, in.AWSCalls
 	if in.LogsRead {
 		r.Logs = &model.LogsSection{Coverage: model.Complete, Files: in.Logs}
 		if r.Logs.Files == nil {
@@ -119,7 +120,7 @@ func Run(in Input) *model.Report {
 	}
 	for _, a := range []func(*ctx, *model.Report){
 		analyzeConfig, analyzeExecutors, analyzeNodes, analyzeMemory, analyzeCPU,
-		analyzeIO, analyzeJobs, analyzeTimeline, analyzeLogs, analyzeMetrics, analyzeIdentity,
+		analyzeIO, analyzeJobs, analyzeTimeline, analyzeLogs, analyzeMetrics, analyzeIdentity, analyzeCalls,
 	} {
 		a(c, r)
 	}

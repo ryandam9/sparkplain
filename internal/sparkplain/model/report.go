@@ -36,6 +36,8 @@ type Report struct {
 	Logs    *LogsSection `json:"logs,omitempty"`
 	// Metrics come from CloudWatch (online runs).
 	Metrics *MetricsSection `json:"metrics,omitempty"`
+	// AWSCalls come from CloudTrail (online runs).
+	AWSCalls *AWSCallsSection `json:"awsCalls,omitempty"`
 }
 
 // Summary is the "What happened" block.

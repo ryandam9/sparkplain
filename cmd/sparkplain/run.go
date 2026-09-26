@@ -65,7 +65,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&o.maxSize, "max-size", "", "largest file or zip entry to read, e.g. 10GiB (default 10GiB)")
 	fs.DurationVar(&o.timeout, "overall-timeout", 0, "deadline for the whole run (default 30m)")
 	fs.BoolVar(&o.noCloudWatch, "no-cloudwatch", false, "skip CloudWatch metrics (fewer permissions needed)")
-	fs.BoolVar(&o.noCloudTrail, "no-cloudtrail", false, "skip CloudTrail enrichment (phase 3)")
+	fs.BoolVar(&o.noCloudTrail, "no-cloudtrail", false, "skip CloudTrail lookups (fewer permissions needed)")
 	fs.DurationVar(&o.windowPad, "window-pad", 5*time.Minute, "padding around the run's time window for CloudWatch and CloudTrail queries")
 	fs.BoolVar(&o.showVersion, "version", false, "print the version and exit")
 	fs.StringVar(&o.show, "show", "", "print the event at file:line (as the pages cite it), redacted, and exit")
@@ -109,11 +109,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 	online := o.clusterID != "" || o.clusterName != ""
 	if online && o.from != "" {
 		return fail("-from reads a local copy of the cluster's logs, and -cluster-id reads them from S3: pass one or the other")
-	}
-	for _, name := range []string{"no-cloudtrail"} {
-		if set[name] {
-			fmt.Fprintf(stderr, "sparkplain: note: -%s is for AWS enrichment (phase 3) and is ignored\n", name)
-		}
 	}
 
 	cfgPath, explicit := o.configPath, o.configPath != ""
@@ -290,6 +285,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		mode = "online"
 		logs.readLogs(ctx, cloud, log, o.appID, lim)
 		logs.readMetrics(ctx, cloud, log, o.noCloudWatch, o.windowPad)
+		logs.readCalls(ctx, cloud, log, o.noCloudTrail, o.windowPad)
 		if outputs["explorer"] {
 			var row *model.SourceStatus
 			if fetched, row = logs.fetchScripts(ctx, cloud, o.appID); row != nil {
@@ -318,6 +314,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		Steps:       logs.steps,
 		Logs:        logs.files,
 		Metrics:     logs.metrics,
+		AWSCalls:    logs.calls,
 		LogsRead:    online || o.from != "",
 	}
 	if logs.cluster != nil {
@@ -511,12 +508,14 @@ var awsDeps = struct {
 	emr        func(cfg aws.Config) awsmeta.EMRAPI
 	ec2        func(cfg aws.Config) awsmeta.EC2API
 	cloudwatch func(cfg aws.Config) awsmeta.CloudWatchAPI
+	cloudtrail func(cfg aws.Config) awsmeta.CloudTrailAPI
 	s3         func(ctx context.Context, cfg aws.Config, bucket string) (source.Store, error)
 }{
 	config:     source.LoadAWS,
 	emr:        awsmeta.NewEMR,
 	ec2:        awsmeta.NewEC2,
 	cloudwatch: awsmeta.NewCloudWatch,
+	cloudtrail: awsmeta.NewCloudTrail,
 	s3: func(ctx context.Context, cfg aws.Config, bucket string) (source.Store, error) {
 		return source.OpenS3(ctx, cfg, bucket)
 	},

@@ -29,6 +29,7 @@ type clusterLogs struct {
 	emr       *model.SourceStatus // the EMR API row; nil offline
 	ec2       *model.SourceStatus // the EC2 API row; nil offline
 	metrics   *model.MetricsSection
+	calls     *model.AWSCallsSection
 	files     []model.LogFile
 	sources   []model.SourceStatus
 }
@@ -482,4 +483,81 @@ func (out *clusterLogs) readMetrics(ctx context.Context, cloud *awsSession, log 
 		row.Status = "none"
 		row.Detail += " " + strings.Join(out.metrics.Missing, " ")
 	}
+}
+
+// readCalls looks up in CloudTrail what the nodes the application ran on
+// called, padded by pad on each side of the run.
+func (out *clusterLogs) readCalls(ctx context.Context, cloud *awsSession, log *model.EventLog, skip bool, pad time.Duration) {
+	row := model.SourceStatus{Name: "CloudTrail", Status: "read"}
+	defer func() { out.sources = append(out.sources, row) }()
+	if skip {
+		row.Status, row.Detail = "not-requested", "Not called: -no-cloudtrail."
+		return
+	}
+	from, to, ok := runWindow(log, out.files, out.steps)
+	if !ok {
+		row.Status, row.Detail = "not-supplied", "Not called: nothing says when the application ran (no event log, YARN summary or step)."
+		return
+	}
+	from, to = from.Add(-pad), to.Add(pad)
+	users := callers(out.cluster.Instances, log, out.files, from, to)
+	if len(users) == 0 {
+		row.Status, row.Detail = "none", "No node of the cluster is known to have run the application, so there was no one to look up."
+		return
+	}
+	cfg, err := cloud.config(ctx)
+	if err == nil {
+		out.calls, err = awsmeta.Calls(ctx, awsDeps.cloudtrail(cfg), users, from, to, time.Now())
+	}
+	if err != nil {
+		row.Status, row.Class, row.Detail = "error", awsmeta.ErrorClass(err), "Could not look up AWS calls (needs cloudtrail:LookupEvents): "+err.Error()
+		return
+	}
+	row.Detail = fmt.Sprintf("LookupEvents for %s (%s) from %s to %s UTC: %s events, %s refused.", model.Plural(len(users), "node", "nodes"), strings.Join(users, ", "),
+		from.UTC().Format("2006-01-02 15:04"), to.UTC().Format("15:04"), model.Num(int64(out.calls.Events)), model.Num(int64(len(out.calls.Denied))))
+	switch {
+	case out.calls.Coverage == model.NoData:
+		row.Status = "none"
+		row.Detail += " " + strings.Join(out.calls.Missing[1:], " ")
+	case out.calls.Truncated:
+		row.Status = "partial"
+	}
+}
+
+// callers are the instance IDs whose CloudTrail sessions made the
+// application's AWS calls: the nodes its driver and executors ran on, or
+// without an event log, the driver's node from YARN's records and every
+// worker node up during the run. The primary node is left out unless the
+// application ran there, since its EMR daemons call AWS all the time.
+func callers(instances []model.Instance, log *model.EventLog, files []model.LogFile, from, to time.Time) []string {
+	hosts := map[string]bool{}
+	if log != nil {
+		for _, x := range log.Executors {
+			hosts[shortHost(x.Host)] = true
+		}
+		if log.Driver != nil {
+			hosts[shortHost(log.Driver.Host)] = true
+		}
+	} else {
+		for _, f := range files {
+			for _, l := range f.Found {
+				if h := l.Fields["appMasterHost"]; h != "" {
+					hosts[shortHost(h)] = true
+				}
+				if h := l.Fields["ApplicationMasterhost"]; h != "" {
+					hosts[shortHost(h)] = true
+				}
+			}
+		}
+	}
+	var out []string
+	for _, in := range instances {
+		up := !(!in.Ended.IsZero() && in.Ended.Before(from)) && !(!in.Created.IsZero() && in.Created.After(to))
+		ran := hosts[shortHost(in.PrivateDNS)] || hosts[shortHost(in.PrivateIP)]
+		worker := !in.Primary && in.Role != "MASTER"
+		if ran || (log == nil && up && worker) {
+			out = append(out, in.ID)
+		}
+	}
+	return out
 }

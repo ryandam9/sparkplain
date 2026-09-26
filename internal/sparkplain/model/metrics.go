@@ -58,3 +58,41 @@ func (s Series) Mean() (float64, bool) {
 	}
 	return t / float64(len(s.Points)), true
 }
+
+// AWSCallsSection is what CloudTrail recorded for the nodes the
+// application ran on, in its time window: management events only, since
+// LookupEvents never returns S3 object calls.
+type AWSCallsSection struct {
+	Coverage  Coverage   `json:"coverage"`
+	From      time.Time  `json:"from"`
+	To        time.Time  `json:"to"`
+	Users     []string   `json:"users"` // the CloudTrail user names looked up (instance IDs)
+	Events    int        `json:"events"`
+	Calls     []AWSCall  `json:"calls"`
+	Denied    []AWSEvent `json:"denied"`
+	Truncated bool       `json:"truncated,omitempty"` // stopped at the event cap
+	Missing   []string   `json:"missing,omitempty"`
+}
+
+// AWSCall is how often one action was called.
+type AWSCall struct {
+	Service  string `json:"service"` // such as glue.amazonaws.com
+	Action   string `json:"action"`  // such as GetTable
+	Count    int    `json:"count"`
+	Errors   int    `json:"errors"`
+	ReadOnly bool   `json:"readOnly"`
+}
+
+// AWSEvent is one call AWS refused.
+type AWSEvent struct {
+	Time      time.Time `json:"time"`
+	User      string    `json:"user"`
+	Role      string    `json:"role,omitempty"` // the IAM role the session belonged to
+	Service   string    `json:"service"`
+	Action    string    `json:"action"`
+	ErrorCode string    `json:"errorCode"`
+	Message   string    `json:"message,omitempty"` // redacted
+	Resources []string  `json:"resources,omitempty"`
+	EventID   string    `json:"eventId"`
+	Source    string    `json:"source"`
+}
