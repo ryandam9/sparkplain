@@ -140,7 +140,7 @@ func executorFindings(c *ctx) {
 				ev = append(ev, model.Evidence{Text: fmt.Sprintf("… and %d more", len(xs)-5)})
 				break
 			}
-			ev = append(ev, model.Evidence{Source: x.RemovedSource, Text: fmt.Sprintf("executor %s on %s: “%s”", x.ID, x.Host, x.RemovedReason)})
+			ev = append(ev, model.Evidence{Source: x.RemovedSource, Ref: model.ExecutorRef(x.ID), Text: fmt.Sprintf("executor %s on %s: “%s”", x.ID, x.Host, x.RemovedReason)})
 		}
 		return ev
 	}

@@ -150,10 +150,11 @@ func memoryFindings(c *ctx, s *model.MemorySection) {
 	// Over-provisioned: the busiest executor stayed well under its heap.
 	var maxHeap int64
 	var maxSrc model.Source
+	var maxRef string
 	var runTotal int64
 	for _, e := range s.Executors {
 		if e.PeakHeap > maxHeap {
-			maxHeap, maxSrc = e.PeakHeap, e.Source
+			maxHeap, maxSrc, maxRef = e.PeakHeap, e.Source, model.ExecutorRef(e.ID)
 		}
 	}
 	for _, x := range c.log.Executors {
@@ -167,7 +168,7 @@ func memoryFindings(c *ctx, s *model.MemorySection) {
 				Title: fmt.Sprintf("Executors used at most %s of their %s heap", model.Percent(sh), model.Bytes(m.HeapBytes)),
 				Explanation: fmt.Sprintf("The highest heap use seen on any executor was %s. Spark samples memory on heartbeats and at task end, so short peaks can be missed, but a gap this large usually means the executors could be smaller.",
 					model.Bytes(maxHeap)),
-				Evidence: []model.Evidence{{Source: maxSrc, Text: "highest JVMHeapMemory sample: " + model.Bytes(maxHeap)}},
+				Evidence: []model.Evidence{{Source: maxSrc, Ref: maxRef, Text: "highest JVMHeapMemory sample: " + model.Bytes(maxHeap)}},
 				Fix:      fmt.Sprintf("Try spark.executor.memory around %s and compare run time and spill.", model.Bytes(roundUpGiB(int64(float64(maxHeap)*1.5)))),
 			})
 		} else if sh > 0.9 {
@@ -175,7 +176,7 @@ func memoryFindings(c *ctx, s *model.MemorySection) {
 				Rule: "memory-heap-near-limit", Severity: model.Warning, Section: "memory",
 				Title:       fmt.Sprintf("An executor's heap reached %s of its limit", model.Percent(sh)),
 				Explanation: "Heap use this close to the limit leads to long garbage collection pauses and, if it grows further, OutOfMemoryError.",
-				Evidence:    []model.Evidence{{Source: maxSrc, Text: "highest JVMHeapMemory sample: " + model.Bytes(maxHeap) + " of " + model.Bytes(m.HeapBytes)}},
+				Evidence:    []model.Evidence{{Source: maxSrc, Ref: maxRef, Text: "highest JVMHeapMemory sample: " + model.Bytes(maxHeap) + " of " + model.Bytes(m.HeapBytes)}},
 				Fix:         "Raise spark.executor.memory, or reduce what each task holds (more shuffle partitions, fewer cores per executor).",
 			})
 		}
@@ -194,7 +195,7 @@ func memoryFindings(c *ctx, s *model.MemorySection) {
 			if i == 5 {
 				break
 			}
-			ev = append(ev, model.Evidence{Source: e.Source, Text: fmt.Sprintf("executor %s on %s: %s of task time in garbage collection", e.ID, e.Host, model.Percent(e.GCShare))})
+			ev = append(ev, model.Evidence{Source: e.Source, Ref: model.ExecutorRef(e.ID), Text: fmt.Sprintf("executor %s on %s: %s of task time in garbage collection", e.ID, e.Host, model.Percent(e.GCShare))})
 		}
 		c.add(model.Finding{
 			Rule: "memory-gc-pressure", Severity: model.Warning, Section: "memory",
@@ -225,7 +226,7 @@ func memoryFindings(c *ctx, s *model.MemorySection) {
 			ev = append(ev, model.Evidence{Text: fmt.Sprintf("… and %d more stages", len(spilled)-5)})
 			break
 		}
-		ev = append(ev, model.Evidence{Source: sp.Source, Text: fmt.Sprintf("stage %d (%s): %s spilled to disk, %s", sp.StageID, sp.Name, model.Bytes(sp.DiskBytes), spillComparison(sp))})
+		ev = append(ev, model.Evidence{Source: sp.Source, Ref: model.StageRef(sp.StageID, sp.Attempt), Text: fmt.Sprintf("stage %d (%s): %s spilled to disk, %s", sp.StageID, sp.Name, model.Bytes(sp.DiskBytes), spillComparison(sp))})
 	}
 	title := fmt.Sprintf("Stage %d spilled %s to disk", spilled[0].StageID, model.Bytes(total))
 	if len(spilled) > 1 {

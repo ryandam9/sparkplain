@@ -148,7 +148,7 @@ func skewFindings(c *ctx) {
 			Rule: "stage-skew", Severity: sev, Section: "stages",
 			Title:       fmt.Sprintf("Stage %d is skewed: one task ran %.0f× longer than the median", st.ID, float64(d.Max)/float64(d.P50)),
 			Explanation: expl,
-			Evidence: []model.Evidence{{Source: st.Slowest.Source, Text: fmt.Sprintf("task %d (partition %d) on executor %s, %s",
+			Evidence: []model.Evidence{{Source: st.Slowest.Source, Ref: model.StageRef(st.ID, st.Attempt), Text: fmt.Sprintf("task %d (partition %d) on executor %s, %s",
 				st.Slowest.TaskID, st.Slowest.Index, st.Slowest.ExecutorID, model.Duration(st.Slowest.DurationMs))}},
 			Fix: fix,
 		})
@@ -191,10 +191,10 @@ func failureFindings(c *ctx) {
 			expl += "The application carried on afterwards, so the code probably caught the error; check that its output is still complete. "
 		}
 		expl += "Error: " + shortError(j.Failure)
-		ev := []model.Evidence{{Source: j.EndSource, Text: truncateText(firstLineOf(j.Failure), 300)}}
+		ev := []model.Evidence{{Source: j.EndSource, Ref: model.JobRef(j.ID), Text: truncateText(firstLineOf(j.Failure), 300)}}
 		if st := failedStageOf(c, j); st != nil {
 			for _, f := range st.Failures {
-				ev = append(ev, model.Evidence{Source: f.Source, Text: fmt.Sprintf("stage %d: %s × %s", st.ID, model.Num(f.Count), f.Message)})
+				ev = append(ev, model.Evidence{Source: f.Source, Ref: model.StageRef(st.ID, st.Attempt), Text: fmt.Sprintf("stage %d: %s × %s", st.ID, model.Num(f.Count), f.Message)})
 			}
 		}
 		c.add(model.Finding{Rule: "job-failed", Severity: sev, Section: "stages", Title: title, Explanation: expl, Evidence: ev,
@@ -203,7 +203,7 @@ func failureFindings(c *ctx) {
 	if len(failed) > 5 {
 		c.add(model.Finding{Rule: "job-failed", Severity: model.Warning, Section: "stages",
 			Title: fmt.Sprintf("%d more jobs failed", len(failed)-5), Explanation: "Only the first five failed jobs are listed in detail. The Jobs table shows all of them.",
-			Evidence: []model.Evidence{{Source: failed[5].EndSource, Text: fmt.Sprintf("job %d", failed[5].ID)}}})
+			Evidence: []model.Evidence{{Source: failed[5].EndSource, Ref: model.JobRef(failed[5].ID), Text: fmt.Sprintf("job %d", failed[5].ID)}}})
 	}
 	// Stage retries.
 	for _, st := range c.log.Stages {
@@ -219,7 +219,7 @@ func failureFindings(c *ctx) {
 		c.add(model.Finding{Rule: "stage-retried", Severity: model.Warning, Section: "stages",
 			Title:       fmt.Sprintf("Stage %d ran again (attempt %d)", st.ID, st.Attempt+1),
 			Explanation: fmt.Sprintf("Spark re-ran stage %d because %s. This usually follows a lost executor or failed shuffle fetch, and it repeats all the stage's work.", st.ID, reason),
-			Evidence:    []model.Evidence{{Source: st.Source, Text: fmt.Sprintf("Stage Attempt ID %d", st.Attempt)}},
+			Evidence:    []model.Evidence{{Source: st.Source, Ref: model.StageRef(st.ID, st.Attempt), Text: fmt.Sprintf("Stage Attempt ID %d", st.Attempt)}},
 			Fix:         "Look for lost executors at the same time. Enabling the external shuffle service keeps shuffle files when executors die."})
 	}
 	// Tasks that failed in stages that still succeeded.

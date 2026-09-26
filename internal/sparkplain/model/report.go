@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"strconv"
+	"time"
+)
 
 // Report is the full output of one run: what the HTML shows and what the
 // JSON export contains.
@@ -57,7 +60,18 @@ type SectionStatus struct {
 type Evidence struct {
 	Source Source `json:"source,omitzero"`
 	Text   string `json:"text"`
+	// Ref names the stage, job, executor or query the evidence is about, as
+	// "stage:27.0", "job:12", "executor:3" or "query:4", so the explorer
+	// page can link to it. Empty when it is about the run as a whole.
+	Ref string `json:"ref,omitempty"`
 }
+
+// StageRef, JobRef and ExecutorRef build Evidence.Ref values.
+func StageRef(id, attempt int) string {
+	return "stage:" + strconv.Itoa(id) + "." + strconv.Itoa(attempt)
+}
+func JobRef(id int) string         { return "job:" + strconv.Itoa(id) }
+func ExecutorRef(id string) string { return "executor:" + id }
 
 // Finding is one problem or notable fact, with evidence and a suggested fix.
 type Finding struct {
