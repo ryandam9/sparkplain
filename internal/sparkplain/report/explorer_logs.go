@@ -76,7 +76,7 @@ func logData(r *model.Report) ([]xLogFile, []xLogSource, *xCluster) {
 	}
 	for _, s := range r.Sources {
 		switch s.Name {
-		case "EMR API", "EC2 API", "Container logs", "Step logs", "Node logs", "Application code":
+		case "EMR API", "EC2 API", "Container logs", "Step logs", "Node logs", "Application code", "CloudWatch", "CloudTrail":
 		default:
 			continue
 		}
@@ -139,4 +139,78 @@ func clipText(s string, n int) string {
 		n--
 	}
 	return s[:n] + "…"
+}
+
+// xNodeRow is one row of the explorer's Cluster tab.
+type xNodeRow struct {
+	Host      string          `json:"host"`
+	Instance  *model.Instance `json:"instance,omitempty"`
+	Driver    bool            `json:"driver,omitempty"`
+	Executors []string        `json:"executors"`
+	YARNMem   int64           `json:"yarnMem,omitempty"`
+	YARNCores int             `json:"yarnCores,omitempty"`
+	CPUAvg    *float64        `json:"cpuAvg,omitempty"`
+	CPUPeak   *float64        `json:"cpuPeak,omitempty"`
+}
+
+// xSeries is a metric's points as [Unix ms, value] pairs.
+type xSeries struct {
+	Name   string       `json:"name"`
+	Stat   string       `json:"stat"`
+	Scope  string       `json:"scope"`
+	Unit   string       `json:"unit"`
+	Points [][2]float64 `json:"points"`
+}
+
+// xAWS is what the explorer's Cluster tab shows from CloudWatch and
+// CloudTrail.
+type xAWS struct {
+	Nodes       []xNodeRow             `json:"nodes"`
+	From        int64                  `json:"from,omitempty"`
+	To          int64                  `json:"to,omitempty"`
+	Metrics     []xSeries              `json:"metrics"`
+	MetricFacts []model.Fact           `json:"metricFacts,omitempty"`
+	MetricsGaps []string               `json:"metricsGaps,omitempty"`
+	Calls       []model.AWSCall        `json:"calls"`
+	Denied      []model.AWSEvent       `json:"denied"`
+	CallsGaps   []string               `json:"callsGaps,omitempty"`
+	CallUsers   []string               `json:"callUsers,omitempty"`
+	CallEvents  int                    `json:"callEvents,omitempty"`
+	Security    *model.SecurityPosture `json:"security,omitempty"`
+	Groups      []model.InstanceGroup  `json:"groups,omitempty"`
+}
+
+// awsData encodes the cluster's nodes, metrics and AWS calls.
+func awsData(r *model.Report) *xAWS {
+	if r.Cluster == nil && r.Metrics == nil && r.AWSCalls == nil {
+		return nil
+	}
+	a := &xAWS{Nodes: []xNodeRow{}, Metrics: []xSeries{}, Calls: []model.AWSCall{}, Denied: []model.AWSEvent{}}
+	if r.Cluster != nil {
+		a.Security, a.Groups = r.Cluster.Security, r.Cluster.Groups
+	}
+	for _, h := range r.Nodes.Hosts {
+		row := xNodeRow{Host: h.Name, Instance: h.Instance, Driver: h.Driver, Executors: orEmpty(h.Executors), YARNMem: h.YARNMemoryBytes, YARNCores: h.YARNVCores}
+		if h.HostCPU != nil {
+			row.CPUAvg, row.CPUPeak = &h.HostCPU.Average, &h.HostCPU.Peak
+		}
+		a.Nodes = append(a.Nodes, row)
+	}
+	if m := r.Metrics; m != nil {
+		a.From, a.To, a.MetricFacts, a.MetricsGaps = unixMs(m.From), unixMs(m.To), m.Summary, m.Missing
+		for _, s := range append(append([]model.Series{}, m.Cluster...), m.Hosts...) {
+			if len(s.Points) == 0 {
+				continue
+			}
+			x := xSeries{Name: s.Name, Stat: s.Stat, Scope: s.Scope, Unit: s.Unit}
+			for _, p := range s.Points {
+				x.Points = append(x.Points, [2]float64{float64(unixMs(p.T)), p.V})
+			}
+			a.Metrics = append(a.Metrics, x)
+		}
+	}
+	if c := r.AWSCalls; c != nil {
+		a.Calls, a.Denied, a.CallsGaps, a.CallUsers, a.CallEvents = orEmpty(c.Calls), orEmpty(c.Denied), c.Missing, c.Users, c.Events
+	}
+	return a
 }

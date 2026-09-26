@@ -78,7 +78,7 @@ func (h hit) says() string {
 		if m := l.Fields["rootMessage"]; m != "" {
 			s += ": " + m
 		}
-		if !strings.Contains(l.Text, root) && l.Kind != model.LogTraceback {
+		if !strings.Contains(l.Text, root) && l.Kind != model.LogTraceback && !strings.HasPrefix(l.Text, "Traceback") {
 			s = strings.TrimSuffix(l.Text, ".") + " — " + s
 		}
 	}

@@ -267,6 +267,7 @@
   // ---------- views ----------
   var TABS = [["overview", "Overview"], ["jobs", "Jobs", jobs.length], ["stages", "Stages", stages.length], ["executors", "Executors", execs.length],
     ["sql", "SQL / DataFrame", queries.length], ["storage", "Storage", rdds.length], ["code", "Code"], ["environment", "Environment"], ["log", "Event log"]];
+  if (D.aws) TABS.push(["cluster", "Cluster", D.aws.nodes.length]);
   if (logFiles.length || (D.logSources || []).length) TABS.push(["logs", "Logs", logFiles.length]);
   var tabs = document.getElementById("sp-tabs");
   TABS.forEach(function (t) { tabs.appendChild(el("a", { href: "#" + t[0], "data-tab": t[0] }, t[1], t[2] != null ? el("span", { cls: "n", text: num(t[2]) }) : null)); });
@@ -1121,7 +1122,39 @@
   }
   var STATUS_NOTE = " Blue: succeeded. Red: failed. Grey: running, incomplete or skipped.";
 
+  // seriesTable joins metric series on their timestamps into one table.
+  function seriesTable(list, label) {
+    var times = {}, cols = list.map(function (s) { var m = {}; s.points.forEach(function (p) { m[p[0]] = p[1]; times[p[0]] = 1; }); return m; });
+    var dt = new google.visualization.DataTable();
+    dt.addColumn("datetime", "Time");
+    list.forEach(function (s) { dt.addColumn("number", label(s)); });
+    Object.keys(times).map(Number).sort(function (x, y) { return x - y; }).forEach(function (t) {
+      dt.addRow([new Date(t)].concat(cols.map(function (m) { return m[t] == null ? null : m[t]; })));
+    });
+    return dt;
+  }
+  function metric(name, stat, scope) {
+    return ((D.aws || {}).metrics || []).filter(function (s) { return s.name === name && (!stat || s.stat === stat) && (!scope || s.scope === scope); });
+  }
   var DRAW = {
+    clusterContainers: function (c, th) {
+      var list = metric("ContainerAllocated").concat(metric("ContainerPending"));
+      if (!list.length) { waitText(c, "CloudWatch had no container counts for this run."); return; }
+      var plot = frame(c, "Containers YARN had placed and containers waiting for room, across the whole cluster, every minute. This application ran from " + (a.start ? tfmt.format(new Date(a.start)) : "?") + " to " + (a.end ? tfmt.format(new Date(a.end)) : "?") + ". Waiting while memory is free means the containers were too big to fit.");
+      new google.visualization.SteppedAreaChart(plot).draw(seriesTable(list, function (s) { return s.name === "ContainerPending" ? "Waiting" : "Allocated"; }), baseOpts(th, {
+        colors: [th.series, th.fail], areaOpacity: 0.12, connectSteps: true, isStacked: false, hAxis: withFormat(baseOpts(th).hAxis, "HH:mm"), vAxis: axis(th, { title: "Containers", minValue: 0, format: "#,###" })
+      }));
+    },
+    nodeCPU: function (c, th) {
+      var list = metric("CPUUtilization", "Average");
+      if (!list.length) { waitText(c, "CloudWatch had no CPU figures for these nodes."); return; }
+      var name = {};
+      D.aws.nodes.forEach(function (n) { if (n.instance) name[n.instance.id] = n.instance.id + (n.driver ? " (driver)" : n.executors.length ? " (" + n.executors.length + " executors)" : n.instance.role === "MASTER" ? " (primary)" : " (idle)"); });
+      var plot = frame(c, "Each node's CPU, averaged over EC2's 5-minute periods: the whole machine, so daemons and other applications count too.");
+      new google.visualization.LineChart(plot).draw(seriesTable(list, function (s) { return name[s.scope] || s.scope; }), baseOpts(th, {
+        lineWidth: 2, pointSize: 5, hAxis: withFormat(baseOpts(th).hAxis, "HH:mm"), vAxis: axis(th, { title: "CPU %", minValue: 0, maxValue: 100 })
+      }));
+    },
     running: function (c, th) {
       var R = D.running;
       if (!R || !R.busy.length) { waitText(c, D.collected ? "No tasks finished, so there is nothing to chart." : "Per-task detail was not collected for this run."); return; }
@@ -1369,6 +1402,58 @@
       ] }));
     }
     if (st.notes && st.notes.length) s.appendChild(el("div", { cls: "missing" }, el("h3", { text: "Notes from reading it" }), el("ul", null, st.notes.map(function (n) { return el("li", { text: n }); }))));
+    return s;
+  };
+
+  views.cluster = function () {
+    var A = D.aws;
+    if (!A) return notFound("Cluster");
+    var s = section("Cluster", "The nodes the cluster had while this application ran, how busy they were, and what AWS calls they made. From the EMR, EC2, CloudWatch and CloudTrail APIs.");
+    var gs = (A.groups || []).map(function (g) { return fact({ MASTER: "Primary", CORE: "Core", TASK: "Task" }[g.role] || g.role, g.instanceTypes.join(", ") + (g.market ? " · " + ({ SPOT: "spot", ON_DEMAND: "on-demand" }[g.market] || g.market) : ""), num(g.requested) + " requested" + (g.running ? ", " + num(g.running) + " running now" : "") + (g.fleet ? " (instance fleet)" : "") + "."); });
+    if (gs.length) s.appendChild(el("div", { cls: "facts" }, gs));
+    if (A.security) {
+      var p = A.security, on = function (b) { return b ? "on" : "off"; };
+      s.appendChild(el("h3", { text: "Security configuration: " + p.name }));
+      s.appendChild(el("div", { cls: "facts" }, fact("Encryption at rest", on(p.atRestEncryption) + (p.s3Encryption ? " (S3 " + p.s3Encryption + ")" : "")), fact("Encryption in transit", on(p.inTransitEncryption)),
+        fact("Kerberos", p.kerberos || "off"), fact("Lake Formation", on(p.lakeFormation)), fact("Runtime roles", on(p.runtimeRoles))));
+    }
+    s.appendChild(el("h3", { text: "Nodes" }));
+    s.appendChild(table({
+      rows: A.nodes, sort: 0, dir: "asc",
+      rowCls: function (n) { return n.instance && !n.executors.length && !n.driver && n.instance.role !== "MASTER" ? "failedrow" : null; },
+      cols: [
+        { h: "Host", v: function (n) { return n.host; }, f: function (n) { return el("span", { cls: "mono", text: n.host }); } },
+        { h: "Ran", v: function (n) { return n.executors.length; }, f: function (n) {
+          if (!n.executors.length) return n.driver ? "the driver only" : n.instance && n.instance.role === "MASTER" ? "primary node" : el("span", { cls: "bad", text: "nothing" });
+          return el("span", null, n.driver ? "driver, " : "", n.executors.map(function (x, i) { return [i ? ", " : "", execLink(x)]; }));
+        } },
+        { h: "Instance", v: function (n) { return n.instance ? n.instance.id : ""; }, f: function (n) {
+          var i = n.instance;
+          return i ? el("span", null, el("span", { cls: "mono", text: i.id }), el("span", { cls: "sub", text: [({ MASTER: "primary", CORE: "core", TASK: "task" }[i.role] || ""), i.type, i.vcpu ? i.vcpu + " vCPU, " + bytes(i.memoryBytes) : "", ({ SPOT: "spot", ON_DEMAND: "on-demand" }[i.market] || "")].filter(Boolean).join(" · ") })) : "—";
+        } },
+        { h: "YARN offered", num: true, v: function (n) { return n.yarnMem || 0; }, f: function (n) { return n.yarnMem ? bytes(n.yarnMem) + ", " + n.yarnCores + " vCores" : "—"; } },
+        { h: "Node CPU", num: true, v: function (n) { return n.cpuAvg == null ? -1 : n.cpuAvg; }, f: function (n) { return n.cpuAvg == null ? "—" : el("span", null, Math.round(n.cpuAvg) + "% avg", el("span", { cls: "sub", text: Math.round(n.cpuPeak) + "% peak" })); } }
+      ]
+    }));
+    if ((A.metricFacts || []).length) s.appendChild(el("div", { cls: "facts" }, A.metricFacts.map(function (f) { return fact(f.label, f.value, f.explain); })));
+    if (A.metrics.length) { s.appendChild(chartSlot("", "clusterContainers")); s.appendChild(chartSlot("", "nodeCPU")); }
+    if ((A.metricsGaps || []).length) s.appendChild(el("div", { cls: "missing" }, el("h3", { text: "Not in CloudWatch" }), el("ul", null, A.metricsGaps.map(function (g) { return el("li", { text: g }); }))));
+    if (A.callUsers && A.callUsers.length) {
+      s.appendChild(el("h3", { text: "AWS calls" }));
+      s.appendChild(explain(num(A.callEvents) + " calls recorded by CloudTrail for " + A.callUsers.join(", ") + " while the application ran, including EMR's own agents on those nodes."));
+      if (A.denied.length) s.appendChild(table({ rows: A.denied, sort: 0, dir: "asc", cols: [
+        { h: "Time", num: true, v: function (e) { return Date.parse(e.time); }, f: function (e) { return when(Date.parse(e.time)); } },
+        { h: "Refused call", v: function (e) { return e.service + " " + e.action; }, f: function (e) { return el("span", null, el("span", { cls: "mono", text: e.service + " " + e.action }), (e.resources || []).map(function (r) { return el("span", { cls: "sub mono", text: r }); }), e.role ? el("span", { cls: "sub", text: "as " + e.role }) : null); } },
+        { h: "Error", v: function (e) { return e.errorCode; }, f: function (e) { return el("span", null, el("span", { cls: "bad", text: e.errorCode }), e.message ? el("span", { cls: "sub", text: e.message }) : null); } }
+      ] }));
+      s.appendChild(table({ rows: A.calls, sort: 2, dir: "desc", filter: "Filter calls", text: function (x) { return x.service + " " + x.action; }, cols: [
+        { h: "Service", v: function (x) { return x.service; }, f: function (x) { return el("span", { cls: "mono", text: x.service }); } },
+        { h: "Action", v: function (x) { return x.action; }, f: function (x) { return el("span", { cls: "mono", text: x.action }); } },
+        { h: "Calls", num: true, v: function (x) { return x.count; }, f: function (x) { return num(x.count); } },
+        { h: "Errors", num: true, v: function (x) { return x.errors; }, f: function (x) { return x.errors ? el("span", { cls: "bad", text: num(x.errors) }) : "0"; } }
+      ] }));
+      if ((A.callsGaps || []).length) s.appendChild(el("div", { cls: "missing" }, el("h3", { text: "Not in CloudTrail's lookup" }), el("ul", null, A.callsGaps.map(function (g) { return el("li", { text: g }); }))));
+    }
     return s;
   };
 

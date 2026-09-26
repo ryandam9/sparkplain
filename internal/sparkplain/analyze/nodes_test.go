@@ -144,3 +144,13 @@ func TestSettingOrigins(t *testing.T) {
 		t.Errorf("missing = %v", r.Config.Missing)
 	}
 }
+
+// An application that failed before any executor started does not get an
+// idle-nodes finding: its failure is the story.
+func TestNoIdleNodesWithoutExecutors(t *testing.T) {
+	l := synthetic(nil)
+	cl := &model.Cluster{ID: "j-1", Instances: []model.Instance{{ID: "i-2", PrivateDNS: "ip-10-0-0-2.ec2.internal", Role: "CORE"}}}
+	if _, ok := rules(Run(Input{Tool: "t", EventLog: l, EventSource: model.SourceStatus{Name: "Spark event log", Status: "read"}, Cluster: cl}))["idle-nodes"]; ok {
+		t.Error("idle-nodes for an application with no executors")
+	}
+}

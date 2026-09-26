@@ -373,7 +373,13 @@ func joinInstances(c *ctx, r *model.Report, hosts map[string]*model.Host, get fu
 // nodeFindings reports worker nodes that ran no executors, and spot nodes
 // that went away while the application ran.
 func nodeFindings(c *ctx, r *model.Report, idle []*model.Host) {
-	if len(idle) > 0 {
+	ran := 0
+	for _, h := range r.Nodes.Hosts {
+		ran += len(h.Executors)
+	}
+	// An application that never got an executor failed before it could use
+	// the nodes; its failure is the finding, not the idle nodes.
+	if len(idle) > 0 && ran > 0 {
 		workers := 0
 		for _, h := range r.Nodes.Hosts {
 			if h.Instance != nil && !h.Instance.Primary && h.Instance.Role != "MASTER" {

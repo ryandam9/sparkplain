@@ -3,6 +3,7 @@ package report
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
 )
@@ -48,5 +49,33 @@ func TestExplorerCarriesLogs(t *testing.T) {
 	}
 	if d["cluster"].(map[string]any)["id"] != "j-1" {
 		t.Errorf("cluster = %v", d["cluster"])
+	}
+}
+
+func TestExplorerCarriesClusterData(t *testing.T) {
+	r, x := buildWithExplorer(t, "application_1790380000000_0042")
+	at := time.Unix(1_790_000_000, 0).UTC()
+	avg, peak := 42.0, 90.0
+	r.Cluster = &model.Cluster{ID: "j-1", Groups: []model.InstanceGroup{{ID: "ig-1", Role: "CORE", InstanceTypes: []string{"m5.xlarge"}, Requested: 2}}}
+	r.Nodes.Hosts = append(r.Nodes.Hosts, model.Host{Name: "ip-10-0-0-9", Instance: &model.Instance{ID: "i-9", Role: "CORE"}, YARNMemoryBytes: 12 << 30, HostCPU: &model.HostCPU{Average: avg, Peak: peak}})
+	r.Metrics = &model.MetricsSection{From: at, To: at.Add(time.Hour), Cluster: []model.Series{{Name: "ContainerPending", Stat: "Maximum", Scope: "j-1", Points: []model.Point{{T: at, V: 3}}},
+		{Name: "AppsRunning", Stat: "Maximum", Scope: "j-1"}}}
+	r.AWSCalls = &model.AWSCallsSection{Users: []string{"i-9"}, Events: 1, Calls: []model.AWSCall{{Service: "sts.amazonaws.com", Action: "AssumeRole", Count: 1, Errors: 1}},
+		Denied: []model.AWSEvent{{Service: "sts.amazonaws.com", Action: "AssumeRole", ErrorCode: "AccessDenied", Message: "</script><script>alert(3)</script>"}}}
+	page := renderExplorer(t, r, x)
+	if strings.Contains(page, "<script>alert(3)") {
+		t.Fatal("a CloudTrail message reached the page unescaped")
+	}
+	a := embedded(t, page)["aws"].(map[string]any)
+	nodes := a["nodes"].([]any)
+	last := nodes[len(nodes)-1].(map[string]any)
+	if last["cpuAvg"].(float64) != 42 || last["yarnMem"].(float64) != float64(12<<30) {
+		t.Errorf("node = %v", last)
+	}
+	if ms := a["metrics"].([]any); len(ms) != 1 || ms[0].(map[string]any)["name"] != "ContainerPending" {
+		t.Errorf("metrics (empty series dropped) = %v", ms)
+	}
+	if len(a["denied"].([]any)) != 1 || len(a["groups"].([]any)) != 1 {
+		t.Errorf("aws = %v", a)
 	}
 }
