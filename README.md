@@ -31,7 +31,13 @@ It writes three files to `~/sparkplain/<yyyy-mm-dd>/<app-id>/` (or `-out`):
 - `report.json`: the same content for other tools.
 - `explorer.html`: an interactive, History Server–style view of the run (jobs, stages with task summaries and samples, executors, SQL plans, storage, environment). It loads Google Charts from `www.gstatic.com`, so its charts need internet access; its tables work without it.
 
-`-format` picks which to write, e.g. `-format html,json` (or `both`) to skip the explorer. Run `sparkplain -h` for all flags; SPEC §6 describes them and the config file.
+`-format` picks which to write, e.g. `-format html,json` (or `both`) to skip the explorer.
+
+Every value on the pages cites the event-log line it came from. To read that event, redacted:
+
+```sh
+sparkplain -app-id application_1700000000000_0042 -eventlog ./application_1700000000000_0042.lz4 -show application_1700000000000_0042.lz4:1234
+``` Run `sparkplain -h` for all flags; SPEC §6 describes them and the config file.
 
 Exit codes: 0 complete, 2 fatal, 3 partial (something missing or unreadable, which the report's Sources panel explains), 130 interrupted.
 

@@ -127,6 +127,11 @@ type xData struct {
 	RunTasks   table                `json:"runningTasks"`
 	RunCapped  bool                 `json:"runningCapped"`
 	BlockKinds table                `json:"blockKinds"`
+	Data       table                `json:"data"`
+	Profiles   table                `json:"profiles"`
+	Critical   []int                `json:"critical"`
+	CritJob    int                  `json:"criticalJob"`
+	LogStats   *model.EventLogStats `json:"logStats,omitempty"`
 	Collected  bool                 `json:"collected"` // explorer data was gathered
 	Limits     model.ExplorerLimits `json:"limits"`
 	Shrinks    int                  `json:"shrinks"`
@@ -331,7 +336,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		"tasks", "ok", "failed", "killed", "dur", "run", "gc", "input", "inputRows", "output", "outputRows",
 		"shRead", "shReadRows", "shWrite", "shWriteRows", "memSpill", "diskSpill", "p50", "max", "failure", "cached", "src",
 		"taskType", "loc", "sched", "resultSize", "gettingMs", "shWriteMs", "shRemote", "shRemoteDisk", "shLocalBlocks", "shRemoteBlocks",
-		"push", "cacheWrites", "failures", "details", "rp", "pushOn", "pushMergers", "barrier", "props")
+		"push", "cacheWrites", "failures", "details", "rp", "pushOn", "pushMergers", "barrier", "props", "cpuNs")
 	for _, st := range r.Jobs.Stages {
 		t := st.Totals
 		d.Stages.add(st.ID, st.Attempt, st.Name, st.Status, unixMs(st.Submitted), unixMs(st.Completed), st.NumTasks,
@@ -344,7 +349,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 			t.ShuffleRemoteToDiskBytes, t.ShuffleLocalBlocks, t.ShuffleRemoteBlocks,
 			[]int64{t.PushMergedLocalBlocks, t.PushMergedLocalBytes, t.PushMergedRemoteBlocks, t.PushMergedRemoteBytes, t.PushFallbacks, t.PushCorruptChunks, t.PushMergedRemoteReqsMs},
 			[]int64{t.UpdatedBlocks, t.UpdatedBlockBytes}, stageFailures(st),
-			st.Details, st.ResourceProfile, st.ShufflePush, st.PushMergers, isBarrier(st), orMap(st.Properties))
+			st.Details, st.ResourceProfile, st.ShufflePush, st.PushMergers, isBarrier(st), orMap(st.Properties), t.CPUTimeNs)
 		if len(st.RDDs) > 0 && len(st.RDDs) <= maxStageOpNodes && len(d.StageOps) < maxStageOpStages {
 			d.StageOps[strconv.Itoa(st.ID)+"."+strconv.Itoa(st.Attempt)] = stageOps(st)
 		}
@@ -376,6 +381,15 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		}
 		d.RDDs.add(c.ID, c.Name, c.StorageLevel, c.Partitions, c.FirstStage, c.Unpersisted, c.MemoryBytes, c.DiskBytes, c.SizeKnown, placed)
 	}
+	d.Data = newTable("kind", "access", "name", "format", "src")
+	for _, x := range r.IO.Data {
+		d.Data.add(x.Kind, x.Access, x.Name, x.Format, src(x.Source))
+	}
+	d.Profiles = newTable("id", "cores", "memMiB", "overheadMiB", "offHeapMiB", "pysparkMiB", "taskCpus", "execOther", "taskOther", "src")
+	for _, p := range r.Config.ResourceProfiles {
+		d.Profiles.add(p.ID, p.ExecutorCores, p.ExecutorMemoryMB, p.OverheadMB, p.OffHeapMB, p.PySparkMemoryMB, p.TaskCPUs, orMap(p.ExecutorOther), orMap(p.TaskOther), src(p.Source))
+	}
+	d.Critical, d.CritJob, d.LogStats = orEmpty(r.Jobs.CriticalPath), r.Jobs.CriticalJob, r.EventLog
 	d.BlockKinds = newTable("kind", "updates", "maxMem", "maxDisk")
 	for _, k := range r.IO.BlockKinds {
 		d.BlockKinds.add(k.Kind, k.Updates, k.MaxMemory, k.MaxDisk)

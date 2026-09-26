@@ -228,7 +228,7 @@
 
   // ---------- views ----------
   var TABS = [["overview", "Overview"], ["jobs", "Jobs", jobs.length], ["stages", "Stages", stages.length], ["executors", "Executors", execs.length],
-    ["sql", "SQL / DataFrame", queries.length], ["storage", "Storage", rdds.length], ["environment", "Environment"]];
+    ["sql", "SQL / DataFrame", queries.length], ["storage", "Storage", rdds.length], ["environment", "Environment"], ["log", "Event log"]];
   var tabs = document.getElementById("sp-tabs");
   TABS.forEach(function (t) { tabs.appendChild(el("a", { href: "#" + t[0], "data-tab": t[0] }, t[1], t[2] != null ? el("span", { cls: "n", text: num(t[2]) }) : null)); });
 
@@ -266,6 +266,11 @@
       var rs = section("Still running when the log ended", "These tasks started but the log has no end for them: the application was still running when the log was copied, or it stopped without closing the log." + (D.runningCapped ? " More tasks were running than are listed." : ""));
       rs.appendChild(runningTable(runningTasks));
       out.push(rs);
+    }
+    if (D.critical && D.critical.length) {
+      var cp = section("Critical path", "The chain of stages that set how long the longest job (job " + D.criticalJob + ") took: each waited for the one before it. Speeding up anything else would not shorten that job.");
+      cp.appendChild(el("p", null, D.critical.map(function (id, i) { var st = (stagesByID[id] || [])[0]; return [i ? " → " : "", st ? stageLink(st) : String(id), st ? " (" + dur(span(st.submitted, st.completed)) + ")" : ""]; })));
+      out.push(cp);
     }
     var slow = stages.filter(function (s) { return s.completed && s.submitted; }).sort(function (x, y) { return (y.completed - y.submitted) - (x.completed - x.submitted); }).slice(0, 5);
     if (slow.length) {
@@ -381,6 +386,7 @@
         { h: "Submitted", num: true, v: function (s) { return s.submitted; }, f: function (s) { return when(s.submitted); } },
         { h: "Duration", num: true, v: function (s) { return span(s.submitted, s.completed); }, f: function (s) { return dur(span(s.submitted, s.completed)); } },
         { h: "Tasks", num: true, title: "Successful tasks / all attempts; failures in red", v: function (s) { return s.tasks; }, f: function (s) { return el("span", null, num(s.ok) + " / " + num(s.tasks), s.failed ? el("span", { cls: "bad", text: " · " + num(s.failed) + " failed" }) : null); } },
+        { h: "CPU share", num: true, title: "Task CPU time as a share of task run time; low means the tasks mostly waited (I/O, shuffle, GC)", v: function (s) { return s.run ? s.cpuNs / 1e6 / s.run : null; }, f: function (s) { var c = s.run ? s.cpuNs / 1e6 / s.run : null; return el("span", { cls: c != null && c < 0.3 && s.run > 60000 ? "warnv" : null, text: pct(c) }); } },
         numCol("Input", "input", bytes, "Bytes read from files and tables"),
         numCol("Output", "output", bytes, "Bytes written to files and tables"),
         numCol("Shuffle read", "shRead", bytes, "Bytes fetched from other stages' output"),
@@ -468,7 +474,7 @@
       fact("Status", status(st.status)),
       fact("Ran", el("span", null, when(st.submitted, true), " → ", when(st.completed)), dur(span(st.submitted, st.completed))),
       fact("Tasks", num(st.ok) + " succeeded of " + num(st.tasks) + " attempts", (st.failed ? num(st.failed) + " failed, " : "") + (st.killed ? num(st.killed) + " killed, " : "") + num(st.numTasks) + " partitions."),
-      fact("Task time", dur(st.dur), "All task attempts' durations added up."),
+      fact("Task time", dur(st.dur), "All task attempts' durations added up. CPU time " + dur(st.cpuNs / 1e6) + " (" + pct(st.run ? st.cpuNs / 1e6 / st.run : null) + " of run time)."),
       fact("Jobs", st.jobs.length ? jl : "—", "The actions this stage ran for."),
       fact("Runs after", st.parents.length ? pl : "Nothing: it reads its input directly.", "Stages whose output this stage reads."),
       st.taskType ? fact("Kind", st.taskType === "ResultTask" ? "Result stage" : "Shuffle map stage", st.taskType === "ResultTask" ? "Its tasks return results to the driver or write output." : "Its tasks write shuffle files that later stages read.") : null,
@@ -592,6 +598,7 @@
         { h: "Removed", num: true, v: function (x) { return x.removed; }, f: function (x) { return x.removed ? el("span", null, when(x.removed), el("span", { cls: "sub", text: x.reason })) : "running at end"; } },
         { h: "Tasks", num: true, v: function (x) { return x.tasks; }, f: function (x) { return el("span", null, num(x.ok) + " / " + num(x.tasks), x.failed ? el("span", { cls: "bad", text: " · " + num(x.failed) + " failed" }) : null); } },
         numCol("Task time", "dur", dur),
+        { h: "CPU share", num: true, title: "Task CPU time as a share of task run time", v: function (x) { return x.run ? x.cpuNs / 1e6 / x.run : null; }, f: function (x) { return pct(x.run ? x.cpuNs / 1e6 / x.run : null); } },
         { h: "GC share", num: true, title: "Share of task run time spent in garbage collection", v: function (x) { return x.run ? x.gc / x.run : null; }, f: function (x) { var g = x.run ? x.gc / x.run : null; return el("span", { cls: g > 0.1 ? "warnv" : null, text: pct(g) }); } },
         numCol("Input", "input", bytes), numCol("Shuffle read", "shRead", bytes), numCol("Shuffle write", "shWrite", bytes),
         { h: "Peak heap", num: true, v: function (x) { return x.peakHeap; }, f: function (x) { return x.peakHeap ? el("span", null, bytes(x.peakHeap), el("span", { cls: "sub", text: "of " + bytes(D.heapBytes) })) : "—"; } }
@@ -799,6 +806,18 @@
           { h: "Storage level", v: function (p) { return p[5]; }, f: function (p) { return p[5]; } }
         ] }))));
     });
+    var data = objs(D.data);
+    if (data.length) {
+      s.appendChild(el("h3", { text: "Tables and paths" }));
+      s.appendChild(explain("What the run read, wrote, created, altered or dropped, from SQL plans and the catalog."));
+      s.appendChild(table({ rows: data, sort: 1, dir: "asc", filter: "Filter by name", text: function (d) { return d.name + " " + d.access; }, cols: [
+        { h: "Access", v: function (d) { return d.access; }, f: function (d) { return d.access; } },
+        { h: "Kind", v: function (d) { return d.kind; }, f: function (d) { return d.kind; } },
+        { h: "Name", v: function (d) { return d.name; }, f: function (d) { return el("span", { cls: "mono", text: d.name }); } },
+        { h: "Format", v: function (d) { return d.format; }, f: function (d) { return d.format || "—"; } },
+        { h: "Log line", v: function (d) { return d.src ? d.src[1] : 0; }, f: function (d) { return el("span", { cls: "srcref", text: src(d.src) }); } }
+      ] }));
+    }
     if (blockKinds.length) {
       s.appendChild(el("h3", { text: "Block manager activity" }));
       s.appendChild(explain("Every block Spark stored, by kind: rdd blocks are cached partitions, broadcast blocks are broadcast variables, taskresult blocks are results too big to send directly."));
@@ -822,6 +841,20 @@
         { h: "Read from", f: function (r) { return el("span", { cls: "srcref", text: r.from }); } }
       ]
     }));
+    var profs = objs(D.profiles);
+    if (profs.length) {
+      s.appendChild(el("h3", { text: "Resource profiles" }));
+      s.appendChild(explain("What each executor and task asked for. Profile 0 is the default; others come from stage-level scheduling."));
+      s.appendChild(table({ rows: profs, sort: 0, dir: "asc", cols: [
+        numCol("Profile", "id"), numCol("Executor cores", "cores"),
+        { h: "Executor memory", num: true, v: function (p) { return p.memMiB; }, f: function (p) { return p.memMiB ? bytes(p.memMiB * 1048576) : "default"; } },
+        { h: "Overhead", num: true, v: function (p) { return p.overheadMiB; }, f: function (p) { return p.overheadMiB ? bytes(p.overheadMiB * 1048576) : "default"; } },
+        { h: "Off-heap", num: true, v: function (p) { return p.offHeapMiB; }, f: function (p) { return p.offHeapMiB ? bytes(p.offHeapMiB * 1048576) : "—"; } },
+        { h: "Python", num: true, v: function (p) { return p.pysparkMiB; }, f: function (p) { return p.pysparkMiB ? bytes(p.pysparkMiB * 1048576) : "—"; } },
+        { h: "CPUs per task", num: true, v: function (p) { return p.taskCpus; }, f: function (p) { return p.taskCpus || "—"; } },
+        { h: "Other", f: function (p) { var o = []; Object.keys(p.execOther).forEach(function (k) { o.push(k + " " + p.execOther[k] + " per executor"); }); Object.keys(p.taskOther).forEach(function (k) { o.push(k + " " + p.taskOther[k] + " per task"); }); return o.join("; ") || "—"; } }
+      ] }));
+    }
     var box = el("input", { cls: "filter", type: "search", placeholder: "Search settings", "aria-label": "Search settings" });
     s.appendChild(box);
     var groups = el("div", { cls: "findings" });
@@ -1117,6 +1150,42 @@
   }
   var resizeTimer;
   window.addEventListener("resize", function () { clearTimeout(resizeTimer); resizeTimer = setTimeout(redrawCharts, 250); });
+
+  views.log = function () {
+    var st = D.logStats;
+    var s = section("Event log", "The file sparkplain read, and every kind of event in it. Unknown events or fields mean a Spark version newer than sparkplain knows; they are counted, not lost silently.");
+    if (!st) { s.appendChild(explain("The event log could not be read.")); return s; }
+    s.appendChild(el("div", { cls: "facts" },
+      fact("Input", el("span", { cls: "mono", text: st.input }), st.layout + " layout, " + st.codec + " compression" + (st.inProgress ? ", still in progress" : "") + (st.truncated ? ", cut off" : "") + "."),
+      fact("Events", num(st.events) + " events on " + num(st.lines) + " lines", (st.malformedLines ? num(st.malformedLines) + " malformed lines skipped. " : "") + (st.redactedValues ? num(st.redactedValues) + " setting values redacted." : "")),
+      Object.keys(st.unknownEvents || {}).length || Object.keys(st.unknownFields || {}).length ?
+        fact("Not recognised", num(Object.keys(st.unknownEvents || {}).length) + " event types, " + num(Object.keys(st.unknownFields || {}).length) + " fields", "Written by a Spark or EMR version sparkplain does not know yet; listed below.") :
+        fact("Recognised", "Every event and field", "Each one is listed in sparkplain's field inventory as used or deliberately set aside.")));
+    if (st.files && st.files.length) s.appendChild(table({ rows: st.files, sort: 0, dir: "asc", cols: [
+      { h: "File", v: function (f) { return f.name; }, f: function (f) { return el("span", { cls: "mono", text: f.name }); } },
+      { h: "Codec", v: function (f) { return f.codec; }, f: function (f) { return f.codec; } },
+      { h: "Size", num: true, v: function (f) { return f.bytes; }, f: function (f) { return bytes(f.bytes); } },
+      { h: "Unpacked", num: true, v: function (f) { return f.decompressedBytes; }, f: function (f) { return bytes(f.decompressedBytes); } },
+      { h: "Lines", num: true, v: function (f) { return f.lines; }, f: function (f) { return num(f.lines); } },
+      { h: "Problem", v: function (f) { return f.error || ""; }, f: function (f) { return f.error || "—"; } }
+    ] }));
+    var types = Object.keys(st.byType || {}).map(function (k) { return { name: k, n: st.byType[k], unknown: (st.unknownEvents || {})[k] != null }; });
+    s.appendChild(el("h3", { text: "Events by type" }));
+    s.appendChild(table({ rows: types, sort: 1, dir: "desc", filter: "Filter event types", text: function (t) { return t.name; }, cols: [
+      { h: "Event", v: function (t) { return t.name; }, f: function (t) { return el("span", { cls: "mono" }, t.name.replace(/^org\.apache\.spark\.[a-z.]*\./, ""), t.unknown ? el("span", { cls: "bad", text: " · not recognised" }) : null); } },
+      { h: "Count", num: true, v: function (t) { return t.n; }, f: function (t) { return num(t.n); } }
+    ] }));
+    var uf = Object.keys(st.unknownFields || {});
+    if (uf.length) {
+      s.appendChild(el("h3", { text: "Fields not recognised" }));
+      s.appendChild(table({ rows: uf.map(function (k) { return { k: k, n: st.unknownFields[k] }; }), sort: 1, dir: "desc", cols: [
+        { h: "Event and field", v: function (r) { return r.k; }, f: function (r) { return el("span", { cls: "mono", text: r.k }); } },
+        { h: "Count", num: true, v: function (r) { return r.n; }, f: function (r) { return num(r.n); } }
+      ] }));
+    }
+    if (st.notes && st.notes.length) s.appendChild(el("div", { cls: "missing" }, el("h3", { text: "Notes from reading it" }), el("ul", null, st.notes.map(function (n) { return el("li", { text: n }); }))));
+    return s;
+  };
 
   function notFound(what) { return section(what + " is not in this log", "It may have been cut off, or the link is from another run."); }
 

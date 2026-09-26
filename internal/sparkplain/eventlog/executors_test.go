@@ -383,3 +383,30 @@ func TestOptimizerStats(t *testing.T) {
 		t.Error("no optimizer reports parsed")
 	}
 }
+
+// -show prints the event behind a cited file:line, redacted.
+func TestShowEvent(t *testing.T) {
+	in, err := Resolve(filepath.Join(fixtures, mainApp+".zip"), mainApp, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	b, err := ShowEvent(t.Context(), in, mainApp+".zip!"+mainApp+".lz4", 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"SparkListenerEnvironmentUpdate"`) || !strings.Contains(string(b), "[redacted]") {
+		t.Errorf("unexpected event: %.200s", b)
+	}
+	assertNoSecrets(t, string(b))
+	in2, _ := Resolve(filepath.Join(fixtures, mainApp), mainApp, Limits{})
+	defer in2.Close()
+	if _, err := ShowEvent(t.Context(), in2, "other-file", 4); err == nil || !strings.Contains(err.Error(), mainApp) {
+		t.Errorf("a miss should name the log's files: %v", err)
+	}
+	for _, bad := range []string{"nope", "file:", "file:0", ":3"} {
+		if _, _, err := ParseLocation(bad); err == nil {
+			t.Errorf("ParseLocation(%q) accepted", bad)
+		}
+	}
+}

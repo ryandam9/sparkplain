@@ -180,3 +180,14 @@ func TestFormats(t *testing.T) {
 		t.Errorf("unknown format: exit %d, %s", code, errs)
 	}
 }
+
+func TestShowFlag(t *testing.T) {
+	log := filepath.Join(fx, "application_1790380000000_0042")
+	code, out, errs := runCLI(t, "-app-id", "application_1790380000000_0042", "-eventlog", log, "-show", "application_1790380000000_0042:4")
+	if code != exitOK || !strings.Contains(out, "SparkListenerEnvironmentUpdate") || strings.Contains(out, "FAKE-") {
+		t.Errorf("exit %d, stderr %s, stdout %.120s", code, errs, out)
+	}
+	if code, _, _ := runCLI(t, "-app-id", "application_1790380000000_0042", "-eventlog", log, "-show", "x:999999"); code != exitFatal {
+		t.Errorf("a missing line should exit 2, got %d", code)
+	}
+}

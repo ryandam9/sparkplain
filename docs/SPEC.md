@@ -190,6 +190,7 @@ sparkplain -from ./logs/application_1700000000000_0042 \
 | `-workers`, `-max-size`, `-overall-timeout` | Fetch budgets: concurrency, per-object size cap, run deadline |
 | `-no-cloudwatch`, `-no-cloudtrail` | Skip enrichment (fewer permissions needed) |
 | `-window-pad` | Padding on the AWS query window (default 5m) |
+| `-show` | Print the event at a `file:line` the pages cite, redacted, and exit |
 
 **HTML report layout** (single self-contained file, works offline, light and dark themes)
 
@@ -254,6 +255,15 @@ thresholds:
   low-cpu-share: 0.30
   memory-used-share: 0.40
   min-run-time: 1m
+  sched-delay-share: 0.20   # scheduler delay over this share of task time
+  locality-any-share: 0.30  # input tasks away from their data over this share
+  result-share: 0.50        # a stage's results over this share of spark.driver.maxResultSize
+  slow-startup: 1m          # executors taking longer than this to register
+explorer:
+  slowest-per-stage: 100
+  sample-per-stage: 1000
+  max-sampled-tasks: 100000
+  max-stage-executor-cells: 1000000
 ```
 
 **Exit codes:** 0 complete, 2 fatal (usage, credentials, listing), 3 partial (a source missing or unreadable), 130 interrupted.
@@ -330,6 +340,7 @@ Fixtures (added, not regenerated, so existing expectations hold): `0046` exercis
 
 - Phase 1c step 1 (built): `eventlog/inventory.txt` lists 537 fields of 48 event types (321 used, 33 set aside with a reason, the rest planned for steps 2 to 5). `TestFieldInventory` walks every distinct fixture and fails on an unlisted field, or on a listed one no fixture holds unless it says "not seen in a fixture"; every set-aside reason that claims something about Spark (empty at task start, duplicated elsewhere) was checked against the fixtures. At run time, top-level fields are checked on every event and nested fields on the first 100 events of each type, and unlisted ones are counted as unknown. The inventory replaced the hand-kept lists of known fields and ignored events, which had missed that Spark writes exclusion events under their full class names (`org.apache.spark.scheduler.SparkListenerExecutorExcluded`), so those had been counted as unknown.
 - Second EMR 7.3.0 run (1 primary, 2 core nodes; fixture `0050`, scrubbed): a speculative copy ran on another host, and the other attempt ended `TaskKilled` with "Stage finished". Push-based shuffle did not switch on with `spark.shuffle.push.enabled=true`, the YARN `RemoteBlockPushResolver` and a one-merger minimum (every stage logged `Shuffle Push Enabled: false`); why was not investigated further, so its metrics are read but only ever seen as zero. The first attempt at this run failed because Spark refuses an S3 `spark.eventLog.dir` with no objects under it; an empty `spark-events/` marker object fixed it.
+- Phase 1c step 6 (built): new findings `executors-excluded` (warning for application or node exclusions, info for stage-only), `scheduler-delay` (warning over `sched-delay-share` of task time), `poor-locality` (info when a stage's input tasks ran away from their data over `locality-any-share`), `large-results` (warning when a result stage returned over `result-share` of `spark.driver.maxResultSize`), `slow-executor-startup` (info over `slow-startup`), `speculation` (info, with how many copies finished first) and `tasks-running-at-end` (warning; worded for an in-progress log or, when the log did end, for tasks a job abort cut off, as in `0048`). Every finding's evidence links to its stage or executor. The explorer gains CPU share for stages and executors, tables and paths, resource profiles (including extra resources such as GPUs, which the parser had dropped), the critical path, and an Event log tab with files, events by type and anything not recognised. `sparkplain -show <file:line>` prints the redacted event behind any value the pages cite; a miss lists the log's file names.
 - Phase 1c step 5 (built): queries keep their parent (`rootExecutionId`; commands such as CTAS run inner queries), job tags, long call site and the session settings in force (`modifiedConfigs`, redacted; the fixture's session token appears in every later query's), the metrics adaptive execution adds after planning (the log names no operator for them, so they are listed per query and resolved like plan metrics), and EMR's optimizer report (`SparkListenerQueryExecutionMetrics`: about 230 rules per query with time and runs, and which changed the plan; the model keeps up to 300 rules, the page the slowest 30).
 - Phase 1c step 4 (built): each stage keeps the RDDs it computes (operation scope, call site, parents, partitions, cached partitions, storage level, barrier, determinism; capped at 200), its long call site, resource profile and push-based shuffle settings. Jobs keep the local properties that differ from the application's settings (scheduler pool, job group, session settings such as a changed `spark.sql.shuffle.partitions`), redacted by key; the fixture's session token set with `spark.conf.set` reached every later job's properties, so redaction matters here. Stages keep properties only where they differ from their job's (the EMR log shows `resource.executor.cores` set per stage). The explorer draws each stage's operation graph like the Spark UI's stage graph, shows the call stack, and lists each job's own settings.
 - Phase 1c step 3 (built): exclusions (executor and node, stage and application, with when each lifted; Spark's two names for each merged), tasks still running at the end of a log (capped at 100,000), executor log links, container attributes (redacted by key), resources and startup delay (registration less request time), when each block manager left, the driver's log links and attributes, where each cached RDD's blocks were per executor with their storage level, and block-manager activity per kind of block. The explorer shows them on the overview, executors, executor, stage and storage pages, with excluded periods on the executor timeline. The driver's heartbeat samples carry stage -1 in every fixture, so the planned per-stage driver memory was dropped.

@@ -36,7 +36,7 @@ var appIDRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.\-]{0,127}$`)
 
 type options struct {
 	profile, region, configPath, clusterID, clusterName, appID string
-	eventLog, from, out, format, maxSize                       string
+	eventLog, from, out, format, maxSize, show                 string
 	workers                                                    int
 	timeout, windowPad                                         time.Duration
 	noCloudWatch, noCloudTrail, showVersion                    bool
@@ -63,6 +63,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.BoolVar(&o.noCloudTrail, "no-cloudtrail", false, "skip CloudTrail enrichment (phase 3)")
 	fs.DurationVar(&o.windowPad, "window-pad", 5*time.Minute, "padding on the AWS query window (phase 3)")
 	fs.BoolVar(&o.showVersion, "version", false, "print the version and exit")
+	fs.StringVar(&o.show, "show", "", "print the event at file:line (as the pages cite it), redacted, and exit")
 	fs.Usage = func() {
 		fmt.Fprintf(stderr, "Usage: sparkplain -app-id <application id> -eventlog <path> [flags]\n\n")
 		fmt.Fprintf(stderr, "Turns one Spark application's event log into report.html, report.json and explorer.html.\n\nFlags:\n")
@@ -148,6 +149,23 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	if strings.HasPrefix(evPath, "s3://") || strings.HasPrefix(evPath, "s3a://") {
 		return fail("reading the event log from S3 arrives in phase 2. Download it (or use the History Server's Download button) and pass the local path")
+	}
+	if o.show != "" {
+		file, line, err := eventlog.ParseLocation(o.show)
+		if err != nil {
+			return fail("-show: %v", err)
+		}
+		in, err := eventlog.Resolve(evPath, o.appID, eventlog.Limits{MaxObjectBytes: maxSize})
+		if err != nil {
+			return fail("%v", err)
+		}
+		defer in.Close()
+		b, err := eventlog.ShowEvent(context.Background(), in, file, line)
+		if err != nil {
+			return fail("-show: %v", err)
+		}
+		fmt.Fprintf(stdout, "%s\n", b)
+		return exitOK
 	}
 	outDir := firstNonEmpty(o.out, cfg.Out)
 	if outDir == "" {
