@@ -273,9 +273,22 @@ type ConfigView struct {
 	Risk       string `json:"risk,omitempty"`
 }
 
+// RuntimeRow is one line of the runtime environment table: a version, a
+// runtime setting or a location, and where it was read.
+type RuntimeRow struct {
+	Group   string `json:"group"` // Versions, Runtime or Locations
+	Label   string `json:"label"`
+	Value   string `json:"value"`
+	From    string `json:"from"` // the property or file it came from
+	Explain string `json:"explain"`
+	Missing bool   `json:"missing,omitempty"`
+	Source  Source `json:"source,omitzero"`
+}
+
 // ConfigSection is module 8.
 type ConfigSection struct {
 	Coverage   Coverage      `json:"coverage"`
+	Runtime    []RuntimeRow  `json:"runtime"`
 	Key        []ConfigView  `json:"key"` // the settings that matter most, explained
 	Groups     []ConfigGroup `json:"groups"`
 	Total      int           `json:"total"`

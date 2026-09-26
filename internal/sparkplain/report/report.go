@@ -219,6 +219,7 @@ func funcs(loc *time.Location) template.FuncMap {
 		"add":       func(a, b int) int { return a + b },
 		"short":     func(s string, n int) string { return capText(s, n) },
 		"lower":     strings.ToLower,
+		"rt":        runtimeValue,
 		"int64":     func(n int) int64 { return int64(n) },
 		"cpuShare": func(t model.TaskTotals) float64 {
 			if t.RunTimeMs <= 0 {
@@ -258,4 +259,15 @@ func capText(s string, n int) string {
 func shareBar(f float64) template.HTML {
 	w := min(100, max(0, f*100))
 	return template.HTML(fmt.Sprintf(`<span class="mini"><span class="bar"><i style="width:%.1f%%"></i></span>%s</span>`, w, template.HTMLEscapeString(model.Percent(f))))
+}
+
+// runtimeValue returns a recorded value from the runtime table, or "".
+func runtimeValue(r *model.Report, label string) string {
+	for _, row := range r.Config.Runtime {
+		if row.Label == label && !row.Missing {
+			v, _, _ := strings.Cut(row.Value, " (") // "21.0.10 (Ubuntu), …" -> "21.0.10"
+			return v
+		}
+	}
+	return ""
 }

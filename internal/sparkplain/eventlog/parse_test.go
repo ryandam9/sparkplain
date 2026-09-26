@@ -269,3 +269,45 @@ func FuzzParseLine(f *testing.F) {
 		p.finish()
 	})
 }
+
+func TestComponentsFromClasspath(t *testing.T) {
+	l := parseFixture(t, mainApp, mainApp)
+	got := map[string]string{}
+	for _, c := range l.Components {
+		got[c.Name] = c.Version
+		if c.Source.Line == 0 || c.Path == "" {
+			t.Errorf("%s lacks provenance: %+v", c.Name, c)
+		}
+	}
+	for name, want := range map[string]string{"Spark (jars)": "3.5.1", "Scala library": "2.12.18", "Hadoop": "3.3.4"} {
+		if got[name] != want {
+			t.Errorf("%s = %q, want %q (all: %v)", name, got[name], want, got)
+		}
+	}
+	if l.Application.VersionSrc.Line != 1 {
+		t.Errorf("Spark version should cite the log start event: %v", l.Application.VersionSrc)
+	}
+}
+
+func TestComponentsEMRNames(t *testing.T) {
+	cp := map[string]string{
+		"/usr/lib/spark/jars/spark-core_2.12-3.5.1-amzn-0.jar":                       "System Classpath",
+		"/usr/lib/hadoop/hadoop-common-3.3.6-amzn-3.jar":                             "System Classpath",
+		"/usr/share/aws/emr/emrfs/lib/emrfs-hadoop-assembly-2.62.0.jar":              "System Classpath",
+		"/usr/share/aws/aws-java-sdk-v2/aws-sdk-java-bundle-2.25.53.jar":             "System Classpath",
+		"/usr/share/aws/aws-java-sdk-v2/bundle-2.25.53.jar":                          "System Classpath",
+		"/usr/share/aws/iceberg/lib/iceberg-spark-runtime-3.5_2.12-1.5.0-amzn-0.jar": "System Classpath",
+		"/etc/hadoop/conf/": "System Classpath",
+		"/usr/lib/spark/python/lib/py4j-0.10.9.7-src.zip": "System Classpath",
+	}
+	got := map[string]string{}
+	for _, c := range components(cp, model.Source{File: "f", Line: 4}) {
+		got[c.Name] = c.Version
+	}
+	want := map[string]string{"Spark (jars)": "3.5.1-amzn-0", "Hadoop": "3.3.6-amzn-3", "EMRFS": "2.62.0", "AWS SDK for Java v2": "2.25.53", "Apache Iceberg": "1.5.0-amzn-0", "Py4J (PySpark bridge)": "0.10.9.7"}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%s = %q, want %q (all %v)", k, got[k], v, got)
+		}
+	}
+}
