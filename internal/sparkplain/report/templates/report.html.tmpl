@@ -21,11 +21,13 @@
       <span>App <b class="mono">{{if $a.ID}}{{$a.ID}}{{else}}unknown{{end}}</b>{{if $a.AttemptID}} · attempt {{$a.AttemptID}}{{end}}</span>
       {{if $a.SparkVersion}}<span><b>Spark {{$a.SparkVersion}}</b>{{with rt $r "Java"}} · Java {{.}}{{end}}{{with rt $r "Hadoop"}} · Hadoop {{.}}{{end}}{{if $a.Master}} · {{$a.Master}}{{end}}{{if $a.DeployMode}} · {{$a.DeployMode}} mode{{end}}</span>{{end}}
       {{if $a.User}}<span>User <b>{{$a.User}}</b></span>{{end}}
+      {{with $r.Cluster}}<span>Cluster <b class="mono">{{.ID}}</b>{{if .Name}} ({{.Name}}){{end}}{{if .Release}} · {{.Release}}{{end}}</span>{{end}}
       {{if not $a.Start.IsZero}}<span><b class="num">{{time $a.Start "dt"}} → {{if $a.End.IsZero}}still running{{else}}{{time $a.End "hms"}}{{end}}</b> <span class="tzlabel">{{.Zone}}</span></span>{{end}}
     </div>
     <div class="mode">
-      {{with $r.EventLog}}<strong>Event log: {{if $r.EventLog.Truncated}}partly read{{else}}read{{end}}.</strong>
-      <span>Layout: {{.Layout}}, codec {{.Codec}}, {{len .Files}} file{{if ne (len .Files) 1}}s{{end}}, {{num .Events}} events. This version of sparkplain reads the event log only; container logs and AWS APIs come in later phases. {{$.Complete}} sections are complete, {{$.Partial}} partial, {{$.Needs}} need data this version cannot read yet. Exit code {{$r.ExitCode}}{{if eq $r.ExitCode 3}} (partial){{end}}.</span>
+      {{if $r.EventLog}}{{with $r.EventLog}}<strong>Event log: {{if $r.EventLog.Truncated}}partly read{{else}}read{{end}}.</strong>
+      <span>Layout: {{.Layout}}, codec {{.Codec}}, {{len .Files}} file{{if ne (len .Files) 1}}s{{end}}, {{num .Events}} events. {{if $r.Logs}}Container, step and node logs: {{len $r.Logs.Files}} file{{if ne (len $r.Logs.Files) 1}}s{{end}} read.{{else}}Container, step and node logs were not read (pass -cluster-id, or -from with a copy of them).{{end}} {{$.Complete}} sections are complete, {{$.Partial}} partial, {{$.Needs}} need data this run did not have. Exit code {{$r.ExitCode}}{{if eq $r.ExitCode 3}} (partial){{end}}.</span>{{end}}
+      {{else if $r.Logs}}<strong>Event log: not read.</strong> <span>The summary, findings, identity and sources come from YARN's records and {{len $r.Logs.Files}} container, step and node log{{if ne (len $r.Logs.Files) 1}}s{{end}}; the sections built from the event log are empty. The Sources panel says why it is missing. Exit code {{$r.ExitCode}}.</span>
       {{else}}<strong>Event log: not read.</strong> <span>Every section below needs it. The Sources panel says what went wrong. Exit code {{$r.ExitCode}}.</span>{{end}}
     </div>
   </header>

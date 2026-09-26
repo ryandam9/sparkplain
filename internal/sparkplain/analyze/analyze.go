@@ -39,6 +39,7 @@ func DefaultThresholds() Thresholds {
 
 // Input is everything one run collected.
 type Input struct {
+	AppID       string // the application asked for; the event log's own ID wins
 	Tool        string
 	Mode        string
 	GeneratedAt time.Time
@@ -69,6 +70,7 @@ type ctx struct {
 	end      time.Time // application end, or last event time
 	findings []model.Finding
 	pyspark  bool
+	logs     *logView // nil when the run read no container, step or node logs
 }
 
 func (c *ctx) add(f model.Finding) { c.findings = append(c.findings, f) }
@@ -111,9 +113,12 @@ func Run(in Input) *model.Report {
 			c.end = l.Application.Start.Add(time.Duration(l.Application.DurationMs) * time.Millisecond)
 		}
 	}
+	if r.Application.ID == "" {
+		r.Application.ID = in.AppID
+	}
 	for _, a := range []func(*ctx, *model.Report){
 		analyzeConfig, analyzeExecutors, analyzeNodes, analyzeMemory, analyzeCPU,
-		analyzeIO, analyzeJobs, analyzeTimeline, analyzeIdentity,
+		analyzeIO, analyzeJobs, analyzeTimeline, analyzeLogs, analyzeIdentity,
 	} {
 		a(c, r)
 	}
@@ -167,7 +172,8 @@ func share(a, b int64) float64 {
 // first, then what slowed it, then tuning notes.
 func rulePriority(rule string) int {
 	for i, r := range []string{
-		"job-failed", "executor-memory-kill", "executor-lost", "executor-decommissioned", "stage-retried",
+		"log-first-failure", "job-failed", "step-failed", "bootstrap-failed", "executor-memory-kill", "out-of-memory", "access-denied",
+		"kerberos-failure", "metastore-failure", "hbase-failure", "executor-lost", "app-retried", "executor-decommissioned", "stage-retried",
 		"access-static-keys", "stage-skew", "memory-spill", "memory-gc-pressure", "memory-heap-near-limit",
 		"config-unlimited-result", "config-dynalloc-no-shuffle",
 	} {

@@ -271,6 +271,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return exitInterrupted
 	}
 	ain := analyze.Input{
+		AppID:       o.appID,
 		Tool:        "sparkplain " + version,
 		Mode:        mode,
 		GeneratedAt: time.Now(),

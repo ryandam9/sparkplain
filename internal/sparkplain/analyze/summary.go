@@ -9,19 +9,15 @@ import (
 
 func analyzeIdentity(c *ctx, r *model.Report) {
 	s := &r.Identity
-	s.Missing = []string{
-		"AWS roles: instance profile, EMR service role and any runtime role (needs the EMR API, phase 3)",
-		"EMR security configuration: encryption, Kerberos, Lake Formation (phase 3)",
-		"AWS calls made by the job's role and every AccessDenied (needs CloudTrail, phase 3)",
-		"Whether Hive metastore, HBase and Kerberos connections succeeded (needs container logs, phase 2)",
+	s.Missing = []string{"AWS calls made by the job's role and every AccessDenied (needs CloudTrail, phase 3)"}
+	if r.Cluster == nil {
+		s.Missing = append(s.Missing, "AWS roles: instance profile and EMR service role (needs -cluster-id)", "EMR security configuration (needs -cluster-id)")
+	} else {
+		s.Missing = append(s.Missing, "Runtime roles of individual steps, and what the security configuration turns on (phase 3)")
 	}
-	if !c.has() {
-		s.Coverage = model.NeedsEventLog
-		return
+	if c.logs == nil {
+		s.Missing = append(s.Missing, "Whether Hive metastore, HBase and Kerberos connections succeeded (needs the container logs: -cluster-id or -from)")
 	}
-	s.Coverage = model.Partial
-	a := c.log.Application
-	src := c.confSrc
 	add := func(label, value, explain string, srcs ...model.Source) {
 		f := model.Fact{Label: label, Value: value, Explain: explain}
 		if len(srcs) > 0 {
@@ -29,6 +25,24 @@ func analyzeIdentity(c *ctx, r *model.Report) {
 		}
 		s.Facts = append(s.Facts, f)
 	}
+	if !c.has() {
+		s.Coverage = model.NeedsEventLog
+		if c.logs != nil || r.Cluster != nil {
+			s.Coverage = model.Partial
+			if a := r.Application; a.User != "" {
+				add("Ran as", a.User, "The user YARN ran the application as, from its own records.", a.Source)
+				if a.Queue != "" {
+					add("YARN queue", a.Queue, "The queue that decided how much of the cluster this application could use.", a.Source)
+				}
+			}
+			identityFromLogs(c, r, add)
+		}
+		return
+	}
+	s.Coverage = model.Partial
+	defer identityFromLogs(c, r, add)
+	a := c.log.Application
+	src := c.confSrc
 	add("Ran as", a.User, "The Hadoop user Spark recorded when the application started.", a.Source)
 	if u := c.sys["user.name"]; u != "" && u != a.User {
 		add("Operating system user", u, "The Linux account the driver process ran under.", src)
@@ -112,6 +126,77 @@ func analyzeIdentity(c *ctx, r *model.Report) {
 	}
 }
 
+// identityFromLogs adds what the EMR API and the logs say about who the
+// application ran as and what it connected to.
+func identityFromLogs(c *ctx, r *model.Report, add func(label, value, explain string, srcs ...model.Source)) {
+	if cl := r.Cluster; cl != nil {
+		api := model.Source{File: cl.Source}
+		add("EC2 instance profile", orNone(cl.InstanceProfile), "The IAM role every node's processes use for AWS calls, including S3 reads and writes, unless the job carries other credentials.", api)
+		add("EMR service role", orNone(cl.ServiceRole), "The role EMR itself uses to create and manage the cluster's instances.", api)
+		add("EMR security configuration", orNone(cl.SecurityConfig), "Where EMR's encryption, Kerberos and Lake Formation settings are defined.", api)
+	}
+	if c.logs == nil {
+		return
+	}
+	seen := map[string]bool{}
+	for _, f := range r.Identity.Facts {
+		seen[f.Label+"\x00"+f.Value] = true
+	}
+	once := func(label, value, explain string, src model.Source) {
+		if value == "" || seen[label+"\x00"+value] {
+			return
+		}
+		seen[label+"\x00"+value] = true
+		add(label, value, explain, src)
+	}
+	var metaOK, metaFail, hbase []string
+	var metaSrc, hbaseSrc model.Source
+	for _, h := range c.logs.hits {
+		l := h.l
+		switch l.Kind {
+		case model.LogIdentity:
+			if u := l.Fields["user"]; u != "" && u != r.Application.User {
+				once("YARN user", u, "The user YARN recorded for the application ("+l.Fields["via"]+"), which differs from the one Spark recorded.", l.Source)
+			}
+			if p := l.Fields["principal"]; p != "" {
+				once("Kerberos login", p+" (keytab "+l.Fields["keytab"]+")", "The principal a process logged in as, from its own log.", l.Source)
+			}
+		case model.LogMetastore:
+			if l.Severity == model.Critical {
+				metaFail = append(metaFail, h.who())
+			} else if u := l.Fields["uri"]; u != "" {
+				metaOK = append(metaOK, u)
+			}
+			if metaSrc.IsZero() {
+				metaSrc = l.Source
+			}
+		case model.LogHBase:
+			if q := l.Fields["quorum"]; q != "" {
+				hbase = append(hbase, q)
+				if hbaseSrc.IsZero() {
+					hbaseSrc = l.Source
+				}
+			}
+		}
+	}
+	switch {
+	case len(metaFail) > 0:
+		once("Metastore connection", fmt.Sprintf("failed (%s)", model.Plural(len(metaFail), "error", "errors")), "The logs show Spark failing to reach the Hive metastore or Glue catalog; the findings list each error.", metaSrc)
+	case len(metaOK) > 0:
+		once("Metastore connection", metaOK[0]+" (connected)", "The metastore Spark connected to, from the logs.", metaSrc)
+	}
+	if len(hbase) > 0 {
+		once("HBase connection", "ZooKeeper "+hbase[0], "The ZooKeeper quorum a process connected to for HBase, from the logs.", hbaseSrc)
+	}
+}
+
+func orNone(s string) string {
+	if s == "" {
+		return "none"
+	}
+	return s
+}
+
 func firstOf(m map[string]string, keys ...string) string {
 	for _, k := range keys {
 		if v := m[k]; v != "" {
@@ -149,7 +234,17 @@ func analyzeCoverage(c *ctx, r *model.Report) {
 	}
 	if !c.has() {
 		for _, s := range []struct{ id, title string }{{"summary", "Application summary"}, {"nodes", "Cluster and nodes"}, {"executors", "Executors"}, {"memory", "Memory"}, {"cpu", "CPU"}, {"io", "Storage and I/O"}, {"stages", "Jobs, stages, tasks"}, {"config", "Configuration"}, {"access", "Identity and access"}} {
-			row(s.id, s.title, model.NeedsEventLog, "Nothing: this version reads only the event log", []string{"The event log"})
+			switch {
+			case s.id == "summary" && c.logs != nil:
+				row(s.id, s.title, model.Partial, "Name, user, queue, final status and times from YARN's records", []string{"Spark version, jobs, stages and resource use (the event log)"})
+			case s.id == "access" && r.Identity.Coverage == model.Partial:
+				row(s.id, s.title, model.Partial, "User and queue from YARN, AWS roles, and the connections the logs show", r.Identity.Missing)
+			default:
+				row(s.id, s.title, model.NeedsEventLog, "Nothing: this section is built from the event log", []string{"The event log"})
+			}
+		}
+		if c.logs != nil {
+			row("findings", "Findings", model.Partial, "Rules that read the container, step and node logs: first error, memory kills, out-of-memory, access, Kerberos, metastore and HBase errors", []string{"Rules that read the event log"})
 		}
 		return
 	}
@@ -167,11 +262,19 @@ func analyzeCoverage(c *ctx, r *model.Report) {
 	row("stages", "Jobs, stages, tasks", r.Jobs.Coverage, "Every job and stage, task time spread, skew, retries, failures, SQL plans", r.Jobs.Missing)
 	row("config", "Configuration", r.Config.Coverage, "The full effective configuration, grouped, with key settings explained", r.Config.Missing)
 	row("access", "Identity and access", r.Identity.Coverage, "User, queue, Kerberos, table catalog, Spark security settings, credentials in settings", r.Identity.Missing)
-	row("findings", "Findings", model.Partial, "Rules that read the event log: skew, spill, GC, CPU, memory size, lost executors, failures", []string{"Rules that need container logs and AWS APIs: OOM messages, spot interruptions, AccessDenied"})
+	if c.logs != nil {
+		row("findings", "Findings", model.Partial, "Rules that read the event log (skew, spill, GC, CPU, memory size, lost executors, failures) and the container, step and node logs (first error, memory kills, out-of-memory, access, Kerberos, metastore and HBase errors)", []string{"Rules that need CloudWatch and CloudTrail: host pressure, spot interruptions, every AWS call and AccessDenied (phase 3)"})
+	} else {
+		row("findings", "Findings", model.Partial, "Rules that read the event log: skew, spill, GC, CPU, memory size, lost executors, failures", []string{"Rules that need the container logs (-cluster-id or -from): the error behind a failure, out-of-memory messages, access errors"})
+	}
 }
 
 func analyzeSummary(c *ctx, r *model.Report) {
 	s := &r.Summary
+	if !c.has() && c.logs != nil {
+		summaryFromLogs(c, r)
+		return
+	}
 	if !c.has() {
 		s.Sentences = []string{"sparkplain could not read the event log, so it has nothing to report about this run yet. The Sources panel says why."}
 		return
@@ -271,6 +374,51 @@ func analyzeSummary(c *ctx, r *model.Report) {
 		{Label: "Data written", Value: model.Bytes(io.OutputBytes), Explain: fmt.Sprintf("%s rows. Shuffles moved %s more.", model.Num(io.OutputRecords), model.Bytes(io.ShuffleWriteBytes))},
 		{Label: "Findings", Value: fmt.Sprint(crit + warn + info), Unit: fmt.Sprintf("%d critical · %d warning", crit, warn), Explain: "Problems and notes found by the rules below.", Tone: findTone},
 	}
+}
+
+// summaryFromLogs writes "What happened" from YARN's records and the logs
+// when there is no event log.
+func summaryFromLogs(c *ctx, r *model.Report) {
+	a := r.Application
+	name := a.ID
+	if a.Name != "" {
+		name = a.Name + " (" + a.ID + ")"
+	}
+	var first string
+	switch a.Status {
+	case model.StatusSucceeded:
+		first = name + " finished"
+	case model.StatusFailed:
+		first = name + " failed"
+	default:
+		first = name + " ran with an outcome the logs do not show"
+	}
+	if a.User != "" {
+		first += " as " + a.User
+	}
+	if a.DurationMs > 0 {
+		first += " after " + model.Duration(a.DurationMs)
+	}
+	first += "."
+	if a.StatusReason != "" {
+		first += " " + a.StatusReason
+	}
+	sentences := []string{first}
+	if h := c.logs.first; h != nil {
+		sentences = append(sentences, fmt.Sprintf("The first error in the logs was %s, in %s.", strings.TrimSuffix(h.says(), "."), h.who()))
+	}
+	var problems []string
+	for _, f := range r.Findings {
+		if f.Severity == model.Info || f.Rule == "log-first-failure" || len(problems) == 3 {
+			continue
+		}
+		problems = append(problems, lowerFirst(strings.TrimSuffix(f.Title, ".")))
+	}
+	if len(problems) > 0 {
+		sentences = append(sentences, "Also: "+joinAnd(problems)+".")
+	}
+	sentences = append(sentences, "There is no event log, so jobs, stages and resource use are not shown; this summary comes from YARN's records and the container, step and node logs.")
+	r.Summary.Sentences = sentences
 }
 
 func orUnknown(s string) string {

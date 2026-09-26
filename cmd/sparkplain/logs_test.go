@@ -52,7 +52,7 @@ func TestFromFolder(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			args := []string{"-app-id", tc.app, "-from", tc.from, "-out", dir, "-format", "json"}
+			args := []string{"-app-id", tc.app, "-from", tc.from, "-out", dir, "-format", "json,html,explorer"}
 			if tc.eventlog != "" {
 				args = append(args, "-eventlog", tc.eventlog)
 			}
@@ -69,6 +69,12 @@ func TestFromFolder(t *testing.T) {
 			}
 			if s := sourceOf(r, "EMR API"); s.Status != "not-requested" {
 				t.Errorf("EMR API = %+v", s)
+			}
+			// The 0049 step's command carries a planted password.
+			for _, name := range []string{"report.json", "report.html", "explorer.html"} {
+				if b, _ := os.ReadFile(filepath.Join(dir, name)); strings.Contains(string(b), "FAKE-EMR-PASSWORD") {
+					t.Errorf("%s holds the planted password", name)
+				}
 			}
 		})
 	}

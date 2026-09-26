@@ -169,7 +169,7 @@ func executorFindings(c *ctx) {
 			Title:       fmt.Sprintf("%s lost during the run", model.Plural(len(lost), "executor was", "executors were")),
 			Explanation: "Spark lost contact with these executors (the process crashed, stopped sending heartbeats, or its node went away). Their running tasks and any shuffle data they held had to be recomputed.",
 			Evidence:    evidence(lost),
-			Fix:         "Look at the executors' container logs around the removal time for the cause. Phase 2 of sparkplain reads those logs automatically.",
+			Fix:         "Look at the executors' container logs around the removal time for the cause: run sparkplain with -cluster-id (or -from with a copy of the cluster's logs) and it adds each executor's last error here.",
 		})
 	}
 	if len(decom) > 0 {
