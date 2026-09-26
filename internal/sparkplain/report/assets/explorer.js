@@ -291,6 +291,7 @@
     var ov = section("Over time", "Tasks running across the run, and when each job ran.");
     ov.appendChild(chartSlot("", "running"));
     ov.appendChild(chartSlot("tall", "jobsTimeline"));
+    ov.appendChild(chartSlot("", "dataOverTime"));
     out.push(ov);
     var fs = section("Findings", D.findings.length ? "Problems and notes found in this run. Evidence links open the stage, job or executor it concerns." : "No findings for this run.");
     var list = el("div", { cls: "findings" });
@@ -444,6 +445,8 @@
   }
   views.stages = function () {
     var s = section("Stages", "A stage is a set of tasks that run the same code on different partitions of the data. Retried stages show each attempt.");
+    s.appendChild(el("div", { cls: "grid2" }, chartSlot("", "stageTimes"), chartSlot("", "stageData")));
+    if (stages.some(function (st) { return st.diskSpill > 0 || st.memSpill > 0; })) s.appendChild(chartSlot("", "stageSpill"));
     s.appendChild(stageTable(stages));
     return s;
   };
@@ -628,6 +631,7 @@
   views.executors = function () {
     var s = section("Executors", "Executors are the worker processes that ran tasks. The driver coordinates and usually runs none.");
     s.appendChild(chartSlot("tall", "executorsTimeline"));
+    s.appendChild(el("div", { cls: "grid2" }, chartSlot("", "execTime"), chartSlot("", "execHeapAll")));
     if (exclusions.length) {
       s.appendChild(el("h3", { text: "Exclusions" }));
       s.appendChild(explain(EXCL_EXPLAIN));
@@ -1074,7 +1078,9 @@
   function css(name) { return getComputedStyle(root).getPropertyValue(name).trim(); }
   function theme() {
     return { ink: css("--ink"), muted: css("--muted"), line: css("--line"), font: css("--sans").replace(/"/g, "'") || "sans-serif",
-      series: css("--viz-series"), fail: css("--viz-fail"), neutral: css("--viz-neutral") };
+      series: css("--viz-series"), fail: css("--viz-fail"), neutral: css("--viz-neutral"),
+      // categorical slots, validated for colour-blind separation (report.css)
+      viz: [css("--viz-1"), css("--viz-2"), css("--viz-3"), css("--viz-4"), css("--viz-5")] };
   }
   function baseOpts(th, extra) {
     var o = {
@@ -1141,7 +1147,96 @@
   function metric(name, stat, scope) {
     return ((D.aws || {}).metrics || []).filter(function (s) { return s.name === name && (!stat || s.stat === stat) && (!scope || s.scope === scope); });
   }
+  // hbarChart draws horizontal bars, stacked from series, one row each;
+  // rows link to a page when link returns one.
+  function hbarChart(c, th, rows, series, caption, format, link) {
+    if (!rows.length) { waitText(c, "Nothing to chart for this run."); return; }
+    // a series with nothing in it only clutters the legend
+    series = series.filter(function (sr) { return rows.some(function (r) { return sr.value(r) > 0; }); });
+    var dt = new google.visualization.DataTable();
+    dt.addColumn("string", "Row");
+    series.forEach(function (sr) { dt.addColumn("number", sr.label); dt.addColumn({ type: "string", role: "tooltip" }); });
+    rows.forEach(function (r) {
+      var row = [r.label];
+      series.forEach(function (sr) { var v = sr.value(r); row.push(v, r.label + "\n" + sr.label + ": " + format(v)); });
+      dt.addRow(row);
+    });
+    var plot = frame(c, caption);
+    var ch = new google.visualization.BarChart(plot);
+    ch.draw(dt, baseOpts(th, { isStacked: true, height: Math.max(160, rows.length * 26 + 70), colors: series.map(function (sr) { return sr.color; }),
+      chartArea: { left: 170, right: 20, top: series.length > 3 ? 48 : 30, bottom: 36, width: "100%", height: "100%" }, bar: { groupWidth: "72%" }, legend: series.length > 1 ? { position: "top", alignment: "start", maxLines: 3, textStyle: { color: th.ink } } : { position: "none" },
+      vAxis: axis(th, { textStyle: { color: th.ink, fontSize: 11 } }), hAxis: axis(th, { minValue: 0, format: "short" }) }));
+    if (link) google.visualization.events.addListener(ch, "select", function () { var sel = ch.getSelection()[0]; if (sel && sel.row != null) location.hash = link(rows[sel.row]); });
+  }
+  // stageName is one short line, so the axis labels every bar: the call
+  // site ("count at Foo.java:0") is cut to its operation.
+  function stageName(st) { return "Stage " + st.id + (st.attempt ? "." + st.attempt : "") + " · " + (st.name || "").split(" at ")[0].slice(0, 16); }
+  function topBy(list, n, key) { return list.filter(function (x) { return key(x) > 0; }).sort(function (a2, b2) { return key(b2) - key(a2); }).slice(0, n); }
   var DRAW = {
+    stageTimes: function (c, th) {
+      var rows = topBy(stages, 20, function (st) { return span(st.submitted, st.completed) || 0; });
+      hbarChart(c, th, rows.map(function (st) { return { label: stageName(st), st: st }; }), [
+        { label: "Succeeded", color: th.viz[0], value: function (r) { return r.st.status === "failed" ? 0 : span(r.st.submitted, r.st.completed) / 1000; } },
+        { label: "Failed", color: th.fail, value: function (r) { return r.st.status === "failed" ? span(r.st.submitted, r.st.completed) / 1000 : 0; } }
+      ], "The longest stages, in seconds from submission to completion. Click a bar to open the stage.", function (v) { return dur(v * 1000); }, function (r) { return "#stage/" + r.st.key; });
+    },
+    stageData: function (c, th) {
+      var moved = function (st) { return st.input + st.shRead + st.shWrite + st.output + st.diskSpill; };
+      var rows = topBy(stages, 20, moved).map(function (st) { return { label: stageName(st), st: st }; });
+      var mib = function (k) { return function (r) { return r.st[k] / 1048576; }; };
+      hbarChart(c, th, rows, [
+        { label: "Read", color: th.viz[0], value: mib("input") }, { label: "Shuffle read", color: th.viz[1], value: mib("shRead") },
+        { label: "Shuffle write", color: th.viz[2], value: mib("shWrite") }, { label: "Written", color: th.viz[3], value: mib("output") },
+        { label: "Spilled to disk", color: th.viz[4], value: mib("diskSpill") }
+      ], "The stages that moved the most data, in MiB: read, shuffled between executors, written out and spilled to disk.", function (v) { return bytes(v * 1048576); }, function (r) { return "#stage/" + r.st.key; });
+    },
+    stageSpill: function (c, th) {
+      var rows = topBy(stages, 20, function (st) { return st.memSpill + st.diskSpill; }).map(function (st) { return { label: stageName(st), st: st }; });
+      hbarChart(c, th, rows, [
+        { label: "Spilled (size in memory)", color: th.viz[1], value: function (r) { return r.st.memSpill / 1048576; } },
+        { label: "Written to disk", color: th.viz[4], value: function (r) { return r.st.diskSpill / 1048576; } }
+      ], "Spill by stage, in MiB: data that did not fit in memory while the stage ran, and what it came to on disk.", function (v) { return bytes(v * 1048576); }, function (r) { return "#stage/" + r.st.key; });
+    },
+    dataOverTime: function (c, th) {
+      var done = stages.filter(function (st) { return st.completed; }).sort(function (a2, b2) { return a2.completed - b2.completed; });
+      if (done.length < 2) { waitText(c, "Too few finished stages to chart."); return; }
+      var dt = new google.visualization.DataTable();
+      dt.addColumn("datetime", "Time");
+      ["Read", "Shuffle write", "Written"].forEach(function (l) { dt.addColumn("number", l + " (MiB)"); });
+      var inB = 0, sh = 0, out = 0;
+      dt.addRow([new Date(a.start || done[0].submitted), 0, 0, 0]);
+      done.forEach(function (st) { inB += st.input; sh += st.shWrite; out += st.output; dt.addRow([new Date(st.completed), inB / 1048576, sh / 1048576, out / 1048576]); });
+      var plot = frame(c, "Data read, shuffled and written, in MiB, added up as each stage finished: a steep rise is where the work happened.");
+      new google.visualization.SteppedAreaChart(plot).draw(dt, baseOpts(th, { colors: [th.viz[0], th.viz[2], th.viz[3]], areaOpacity: 0.08, connectSteps: true, isStacked: false,
+        hAxis: withFormat(baseOpts(th).hAxis, "HH:mm:ss"), vAxis: axis(th, { minValue: 0, format: "short" }) }));
+    },
+    execTime: function (c, th) {
+      var rows = topBy(execs.filter(function (x) { return x.id !== "driver"; }), 30, function (x) { return x.run; }).map(function (x) { return { label: "Executor " + x.id, x: x }; });
+      var sec = function (f) { return function (r) { return Math.max(f(r.x), 0) / 1000; }; };
+      hbarChart(c, th, rows, [
+        { label: "Computing", color: th.viz[0], value: sec(function (x) { return x.cpuNs / 1e6; }) },
+        { label: "Garbage collection", color: th.viz[1], value: sec(function (x) { return x.gc; }) },
+        { label: "Other or waiting", color: th.neutral, value: sec(function (x) { return x.run - x.cpuNs / 1e6 - x.gc; }) }
+      ], "Task run time on each executor, in seconds: computing on the JVM, collecting garbage, or neither (waiting for shuffle data, storage or Python workers).", function (v) { return dur(v * 1000); }, function (r) { return "#executor/" + encodeURIComponent(r.x.id); });
+    },
+    execHeapAll: function (c, th) {
+      if (!D.heapBytes) { waitText(c, "The executors' heap size is not known."); return; }
+      var rows = topBy(execs.filter(function (x) { return x.id !== "driver"; }), 30, function (x) { return x.peakHeap || 0; }).map(function (x) { return { label: "Executor " + x.id, x: x }; });
+      hbarChart(c, th, rows, [
+        { label: "Peak heap", color: th.viz[0], value: function (r) { return r.x.peakHeap / 1048576; } },
+        { label: "Heap not used at peak", color: th.line, value: function (r) { return Math.max(D.heapBytes - r.x.peakHeap, 0) / 1048576; } }
+      ], "Each executor's peak Java heap against the " + bytes(D.heapBytes) + " it had, in MiB. Peaks are sampled, so short spikes can be missed.", function (v) { return bytes(v * 1048576); }, function (r) { return "#executor/" + encodeURIComponent(r.x.id); });
+    },
+    nodeMemory: function (c, th) {
+      var rows = D.aws.nodes.filter(function (n) { return n.yarnMem; }).map(function (n) { return { label: n.host.split(".")[0], n: n }; });
+      var mib = function (f) { return function (r) { return Math.max(f(r.n), 0) / 1048576; }; };
+      var execBytes = function (n) { return (n.execMem || 0) * (n.peakExecs || n.executors.length); };
+      hbarChart(c, th, rows, [
+        { label: "Driver container", color: th.viz[1], value: mib(function (n) { return n.driverMem || 0; }) },
+        { label: "Executor containers (at once)", color: th.viz[0], value: mib(execBytes) },
+        { label: "Free", color: th.line, value: mib(function (n) { return n.yarnMem - (n.driverMem || 0) - execBytes(n); }) }
+      ], "What YARN placed on each node, in MiB, against the memory the node offered. Free space smaller than one executor's container cannot hold another executor.", function (v) { return bytes(v * 1048576); });
+    },
     clusterContainers: function (c, th) {
       var list = metric("ContainerAllocated").concat(metric("ContainerPending"));
       if (!list.length) { waitText(c, "CloudWatch had no container counts for this run."); return; }
@@ -1440,6 +1535,7 @@
         { h: "Node CPU", num: true, v: function (n) { return n.cpuAvg == null ? -1 : n.cpuAvg; }, f: function (n) { return n.cpuAvg == null ? "—" : el("span", null, Math.round(n.cpuAvg) + "% avg", el("span", { cls: "sub", text: Math.round(n.cpuPeak) + "% peak" })); } }
       ]
     }));
+    if (A.nodes.some(function (n) { return n.yarnMem; })) s.appendChild(chartSlot("", "nodeMemory"));
     if ((A.metricFacts || []).length) s.appendChild(el("div", { cls: "facts" }, A.metricFacts.map(function (f) { return fact(f.label, f.value, f.explain); })));
     if (A.metrics.length) { s.appendChild(chartSlot("", "clusterContainers")); s.appendChild(chartSlot("", "nodeCPU")); }
     if ((A.metricsGaps || []).length) s.appendChild(el("div", { cls: "missing" }, el("h3", { text: "Not in CloudWatch" }), el("ul", null, A.metricsGaps.map(function (g) { return el("li", { text: g }); }))));

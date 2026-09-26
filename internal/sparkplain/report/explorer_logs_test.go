@@ -59,7 +59,8 @@ func TestExplorerCarriesClusterData(t *testing.T) {
 	at := time.Unix(1_790_000_000, 0).UTC()
 	avg, peak := 42.0, 90.0
 	r.Cluster = &model.Cluster{ID: "j-1", Groups: []model.InstanceGroup{{ID: "ig-1", Role: "CORE", InstanceTypes: []string{"m5.xlarge"}, Requested: 2}}}
-	r.Nodes.Hosts = append(r.Nodes.Hosts, model.Host{Name: "ip-10-0-0-9", Instance: &model.Instance{ID: "i-9", Role: "CORE"}, YARNMemoryBytes: 12 << 30, HostCPU: &model.HostCPU{Average: avg, Peak: peak}})
+	r.Nodes.Hosts = append(r.Nodes.Hosts, model.Host{Name: "ip-10-0-0-9", Instance: &model.Instance{ID: "i-9", Role: "CORE"}, YARNMemoryBytes: 12 << 30,
+		ExecutorContainerBytes: 3 << 30, PeakExecutors: 2, DriverContainerBytes: 1 << 30, HostCPU: &model.HostCPU{Average: avg, Peak: peak}})
 	r.Metrics = &model.MetricsSection{From: at, To: at.Add(time.Hour), Cluster: []model.Series{{Name: "ContainerPending", Stat: "Maximum", Scope: "j-1", Points: []model.Point{{T: at, V: 3}}},
 		{Name: "AppsRunning", Stat: "Maximum", Scope: "j-1"}}}
 	r.AWSCalls = &model.AWSCallsSection{Users: []string{"i-9"}, Events: 1, Calls: []model.AWSCall{{Service: "sts.amazonaws.com", Action: "AssumeRole", Count: 1, Errors: 1}},
@@ -71,7 +72,9 @@ func TestExplorerCarriesClusterData(t *testing.T) {
 	a := embedded(t, page)["aws"].(map[string]any)
 	nodes := a["nodes"].([]any)
 	last := nodes[len(nodes)-1].(map[string]any)
-	if last["cpuAvg"].(float64) != 42 || last["yarnMem"].(float64) != float64(12<<30) {
+	// The node memory chart stacks these against yarnMem.
+	if last["cpuAvg"].(float64) != 42 || last["yarnMem"].(float64) != float64(12<<30) ||
+		last["execMem"].(float64) != float64(3<<30) || last["peakExecs"].(float64) != 2 || last["driverMem"].(float64) != float64(1<<30) {
 		t.Errorf("node = %v", last)
 	}
 	if ms := a["metrics"].([]any); len(ms) != 1 || ms[0].(map[string]any)["name"] != "ContainerPending" {

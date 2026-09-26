@@ -284,3 +284,17 @@ func TestLoadSources(t *testing.T) {
 		}
 	}
 }
+
+// Every chart the explorer places has a function to draw it; a misspelt
+// name would only show as an empty box in the browser.
+func TestExplorerChartsHaveDrawers(t *testing.T) {
+	slots := regexp.MustCompile(`chartSlot\("[^"]*", "([A-Za-z]+)`).FindAllStringSubmatch(explorerJS, -1)
+	if len(slots) < 15 {
+		t.Fatalf("found %d chart slots; the pattern no longer matches explorer.js", len(slots))
+	}
+	for _, s := range slots {
+		if !regexp.MustCompile(`\n    ` + s[1] + `: function \(c, th`).MatchString(explorerJS) {
+			t.Errorf("chart %q has no DRAW entry", s[1])
+		}
+	}
+}
