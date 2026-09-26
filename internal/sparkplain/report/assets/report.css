@@ -22,7 +22,7 @@
 }
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
-.wrap{max-width:1180px;margin:0 auto;padding-inline:20px;padding-block:24px 64px}
+.wrap{max-width:1440px;margin:0 auto;padding-inline:20px;padding-block:24px 64px}
 h1,h2,h3{font-family:var(--cond);font-weight:600;text-wrap:balance;margin:0;letter-spacing:-.005em}
 h1{font-size:30px;line-height:1.15}
 h2{font-size:21px;line-height:1.25}
@@ -70,8 +70,8 @@ section{display:grid;gap:14px;scroll-margin-top:16px}
 /* summary */
 .story{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:20px 22px;display:grid;gap:10px}
 .story p{max-width:70ch;font-size:16px;line-height:1.6}
-.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
-.kpi{background:var(--surface);padding:14px 16px;display:grid;gap:2px;align-content:start}
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:0;background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.kpi{background:var(--surface);padding:14px 16px;display:grid;gap:2px;align-content:start;box-shadow:inset -1px -1px 0 var(--line)}
 .kpi .l{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
 .kpi .v{font-family:var(--cond);font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.2}
 .kpi .v small{font-family:var(--sans);font-size:14px;font-weight:400;color:var(--muted)}
@@ -117,7 +117,7 @@ tr.lost td{color:var(--muted)}
 .fix::before{content:"Try  ";letter-spacing:.04em;text-transform:uppercase;font-size:11px;color:var(--faint)}
 
 /* two-col facts */
-.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.facts{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
 .fact{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;display:grid;gap:4px;align-content:start}
 .fact .l{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
 .fact .v{font-weight:500}
@@ -195,3 +195,17 @@ a.themebtn{text-decoration:none}
 
 /* access gaps */
 .missing.access{margin-top:14px;border-color:var(--warn)}
+
+/* charts: two side by side on wide screens */
+.charts2{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+@media (min-width:1200px){.charts2{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.chart h4{margin:0 4px 6px;font-size:14px;font-weight:600}
+.chart .cap{font-size:12.5px;color:var(--muted);margin:6px 4px 2px;max-width:80ch}
+/* categorical series, validated for colour-blind separation (dataviz reference palette, slots 1-5) */
+:root{--viz-1:#2a78d6;--viz-2:#eb6834;--viz-3:#1baf7a;--viz-4:#eda100;--viz-5:#e87ba4}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--viz-1:#3987e5;--viz-2:#d95926;--viz-3:#199e70;--viz-4:#c98500;--viz-5:#d55181}}
+:root[data-theme="dark"]{--viz-1:#3987e5;--viz-2:#d95926;--viz-3:#199e70;--viz-4:#c98500;--viz-5:#d55181}
+
+/* "What happened" beside the headline figures on wide screens */
+#summary{display:grid;gap:14px}
+@media (min-width:1200px){#summary{grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);align-items:start}}
