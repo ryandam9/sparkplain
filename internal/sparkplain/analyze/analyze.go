@@ -52,6 +52,7 @@ type Input struct {
 	Cluster *model.Cluster
 	Steps   []model.Step
 	Logs    []model.LogFile
+	Metrics *model.MetricsSection // CloudWatch, when read
 	// LogsRead says the run was asked to read the cluster's logs;
 	// LogSources are then its Sources rows (EMR API, container, step and
 	// node logs).
@@ -88,7 +89,7 @@ func Run(in Input) *model.Report {
 	if c.t == (Thresholds{}) {
 		c.t = DefaultThresholds()
 	}
-	r.Cluster, r.Steps = in.Cluster, in.Steps
+	r.Cluster, r.Steps, r.Metrics = in.Cluster, in.Steps, in.Metrics
 	if in.LogsRead {
 		r.Logs = &model.LogsSection{Coverage: model.Complete, Files: in.Logs}
 		if r.Logs.Files == nil {
@@ -118,7 +119,7 @@ func Run(in Input) *model.Report {
 	}
 	for _, a := range []func(*ctx, *model.Report){
 		analyzeConfig, analyzeExecutors, analyzeNodes, analyzeMemory, analyzeCPU,
-		analyzeIO, analyzeJobs, analyzeTimeline, analyzeLogs, analyzeIdentity,
+		analyzeIO, analyzeJobs, analyzeTimeline, analyzeLogs, analyzeMetrics, analyzeIdentity,
 	} {
 		a(c, r)
 	}
@@ -173,7 +174,7 @@ func share(a, b int64) float64 {
 func rulePriority(rule string) int {
 	for i, r := range []string{
 		"log-first-failure", "job-failed", "step-failed", "bootstrap-failed", "executor-memory-kill", "out-of-memory", "access-denied",
-		"kerberos-failure", "metastore-failure", "hbase-failure", "executor-lost", "spot-interrupted", "app-retried", "idle-nodes", "executor-decommissioned", "stage-retried",
+		"kerberos-failure", "metastore-failure", "hbase-failure", "executor-lost", "spot-interrupted", "app-retried", "waited-for-capacity", "executor-fit", "idle-nodes", "host-memory-pressure", "host-cpu-saturated", "executor-decommissioned", "stage-retried",
 		"access-static-keys", "stage-skew", "memory-spill", "memory-gc-pressure", "memory-heap-near-limit",
 		"config-unlimited-result", "config-dynalloc-no-shuffle",
 	} {

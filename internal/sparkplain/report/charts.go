@@ -192,3 +192,79 @@ func memChart(r *model.Report) template.HTML {
 	b.WriteString(`</svg>`)
 	return template.HTML(b.String())
 }
+
+// clusterChart draws the cluster's containers over the metrics window from
+// CloudWatch: allocated and waiting, with the application's run shaded.
+func clusterChart(r *model.Report, loc *time.Location) template.HTML {
+	m := r.Metrics
+	if m == nil {
+		return ""
+	}
+	var pending, allocated *model.Series
+	for i := range m.Cluster {
+		switch m.Cluster[i].Name {
+		case "ContainerPending":
+			pending = &m.Cluster[i]
+		case "ContainerAllocated":
+			allocated = &m.Cluster[i]
+		}
+	}
+	if pending == nil || allocated == nil || len(pending.Points)+len(allocated.Points) == 0 || !m.To.After(m.From) {
+		return ""
+	}
+	const W, H = 820.0, 210.0
+	ml, mr, mt, mb := 40.0, 18.0, 16.0, 32.0
+	iw, ih := W-ml-mr, H-mt-mb
+	peak := 1.0
+	for _, s := range []*model.Series{pending, allocated} {
+		if v, ok := s.Max(); ok {
+			peak = max(peak, v)
+		}
+	}
+	ymax := float64(niceMax(int(peak)))
+	if ymax < peak {
+		ymax = peak
+	}
+	span := float64(m.To.Sub(m.From))
+	x := func(v time.Time) float64 { return ml + float64(v.Sub(m.From))/span*iw }
+	y := func(v float64) float64 { return mt + ih - v/ymax*ih }
+	var b strings.Builder
+	fmt.Fprintf(&b, `<svg viewBox="0 0 %.0f %.0f" role="img" aria-label="Containers allocated and waiting on the cluster over time">`, W, H)
+	if a := r.Application; !a.Start.IsZero() {
+		end := a.End
+		if end.IsZero() || end.After(m.To) {
+			end = m.To
+		}
+		fmt.Fprintf(&b, `<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="var(--accent)" opacity=".07"><title>This application's run</title></rect>`, x(a.Start), mt, max(1, x(end)-x(a.Start)), ih)
+	}
+	for _, v := range []float64{0, ymax / 2, ymax} {
+		fmt.Fprintf(&b, `<line class="grid" x1="%.1f" x2="%.1f" y1="%.1f" y2="%.1f"/><text class="ax" x="%.1f" y="%.1f" text-anchor="end">%.0f</text>`, ml, W-mr, y(v), y(v), ml-8, y(v)+4, v)
+	}
+	timeAxis(&b, m.From, m.To, x, mt+ih, mt, loc)
+	step := func(s *model.Series, color string, dash string) {
+		if len(s.Points) == 0 {
+			return
+		}
+		var d strings.Builder
+		per := time.Duration(s.PeriodS) * time.Second
+		for i, p := range s.Points {
+			cmd := "L"
+			if i == 0 {
+				cmd = "M"
+			}
+			fmt.Fprintf(&d, "%s%.1f %.1f L%.1f %.1f ", cmd, x(p.T), y(p.V), x(minTime(p.T.Add(per), m.To)), y(p.V))
+		}
+		fmt.Fprintf(&b, `<path d="%s" fill="none" stroke="%s" stroke-width="2" stroke-dasharray="%s" stroke-linejoin="round"/>`, d.String(), color, dash)
+	}
+	step(allocated, "var(--accent)", "")
+	step(pending, "var(--warn)", "5 3")
+	b.WriteString(`</svg>`)
+	return template.HTML(b.String())
+}
+
+func minTime(a, b time.Time) time.Time {
+	if a.Before(b) {
+		return a
+	}
+	return b
+}

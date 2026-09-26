@@ -121,7 +121,7 @@
         <div class="sechead"><h2>Cluster and nodes</h2><span class="pill {{cov $r.Nodes.Coverage}}">{{covLabel $r.Nodes.Coverage}}</span></div>
         {{if $r.Nodes.Lede}}<p class="lede">{{$r.Nodes.Lede}}</p>{{end}}
         {{if $r.Nodes.Hosts}}<div class="tbl"><table>
-          <thead><tr><th data-sort="text">Host</th><th data-sort="text">Role</th><th data-sort="text">Instance</th><th class="num" data-sort="num">Executors</th><th class="num" data-sort="num">Cores</th><th class="num" data-sort="num">Tasks</th><th class="num" data-sort="num">Failed</th><th class="num" data-sort="num">Lost</th><th data-sort="num">CPU share</th><th data-sort="num">Cores busy</th><th class="num" data-sort="num">Peak heap</th></tr></thead>
+          <thead><tr><th data-sort="text">Host</th><th data-sort="text">Role</th><th data-sort="text">Instance</th><th class="num" data-sort="num">Executors</th><th class="num" data-sort="num">Cores</th><th class="num" data-sort="num">Tasks</th><th class="num" data-sort="num">Failed</th><th class="num" data-sort="num">Lost</th><th data-sort="num" title="The node's CPU while the application ran, from CloudWatch">Node CPU</th><th data-sort="num">CPU share</th><th data-sort="num">Cores busy</th><th class="num" data-sort="num">Peak heap</th></tr></thead>
           <tbody>{{range $r.Nodes.Hosts}}<tr{{if gt .Lost 0}} class="lost"{{end}}>
             <td><span class="mono">{{.Name}}</span>{{if .Source.File}}<span class="sub srcref">{{src .Source}}</span>{{end}}</td>
             <td>{{if and .Driver (gt (len .Executors) 0)}}Driver + executors{{else if .Driver}}Driver only{{else if gt (len .Executors) 0}}Executors{{else if and .Instance (or .Instance.Primary (eq .Instance.Role "MASTER"))}}Primary node{{else}}<span class="bad">Nothing</span>{{end}}</td>
@@ -130,12 +130,19 @@
             <td class="num" data-v="{{.Tasks.Tasks}}">{{num .Tasks.Tasks}}</td>
             <td class="num" data-v="{{.Tasks.Failed}}">{{if gt .Tasks.Failed 0}}<span class="bad">{{num .Tasks.Failed}}</span>{{else}}0{{end}}</td>
             <td class="num" data-v="{{.Lost}}">{{if gt .Lost 0}}<span class="bad">{{.Lost}}</span>{{else}}0{{end}}</td>
+            <td data-v="{{with .HostCPU}}{{.Average}}{{else}}-1{{end}}">{{with .HostCPU}}{{printf "%.0f" .Average}}% avg<span class="sub">{{printf "%.0f" .Peak}}% peak</span>{{else}}—{{end}}</td>
             <td data-v="{{sharev .CPUShare}}">{{if .Tasks.RunTimeMs}}{{share .CPUShare}}{{else}}—{{end}}</td>
             <td data-v="{{sharev .AllocatedCore}}">{{if .Tasks.RunTimeMs}}{{share .AllocatedCore}}{{else}}—{{end}}</td>
             <td class="num" data-v="{{.PeakHeap}}">{{if .PeakHeap}}{{bytes .PeakHeap}}{{else}}—{{end}}</td></tr>
           {{end}}</tbody>
         </table></div>
-        <p class="explain"><b>Instance</b> is the EC2 instance behind the host, from the EMR API: its group (primary, core or task), type, size and whether it was spot or on-demand. <b>YARN offered</b> is what the node's NodeManager gave YARN to place containers in, which is less than the machine's memory. <b>CPU share</b> is task CPU time divided by task run time: how much of the time tasks were computing rather than waiting. <b>Cores busy</b> is task run time divided by the core time the executors held: how much of what YARN gave them was used.</p>{{end}}
+        <p class="explain"><b>Instance</b> is the EC2 instance behind the host, from the EMR API: its group (primary, core or task), type, size and whether it was spot or on-demand. <b>YARN offered</b> is what the node's NodeManager gave YARN to place containers in, which is less than the machine's memory. <b>Node CPU</b> is the whole machine's CPU while the application ran, from CloudWatch, so it includes other applications and daemons. <b>CPU share</b> is task CPU time divided by task run time: how much of the time tasks were computing rather than waiting. <b>Cores busy</b> is task run time divided by the core time the executors held: how much of what YARN gave them was used.</p>{{end}}
+        {{with $r.Metrics}}{{if .Summary}}<h3>The cluster while it ran</h3>
+        <p class="explain">From CloudWatch, for the whole cluster, so other applications running at the same time are included.</p>
+        <div class="facts">{{range .Summary}}<div class="fact"><span class="l">{{.Label}}</span><span class="v">{{.Value}}</span><span class="x">{{.Explain}}</span></div>{{end}}</div>
+        {{with clusterChart $r}}<div class="chart">{{.}}
+          <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>Containers allocated</span><span><i class="sw" style="background:var(--warn)"></i>Containers waiting</span><span><i class="sw" style="background:var(--accent);opacity:.2"></i>This application's run</span></div></div>{{end}}
+        {{if .Missing}}<div class="missing"><h3>Not in CloudWatch</h3><ul>{{range .Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}{{end}}{{end}}
         {{if $r.Nodes.Missing}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $r.Nodes.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
       </section>
 

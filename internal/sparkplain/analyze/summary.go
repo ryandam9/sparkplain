@@ -257,6 +257,11 @@ func analyzeSources(c *ctx, r *model.Report) {
 	}
 	r.Sources = append(r.Sources, ev)
 	notYet := func(name, detail string) {
+		for _, s := range r.Sources {
+			if s.Name == name {
+				return // this run read it
+			}
+		}
 		r.Sources = append(r.Sources, model.SourceStatus{Name: name, Status: "not-yet", Detail: detail})
 	}
 	if c.in.LogsRead {
@@ -268,7 +273,10 @@ func analyzeSources(c *ctx, r *model.Report) {
 		}
 		r.Sources = append(r.Sources, model.SourceStatus{Name: "EMR API", Status: "not-requested", Detail: "Not called: pass -cluster-id with -profile."})
 	}
-	notYet("CloudWatch", "Not called: planned for phase 3 (host CPU, memory and disk).")
+	if c.in.Cluster == nil {
+		r.Sources = append(r.Sources, model.SourceStatus{Name: "CloudWatch", Status: "not-requested", Detail: "Not called: pass -cluster-id with -profile for the cluster's and its nodes' metrics."})
+	}
+	notYet("CloudWatch", "Not called.")
 	notYet("CloudTrail", "Not called: planned for phase 3 (AWS calls and AccessDenied).")
 }
 
@@ -281,6 +289,8 @@ func analyzeCoverage(c *ctx, r *model.Report) {
 			switch {
 			case s.id == "summary" && c.logs != nil:
 				row(s.id, s.title, model.Partial, "Name, user, queue, final status and times from YARN's records", []string{"Spark version, jobs, stages and resource use (the event log)"})
+			case s.id == "nodes" && r.Nodes.Coverage != model.NeedsEventLog:
+				row(s.id, s.title, r.Nodes.Coverage, "The cluster's nodes from the EMR API, and CloudWatch's view of them while the application ran", r.Nodes.Missing)
 			case s.id == "access" && r.Identity.Coverage == model.Partial:
 				row(s.id, s.title, model.Partial, "User and queue from YARN, AWS roles, and the connections the logs show", r.Identity.Missing)
 			default:
@@ -478,7 +488,7 @@ func lowerFirst(s string) string {
 	}
 	// Keep proper nouns and identifiers such as "Stage 18" or "AWS" readable.
 	w, _, _ := strings.Cut(s, " ")
-	if w == strings.ToUpper(w) || w == "Stage" || w == "Job" || w == "Executor" {
+	if w == strings.ToUpper(w) || w == "Stage" || w == "Job" || w == "Executor" || w == "Spark" || w == "Python" {
 		return s
 	}
 	return strings.ToLower(s[:1]) + s[1:]

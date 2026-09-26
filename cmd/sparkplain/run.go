@@ -64,9 +64,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.IntVar(&o.workers, "workers", 16, "how many log files to read at once")
 	fs.StringVar(&o.maxSize, "max-size", "", "largest file or zip entry to read, e.g. 10GiB (default 10GiB)")
 	fs.DurationVar(&o.timeout, "overall-timeout", 0, "deadline for the whole run (default 30m)")
-	fs.BoolVar(&o.noCloudWatch, "no-cloudwatch", false, "skip CloudWatch enrichment (phase 3)")
+	fs.BoolVar(&o.noCloudWatch, "no-cloudwatch", false, "skip CloudWatch metrics (fewer permissions needed)")
 	fs.BoolVar(&o.noCloudTrail, "no-cloudtrail", false, "skip CloudTrail enrichment (phase 3)")
-	fs.DurationVar(&o.windowPad, "window-pad", 5*time.Minute, "padding on the AWS query window (phase 3)")
+	fs.DurationVar(&o.windowPad, "window-pad", 5*time.Minute, "padding around the run's time window for CloudWatch and CloudTrail queries")
 	fs.BoolVar(&o.showVersion, "version", false, "print the version and exit")
 	fs.StringVar(&o.show, "show", "", "print the event at file:line (as the pages cite it), redacted, and exit")
 	fs.Func("source", "the application's source file or folder, shown beside jobs and stages in the explorer (repeatable; redacted)", func(v string) error {
@@ -110,7 +110,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if online && o.from != "" {
 		return fail("-from reads a local copy of the cluster's logs, and -cluster-id reads them from S3: pass one or the other")
 	}
-	for _, name := range []string{"no-cloudwatch", "no-cloudtrail", "window-pad"} {
+	for _, name := range []string{"no-cloudtrail"} {
 		if set[name] {
 			fmt.Fprintf(stderr, "sparkplain: note: -%s is for AWS enrichment (phase 3) and is ignored\n", name)
 		}
@@ -240,6 +240,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 	case err != nil && eventlog.ErrorClass(err) == eventlog.ClassNotFound && !online:
 		return fail("%v", err)
+	case err != nil && eventlog.ErrorClass(err) == eventlog.ClassNotFound:
+		// Online, the folder was right but this application's log is not in
+		// it. On S3 a log appears when Spark closes the file (as .inprogress
+		// if the application then died before finishing it); checked on
+		// the test clusters, where applications killed with their cluster
+		// left none.
+		src.Status, src.Class = "not-supplied", eventlog.ClassNotFound
+		src.Detail = err.Error() + ". On S3 an event log appears only once Spark closes it, so an application that is still running, was killed with its cluster, or never started SparkContext has none."
 	case err != nil:
 		src.Status, src.Class, src.Detail = "error", eventlog.ErrorClass(err), err.Error()
 		fmt.Fprintf(stderr, "sparkplain: could not read the event log (%s): %v\n", src.Class, err)
@@ -281,6 +289,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case online:
 		mode = "online"
 		logs.readLogs(ctx, cloud, log, o.appID, lim)
+		logs.readMetrics(ctx, cloud, log, o.noCloudWatch, o.windowPad)
 		if outputs["explorer"] {
 			var row *model.SourceStatus
 			if fetched, row = logs.fetchScripts(ctx, cloud, o.appID); row != nil {
@@ -308,6 +317,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		Thresholds:  cfg.Thresholds.apply(analyze.DefaultThresholds()),
 		Steps:       logs.steps,
 		Logs:        logs.files,
+		Metrics:     logs.metrics,
 		LogsRead:    online || o.from != "",
 	}
 	if logs.cluster != nil {
@@ -497,14 +507,16 @@ func isS3(p string) bool { _, _, ok := source.ParseS3(p); return ok }
 // awsDeps is how the CLI reaches AWS. Tests replace it: tests never call
 // real AWS (CLAUDE.md).
 var awsDeps = struct {
-	config func(ctx context.Context, profile, region string) (aws.Config, error)
-	emr    func(cfg aws.Config) awsmeta.EMRAPI
-	ec2    func(cfg aws.Config) awsmeta.EC2API
-	s3     func(ctx context.Context, cfg aws.Config, bucket string) (source.Store, error)
+	config     func(ctx context.Context, profile, region string) (aws.Config, error)
+	emr        func(cfg aws.Config) awsmeta.EMRAPI
+	ec2        func(cfg aws.Config) awsmeta.EC2API
+	cloudwatch func(cfg aws.Config) awsmeta.CloudWatchAPI
+	s3         func(ctx context.Context, cfg aws.Config, bucket string) (source.Store, error)
 }{
-	config: source.LoadAWS,
-	emr:    awsmeta.NewEMR,
-	ec2:    awsmeta.NewEC2,
+	config:     source.LoadAWS,
+	emr:        awsmeta.NewEMR,
+	ec2:        awsmeta.NewEC2,
+	cloudwatch: awsmeta.NewCloudWatch,
 	s3: func(ctx context.Context, cfg aws.Config, bucket string) (source.Store, error) {
 		return source.OpenS3(ctx, cfg, bucket)
 	},

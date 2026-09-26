@@ -34,6 +34,8 @@ type Report struct {
 	Cluster *Cluster     `json:"cluster,omitempty"`
 	Steps   []Step       `json:"steps,omitempty"`
 	Logs    *LogsSection `json:"logs,omitempty"`
+	// Metrics come from CloudWatch (online runs).
+	Metrics *MetricsSection `json:"metrics,omitempty"`
 }
 
 // Summary is the "What happened" block.
@@ -130,19 +132,21 @@ type Host struct {
 	Instance *Instance `json:"instance,omitempty"`
 	// YARNMemoryBytes and YARNVCores are what the host's NodeManager
 	// offered YARN, from the ResourceManager or NodeManager log.
-	YARNMemoryBytes int64      `json:"yarnMemoryBytes,omitempty"`
-	YARNVCores      int        `json:"yarnVCores,omitempty"`
-	Driver          bool       `json:"driver"`
-	Executors       []string   `json:"executors"`
-	Cores           int        `json:"cores"`
-	FirstSeen       time.Time  `json:"firstSeen,omitzero"`
-	LastSeen        time.Time  `json:"lastSeen,omitzero"`
-	Lost            int        `json:"executorsLost"`
-	Tasks           TaskTotals `json:"tasks"`
-	PeakHeap        int64      `json:"peakHeapBytes"`
-	CPUShare        float64    `json:"cpuShare"`  // task CPU time / task run time
-	AllocatedCore   float64    `json:"busyShare"` // task run time / (cores × executor lifetime)
-	Source          Source     `json:"source"`
+	YARNMemoryBytes int64 `json:"yarnMemoryBytes,omitempty"`
+	YARNVCores      int   `json:"yarnVCores,omitempty"`
+	// HostCPU is the node's CPU while the application ran, from CloudWatch.
+	HostCPU       *HostCPU   `json:"hostCpu,omitempty"`
+	Driver        bool       `json:"driver"`
+	Executors     []string   `json:"executors"`
+	Cores         int        `json:"cores"`
+	FirstSeen     time.Time  `json:"firstSeen,omitzero"`
+	LastSeen      time.Time  `json:"lastSeen,omitzero"`
+	Lost          int        `json:"executorsLost"`
+	Tasks         TaskTotals `json:"tasks"`
+	PeakHeap      int64      `json:"peakHeapBytes"`
+	CPUShare      float64    `json:"cpuShare"`  // task CPU time / task run time
+	AllocatedCore float64    `json:"busyShare"` // task run time / (cores × executor lifetime)
+	Source        Source     `json:"source"`
 }
 
 // NodesSection is module 2.
@@ -486,4 +490,12 @@ type LogFile struct {
 	Lines    int64     `json:"lines"`
 	Dropped  int       `json:"dropped,omitempty"` // distinct lines past the per-file cap
 	Found    []LogLine `json:"found,omitempty"`
+}
+
+// HostCPU is a node's CPU use over the run, as a percentage of all its
+// vCPUs, from EC2's CloudWatch metrics.
+type HostCPU struct {
+	Average float64 `json:"average"`
+	Peak    float64 `json:"peak"`
+	Source  string  `json:"source"`
 }

@@ -148,7 +148,7 @@ func funcs(loc *time.Location) template.FuncMap {
 		"src":    func(s model.Source) string { return s.String() },
 		"cov":    covClass,
 		"covLabel": func(c model.Coverage) string {
-			return map[model.Coverage]string{model.Complete: "Complete", model.Partial: "Partial", model.NeedsEventLog: "Needs event log"}[c]
+			return map[model.Coverage]string{model.Complete: "Complete", model.Partial: "Partial", model.NeedsEventLog: "Needs event log", model.NoData: "No data"}[c]
 		},
 		"sev": func(s model.Severity) string {
 			return map[model.Severity]string{model.Critical: "crit", model.Warning: "warn", model.Info: "info"}[s]
@@ -178,6 +178,7 @@ func funcs(loc *time.Location) template.FuncMap {
 			return map[string]string{"read": "Read", "partial": "Partly read", "error": "Could not read", "not-supplied": "Not supplied", "not-yet": "Not in this version",
 				"none": "Nothing for this app", "not-requested": "Not requested"}[s]
 		},
+		"clusterChart": func(r *model.Report) template.HTML { return clusterChart(r, loc) },
 		"market": func(m string) string {
 			return map[string]string{"SPOT": "spot", "ON_DEMAND": "on-demand"}[m]
 		},
@@ -264,7 +265,7 @@ func funcs(loc *time.Location) template.FuncMap {
 }
 
 func covClass(c model.Coverage) string {
-	return map[model.Coverage]string{model.Complete: "full", model.Partial: "part", model.NeedsEventLog: "none"}[c]
+	return map[model.Coverage]string{model.Complete: "full", model.Partial: "part", model.NeedsEventLog: "none", model.NoData: "none"}[c]
 }
 
 func statusLabel(s string) string {

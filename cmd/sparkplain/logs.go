@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,6 +28,7 @@ type clusterLogs struct {
 	instances []model.Instance
 	emr       *model.SourceStatus // the EMR API row; nil offline
 	ec2       *model.SourceStatus // the EC2 API row; nil offline
+	metrics   *model.MetricsSection
 	files     []model.LogFile
 	sources   []model.SourceStatus
 }
@@ -400,4 +402,84 @@ func (out *clusterLogs) fetchScripts(ctx context.Context, cloud *awsSession, app
 		row.Detail = fmt.Sprintf("Fetched %s; could not fetch %s.", strings.Join(read, ", "), strings.Join(failed, ", "))
 	}
 	return got, row
+}
+
+// runWindow is when the application ran: from the event log, else from
+// YARN's summary in the logs, else from the step that submitted it.
+func runWindow(log *model.EventLog, files []model.LogFile, steps []model.Step) (from, to time.Time, ok bool) {
+	if log != nil && !log.Application.Start.IsZero() {
+		from, to = log.Application.Start, log.Application.End
+		if to.IsZero() {
+			to = from.Add(time.Duration(log.Application.DurationMs) * time.Millisecond)
+		}
+		return from, to, true
+	}
+	for _, f := range files {
+		for _, l := range f.Found {
+			if l.Kind != model.LogAppSummary {
+				continue
+			}
+			s, _ := strconv.ParseInt(l.Fields["startTime"], 10, 64)
+			e, _ := strconv.ParseInt(l.Fields["finishTime"], 10, 64)
+			if s > 0 && e >= s {
+				return time.UnixMilli(s).UTC(), time.UnixMilli(e).UTC(), true
+			}
+		}
+	}
+	for _, st := range steps {
+		if st.AppID != "" && !st.Started.IsZero() {
+			to = st.Ended
+			if to.IsZero() {
+				to = time.Now()
+			}
+			return st.Started, to, true
+		}
+	}
+	return time.Time{}, time.Time{}, false
+}
+
+// readMetrics reads CloudWatch metrics for the cluster and the nodes that
+// were up while the application ran, padded by pad on each side.
+func (out *clusterLogs) readMetrics(ctx context.Context, cloud *awsSession, log *model.EventLog, skip bool, pad time.Duration) {
+	row := model.SourceStatus{Name: "CloudWatch", Status: "read"}
+	defer func() { out.sources = append(out.sources, row) }()
+	if skip {
+		row.Status, row.Detail = "not-requested", "Not called: -no-cloudwatch."
+		return
+	}
+	from, to, ok := runWindow(log, out.files, out.steps)
+	if !ok {
+		row.Status, row.Detail = "not-supplied", "Not called: nothing says when the application ran (no event log, YARN summary or step)."
+		return
+	}
+	from, to = from.Add(-pad), to.Add(pad)
+	var ids []string
+	for _, in := range out.cluster.Instances {
+		if (!in.Ended.IsZero() && in.Ended.Before(from)) || (!in.Created.IsZero() && in.Created.After(to)) {
+			continue
+		}
+		ids = append(ids, in.ID)
+		if len(ids) == maxNodesWithoutEventLog {
+			break
+		}
+	}
+	cfg, err := cloud.config(ctx)
+	if err == nil {
+		out.metrics, err = awsmeta.Metrics(ctx, awsDeps.cloudwatch(cfg), out.cluster.ID, ids, from, to, time.Now())
+	}
+	if err != nil {
+		row.Status, row.Class, row.Detail = "error", awsmeta.ErrorClass(err), "Could not read metrics (needs cloudwatch:GetMetricData and cloudwatch:ListMetrics): "+err.Error()
+		return
+	}
+	points := 0
+	for _, s := range append(append([]model.Series{}, out.metrics.Cluster...), out.metrics.Hosts...) {
+		points += len(s.Points)
+	}
+	row.Detail = fmt.Sprintf("GetMetricData for the cluster and %s from %s to %s UTC (the run with %s either side): %s series, %s points.",
+		model.Plural(len(ids), "node", "nodes"), from.UTC().Format("2006-01-02 15:04"), to.UTC().Format("15:04"), pad,
+		model.Num(int64(len(out.metrics.Cluster)+len(out.metrics.Hosts))), model.Num(int64(points)))
+	if out.metrics.Coverage == model.NoData {
+		row.Status = "none"
+		row.Detail += " " + strings.Join(out.metrics.Missing, " ")
+	}
 }

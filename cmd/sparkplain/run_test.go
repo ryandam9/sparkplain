@@ -7,12 +7,16 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
+	cwtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/emr"
@@ -255,6 +259,22 @@ func (s stubEMR) DescribeStep(_ context.Context, in *emr.DescribeStepInput, _ ..
 	return &emr.DescribeStepOutput{Step: &emrtypes.Step{Id: in.StepId}}, nil
 }
 
+// stubCloudWatch answers every query with one point an hour after the
+// fixtures' runs, and lists no agent metrics.
+type stubCloudWatch struct{}
+
+func (stubCloudWatch) ListMetrics(context.Context, *cloudwatch.ListMetricsInput, ...func(*cloudwatch.Options)) (*cloudwatch.ListMetricsOutput, error) {
+	return &cloudwatch.ListMetricsOutput{}, nil
+}
+func (stubCloudWatch) GetMetricData(_ context.Context, in *cloudwatch.GetMetricDataInput, _ ...func(*cloudwatch.Options)) (*cloudwatch.GetMetricDataOutput, error) {
+	out := &cloudwatch.GetMetricDataOutput{}
+	for _, q := range in.MetricDataQueries {
+		out.MetricDataResults = append(out.MetricDataResults, cwtypes.MetricDataResult{Id: q.Id, StatusCode: cwtypes.StatusCodeComplete,
+			Timestamps: []time.Time{aws.ToTime(in.StartTime).Add(time.Minute)}, Values: []float64{1}})
+	}
+	return out, nil
+}
+
 // stubEC2 answers DescribeInstanceTypes for m5.xlarge only.
 type stubEC2 struct{}
 
@@ -278,12 +298,21 @@ func fakeAWS(t *testing.T, buckets map[string]string, clusters map[string]*emrty
 	awsDeps.config = func(context.Context, string, string) (aws.Config, error) { return aws.Config{Region: "us-east-1"}, nil }
 	awsDeps.emr = func(aws.Config) awsmeta.EMRAPI { return stubEMR{clusters: clusters} }
 	awsDeps.ec2 = func(aws.Config) awsmeta.EC2API { return stubEC2{} }
+	awsDeps.cloudwatch = func(aws.Config) awsmeta.CloudWatchAPI { return stubCloudWatch{} }
 	awsDeps.s3 = func(_ context.Context, _ aws.Config, bucket string) (source.Store, error) {
 		root, ok := buckets[bucket]
 		if !ok {
 			return nil, &source.Error{Class: source.ClassNotFound, Key: bucket, Err: errors.New("no such bucket")}
 		}
 		return source.NewLocalStore(root), nil
+	}
+	// Tests never call real AWS: every client the CLI can make must be
+	// replaced above, including ones added later.
+	now, before := reflect.ValueOf(awsDeps), reflect.ValueOf(saved)
+	for i := 0; i < now.NumField(); i++ {
+		if now.Field(i).Pointer() == before.Field(i).Pointer() {
+			t.Fatalf("fakeAWS does not stub awsDeps.%s", now.Type().Field(i).Name)
+		}
 	}
 }
 

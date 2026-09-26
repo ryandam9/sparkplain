@@ -1,0 +1,60 @@
+package model
+
+import "time"
+
+// MetricsSection holds CloudWatch metrics over the run's window: the
+// cluster's own (AWS/ElasticMapReduce), each node's (AWS/EC2), and the
+// CloudWatch agent's memory and disk metrics when it publishes them.
+type MetricsSection struct {
+	Coverage Coverage  `json:"coverage"`
+	From     time.Time `json:"from"`
+	To       time.Time `json:"to"`
+	Cluster  []Series  `json:"cluster"`
+	Hosts    []Series  `json:"hosts"`
+	Missing  []string  `json:"missing,omitempty"`
+	// Summary is what the report shows in words, worked out by analyze.
+	Summary []Fact `json:"summary,omitempty"`
+}
+
+// Series is one metric over time.
+type Series struct {
+	Namespace string  `json:"namespace"`
+	Name      string  `json:"name"`
+	Stat      string  `json:"stat"`             // Maximum, Average, Sum
+	Scope     string  `json:"scope"`            // the cluster ID or an instance ID
+	Unit      string  `json:"unit"`             // percent, count, MB, bytes
+	PeriodS   int     `json:"periodSeconds"`    // seconds between points
+	Points    []Point `json:"points"`           // in time order
+	Source    string  `json:"source"`           // the query, for people
+	Status    string  `json:"status,omitempty"` // CloudWatch's status when not Complete
+}
+
+// Point is one value at one time.
+type Point struct {
+	T time.Time `json:"t"`
+	V float64   `json:"v"`
+}
+
+// Max is the series' largest value, and whether it has any.
+func (s Series) Max() (float64, bool) {
+	if len(s.Points) == 0 {
+		return 0, false
+	}
+	m := s.Points[0].V
+	for _, p := range s.Points[1:] {
+		m = max(m, p.V)
+	}
+	return m, true
+}
+
+// Mean is the series' average value.
+func (s Series) Mean() (float64, bool) {
+	if len(s.Points) == 0 {
+		return 0, false
+	}
+	var t float64
+	for _, p := range s.Points {
+		t += p.V
+	}
+	return t / float64(len(s.Points)), true
+}

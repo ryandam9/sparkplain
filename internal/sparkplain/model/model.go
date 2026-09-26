@@ -85,6 +85,7 @@ const (
 	Complete      Coverage = "complete"
 	Partial       Coverage = "partial"
 	NeedsEventLog Coverage = "needs-event-log"
+	NoData        Coverage = "no-data" // its source was read but held nothing for this run
 )
 
 // Status values used by applications, jobs and stages.
