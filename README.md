@@ -2,7 +2,7 @@
 
 Turns one Spark application's logs into a single plain-language HTML report (plus JSON): what ran, on which nodes, with how much CPU, memory and storage, and what went wrong, with every finding pointing at the log line behind it. The first target is Amazon EMR on EC2 7.3.0+ (Spark 3.5.1+).
 
-The design is in [docs/SPEC.md](docs/SPEC.md). This version is **phase 1**: it reads a Spark event log you already have and needs no AWS access. Fetching logs from S3 and AWS APIs come in phases 2 and 3.
+The design is in [docs/SPEC.md](docs/SPEC.md). It reads a Spark event log you already have, or finds it on S3 from the EMR cluster (phase 2, in progress). Container, step and node logs follow in phase 2, and CloudWatch and CloudTrail in phase 3.
 
 ## Build
 
@@ -23,6 +23,15 @@ sparkplain -app-id application_1700000000000_0042 -eventlog ./application_170000
 sparkplain -app-id application_1700000000000_0042 -eventlog ./eventlog_v2_application_1700000000000_0042/
 sparkplain -app-id application_1700000000000_0042 -eventlog /var/log/spark/apps/
 sparkplain -app-id application_1700000000000_0042 -eventlog ./application_1700000000000_0042.zip
+```
+
+Online, from the cluster (read-only AWS calls; `-profile default` uses the default credential chain):
+
+```sh
+# The event log is found from the cluster's spark.eventLog.dir when that is on S3
+sparkplain -profile default -cluster-id j-1ABCDEF -app-id application_1700000000000_0042
+# Otherwise say where it is
+sparkplain -profile default -cluster-id j-1ABCDEF -app-id application_1700000000000_0042 -eventlog s3://my-logs/spark-events/
 ```
 
 It writes three files to `~/sparkplain/<yyyy-mm-dd>/<app-id>/` (or `-out`):

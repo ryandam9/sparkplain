@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
+	"github.com/ryandam9/sparkplain/internal/sparkplain/source"
 )
 
 // rawEvents decodes every event of a plain fixture generically.
@@ -444,4 +445,63 @@ func TestCodeLocations(t *testing.T) {
 			t.Errorf("shortSite(%q) = %+v, want none", site, loc)
 		}
 	}
+}
+
+// ResolveStore finds an application's event log under a prefix, as it would
+// in S3 (a local folder stands in for the bucket).
+func TestResolveStore(t *testing.T) {
+	root := t.TempDir()
+	copyFile := func(src, dst string) {
+		b, err := os.ReadFile(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		os.MkdirAll(filepath.Dir(filepath.Join(root, dst)), 0o755)
+		os.WriteFile(filepath.Join(root, dst), b, 0o644)
+	}
+	copyFile(filepath.Join(fixtures, mainApp+".zstd"), "spark-events/"+mainApp+".zstd")
+	copyFile(filepath.Join(fixtures, "application_1790380000000_0044"), "spark-events/application_1790380000000_0044")
+	rolling := "eventlog_v2_application_1790380000000_0043"
+	entries, _ := os.ReadDir(filepath.Join(fixtures, rolling))
+	for _, e := range entries {
+		copyFile(filepath.Join(fixtures, rolling, e.Name()), "spark-events/"+rolling+"/"+e.Name())
+	}
+	st := source.NewLocalStore(root)
+	ctx := t.Context()
+	events := func(in *Input) int64 {
+		l, err := Parse(ctx, in, Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return l.Stats.Events
+	}
+	local := events(mustResolve(t, filepath.Join(fixtures, mainApp+".zstd"), mainApp))
+	for _, loc := range []string{"spark-events", "spark-events/", "spark-events/" + mainApp + ".zstd"} {
+		in, err := ResolveStore(ctx, st, loc, mainApp, Limits{})
+		if err != nil {
+			t.Fatalf("%s: %v", loc, err)
+		}
+		if in.Layout != "single" || events(in) != local {
+			t.Errorf("%s: layout %s", loc, in.Layout)
+		}
+	}
+	in, err := ResolveStore(ctx, st, "spark-events/", "application_1790380000000_0043", Limits{})
+	if err != nil || in.Layout != "rolling" || len(in.PartNames()) < 2 {
+		t.Fatalf("rolling: %v %v", in, err)
+	}
+	if events(in) != events(mustResolve(t, filepath.Join(fixtures, rolling), "application_1790380000000_0043")) {
+		t.Error("rolling log read from the store differs from the local read")
+	}
+	if _, err := ResolveStore(ctx, st, "spark-events/", "application_1_9999", Limits{}); ErrorClass(err) != ClassNotFound {
+		t.Errorf("missing app: %v", err)
+	}
+}
+
+func mustResolve(t *testing.T, p, app string) *Input {
+	t.Helper()
+	in, err := Resolve(p, app, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return in
 }

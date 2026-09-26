@@ -363,6 +363,8 @@ Fixtures (added, not regenerated, so existing expectations hold): `0046` exercis
 
 - Phase 2 step 2 (built): `internal/sparkplain/awsmeta` reads the cluster (`DescribeCluster`: state, release, applications, log URI, roles, security configuration, EMR configurations flattened and redacted), finds a cluster by name (`ListClusters`, newest wins), lists steps (`ListSteps`, arguments redacted), and finds the application a step submitted in its `stderr`. Checked against the live testbed and a terminated cluster: `LogUri` uses the `s3n://` scheme, and a terminated cluster still describes. Tests use a stubbed client.
 
+- Phase 2 step 3 (built): `-eventlog` takes `s3://` objects and prefixes (`eventlog.ResolveStore`, the same attempt and rolling-folder rules as for local folders, every part read with its listed ETag), then `eventlog-prefix`, then the cluster's own `spark.eventLog.dir` when it is on S3. `-cluster-id` or `-cluster-name` with `-profile` (required, `default` for the default chain) describes the cluster; without an event log an online run carries on and says why (HDFS event logs are gone once the cluster ends), exiting 3. Checked live: the testbed's report came from `-profile default -cluster-id … -app-id …` alone in 2 s, and a terminated cluster whose jobs set the event log dir per job needed `-eventlog s3://…/spark-events/`.
+
 ## 9. Open questions
 
 - [ ] Where is the S3 copy of the event logs that the History Server reads (`s3a://…/sparklogs`), and can your AWS profile read it?

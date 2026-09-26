@@ -2,13 +2,23 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/emr"
+	emrtypes "github.com/aws/aws-sdk-go-v2/service/emr/types"
+	"github.com/aws/smithy-go"
+
+	"github.com/ryandam9/sparkplain/internal/sparkplain/awsmeta"
+	"github.com/ryandam9/sparkplain/internal/sparkplain/source"
 )
 
 const fx = "../../testdata/eventlog"
@@ -63,9 +73,7 @@ func TestRunExitCodes(t *testing.T) {
 	}{
 		{"missing app id", []string{"-eventlog", fx}, exitFatal, "-app-id is required"},
 		{"bad app id", []string{"-app-id", "../../etc", "-eventlog", fx}, exitFatal, "does not look like"},
-		{"no event log", []string{"-app-id", "application_1_2"}, exitFatal, "needs an event log"},
-		{"s3 not yet", []string{"-app-id", "application_1_2", "-eventlog", "s3://bucket/sparklogs/"}, exitFatal, "phase 2"},
-		{"online flag", []string{"-app-id", "application_1_2", "-cluster-id", "j-1", "-eventlog", fx}, exitFatal, "online mode"},
+		{"no event log", []string{"-app-id", "application_1_2"}, exitFatal, "pass -eventlog"},
 		{"not found", []string{"-app-id", "application_1_2", "-eventlog", fx, "-out", dir}, exitFatal, "no event log for"},
 		{"wrong app", []string{"-app-id", "application_1790380000000_0044", "-eventlog", filepath.Join(fx, "application_1790380000000_0042"), "-out", dir}, exitFatal, "belongs to application_1790380000000_0042"},
 		{"bad format", []string{"-app-id", "application_1_2", "-eventlog", fx, "-format", "pdf"}, exitFatal, "-format"},
@@ -205,5 +213,85 @@ func TestSourceFlag(t *testing.T) {
 	}
 	if code, _, _ := runCLI(t, "-app-id", "application_1790380000000_0051", "-eventlog", log, "-out", dir, "-source", "/no/such"); code != exitFatal {
 		t.Errorf("a missing -source path should exit 2, got %d", code)
+	}
+}
+
+// stubEMR answers DescribeCluster from a map. Tests never call real AWS.
+type stubEMR struct{ clusters map[string]*emrtypes.Cluster }
+
+func (s stubEMR) DescribeCluster(_ context.Context, in *emr.DescribeClusterInput, _ ...func(*emr.Options)) (*emr.DescribeClusterOutput, error) {
+	c, ok := s.clusters[aws.ToString(in.ClusterId)]
+	if !ok {
+		return nil, &smithy.GenericAPIError{Code: "InvalidRequestException", Message: "Cluster id is not valid."}
+	}
+	return &emr.DescribeClusterOutput{Cluster: c}, nil
+}
+func (stubEMR) ListClusters(context.Context, *emr.ListClustersInput, ...func(*emr.Options)) (*emr.ListClustersOutput, error) {
+	return &emr.ListClustersOutput{}, nil
+}
+func (stubEMR) ListSteps(context.Context, *emr.ListStepsInput, ...func(*emr.Options)) (*emr.ListStepsOutput, error) {
+	return &emr.ListStepsOutput{}, nil
+}
+
+// fakeAWS points the CLI's AWS at local folders (one per bucket) and a
+// stubbed EMR, and restores it after the test.
+func fakeAWS(t *testing.T, buckets map[string]string, clusters map[string]*emrtypes.Cluster) {
+	t.Helper()
+	saved := awsDeps
+	t.Cleanup(func() { awsDeps = saved })
+	awsDeps.config = func(context.Context, string, string) (aws.Config, error) { return aws.Config{Region: "us-east-1"}, nil }
+	awsDeps.emr = func(aws.Config) awsmeta.EMRAPI { return stubEMR{clusters} }
+	awsDeps.s3 = func(_ context.Context, _ aws.Config, bucket string) (source.Store, error) {
+		root, ok := buckets[bucket]
+		if !ok {
+			return nil, &source.Error{Class: source.ClassNotFound, Key: bucket, Err: errors.New("no such bucket")}
+		}
+		return source.NewLocalStore(root), nil
+	}
+}
+
+func cluster(id, eventLogDir string) *emrtypes.Cluster {
+	c := &emrtypes.Cluster{Id: aws.String(id), Name: aws.String("etl"), ReleaseLabel: aws.String("emr-7.3.0"),
+		LogUri: aws.String("s3n://logs/emr/"), Status: &emrtypes.ClusterStatus{State: emrtypes.ClusterStateTerminated}}
+	if eventLogDir != "" {
+		c.Configurations = []emrtypes.Configuration{{Classification: aws.String("spark-defaults"), Properties: map[string]string{"spark.eventLog.dir": eventLogDir}}}
+	}
+	return c
+}
+
+func TestOnlineEventLog(t *testing.T) {
+	bucket := t.TempDir()
+	os.MkdirAll(filepath.Join(bucket, "spark-events"), 0o755)
+	data, _ := os.ReadFile(filepath.Join(fx, "application_1790380000000_0042.zstd"))
+	os.WriteFile(filepath.Join(bucket, "spark-events", "application_1790380000000_0042.zstd"), data, 0o644)
+	fakeAWS(t, map[string]string{"logs": bucket}, map[string]*emrtypes.Cluster{
+		"j-s3": cluster("j-s3", "s3://logs/spark-events/"), "j-hdfs": cluster("j-hdfs", "hdfs:///var/log/spark/apps")})
+	app := "application_1790380000000_0042"
+
+	for _, args := range [][]string{
+		{"-eventlog", "s3://logs/spark-events/", "-profile", "test"},
+		{"-cluster-id", "j-s3", "-profile", "test"},
+	} {
+		dir := t.TempDir()
+		code, out, errs := runCLI(t, append([]string{"-app-id", app, "-out", dir}, args...)...)
+		if code != exitOK && code != exitPartial {
+			t.Fatalf("%v: exit %d: %s", args, code, errs)
+		}
+		js, _ := os.ReadFile(filepath.Join(dir, "report.json"))
+		if !bytes.Contains(js, []byte(`"id": "application_1790380000000_0042"`)) || !strings.Contains(out, "wrote") {
+			t.Errorf("%v: no report for the S3 event log: %s", args, errs)
+		}
+	}
+	dir := t.TempDir()
+	code, _, errs := runCLI(t, "-app-id", app, "-out", dir, "-cluster-id", "j-hdfs", "-profile", "test")
+	js, _ := os.ReadFile(filepath.Join(dir, "report.json"))
+	if code != exitPartial || !bytes.Contains(js, []byte("HDFS")) {
+		t.Errorf("an HDFS event log dir should give a partial report saying why: exit %d, %s", code, errs)
+	}
+	if code, _, errs := runCLI(t, "-app-id", app, "-cluster-id", "j-nope", "-profile", "test"); code != exitFatal || !strings.Contains(errs, "not found") {
+		t.Errorf("unknown cluster: exit %d, %s", code, errs)
+	}
+	if code, _, errs := runCLI(t, "-app-id", app, "-cluster-id", "j-s3"); code != exitFatal || !strings.Contains(errs, "-profile") {
+		t.Errorf("AWS access without -profile: exit %d, %s", code, errs)
 	}
 }

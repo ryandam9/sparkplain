@@ -15,10 +15,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+
 	"github.com/ryandam9/sparkplain/internal/sparkplain/analyze"
+	"github.com/ryandam9/sparkplain/internal/sparkplain/awsmeta"
 	"github.com/ryandam9/sparkplain/internal/sparkplain/eventlog"
 	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
 	"github.com/ryandam9/sparkplain/internal/sparkplain/report"
+	"github.com/ryandam9/sparkplain/internal/sparkplain/source"
 )
 
 // version is overridden at build time with -ldflags "-X main.version=…".
@@ -102,14 +106,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if !appIDRE.MatchString(o.appID) {
 		return fail("-app-id %q does not look like a Spark application ID", o.appID)
 	}
-	for _, name := range []string{"profile", "cluster-id", "cluster-name", "from"} {
-		if set[name] {
-			return fail("-%s is for online mode, which arrives in phase 2. This version reads a local event log: pass -eventlog <path>", name)
-		}
+	if set["from"] {
+		return fail("-from (an offline folder of container and step logs) arrives later in phase 2; pass -eventlog, or -cluster-id to read the logs from S3")
 	}
-	for _, name := range []string{"region", "workers", "no-cloudwatch", "no-cloudtrail", "window-pad"} {
+	online := o.clusterID != "" || o.clusterName != ""
+	for _, name := range []string{"no-cloudwatch", "no-cloudtrail", "window-pad"} {
 		if set[name] {
-			fmt.Fprintf(stderr, "sparkplain: note: -%s only applies to online mode and is ignored\n", name)
+			fmt.Fprintf(stderr, "sparkplain: note: -%s is for AWS enrichment (phase 3) and is ignored\n", name)
 		}
 	}
 
@@ -144,28 +147,48 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return fail("config timezone %q: %v", cfg.TimeZone, err)
 		}
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	cloud := &awsSession{profile: o.profile, region: o.region}
+	var cluster *model.Cluster
+	if online {
+		c, err := cloud.cluster(ctx, o.clusterID, o.clusterName)
+		if err != nil {
+			return fail("%v", err)
+		}
+		cluster = &c
+		fmt.Fprintf(stderr, "sparkplain: cluster %s (%s, %s, %s)\n", c.ID, c.Name, c.Release, c.State)
+	}
 	evPath := o.eventLog
 	if evPath == "" && cfg.EventLogPrefix != "" {
 		evPath = cfg.EventLogPrefix
 		fmt.Fprintf(stderr, "sparkplain: using eventlog-prefix %s from %s\n", evPath, cfgPath)
 	}
-	if evPath == "" {
-		return fail("this version needs an event log: pass -eventlog <path> (a file, rolling folder, folder of logs or History Server zip)")
+	if evPath == "" && cluster != nil {
+		if dir := cluster.Configurations["spark-defaults/spark.eventLog.dir"]; isS3(dir) {
+			evPath = dir
+			fmt.Fprintf(stderr, "sparkplain: using the cluster's spark.eventLog.dir %s\n", evPath)
+		}
 	}
-	if strings.HasPrefix(evPath, "s3://") || strings.HasPrefix(evPath, "s3a://") {
-		return fail("reading the event log from S3 arrives in phase 2. Download it (or use the History Server's Download button) and pass the local path")
+	if evPath == "" && !online {
+		return fail("pass -eventlog <path> (a file, rolling folder, folder of logs, History Server zip or s3:// location), or -cluster-id to read from the cluster")
 	}
 	if o.show != "" {
 		file, line, err := eventlog.ParseLocation(o.show)
 		if err != nil {
 			return fail("-show: %v", err)
 		}
-		in, err := eventlog.Resolve(evPath, o.appID, eventlog.Limits{MaxObjectBytes: maxSize})
+		if evPath == "" {
+			return fail("-show needs the event log: pass -eventlog")
+		}
+		in, err := cloud.resolve(ctx, evPath, o.appID, eventlog.Limits{MaxObjectBytes: maxSize})
 		if err != nil {
 			return fail("%v", err)
 		}
 		defer in.Close()
-		b, err := eventlog.ShowEvent(context.Background(), in, file, line)
+		b, err := eventlog.ShowEvent(ctx, in, file, line)
 		if err != nil {
 			return fail("-show: %v", err)
 		}
@@ -181,16 +204,18 @@ func run(args []string, stdout, stderr io.Writer) int {
 		outDir = filepath.Join(home, "sparkplain", time.Now().Format("2006-01-02"), o.appID)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
 	src := model.SourceStatus{Name: "Spark event log", Location: evPath}
 	var log *model.EventLog
-	in, err := eventlog.Resolve(evPath, o.appID, eventlog.Limits{MaxObjectBytes: maxSize})
+	var in *eventlog.Input
+	if evPath == "" {
+		err = errNoEventLog
+	} else {
+		in, err = cloud.resolve(ctx, evPath, o.appID, eventlog.Limits{MaxObjectBytes: maxSize})
+	}
 	switch {
-	case err != nil && eventlog.ErrorClass(err) == eventlog.ClassNotFound:
+	case errors.Is(err, errNoEventLog):
+		src.Status, src.Detail = "not-supplied", "The cluster keeps Spark event logs in HDFS (the default spark.eventLog.dir), which is gone once it ends. Pass -eventlog with an S3 copy or a History Server download, or set spark.eventLog.dir to S3 on the cluster."
+	case err != nil && eventlog.ErrorClass(err) == eventlog.ClassNotFound && !online:
 		return fail("%v", err)
 	case err != nil:
 		src.Status, src.Class, src.Detail = "error", eventlog.ErrorClass(err), err.Error()
@@ -398,4 +423,81 @@ func parseFormats(s string) (map[string]bool, error) {
 		return nil, fmt.Errorf("-format names no outputs")
 	}
 	return out, nil
+}
+
+var errNoEventLog = errors.New("no event log location")
+
+func isS3(p string) bool { _, _, ok := source.ParseS3(p); return ok }
+
+// awsDeps is how the CLI reaches AWS. Tests replace it: tests never call
+// real AWS (CLAUDE.md).
+var awsDeps = struct {
+	config func(ctx context.Context, profile, region string) (aws.Config, error)
+	emr    func(cfg aws.Config) awsmeta.EMRAPI
+	s3     func(ctx context.Context, cfg aws.Config, bucket string) (source.Store, error)
+}{
+	config: source.LoadAWS,
+	emr:    awsmeta.NewEMR,
+	s3: func(ctx context.Context, cfg aws.Config, bucket string) (source.Store, error) {
+		return source.OpenS3(ctx, cfg, bucket)
+	},
+}
+
+// awsSession loads AWS credentials once, on first use, so offline runs
+// never touch them.
+type awsSession struct {
+	profile, region string
+	cfg             *aws.Config
+}
+
+func (a *awsSession) config(ctx context.Context) (aws.Config, error) {
+	if a.profile == "" {
+		// SPEC §2: the profile is always explicit, so it is clear whose
+		// credentials read the logs.
+		return aws.Config{}, errors.New("AWS access needs -profile (pass -profile default for the default profile)")
+	}
+	if a.cfg == nil {
+		profile := a.profile
+		if profile == "default" {
+			profile = "" // the SDK's default chain, including environment credentials
+		}
+		cfg, err := awsDeps.config(ctx, profile, a.region)
+		if err != nil {
+			return cfg, fmt.Errorf("AWS credentials (profile %q): %w", a.profile, err)
+		}
+		a.cfg = &cfg
+	}
+	return *a.cfg, nil
+}
+
+// cluster finds the cluster by ID or name and describes it.
+func (a *awsSession) cluster(ctx context.Context, id, name string) (model.Cluster, error) {
+	cfg, err := a.config(ctx)
+	if err != nil {
+		return model.Cluster{}, err
+	}
+	api := awsDeps.emr(cfg)
+	if id == "" {
+		if id, err = awsmeta.FindByName(ctx, api, name); err != nil {
+			return model.Cluster{}, err
+		}
+	}
+	return awsmeta.Describe(ctx, api, id)
+}
+
+// resolve finds the event log at a local path or an s3:// location.
+func (a *awsSession) resolve(ctx context.Context, loc, appID string, lim eventlog.Limits) (*eventlog.Input, error) {
+	bucket, key, ok := source.ParseS3(loc)
+	if !ok {
+		return eventlog.Resolve(loc, appID, lim)
+	}
+	cfg, err := a.config(ctx)
+	if err != nil {
+		return nil, &eventlog.SourceError{Class: eventlog.ClassAccessDenied, Err: err}
+	}
+	st, err := awsDeps.s3(ctx, cfg, bucket)
+	if err != nil {
+		return nil, &eventlog.SourceError{Class: source.ClassOf(err), Err: err}
+	}
+	return eventlog.ResolveStore(ctx, st, key, appID, lim)
 }
