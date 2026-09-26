@@ -3,6 +3,7 @@ package analyze
 import (
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
 )
@@ -18,15 +19,16 @@ func analyzeConfig(c *ctx, r *model.Report) {
 	}
 	s.ResourceProfiles = c.log.ResourceProfiles
 	s.Coverage = model.Partial
+	setBy := settingOrigins(r)
 	s.Missing = []string{
-		"Which settings came from EMR defaults, cluster configuration or spark-submit (needs the EMR API and step logs)",
+		"Which settings came from EMR defaults, cluster configuration or spark-submit (needs -cluster-id)",
 		"The EMR release label and the Python version (not in the event log)",
 		"Executors' own JVM and OS details (the event log records the driver's environment only)",
 	}
 	s.Runtime = runtimeRows(c)
 	byGroup := map[string][]model.ConfigView{}
 	for _, e := range c.log.Config {
-		v := model.ConfigView{ConfigEntry: e}
+		v := model.ConfigView{ConfigEntry: e, SetBy: setBy(e)}
 		if st, ok := settingByKey[e.Key]; ok && e.Origin == "Spark Properties" {
 			v.Default, v.Explain = st.def, st.explain
 			v.NonDefault = !e.Redacted && !sameValue(st, e.Value)
@@ -53,13 +55,93 @@ func analyzeConfig(c *ctx, r *model.Report) {
 		}
 		view.NonDefault = !view.Redacted && !sameValue(st, v)
 		view.Risk = riskOf(c, st.key, v)
+		view.SetBy = setBy(view.ConfigEntry)
 		if view.NonDefault {
 			s.NonDefault++
 		}
 		s.Key = append(s.Key, view)
 	}
 	sort.SliceStable(s.Key, func(i, j int) bool { return s.Key[i].NonDefault && !s.Key[j].NonDefault })
+	if r.Cluster != nil {
+		s.Missing[0] = "Which of the unmarked settings EMR itself set (its defaults for the release and instance type are not in its API) and which the code set"
+	}
 	configFindings(c)
+}
+
+// submitFlags are the spark-submit flags that set a Spark property.
+var submitFlags = map[string]string{"--executor-memory": "spark.executor.memory", "--executor-cores": "spark.executor.cores", "--num-executors": "spark.executor.instances",
+	"--driver-memory": "spark.driver.memory", "--driver-cores": "spark.driver.cores", "--deploy-mode": "spark.submit.deployMode", "--master": "spark.master",
+	"--name": "spark.app.name", "--queue": "spark.yarn.queue", "--py-files": "spark.submit.pyFiles", "--jars": "spark.jars", "--packages": "spark.jars.packages",
+	"--files": "spark.files", "--archives": "spark.archives", "--principal": "spark.kerberos.principal", "--keytab": "spark.kerberos.keytab"}
+
+// hadoopClassifications are the EMR classifications whose keys reach the
+// event log's Hadoop properties unprefixed.
+var hadoopClassifications = []string{"core-site", "hdfs-site", "yarn-site", "mapred-site", "hive-site", "spark-hive-site", "emrfs-site"}
+
+// settingOrigins says, for each setting, whether the cluster's EMR
+// configuration (DescribeCluster) or the application's step (its
+// spark-submit arguments) set it. A value must match to count, so a job
+// that overrode the cluster's value is not credited to the cluster.
+func settingOrigins(r *model.Report) func(model.ConfigEntry) string {
+	cluster := map[string]string{}
+	if r.Cluster != nil {
+		cluster = r.Cluster.Configurations
+	}
+	submit := map[string]string{}
+	for _, st := range r.Steps {
+		if st.AppID == "" {
+			continue
+		}
+		args := st.Args
+		for i, a := range args {
+			if a == "spark-submit" || strings.HasSuffix(a, "/spark-submit") {
+				args = args[i+1:]
+				break
+			}
+		}
+		for i := 0; i < len(args); i++ {
+			a := args[i]
+			name, val, eq := strings.Cut(a, "=")
+			if !strings.HasPrefix(a, "-") {
+				if i > 0 && args[i-1] == "--conf" {
+					continue
+				}
+				break // the application and its own arguments
+			}
+			if !eq && i+1 < len(args) {
+				val = args[i+1]
+				i++
+			}
+			switch {
+			case name == "--conf" || name == "-c":
+				if k, v, ok := strings.Cut(val, "="); ok {
+					submit[k] = v
+				}
+			case submitFlags[name] != "":
+				submit[submitFlags[name]] = val
+			}
+		}
+	}
+	return func(e model.ConfigEntry) string {
+		if v, ok := submit[e.Key]; ok && (e.Redacted || v == e.Value || v == "[redacted]") {
+			return "spark-submit"
+		}
+		var keys []string
+		switch e.Origin {
+		case "Spark Properties":
+			keys = []string{"spark-defaults/" + e.Key}
+		case "Hadoop Properties":
+			for _, cl := range hadoopClassifications {
+				keys = append(keys, cl+"/"+e.Key)
+			}
+		}
+		for _, k := range keys {
+			if v, ok := cluster[k]; ok && (e.Redacted || v == e.Value || v == "[redacted]") {
+				return "cluster configuration"
+			}
+		}
+		return ""
+	}
 }
 
 func riskOf(c *ctx, key, v string) string {

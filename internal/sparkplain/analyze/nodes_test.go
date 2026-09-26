@@ -117,3 +117,30 @@ func TestExecutorFit(t *testing.T) {
 		t.Error("a demand the cluster could meet raised executor-fit")
 	}
 }
+
+// Settings the cluster's configuration or the step's spark-submit set are
+// marked; a job that overrode the cluster's value is credited to the job.
+func TestSettingOrigins(t *testing.T) {
+	l := synthetic(map[string]string{"spark.executor.memory": "4g", "spark.sql.shuffle.partitions": "400", "spark.eventLog.dir": "s3://b/e/", "spark.executor.cores": "2", "spark.myapp.db.password": "[redacted]"})
+	l.Config = append(l.Config, model.ConfigEntry{Key: "fs.s3.maxConnections", Value: "200", Group: "Hadoop", Origin: "Hadoop Properties"})
+	cl := &model.Cluster{ID: "j-1", Configurations: map[string]string{"spark-defaults/spark.eventLog.dir": "s3://b/e/", "spark-defaults/spark.executor.memory": "8g",
+		"emrfs-site/fs.s3.maxConnections": "200"}}
+	steps := []model.Step{{ID: "s-1", AppID: "application_1_1", Args: []string{"spark-submit", "--deploy-mode", "cluster", "--executor-memory", "4g", "--conf", "spark.sql.shuffle.partitions=400",
+		"--conf", "spark.myapp.db.password=[redacted]", "s3://code/job.py", "--conf", "spark.executor.cores=2"}}}
+	r := Run(Input{Tool: "t", EventLog: l, EventSource: model.SourceStatus{Name: "Spark event log", Status: "read"}, Cluster: cl, Steps: steps})
+	got := map[string]string{}
+	for _, g := range r.Config.Groups {
+		for _, e := range g.Entries {
+			got[e.Key] = e.SetBy
+		}
+	}
+	for k, want := range map[string]string{"spark.executor.memory": "spark-submit", "spark.sql.shuffle.partitions": "spark-submit", "spark.eventLog.dir": "cluster configuration",
+		"fs.s3.maxConnections": "cluster configuration", "spark.myapp.db.password": "spark-submit", "spark.executor.cores": ""} {
+		if got[k] != want {
+			t.Errorf("%s set by %q, want %q", k, got[k], want)
+		}
+	}
+	if !strings.Contains(r.Config.Missing[0], "EMR itself set") {
+		t.Errorf("missing = %v", r.Config.Missing)
+	}
+}

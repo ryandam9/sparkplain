@@ -310,6 +310,9 @@ type ConfigView struct {
 	NonDefault bool   `json:"nonDefault,omitempty"`
 	Explain    string `json:"explain,omitempty"`
 	Risk       string `json:"risk,omitempty"`
+	// SetBy says where the value was set, when the EMR API or the step
+	// shows it: "cluster configuration" or "spark-submit".
+	SetBy string `json:"setBy,omitempty"`
 }
 
 // RuntimeRow is one line of the runtime environment table: a version, a

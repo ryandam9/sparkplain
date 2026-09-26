@@ -342,14 +342,14 @@
         <div class="tbl"><table class="cfg keycfg">
           <colgroup><col style="width:32%"><col style="width:20%"><col style="width:12%"><col style="width:36%"></colgroup>
           <thead><tr><th>Setting</th><th>Value</th><th>Spark default</th><th>What it does</th></tr></thead>
-          <tbody>{{range $cf.Key}}<tr{{if .NonDefault}} class="nondefault"{{end}}><td class="mono">{{.Key}}</td><td class="mono">{{if .Redacted}}Set · value hidden{{else}}{{short .Value 200}}{{end}}</td><td class="mono">{{if .Default}}{{.Default}}{{else}}—{{end}}</td><td>{{.Explain}}{{if .Risk}}<span class="sub bad">{{.Risk}}</span>{{end}}</td></tr>
+          <tbody>{{range $cf.Key}}<tr{{if .NonDefault}} class="nondefault"{{end}}><td class="mono">{{.Key}}</td><td class="mono">{{if .Redacted}}Set · value hidden{{else}}{{short .Value 200}}{{end}}{{if .SetBy}}<span class="sub">set by {{.SetBy}}</span>{{end}}</td><td class="mono">{{if .Default}}{{.Default}}{{else}}—{{end}}</td><td>{{.Explain}}{{if .Risk}}<span class="sub bad">{{.Risk}}</span>{{end}}</td></tr>
           {{end}}</tbody>
         </table></div>
         <p class="note">Defaults are Spark 3.5's. EMR sets its own defaults on top (in spark-defaults.conf), which sparkplain can compare once it reads the EMR API.</p>
         <input type="search" id="configfilter" class="filter" placeholder="Search all settings" aria-label="Search all settings" hidden>
         {{range $cf.Groups}}<details class="cfggroup"><summary>{{.Name}} ({{numi (len .Entries)}})</summary><div class="inner">
           <div class="tbl"><table class="cfg"><thead><tr><th>Setting</th><th>Value</th><th>From</th></tr></thead>
-          <tbody>{{range .Entries}}<tr{{if .NonDefault}} class="nondefault"{{end}}><td class="mono">{{.Key}}</td><td class="mono">{{if .Redacted}}Set · value hidden{{else}}{{short .Value 300}}{{end}}</td><td>{{.Origin}}</td></tr>{{end}}</tbody></table></div>
+          <tbody>{{range .Entries}}<tr{{if .NonDefault}} class="nondefault"{{end}}><td class="mono">{{.Key}}</td><td class="mono">{{if .Redacted}}Set · value hidden{{else}}{{short .Value 300}}{{end}}</td><td>{{.Origin}}{{if .SetBy}}<span class="sub">set by {{.SetBy}}</span>{{end}}</td></tr>{{end}}</tbody></table></div>
         </div></details>{{end}}
         {{end}}
         {{if $cf.Missing}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $cf.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
