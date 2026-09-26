@@ -40,6 +40,7 @@ type options struct {
 	workers                                                    int
 	timeout, windowPad                                         time.Duration
 	noCloudWatch, noCloudTrail, showVersion                    bool
+	sources                                                    []string
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
@@ -64,6 +65,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.DurationVar(&o.windowPad, "window-pad", 5*time.Minute, "padding on the AWS query window (phase 3)")
 	fs.BoolVar(&o.showVersion, "version", false, "print the version and exit")
 	fs.StringVar(&o.show, "show", "", "print the event at file:line (as the pages cite it), redacted, and exit")
+	fs.Func("source", "the application's source file or folder, shown beside jobs and stages in the explorer (repeatable; redacted)", func(v string) error {
+		o.sources = append(o.sources, v)
+		return nil
+	})
 	fs.Usage = func() {
 		fmt.Fprintf(stderr, "Usage: sparkplain -app-id <application id> -eventlog <path> [flags]\n\n")
 		fmt.Fprintf(stderr, "Turns one Spark application's event log into report.html, report.json and explorer.html.\n\nFlags:\n")
@@ -255,6 +260,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 			x = log.Explorer
 		}
 		xopt := report.ExplorerOptions{}
+		if len(o.sources) > 0 {
+			var err error
+			if xopt.Sources, xopt.SourceNotes, err = report.LoadSources(r, o.sources); err != nil {
+				return fail("%v", err)
+			}
+		}
 		if outputs["html"] {
 			xopt.ReportHref = "report.html"
 		}

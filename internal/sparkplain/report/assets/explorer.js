@@ -228,7 +228,7 @@
 
   // ---------- views ----------
   var TABS = [["overview", "Overview"], ["jobs", "Jobs", jobs.length], ["stages", "Stages", stages.length], ["executors", "Executors", execs.length],
-    ["sql", "SQL / DataFrame", queries.length], ["storage", "Storage", rdds.length], ["environment", "Environment"], ["log", "Event log"]];
+    ["sql", "SQL / DataFrame", queries.length], ["storage", "Storage", rdds.length], ["code", "Code"], ["environment", "Environment"], ["log", "Event log"]];
   var tabs = document.getElementById("sp-tabs");
   TABS.forEach(function (t) { tabs.appendChild(el("a", { href: "#" + t[0], "data-tab": t[0] }, t[1], t[2] != null ? el("span", { cls: "n", text: num(t[2]) }) : null)); });
 
@@ -350,6 +350,7 @@
       j.group ? fact("Job group", j.group) : null,
       fact("Code", j.name, "Where in the code the action ran.")));
     if (j.failure) s.appendChild(el("pre", { cls: "plan", text: j.failure }));
+    s.appendChild(codePanel(j.code, j.submitted, j.id));
     var jp = Object.keys(j.props || {}).sort();
     if (jp.length) {
       s.appendChild(el("h3", { text: "Settings for this job" }));
@@ -516,6 +517,7 @@
           cls: r[6] ? "hot" : "", tip: "RDD " + r[0] + " (" + r[1] + ")" + (r[2] ? ", made by " + r[2] : "") + "\n" + (r[3] || "") + "\n" + num(r[4]) + " partitions" + (r[6] ? ", cached as " + r[6] : "") + (r[8] && r[8] !== "DETERMINATE" ? ", output " + r[8].toLowerCase() : "") + (r[7] ? ", barrier" : "") };
       }, "The RDDs this stage computes, named by the operation that made each (Spark's stage graph). Data flows down the arrows. Cached RDDs are outlined.");
     }
+    s.appendChild(codePanel(st.code, st.submitted, null));
     if (st.details) s.appendChild(el("details", null, el("summary", { text: "Where in the code: the full call stack Spark recorded" }), el("div", { cls: "inner" }, el("pre", { cls: "plan", text: st.details }))));
     if (st.rp || st.pushOn || st.barrier || Object.keys(st.props || {}).length) {
       s.appendChild(el("div", { cls: "facts" },
@@ -770,6 +772,7 @@
         ]
       }));
     } else s.appendChild(explain(D.collected ? "No plan was kept for this query." : "Per-task detail was not collected for this run, so there is no plan graph."));
+    s.appendChild(codePanel(q.code, q.start, null));
     if (q.details) s.appendChild(el("details", null, el("summary", { text: "Where in the code: the full call stack Spark recorded" }), el("div", { cls: "inner" }, el("pre", { cls: "plan", text: q.details }))));
     if (q.plan) {
       s.appendChild(el("details", null, el("summary", { text: "Physical plan text" + (q.planCut ? " (cut; the JSON export has the full text)" : "") }), el("div", { cls: "inner" }, el("pre", { cls: "plan", text: q.plan }))));
@@ -1150,6 +1153,108 @@
   }
   var resizeTimer;
   window.addEventListener("resize", function () { clearTimeout(resizeTimer); resizeTimer = setTimeout(redrawCharts, 250); });
+
+
+  // ---------- code ----------
+  // Where in the application each job, stage and query ran, as Spark
+  // recorded it, and the source itself when -source supplied it.
+  var srcIdx = {};
+  (D.sources || []).forEach(function (sf, i) { sf.logged.forEach(function (n) { srcIdx[n] = i; }); });
+  function codeHref(c) { var i = srcIdx[c[0]]; return i == null ? null : "#code/" + i + "/" + c[1]; }
+  function codeLabel(c) { var f = c[0].replace(/^.*[\/\\]/, ""); return f + ":" + c[1] + (c[2] ? " in " + c[2].replace(/^.*\./, "") : c[3] ? " (" + c[3] + ")" : ""); }
+  var CODE_NONE = "Spark recorded no line of your code for this. PySpark records one only for some actions (collect does; count and write do not). To label it, call sc.setJobDescription(\"what this does\") before the action, or set the call site with sc.setLocalProperty(\"callSite.short\", \"load_claims() at etl.py:120\").";
+  function snippet(c, around) {
+    var i = srcIdx[c[0]];
+    if (i == null) return null;
+    var sf = D.sources[i], from = Math.max(1, c[1] - around), to = Math.min(sf.lines.length, c[1] + around);
+    var rows = [];
+    for (var n = from; n <= to; n++) rows.push(el("tr", { cls: n === c[1] ? "hit" : null }, el("td", { cls: "ln", text: String(n) }), el("td", { cls: "src", text: sf.lines[n - 1] })));
+    return el("div", { cls: "codebox" }, el("div", { cls: "codehead" }, link(codeHref(c), sf.path)), el("table", { cls: "code" }, el("tbody", null, rows)));
+  }
+  // codePanel shows where something ran: its frames, the code around the
+  // innermost one, or why nothing was recorded.
+  function codePanel(code, when, selfJob) {
+    var box = el("section", null, el("h3", { text: "Code" }));
+    if (!code || !code.length) {
+      box.appendChild(explain(CODE_NONE));
+      var before = null, after = null;
+      jobs.forEach(function (j) {
+        if (!j.code.length || j.id === selfJob || !j.submitted || !when) return;
+        if (j.submitted <= when && (!before || j.submitted > before.submitted)) before = j;
+        if (j.submitted > when && (!after || j.submitted < after.submitted)) after = j;
+      });
+      if (before || after) box.appendChild(el("p", { cls: "note" }, "Nearest recorded code: ",
+        before ? el("span", null, "before it, ", link("#job/" + before.id, "job " + before.id), " at ", codeLabel(before.code[0])) : null,
+        before && after ? "; " : "",
+        after ? el("span", null, "after it, ", link("#job/" + after.id, "job " + after.id), " at ", codeLabel(after.code[0])) : null, "."));
+      return box;
+    }
+    box.appendChild(el("ol", { cls: "frames" }, code.map(function (c, i) {
+      var h = codeHref(c);
+      return el("li", null, h ? link(h, codeLabel(c)) : codeLabel(c), el("span", { cls: "sub", text: (i ? "called from " : "") + c[0] }));
+    })));
+    var sn = snippet(code[0], 6);
+    if (sn) box.appendChild(sn);
+    else if (!(D.sources || []).length) box.appendChild(el("p", { cls: "note", text: "Run sparkplain with -source <your code folder> to see the code here." }));
+    return box;
+  }
+  // codeUses maps "file:line" to the jobs, stages and queries that ran there.
+  var codeUses = (function () {
+    var m = {};
+    function addAll(kind, items, getCode) {
+      items.forEach(function (it) {
+        (getCode(it) || []).forEach(function (c, depth) {
+          var k = c[0] + ":" + c[1];
+          var u = m[k] || (m[k] = { c: c, jobs: [], stages: [], queries: [], ms: 0 });
+          if (depth === 0 || kind !== "stages") u[kind].push(it);
+          if (kind === "jobs" && depth === 0) u.ms += span(it.submitted, it.completed) || 0;
+        });
+      });
+    }
+    addAll("jobs", jobs, function (j) { return j.code; });
+    addAll("stages", stages, function (s) { return s.code; });
+    addAll("queries", queries, function (q) { return q.code; });
+    return m;
+  })();
+  function usesCell(u) {
+    return el("span", null,
+      u.jobs.map(function (j, i) { return [i ? ", " : "", link("#job/" + j.id, "job " + j.id)]; }),
+      u.stages.length ? [u.jobs.length ? " · " : "", u.stages.map(function (st, i) { return [i ? ", " : "", link("#stage/" + st.key, "stage " + st.id)]; })] : null,
+      u.queries.length ? [" · ", u.queries.map(function (q, i) { return [i ? ", " : "", link("#query/" + q.id, "query " + q.id)]; })] : null);
+  }
+  views.code = function (arg) {
+    var s = section("Code", "Where in your application each job, stage and query ran, as Spark recorded it." + ((D.sources || []).length ? " Your code is shown beside what ran each line." : " Run sparkplain with -source <your code folder> to see the code itself here."));
+    var withCode = jobs.filter(function (j) { return j.code.length; }).length;
+    s.appendChild(explain(num(withCode) + " of " + num(jobs.length) + " jobs have a recorded location. " + (withCode < jobs.length ? CODE_NONE : "")));
+    var uses = Object.keys(codeUses).map(function (k) { return codeUses[k]; });
+    if (uses.length) s.appendChild(table({
+      rows: uses, sort: 3, dir: "desc", filter: "Filter by file or function", text: function (u) { return u.c[0] + " " + (u.c[2] || "") + " " + (u.c[3] || ""); },
+      cols: [
+        { h: "Where", v: function (u) { return u.c[0] + ":" + (100000 + u.c[1]); }, f: function (u) { var h = codeHref(u.c); return el("span", null, h ? link(h, codeLabel(u.c)) : codeLabel(u.c), el("span", { cls: "sub", text: u.c[0] })); } },
+        { h: "What ran there", f: usesCell },
+        { h: "Jobs", num: true, v: function (u) { return u.jobs.length; }, f: function (u) { return num(u.jobs.length); } },
+        { h: "Job time", num: true, v: function (u) { return u.ms; }, f: function (u) { return u.ms ? dur(u.ms) : "—"; } }
+      ]
+    }));
+    (D.sources || []).forEach(function (sf, i) {
+      var byLine = {};
+      uses.forEach(function (u) { if (srcIdx[u.c[0]] === i) (byLine[u.c[1]] = byLine[u.c[1]] || []).push(u); });
+      var rows = sf.lines.map(function (line, n) {
+        var here = byLine[n + 1];
+        return el("tr", { id: "code-" + i + "-" + (n + 1), cls: here ? "hit" : null },
+          el("td", { cls: "ln", text: String(n + 1) }), el("td", { cls: "src", text: line }),
+          el("td", { cls: "uses" }, here ? here.map(function (u) { return el("div", null, usesCell(u), u.ms ? el("span", { cls: "sub", text: dur(u.ms) + " of job time" }) : null); }) : null));
+      });
+      s.appendChild(el("div", { cls: "codebox" }, el("div", { cls: "codehead", text: sf.path + (sf.cut ? " (cut)" : "") }),
+        el("div", { cls: "codescroll" }, el("table", { cls: "code side" }, el("tbody", null, rows)))));
+    });
+    if ((D.sourceNotes || []).length) s.appendChild(el("div", { cls: "missing" }, el("h3", { text: "About the source" }), el("ul", null, D.sourceNotes.map(function (n) { return el("li", { text: n }); }))));
+    if (arg) setTimeout(function () {
+      var p = arg.split("/"), row = document.getElementById("code-" + p[0] + "-" + p[1]);
+      if (row) { row.scrollIntoView({ block: "center" }); row.classList.add("focus"); }
+    }, 0);
+    return s;
+  };
 
   views.log = function () {
     var st = D.logStats;

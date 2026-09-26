@@ -33,6 +33,12 @@ It writes three files to `~/sparkplain/<yyyy-mm-dd>/<app-id>/` (or `-out`):
 
 `-format` picks which to write, e.g. `-format html,json` (or `both`) to skip the explorer.
 
+To see your code beside the jobs and stages that ran it, point `-source` at the file or folder (repeatable). The files are matched to the ones the log names and redacted; PySpark records a code location for some actions only, so the explorer says where none was recorded.
+
+```sh
+sparkplain -app-id application_1700000000000_0042 -eventlog ./application_1700000000000_0042.lz4 -source ./jobs
+```
+
 Every value on the pages cites the event-log line it came from. To read that event, redacted:
 
 ```sh

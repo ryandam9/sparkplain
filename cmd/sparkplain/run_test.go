@@ -191,3 +191,19 @@ func TestShowFlag(t *testing.T) {
 		t.Errorf("a missing line should exit 2, got %d", code)
 	}
 }
+
+func TestSourceFlag(t *testing.T) {
+	dir := t.TempDir()
+	log := filepath.Join(fx, "application_1790380000000_0051")
+	code, _, errs := runCLI(t, "-app-id", "application_1790380000000_0051", "-eventlog", log, "-out", dir, "-source", "../../scripts/fixtures/java")
+	if code != exitOK {
+		t.Fatalf("exit %d: %s", code, errs)
+	}
+	page, _ := os.ReadFile(filepath.Join(dir, "explorer.html"))
+	if !bytes.Contains(page, []byte("writeTotals(byProvider, args[0]);")) {
+		t.Error("the Java source should be embedded")
+	}
+	if code, _, _ := runCLI(t, "-app-id", "application_1790380000000_0051", "-eventlog", log, "-out", dir, "-source", "/no/such"); code != exitFatal {
+		t.Errorf("a missing -source path should exit 2, got %d", code)
+	}
+}

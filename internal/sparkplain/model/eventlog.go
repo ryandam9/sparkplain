@@ -422,7 +422,10 @@ type Stage struct {
 	TaskType      string     `json:"taskType,omitempty"` // ResultTask or ShuffleMapTask
 	// What the stage computes: its RDDs (capped), the long call site, its
 	// resource profile, and push-based shuffle settings.
-	RDDs            []StageRDD        `json:"rdds,omitempty"`
+	RDDs []StageRDD `json:"rdds,omitempty"`
+	// Code is where in the application the stage came from, innermost
+	// first; empty when Spark recorded no user code.
+	Code            []CodeLocation    `json:"code,omitempty"`
 	RDDsCapped      bool              `json:"rddsCapped,omitempty"`
 	Details         string            `json:"details,omitempty"`
 	ResourceProfile int               `json:"resourceProfile,omitempty"`
@@ -468,6 +471,7 @@ type Job struct {
 	Properties map[string]string `json:"properties,omitempty"`
 	Source     Source            `json:"source"`
 	EndSource  Source            `json:"endSource,omitzero"`
+	Code       []CodeLocation    `json:"code,omitempty"` // where in the application it ran
 }
 
 // DurationMs is the wall-clock time of the job, or 0 if unknown.
@@ -513,6 +517,7 @@ type SQLQuery struct {
 	AdaptiveMetrics []PlanMetric `json:"adaptiveMetrics,omitempty"`
 	// Optimizer is EMR's report of optimizer time per rule.
 	Optimizer *OptimizerStats `json:"optimizer,omitempty"`
+	Code      []CodeLocation  `json:"code,omitempty"`
 }
 
 // PlanMetric names one SQL metric by its accumulator.
@@ -595,4 +600,14 @@ type StageRDD struct {
 	StorageLevel     string `json:"storageLevel,omitempty"`
 	Barrier          bool   `json:"barrier,omitempty"`
 	Deterministic    string `json:"deterministic,omitempty"` // DETERMINATE, UNORDERED or INDETERMINATE
+}
+
+// CodeLocation is a place in the application's code that Spark recorded:
+// a file and line, with the function (from a JVM stack frame) or the action
+// (from a short call site such as "collect at etl.py:32").
+type CodeLocation struct {
+	File     string `json:"file"`
+	Line     int    `json:"line"`
+	Function string `json:"function,omitempty"`
+	Action   string `json:"action,omitempty"`
 }

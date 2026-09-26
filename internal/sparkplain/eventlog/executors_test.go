@@ -410,3 +410,38 @@ func TestShowEvent(t *testing.T) {
 		}
 	}
 }
+
+// Code locations: a JVM app's stages and jobs carry its own frames; a
+// PySpark app's carry a Python line only for some actions.
+func TestCodeLocations(t *testing.T) {
+	l := parseFixture(t, "application_1790380000000_0051", "application_1790380000000_0051")
+	for _, j := range l.Jobs {
+		if len(j.Code) == 0 || j.Code[0].File != "ClaimsJob.java" || j.Code[0].Line == 0 {
+			t.Errorf("java job %d: code %+v", j.ID, j.Code)
+		}
+	}
+	last := l.Jobs[len(l.Jobs)-1].Code
+	if len(last) != 2 || last[0].Line != 29 || last[0].Function != "ClaimsJob.writeTotals" || last[1].Line != 20 {
+		t.Errorf("write job's frames %+v, want writeTotals:29 called from main:20", last)
+	}
+	py := parseFixture(t, "application_1790380000000_0049", "application_1790380000000_0049")
+	var with, without int
+	for _, j := range py.Jobs {
+		if len(j.Code) > 0 {
+			with++
+			if !strings.HasSuffix(j.Code[0].File, "emr_job.py") || j.Code[0].Action != "collect" {
+				t.Errorf("pyspark job %d: %+v", j.ID, j.Code)
+			}
+		} else {
+			without++
+		}
+	}
+	if with == 0 || without == 0 {
+		t.Errorf("pyspark: %d jobs with code, %d without; expect both", with, without)
+	}
+	for _, site := range []string{"count at NativeMethodAccessorImpl.java:0", "collect at <stdin>:36", "my job", ""} {
+		if loc, ok := shortSite(site); ok {
+			t.Errorf("shortSite(%q) = %+v, want none", site, loc)
+		}
+	}
+}

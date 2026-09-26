@@ -247,3 +247,40 @@ func TestReportLinksToExplorer(t *testing.T) {
 		t.Error("without an explorer page the report must not link to one")
 	}
 }
+
+// -source: the log's file names find the local files, and the embedded code
+// is redacted (the fixture workload plants secrets in its own source).
+func TestLoadSources(t *testing.T) {
+	r, x := buildWithExplorer(t, "application_1790380000000_0046")
+	srcs, notes, err := LoadSources(r, []string{"../../../scripts/fixtures"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(srcs) != 1 || !strings.HasSuffix(srcs[0].Path, "workload.py") || srcs[0].Logged[0] != "/home/hadoop/jobs/workload.py" {
+		t.Fatalf("sources %+v, notes %v", srcs, notes)
+	}
+	var b bytes.Buffer
+	if err := WriteExplorer(&b, r, x, ExplorerOptions{Sources: srcs}); err != nil {
+		t.Fatal(err)
+	}
+	if m := regexp.MustCompile(`FAKE-[A-Z0-9-]+|AKIAIOSFODNN7EXAMPLE`).FindString(b.String()); m != "" {
+		t.Errorf("planted secret %q reached the page through the source", m)
+	}
+	if !strings.Contains(b.String(), `spark.myapp.db.password\", \"[redacted]\"`) {
+		t.Error("the redacted config line should still show its key")
+	}
+	if _, notes, _ := LoadSources(r, []string{"../../../scripts/fixtures/java"}); len(notes) == 0 {
+		t.Error("an unmatched log file name should be noted")
+	}
+	if _, _, err := LoadSources(r, []string{"/no/such/dir"}); err == nil {
+		t.Error("a missing -source path is an error")
+	}
+	for _, c := range []struct {
+		a, b string
+		n    int
+	}{{"/mnt/yarn/x/jobs/etl.py", "src/jobs/etl.py", 2}, {"ClaimsJob.java", "a/b/ClaimsJob.java", 1}, {"etl.py", "other.py", 0}} {
+		if got := tailMatch(c.a, c.b); got != c.n {
+			t.Errorf("tailMatch(%q, %q) = %d, want %d", c.a, c.b, got, c.n)
+		}
+	}
+}

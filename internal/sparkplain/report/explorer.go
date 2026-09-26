@@ -26,6 +26,9 @@ var (
 type ExplorerOptions struct {
 	// ReportHref links to report.html; empty when it was not written.
 	ReportHref string
+	// Sources are the application's files from -source, already redacted.
+	Sources     []SourceFile
+	SourceNotes []string
 }
 
 // Caps on text that would otherwise dominate the page's size.
@@ -132,6 +135,8 @@ type xData struct {
 	Critical   []int                `json:"critical"`
 	CritJob    int                  `json:"criticalJob"`
 	LogStats   *model.EventLogStats `json:"logStats,omitempty"`
+	Sources    []xSource            `json:"sources"`
+	SourceNote []string             `json:"sourceNotes"`
 	Collected  bool                 `json:"collected"` // explorer data was gathered
 	Limits     model.ExplorerLimits `json:"limits"`
 	Shrinks    int                  `json:"shrinks"`
@@ -299,14 +304,14 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 			e.StartupMs, orMap(e.LogURLs), orMap(e.Attributes), orMap(e.Resources), unixMs(e.BlockManagerRemoved))
 	}
 
-	d.Jobs = newTable("id", "name", "desc", "group", "submitted", "completed", "status", "stages", "sql", "failure", "src", "failureStack", "props")
+	d.Jobs = newTable("id", "name", "desc", "group", "submitted", "completed", "status", "stages", "sql", "failure", "src", "failureStack", "props", "code")
 	for _, j := range r.Jobs.Jobs {
 		var sql any
 		if j.SQLExecutionID != nil {
 			sql = *j.SQLExecutionID
 		}
 		d.Jobs.add(j.ID, j.Name, j.Description, j.Group, unixMs(j.Submitted), unixMs(j.Completed), j.Status,
-			orEmpty(j.StageIDs), sql, capText(j.Failure, 2000), src(j.Source), capText(j.FailureStack, maxStackText), orMap(j.Properties))
+			orEmpty(j.StageIDs), sql, capText(j.Failure, 2000), src(j.Source), capText(j.FailureStack, maxStackText), orMap(j.Properties), codeRows(j.Code))
 	}
 
 	parents := map[int][]int{}
@@ -336,7 +341,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		"tasks", "ok", "failed", "killed", "dur", "run", "gc", "input", "inputRows", "output", "outputRows",
 		"shRead", "shReadRows", "shWrite", "shWriteRows", "memSpill", "diskSpill", "p50", "max", "failure", "cached", "src",
 		"taskType", "loc", "sched", "resultSize", "gettingMs", "shWriteMs", "shRemote", "shRemoteDisk", "shLocalBlocks", "shRemoteBlocks",
-		"push", "cacheWrites", "failures", "details", "rp", "pushOn", "pushMergers", "barrier", "props", "cpuNs")
+		"push", "cacheWrites", "failures", "details", "rp", "pushOn", "pushMergers", "barrier", "props", "cpuNs", "code")
 	for _, st := range r.Jobs.Stages {
 		t := st.Totals
 		d.Stages.add(st.ID, st.Attempt, st.Name, st.Status, unixMs(st.Submitted), unixMs(st.Completed), st.NumTasks,
@@ -349,14 +354,14 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 			t.ShuffleRemoteToDiskBytes, t.ShuffleLocalBlocks, t.ShuffleRemoteBlocks,
 			[]int64{t.PushMergedLocalBlocks, t.PushMergedLocalBytes, t.PushMergedRemoteBlocks, t.PushMergedRemoteBytes, t.PushFallbacks, t.PushCorruptChunks, t.PushMergedRemoteReqsMs},
 			[]int64{t.UpdatedBlocks, t.UpdatedBlockBytes}, stageFailures(st),
-			st.Details, st.ResourceProfile, st.ShufflePush, st.PushMergers, isBarrier(st), orMap(st.Properties), t.CPUTimeNs)
+			st.Details, st.ResourceProfile, st.ShufflePush, st.PushMergers, isBarrier(st), orMap(st.Properties), t.CPUTimeNs, codeRows(st.Code))
 		if len(st.RDDs) > 0 && len(st.RDDs) <= maxStageOpNodes && len(d.StageOps) < maxStageOpStages {
 			d.StageOps[strconv.Itoa(st.ID)+"."+strconv.Itoa(st.Attempt)] = stageOps(st)
 		}
 	}
 
 	d.SQL = newTable("id", "desc", "start", "end", "error", "jobs", "reads", "writes", "plan", "planCut", "src",
-		"root", "tags", "details", "modified", "optimizer")
+		"root", "tags", "details", "modified", "optimizer", "code")
 	planBudget := maxPlanTextTotal
 	for _, q := range r.Jobs.SQL {
 		plan, cut := q.Plan, q.PlanTruncated
@@ -370,7 +375,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		}
 		d.SQL.add(q.ID, q.Description, unixMs(q.Start), unixMs(q.End), capText(q.Error, 2000), orEmpty(q.JobIDs),
 			refNames(q.Reads), refNames(q.Writes), plan, cut, src(q.Source),
-			root, orEmpty(q.JobTags), q.Details, orMap(q.ModifiedConfigs), optimizerRows(q.Optimizer))
+			root, orEmpty(q.JobTags), q.Details, orMap(q.ModifiedConfigs), optimizerRows(q.Optimizer), codeRows(q.Code))
 	}
 
 	d.RDDs = newTable("id", "name", "level", "partitions", "firstStage", "unpersisted", "mem", "disk", "sizeKnown", "executors")
@@ -390,6 +395,10 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		d.Profiles.add(p.ID, p.ExecutorCores, p.ExecutorMemoryMB, p.OverheadMB, p.OffHeapMB, p.PySparkMemoryMB, p.TaskCPUs, orMap(p.ExecutorOther), orMap(p.TaskOther), src(p.Source))
 	}
 	d.Critical, d.CritJob, d.LogStats = orEmpty(r.Jobs.CriticalPath), r.Jobs.CriticalJob, r.EventLog
+	d.Sources, d.SourceNote = []xSource{}, orEmpty(opt.SourceNotes)
+	for _, sf := range opt.Sources {
+		d.Sources = append(d.Sources, xSource{Path: sf.Path, Logged: sf.Logged, Lines: sf.Lines, Cut: sf.Cut})
+	}
 	d.BlockKinds = newTable("kind", "updates", "maxMem", "maxDisk")
 	for _, k := range r.IO.BlockKinds {
 		d.BlockKinds.add(k.Kind, k.Updates, k.MaxMemory, k.MaxDisk)
@@ -615,4 +624,21 @@ func optimizerRows(o *model.OptimizerStats) any {
 		rules = append(rules, []any{r.Name, r.TimeNs, r.Runs, r.EffectiveRuns, r.EffectiveTimeNs})
 	}
 	return []any{o.TotalNs, o.RulesRun, o.RulesUseful, rules, orMap(o.Other)}
+}
+
+// xSource is an embedded source file and the logged names that map to it.
+type xSource struct {
+	Path   string   `json:"path"`
+	Logged []string `json:"logged"`
+	Lines  []string `json:"lines"`
+	Cut    bool     `json:"cut,omitempty"`
+}
+
+// codeRows encodes code locations as file, line, function, action.
+func codeRows(cs []model.CodeLocation) [][]any {
+	out := [][]any{}
+	for _, c := range cs {
+		out = append(out, []any{c.File, c.Line, c.Function, c.Action})
+	}
+	return out
 }

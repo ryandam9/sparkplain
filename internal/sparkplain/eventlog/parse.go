@@ -733,6 +733,7 @@ func (p *parser) jobStart(e *jobStartEvent, src model.Source) {
 		p.sqlJobs[id] = append(p.sqlJobs[id], e.JobID)
 	}
 	j.Properties = localProps(e.Properties, p.sparkProps, nil)
+	j.Code = codeOf(e.Properties["callSite.short"], "")
 	last := -1
 	for i := range e.StageInfos {
 		si := &e.StageInfos[i]
@@ -880,6 +881,7 @@ func (p *parser) sqlStart(e *sqlStartEvent, src model.Source) {
 		q.RootID = &root
 	}
 	q.Details = redact.Text(truncate(e.Details, maxDetails))
+	q.Code = codeOf(e.Description, e.Details)
 	q.ModifiedConfigs = localProps(e.Modified, nil, nil)
 	for _, t := range e.JobTags {
 		q.JobTags = append(q.JobTags, redact.Text(t))
@@ -977,6 +979,25 @@ func (p *parser) finish() {
 		return l.Stages[i].Attempt < l.Stages[j].Attempt
 	})
 
+	// A job without a call site of its own takes its last stage's, as its
+	// name does.
+	stageCode := map[int][]model.CodeLocation{}
+	for _, st := range l.Stages {
+		if len(st.Code) > 0 && stageCode[st.ID] == nil {
+			stageCode[st.ID] = st.Code
+		}
+	}
+	for _, j := range l.Jobs {
+		if len(j.Code) > 0 {
+			continue
+		}
+		for i := len(j.StageIDs) - 1; i >= 0; i-- {
+			if c := stageCode[j.StageIDs[i]]; c != nil {
+				j.Code = c
+				break
+			}
+		}
+	}
 	for id, q := range p.sql {
 		q.JobIDs = p.sqlJobs[id]
 		l.SQL = append(l.SQL, q)
@@ -1237,6 +1258,7 @@ func (p *parser) stageDetail(st *model.Stage, si *stageInfo) {
 		return
 	}
 	st.Details = redact.Text(truncate(si.Details, maxDetails))
+	st.Code = codeOf(si.Name, si.Details)
 	st.ResourceProfile, st.ShufflePush, st.PushMergers = si.ResourceProf, si.PushEnabled, si.PushMergers
 	for _, r := range si.RDDs {
 		if len(st.RDDs) >= maxStageRDDs {

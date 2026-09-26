@@ -53,3 +53,15 @@ svg.dag a .node:hover rect{fill:var(--accent-soft)}
 svg.dag .node.skipped rect{stroke-dasharray:4 3}
 svg.dag a{cursor:pointer}
 svg.dag{margin:0 auto}
+/* code */
+.codebox{background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.codehead{padding:8px 12px;border-bottom:1px solid var(--line);font:12.5px var(--mono);color:var(--muted);background:var(--surface-2)}
+.codescroll{max-height:640px;overflow:auto}
+table.code{width:100%;border-collapse:collapse;font:12.5px/1.5 var(--mono)}
+table.code td{border:0;padding:0 10px;vertical-align:top}
+table.code td.ln{color:var(--faint);text-align:right;user-select:none;width:1%;white-space:nowrap}
+table.code td.src{white-space:pre;color:var(--ink)}
+table.code.side td.uses{font:12px var(--sans);color:var(--muted);width:36%;border-left:1px solid var(--line)}
+table.code tr.hit td.src,table.code tr.hit td.ln{background:var(--accent-soft)}
+table.code tr.focus td{outline:2px solid var(--accent);outline-offset:-2px}
+ol.frames{margin:0;padding-left:20px;display:grid;gap:4px;font-size:14px}
