@@ -445,7 +445,8 @@
   }
   views.stages = function () {
     var s = section("Stages", "A stage is a set of tasks that run the same code on different partitions of the data. Retried stages show each attempt.");
-    s.appendChild(el("div", { cls: "grid2" }, chartSlot("", "stageTimes"), chartSlot("", "stageData")));
+    s.appendChild(chartSlot("", "stageTimes"));
+    s.appendChild(chartSlot("", "stageData"));
     if (stages.some(function (st) { return st.diskSpill > 0 || st.memSpill > 0; })) s.appendChild(chartSlot("", "stageSpill"));
     s.appendChild(stageTable(stages));
     return s;
@@ -592,10 +593,8 @@
         { h: "Total", num: true, f: function (m) { return m[2](det.m[m[0]][1]); } }
       ]
     }));
-    var g = el("div", { cls: "grid2" });
-    g.appendChild(chartSlot("", "durationHistogram:" + st.key));
-    g.appendChild(chartSlot("", "taskScatter:" + st.key));
-    s.appendChild(g);
+    s.appendChild(chartSlot("", "durationHistogram:" + st.key));
+    s.appendChild(chartSlot("", "taskScatter:" + st.key));
     s.appendChild(el("h3", null, "Slowest tasks", el("span", { cls: "sampled", text: "top " + num(det.slow.length) })));
     s.appendChild(taskTable(det.slow, { sort: 6 }));
     s.appendChild(el("h3", null, "Task sample", el("span", { cls: "sampled", text: num(det.sample.length) + " of " + num(det.from) })));
@@ -631,7 +630,8 @@
   views.executors = function () {
     var s = section("Executors", "Executors are the worker processes that ran tasks. The driver coordinates and usually runs none.");
     s.appendChild(chartSlot("tall", "executorsTimeline"));
-    s.appendChild(el("div", { cls: "grid2" }, chartSlot("", "execTime"), chartSlot("", "execHeapAll")));
+    s.appendChild(chartSlot("", "execTime"));
+    s.appendChild(chartSlot("", "execHeapAll"));
     if (exclusions.length) {
       s.appendChild(el("h3", { text: "Exclusions" }));
       s.appendChild(explain(EXCL_EXPLAIN));

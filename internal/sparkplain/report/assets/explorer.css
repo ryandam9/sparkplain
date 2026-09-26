@@ -19,7 +19,6 @@ a.themebtn{text-decoration:none}
 td a,.ev a{text-decoration:none}
 td a:hover,.ev a:hover{text-decoration:underline}
 .sampled{display:inline-block;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);background:var(--accent-soft);padding:1px 7px;border-radius:4px;margin-left:8px;vertical-align:middle}
-.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 .gchart{min-height:260px}
 .gchart.tall{min-height:420px}
 .gchart.tall.scrolly{min-height:0} /* a drawn timeline is as tall as its rows */
@@ -40,7 +39,6 @@ svg.dag .node text.sub{fill:var(--muted);font:11px var(--mono)}
 svg.dag .edge{fill:none;stroke:var(--faint);stroke-width:1.4}
 svg.dag a .node:hover rect{fill:var(--accent-soft)}
 .dagwrap{overflow:auto;max-height:640px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px}
-@media (max-width:900px){.grid2{grid-template-columns:minmax(0,1fr)}}
 .st{white-space:nowrap}
 /* chart palette, validated (dataviz validator) against each theme's surface:
    series = categorical slot 1, fail = status critical, neutral = everything else */

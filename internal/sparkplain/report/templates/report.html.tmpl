@@ -148,7 +148,7 @@
         {{with clusterChart $r}}<div class="chart">{{.}}
           <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>Containers allocated</span><span><i class="sw" style="background:var(--warn)"></i>Containers waiting</span><span><i class="sw" style="background:var(--accent);opacity:.2"></i>This application's run</span></div></div>{{end}}
         {{if .Missing}}<div class="missing"><h3>Not in CloudWatch</h3><ul>{{range .Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}{{end}}{{end}}
-        <div class="charts2">{{nodeMemoryChart $r}}{{nodeCPUChart $r}}</div>
+        {{nodeMemoryChart $r}}{{nodeCPUChart $r}}
         {{if $r.Nodes.Missing}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $r.Nodes.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
       </section>
 
@@ -251,7 +251,7 @@
           <div class="fact"><span class="l">Shuffled</span><span class="v num">{{bytes $io.Totals.ShuffleWriteBytes}} written · {{bytes $io.Totals.ShuffleReadBytes}} read</span><span class="x">Data exchanged between executors for joins, groupings and repartitions. {{bytes $io.Totals.ShuffleRemoteBytes}} came over the network.</span></div>
           <div class="fact"><span class="l">Waiting for shuffle data</span><span class="v num">{{dur $io.Totals.ShuffleFetchWaitMs}}</span><span class="x">Task time spent waiting for shuffle blocks from other executors.</span></div>
         </div>
-        <div class="charts2">{{dataChart $r}}{{dataOverTime $r}}</div>
+        {{dataChart $r}}{{dataOverTime $r}}
         {{if $io.Data}}<h3>Tables and paths</h3>
         <div class="tbl"><table>
           <thead><tr><th data-sort="text">Access</th><th data-sort="text">What</th><th data-sort="text">Name</th><th>Format</th><th>Found in</th></tr></thead>
@@ -285,7 +285,7 @@
         {{$j := $r.Jobs}}{{if $r.EventLog}}
         <p class="lede">A job is one action in the code (such as count, collect or write). Spark splits each job into stages at every shuffle, and each stage into one task per partition. {{numi (len $j.Jobs)}} jobs ran, {{$j.Failed}} failed; {{numi (len $j.Stages)}} stage attempts, {{num .Tasks}} tasks.</p>
         {{if gt (len $j.CriticalPath) 1}}<p class="explain"><b>Critical path:</b> the longest job was job {{$j.CriticalJob}}; within it, the slowest chain of dependent stages was {{ints $j.CriticalPath}}. Speeding up other stages would not shorten that job.</p>{{end}}
-        <div class="charts2">{{stagesChart $r}}{{spreadChart $r}}</div>
+        {{stagesChart $r}}{{spreadChart $r}}
         <h3>Jobs</h3>
         <div class="tbl"><table>
           <thead><tr><th data-sort="num">Job</th><th data-sort="text">What</th><th data-sort="text">Status</th><th data-sort="text">Started</th><th class="num" data-sort="num">Duration</th><th class="num" data-sort="num">Stages</th><th data-sort="num">SQL</th></tr></thead>

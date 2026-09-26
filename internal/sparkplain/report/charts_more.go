@@ -107,23 +107,18 @@ func hbars(rows []hbar, format func(float64) string) string {
 	if scale <= 0 {
 		return ""
 	}
-	// Drawn for a half-width column; the style keeps text from growing
-	// too large when the chart spans the page.
-	const W = 620.0
-	ml, mr, rowH := 196.0, 150.0, 22.0
+	// Drawn for the full width of the report's column (about 1,100 px on
+	// a laptop), so text shows near its set size; phones scroll it sideways.
+	const W = 1000.0
+	ml, mr, rowH := 270.0, 170.0, 22.0 // 36 characters of 11 px mono fit in ml
 	iw := W - ml - mr
 	H := float64(len(rows))*rowH + 8
 	var b strings.Builder
-	// A chart of a few rows stays small rather than filling a wide page.
-	maxW := 860
-	if len(rows) <= 3 {
-		maxW = 700
-	}
-	fmt.Fprintf(&b, `<svg viewBox="0 0 %.0f %.0f" role="img" style="max-width:%dpx">`, W, H, maxW)
+	fmt.Fprintf(&b, `<svg class="wide" viewBox="0 0 %.0f %.0f" role="img">`, W, H)
 	x := func(v float64) float64 { return ml + v/scale*iw }
 	for i, r := range rows {
 		y := 4 + float64(i)*rowH
-		label := esc(clipLabel(r.label, 28))
+		label := esc(clipLabel(r.label, 36))
 		if r.href != "" {
 			fmt.Fprintf(&b, `<a href="%s"><text class="lbl" x="%.1f" y="%.1f" text-anchor="end">%s<title>%s</title></text></a>`, esc(r.href), ml-8, y+13, label, esc(r.label))
 		} else {
@@ -189,14 +184,14 @@ func lines(series []line, start, end time.Time, format func(float64) string, loc
 	if peak <= 0 {
 		peak = 1
 	}
-	const W, H = 620.0, 240.0
+	const W, H = 1000.0, 260.0
 	ml, mr, mt, mb := 64.0, 14.0, 14.0, 32.0
 	iw, ih := W-ml-mr, H-mt-mb
 	span := float64(end.Sub(start))
 	x := func(t time.Time) float64 { return ml + float64(t.Sub(start))/span*iw }
 	y := func(v float64) float64 { return mt + ih - v/peak*ih }
 	var b strings.Builder
-	fmt.Fprintf(&b, `<svg viewBox="0 0 %.0f %.0f" role="img" style="max-width:860px">`, W, H)
+	fmt.Fprintf(&b, `<svg class="wide" viewBox="0 0 %.0f %.0f" role="img">`, W, H)
 	for _, v := range []float64{0, peak / 2, peak} {
 		fmt.Fprintf(&b, `<line class="grid" x1="%.1f" x2="%.1f" y1="%.1f" y2="%.1f"/><text class="ax" x="%.1f" y="%.1f" text-anchor="end">%s</text>`, ml, W-mr, y(v), y(v), ml-8, y(v)+4, esc(format(v)))
 	}

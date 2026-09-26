@@ -207,8 +207,11 @@ a.themebtn{text-decoration:none}
 .missing.access{margin-top:14px;border-color:var(--warn)}
 
 /* charts: two side by side on wide screens */
-.charts2{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
-@media (min-width:1200px){.charts2{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* One chart per row: side by side, bars and time axes got too small to
+   read. On narrow screens a wide chart scrolls rather than shrinking its
+   text below reading size. */
+.chart:has(svg.wide){overflow-x:auto}
+.chart svg.wide{min-width:860px;max-width:1100px}
 .chart h4{margin:0 4px 6px;font-size:14px;font-weight:600}
 .chart .cap{font-size:12.5px;color:var(--muted);margin:6px 4px 2px;max-width:80ch}
 /* categorical series, validated for colour-blind separation (dataviz reference palette, slots 1-5) */
