@@ -138,3 +138,25 @@ func Code(line string) string {
 		return lit[:1] + Mask + lit[len(lit)-1:]
 	})
 }
+
+// Args hides values in command-line arguments, such as spark-submit's:
+// key=value pairs by key (so --conf spark.db.password=… loses its value),
+// and anything else that looks like a secret.
+func Args(args []string) []string {
+	out := make([]string, len(args))
+	for i, a := range args {
+		if k, v, ok := strings.Cut(a, "="); ok && !strings.HasPrefix(a, "-") {
+			rv, _ := Value(k, v)
+			out[i] = k + "=" + rv
+			continue
+		}
+		out[i] = Text(a)
+	}
+	return out
+}
+
+// Command redacts a command line logged as one string, splitting it on
+// spaces as Args does for an argument list.
+func Command(cmd string) string {
+	return strings.Join(Args(strings.Split(cmd, " ")), " ")
+}

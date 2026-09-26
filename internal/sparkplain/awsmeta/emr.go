@@ -131,7 +131,7 @@ func Steps(ctx context.Context, api EMRAPI, id string) ([]model.Step, error) {
 			st := model.Step{ID: aws.ToString(s.Id), Name: redact.Text(aws.ToString(s.Name)), Source: "EMR ListSteps " + id}
 			if s.Config != nil {
 				st.Jar = aws.ToString(s.Config.Jar)
-				st.Args = redactArgs(s.Config.Args)
+				st.Args = redact.Args(s.Config.Args)
 			}
 			if s.Status != nil {
 				st.State = string(s.Status.State)
@@ -148,21 +148,6 @@ func Steps(ctx context.Context, api EMRAPI, id string) ([]model.Step, error) {
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Started.Before(out[j].Started) })
 	return out, nil
-}
-
-// redactArgs hides values in spark-submit arguments: --conf key=value pairs
-// by key, and anything else that looks like a secret.
-func redactArgs(args []string) []string {
-	out := make([]string, len(args))
-	for i, a := range args {
-		if k, v, ok := strings.Cut(a, "="); ok && !strings.HasPrefix(a, "-") {
-			rv, _ := redact.Value(k, v)
-			out[i] = k + "=" + rv
-			continue
-		}
-		out[i] = redact.Text(a)
-	}
-	return out
 }
 
 var appIDRE = regexp.MustCompile(`application_\d{10,}_\d{4,}`)
