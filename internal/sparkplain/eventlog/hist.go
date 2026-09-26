@@ -99,3 +99,59 @@ func (d *distAcc) quantile(q float64) int64 {
 func (d *distAcc) dist() model.Dist {
 	return model.Dist{Count: d.n, Sum: d.sum, Min: d.min, Max: d.max, P50: d.quantile(0.5), P95: d.quantile(0.95)}
 }
+
+func (d *distAcc) quartiles() model.Quartiles {
+	if d.n == 0 {
+		return model.Quartiles{}
+	}
+	return model.Quartiles{Count: d.n, Sum: d.sum, Min: d.min, Max: d.max,
+		P25: d.quantile(0.25), P50: d.quantile(0.5), P75: d.quantile(0.75)}
+}
+
+// bucketLo returns the smallest value in bucket i.
+func bucketLo(i int) int64 {
+	if i < 16 {
+		return int64(i)
+	}
+	e := (i-16)/16 + 4
+	return (16 + int64((i-16)%16)) << (e - 4)
+}
+
+// histogram groups the values into at most maxBins bars of equal width on
+// the log scale, skipping empty ones.
+func (d *distAcc) histogram(maxBins int) []model.HistBin {
+	if d.n == 0 {
+		return nil
+	}
+	counts := map[int]int64{}
+	top := 0
+	if d.buckets == nil {
+		for _, v := range d.exact {
+			i := bucketOf(v)
+			counts[i]++
+			top = max(top, i)
+		}
+	} else {
+		for i, c := range d.buckets {
+			if c > 0 {
+				counts[i] += int64(c)
+				top = i
+			}
+		}
+	}
+	lo := bucketOf(d.min)
+	per := max(1, (top-lo+maxBins)/maxBins) // fine buckets per bar
+	var out []model.HistBin
+	for b := lo; b <= top; b += per {
+		var n int64
+		for i := b; i < b+per; i++ {
+			n += counts[i]
+		}
+		if n == 0 {
+			continue
+		}
+		hi := bucketLo(b+per) - 1
+		out = append(out, model.HistBin{Lo: max(d.min, bucketLo(b)), Hi: min(d.max, hi), Count: n})
+	}
+	return out
+}

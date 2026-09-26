@@ -16,7 +16,10 @@ import (
 // Options tune Parse.
 type Options struct {
 	MaxPlanBytes int // physical plan text kept per SQL query; default 64 KiB
-	MaxPlans     int // queries whose plan text is kept; default 500
+	MaxPlans     int // queries whose plan text (and explorer graph) is kept; default 500
+	// Explorer, when set, also collects the explorer page's data into
+	// EventLog.Explorer, within these limits.
+	Explorer *model.ExplorerLimits
 }
 
 type stageKey struct{ id, attempt int }
@@ -47,7 +50,8 @@ type parser struct {
 	blocks    map[string]blockSize
 	sawEnd    bool
 	lastMs    int64
-	partial   bool // the previous line was cut off by the end of a file
+	partial   bool         // the previous line was cut off by the end of a file
+	ex        *explorerAcc // nil unless Options.Explorer is set
 }
 
 // Parse streams the event log and folds it into the model. It returns an
@@ -69,6 +73,9 @@ func Parse(ctx context.Context, in *Input, opt Options) (*model.EventLog, error)
 		execs: map[string]*model.Executor{}, jobs: map[int]*model.Job{}, stages: map[stageKey]*stageAcc{},
 		stageJobs: map[int][]int{}, sql: map[int64]*model.SQLQuery{}, sqlJobs: map[int64][]int{},
 		rdds: map[int]*model.CachedRDD{}, blocks: map[string]blockSize{},
+	}
+	if opt.Explorer != nil {
+		p.ex = newExplorerAcc(*opt.Explorer)
 	}
 	st := &p.log.Stats
 	var lastPartial model.Source
@@ -136,7 +143,12 @@ func (p *parser) line(line []byte, src model.Source) error {
 		return p.decode(line, &e, func() { p.taskEnd(&e, src) })
 	case evStageExecMetric:
 		var e stageExecMetricsEvent
-		return p.decode(line, &e, func() { p.peak(e.ExecutorID, e.Metrics, src) })
+		return p.decode(line, &e, func() {
+			p.peak(e.ExecutorID, e.Metrics, src)
+			if p.ex != nil {
+				p.ex.stagePeak(stageKey{e.StageID, e.StageAttempt}, e.ExecutorID, peakOf(e.Metrics, src))
+			}
+		})
 	case evMetricsUpdate:
 		var e metricsUpdateEvent
 		return p.decode(line, &e, func() {
@@ -192,6 +204,9 @@ func (p *parser) line(line []byte, src model.Source) error {
 			a.ID, a.Name, a.User, a.AttemptID = redact.Text(e.ID), redact.Text(e.Name), redact.Text(e.User), redact.Text(e.AttemptID)
 			a.Start, a.Source = ms(e.Timestamp), src
 			p.seen(e.Timestamp)
+			if p.ex != nil {
+				p.ex.running.setOrigin(e.Timestamp)
+			}
 		})
 	case evAppEnd:
 		var e appEndEvent
@@ -234,6 +249,12 @@ func (p *parser) line(line []byte, src model.Source) error {
 			q.Error = redact.Text(truncate(e.Error, 4000))
 			p.seen(e.Time)
 		})
+	case evDriverAccum:
+		if p.ex == nil {
+			return nil
+		}
+		var e driverAccumEvent
+		return p.decode(line, &e, func() { p.ex.driverAccums(e.Updates) })
 	case evBMRemoved:
 		return nil
 	}
@@ -281,8 +302,11 @@ func (p *parser) executor(id, host string) *model.Executor {
 }
 
 func (p *parser) peak(execID string, m execMetrics, src model.Source) {
-	x := p.executor(execID, "")
-	x.Peak.Merge(model.PeakMemory{
+	p.executor(execID, "").Peak.Merge(peakOf(m, src))
+}
+
+func peakOf(m execMetrics, src model.Source) model.PeakMemory {
+	return model.PeakMemory{
 		JVMHeap: m.JVMHeapMemory, JVMOffHeap: m.JVMOffHeapMemory,
 		OnHeapExecution: m.OnHeapExecutionMemory, OnHeapStorage: m.OnHeapStorageMemory,
 		OffHeapExecution: m.OffHeapExecutionMemory, OffHeapStorage: m.OffHeapStorageMemory,
@@ -290,7 +314,7 @@ func (p *parser) peak(execID string, m execMetrics, src model.Source) {
 		ProcessJVMRSS: m.ProcessTreeJVMRSSMemory, ProcessPythonRSS: m.ProcessTreePythonRSSMemory,
 		ProcessOtherRSS: m.ProcessTreeOtherRSSMemory, TotalGCTimeMs: m.TotalGCTime,
 		HeapSource: src, RSSSource: src,
-	})
+	}
 }
 
 func (p *parser) stageAcc(id, attempt int, src model.Source) *stageAcc {
@@ -350,6 +374,14 @@ func (p *parser) taskEnd(e *taskEndEvent, src model.Source) {
 	x.Tasks.Add(t)
 	if e.ExecMetrics != nil {
 		p.peak(e.Info.ExecutorID, *e.ExecMetrics, src)
+	}
+	if p.ex != nil {
+		var pk *model.PeakMemory
+		if e.ExecMetrics != nil {
+			v := peakOf(*e.ExecMetrics, src)
+			pk = &v
+		}
+		p.ex.task(stageKey{e.StageID, e.StageAttempt}, e, &t, pk, src)
 	}
 	if ok {
 		a.dur.add(dur)
@@ -500,6 +532,9 @@ func (p *parser) stage(si *stageInfo, completed bool, src model.Source) {
 			p.seen(*si.CompletionTime)
 		}
 		st.Status = model.StatusSucceeded
+		if p.ex != nil {
+			p.ex.accumulables(si.Accumulables)
+		}
 		if si.FailureReason != nil {
 			st.Status = model.StatusFailed
 			st.FailureReason = redact.Text(truncate(*si.FailureReason, 4000))
@@ -692,6 +727,9 @@ func (p *parser) sqlPlan(id int64, plan string, info planNode, src model.Source)
 	reads, writes := planData(info, plan, src)
 	q.Reads = dedupe(append(q.Reads, reads...))
 	q.Writes = dedupe(append(q.Writes, writes...))
+	if p.ex != nil && info.NodeName != "" {
+		p.ex.plan(id, info, p.opt.MaxPlans)
+	}
 	if plan == "" {
 		return
 	}
@@ -802,6 +840,9 @@ func (p *parser) finish() {
 	sort.Slice(l.RDDs, func(i, j int) bool { return l.RDDs[i].ID < l.RDDs[j].ID })
 
 	p.settleApplication()
+	if p.ex != nil {
+		l.Explorer = p.ex.build(l)
+	}
 	if len(l.Stats.UnknownEvents) == 0 {
 		l.Stats.UnknownEvents = nil
 	}

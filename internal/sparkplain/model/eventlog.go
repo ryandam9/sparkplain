@@ -16,6 +16,8 @@ type EventLog struct {
 	Config           []ConfigEntry     `json:"config"`
 	CatalogEvents    []DataRef         `json:"catalogEvents,omitempty"`
 	Components       []Component       `json:"components,omitempty"`
+	// Explorer is collected only when the explorer page is wanted.
+	Explorer *Explorer `json:"-"`
 }
 
 // Component is a library version read from a jar name on the driver's

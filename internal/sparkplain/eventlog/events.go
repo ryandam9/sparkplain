@@ -98,15 +98,16 @@ type rddInfo struct {
 }
 
 type stageInfo struct {
-	ID             int       `json:"Stage ID"`
-	Attempt        int       `json:"Stage Attempt ID"`
-	Name           string    `json:"Stage Name"`
-	NumTasks       int       `json:"Number of Tasks"`
-	RDDs           []rddInfo `json:"RDD Info"`
-	ParentIDs      []int     `json:"Parent IDs"`
-	SubmissionTime *int64    `json:"Submission Time"`
-	CompletionTime *int64    `json:"Completion Time"`
-	FailureReason  *string   `json:"Failure Reason"`
+	ID             int           `json:"Stage ID"`
+	Attempt        int           `json:"Stage Attempt ID"`
+	Name           string        `json:"Stage Name"`
+	NumTasks       int           `json:"Number of Tasks"`
+	RDDs           []rddInfo     `json:"RDD Info"`
+	ParentIDs      []int         `json:"Parent IDs"`
+	SubmissionTime *int64        `json:"Submission Time"`
+	CompletionTime *int64        `json:"Completion Time"`
+	FailureReason  *string       `json:"Failure Reason"`
+	Accumulables   []accumulable `json:"Accumulables"`
 }
 
 type stageEvent struct {
@@ -197,8 +198,10 @@ type resourceProfileEvent struct {
 }
 
 type stageExecMetricsEvent struct {
-	ExecutorID string      `json:"Executor ID"`
-	Metrics    execMetrics `json:"Executor Metrics"`
+	ExecutorID   string      `json:"Executor ID"`
+	StageID      int         `json:"Stage ID"`
+	StageAttempt int         `json:"Stage Attempt ID"`
+	Metrics      execMetrics `json:"Executor Metrics"`
 }
 
 type metricsUpdateEvent struct {
@@ -226,6 +229,18 @@ type planNode struct {
 	SimpleString string            `json:"simpleString"`
 	Children     []planNode        `json:"children"`
 	Metadata     map[string]string `json:"metadata"`
+	Metrics      []planMetric      `json:"metrics"`
+}
+
+type planMetric struct {
+	Name          string `json:"name"`
+	AccumulatorID int64  `json:"accumulatorId"`
+	Type          string `json:"metricType"`
+}
+
+type driverAccumEvent struct {
+	ExecutionID int64     `json:"executionId"`
+	Updates     [][]int64 `json:"accumUpdates"`
 }
 
 type sqlStartEvent struct {

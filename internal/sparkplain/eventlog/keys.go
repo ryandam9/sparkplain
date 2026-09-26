@@ -25,13 +25,13 @@ const (
 	evSQLStart        = "org.apache.spark.sql.execution.ui.SparkListenerSQLExecutionStart"
 	evSQLEnd          = "org.apache.spark.sql.execution.ui.SparkListenerSQLExecutionEnd"
 	evSQLAdaptive     = "org.apache.spark.sql.execution.ui.SparkListenerSQLAdaptiveExecutionUpdate"
+	evDriverAccum     = "org.apache.spark.sql.execution.ui.SparkListenerDriverAccumUpdates"
 	catalogPrefix     = "org.apache.spark.sql.catalyst.catalog."
 )
 
 // ignored are events Spark writes that sparkplain knows and does not need.
 var ignored = map[string]bool{
 	evTaskStart: true, evTaskGetting: true,
-	"org.apache.spark.sql.execution.ui.SparkListenerDriverAccumUpdates":          true,
 	"org.apache.spark.sql.execution.ui.SparkListenerSQLAdaptiveSQLMetricUpdates": true,
 	"SparkListenerSpeculativeTaskSubmitted":                                      true,
 	"SparkListenerExecutorExcluded":                                              true,
@@ -86,6 +86,7 @@ func init() {
 	add(evSQLStart, "executionId", "rootExecutionId", "description", "details", "physicalPlanDescription", "sparkPlanInfo", "time", "modifiedConfigs", "jobTags")
 	add(evSQLEnd, "executionId", "time", "errorMessage")
 	add(evSQLAdaptive, "executionId", "physicalPlanDescription", "sparkPlanInfo")
+	add(evDriverAccum, "executionId", "accumUpdates")
 }
 
 // eventName pulls the "Event" value from a line without a full decode.
