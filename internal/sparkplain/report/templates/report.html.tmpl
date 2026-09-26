@@ -360,6 +360,11 @@
           <tbody>{{range $r.Sources}}<tr><td>{{.Name}}{{if .Location}}<span class="sub mono">{{.Location}}</span>{{end}}</td><td><span class="pill {{srcPill .Status}}">{{srcLabel .Status}}</span>{{if .Class}}<span class="sub">{{.Class}}</span>{{end}}</td><td>{{.Detail}}</td></tr>
           {{end}}</tbody>
         </table></div>
+        {{range $r.Sources}}{{if .Files}}{{$c := fileCounts .Files}}<details><summary>{{.Name}}: {{len .Files}} object{{if ne (len .Files) 1}}s{{end}} ({{index $c "read"}} read, {{index $c "skipped"}} skipped, {{index $c "error"}} failed)</summary><div class="inner">
+          <div class="tbl"><table><thead><tr><th>Object</th><th class="num">Size</th><th>Status</th><th>Why</th></tr></thead>
+          <tbody>{{range headFiles .Files 500}}<tr><td class="mono">{{.Location}}</td><td class="num">{{bytes .Bytes}}</td><td>{{.Status}}{{if .Class}} <span class="sub">{{.Class}}</span>{{end}}</td><td>{{if eq .Status "error"}}<span class="bad">{{.Detail}}</span>{{else if .Detail}}{{.Detail}}{{else}}—{{end}}</td></tr>{{end}}</tbody></table></div>
+          {{if gt (len .Files) 500}}<p class="sub">The first 500 are shown; report.json lists all {{len .Files}}.</p>{{end}}
+        </div></details>{{end}}{{end}}
         {{with $r.EventLog}}<details><summary>Event log details: {{len .Files}} file{{if ne (len .Files) 1}}s{{end}}, {{num .Lines}} lines</summary><div class="inner">
           <div class="tbl"><table><thead><tr><th>File</th><th>Codec</th><th class="num">Size</th><th class="num">Unpacked</th><th class="num">Lines</th><th>Problem</th></tr></thead>
           <tbody>{{range .Files}}<tr><td class="mono">{{.Name}}</td><td>{{.Codec}}</td><td class="num">{{bytes .Bytes}}</td><td class="num">{{bytes .Decompressed}}</td><td class="num">{{num .Lines}}</td><td>{{if .Error}}<span class="bad">{{.Error}}</span>{{else}}—{{end}}</td></tr>{{end}}</tbody></table></div>

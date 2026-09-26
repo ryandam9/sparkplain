@@ -29,6 +29,11 @@ type Report struct {
 	Identity      IdentitySection `json:"identity"`
 	Sources       []SourceStatus  `json:"sources"`
 	EventLog      *EventLogStats  `json:"eventLog,omitempty"`
+	// Cluster, Steps and Logs come from the EMR API and the cluster's
+	// container, step and node logs (online or -from runs).
+	Cluster *Cluster     `json:"cluster,omitempty"`
+	Steps   []Step       `json:"steps,omitempty"`
+	Logs    *LogsSection `json:"logs,omitempty"`
 }
 
 // Summary is the "What happened" block.
@@ -337,11 +342,26 @@ type IdentitySection struct {
 
 // SourceStatus is one row in the Sources panel.
 type SourceStatus struct {
-	Name     string `json:"name"`
-	Status   string `json:"status"` // read, partial, not-supplied, error, not-yet
+	Name string `json:"name"`
+	// Status is read, partial, not-supplied or error (these last three make
+	// the run exit 3), none (looked, and it holds nothing for this
+	// application), not-requested (the run was not asked to read it) or
+	// not-yet (a later version reads it).
+	Status   string `json:"status"`
 	Class    string `json:"errorClass,omitempty"`
 	Location string `json:"location,omitempty"`
 	Detail   string `json:"detail"`
+	// Files lists every object read or skipped for this source, and why.
+	Files []SourceFile `json:"files,omitempty"`
+}
+
+// SourceFile is one object a source was read from, or skipped.
+type SourceFile struct {
+	Location string `json:"location"`
+	Bytes    int64  `json:"bytes"`
+	Status   string `json:"status"` // read, skipped, error
+	Class    string `json:"errorClass,omitempty"`
+	Detail   string `json:"detail,omitempty"`
 }
 
 // Cluster is the EMR cluster an application ran on, from the EMR API.
@@ -349,7 +369,9 @@ type Cluster struct {
 	ID              string            `json:"id"`
 	Name            string            `json:"name"`
 	State           string            `json:"state"`
+	StateCode       string            `json:"stateCode,omitempty"` // such as BOOTSTRAP_FAILURE or ALL_STEPS_COMPLETED
 	StateReason     string            `json:"stateReason,omitempty"`
+	PrimaryDNS      string            `json:"primaryDns,omitempty"` // the primary node's DNS name
 	Release         string            `json:"release"`
 	Applications    []string          `json:"applications"`
 	LogURI          string            `json:"logUri,omitempty"`
@@ -360,6 +382,7 @@ type Cluster struct {
 	Ended           time.Time         `json:"ended,omitzero"`
 	Configurations  map[string]string `json:"configurations,omitempty"` // "classification/key" → value, redacted
 	Source          string            `json:"source"`                   // the API call it came from
+	Instances       []Instance        `json:"instances,omitempty"`      // from ListInstances
 }
 
 // Step is one EMR step: a spark-submit or other command the cluster ran.
@@ -377,4 +400,45 @@ type Step struct {
 	// AppID is the Spark application the step started, found in its stderr.
 	AppID  string `json:"appId,omitempty"`
 	Source string `json:"source"`
+}
+
+// Instance is one EC2 instance of a cluster, from the EMR API. Node logs
+// are kept by instance ID and the event log names hosts, so this joins
+// them.
+type Instance struct {
+	ID          string    `json:"id"`
+	PrivateDNS  string    `json:"privateDns"`
+	PrivateIP   string    `json:"privateIp,omitempty"`
+	Type        string    `json:"type,omitempty"`   // m5.xlarge, …
+	Market      string    `json:"market,omitempty"` // ON_DEMAND or SPOT
+	State       string    `json:"state,omitempty"`
+	StateReason string    `json:"stateReason,omitempty"`
+	Primary     bool      `json:"primary,omitempty"`
+	Created     time.Time `json:"created,omitzero"`
+	Ended       time.Time `json:"ended,omitzero"`
+}
+
+// LogsSection holds the container, step and node logs read and what the
+// classifiers found in them.
+type LogsSection struct {
+	Coverage Coverage  `json:"coverage"`
+	Files    []LogFile `json:"files"`
+	Missing  []string  `json:"missing,omitempty"`
+}
+
+// LogFile is one log read, with the lines recognised in it.
+type LogFile struct {
+	Location  string `json:"location"` // s3://… or a local path; the Source.File of its lines
+	Kind      string `json:"kind"`     // container-stderr, step-controller, nodemanager, …
+	Container string `json:"container,omitempty"`
+	Step      string `json:"step,omitempty"`
+	Instance  string `json:"instance,omitempty"`
+	// Executor is the executor the container ran ("driver" for the
+	// application master in cluster mode), joined from the event log.
+	Executor string    `json:"executor,omitempty"`
+	Host     string    `json:"host,omitempty"`
+	Bytes    int64     `json:"bytes"`
+	Lines    int64     `json:"lines"`
+	Dropped  int       `json:"dropped,omitempty"` // distinct lines past the per-file cap
+	Found    []LogLine `json:"found,omitempty"`
 }

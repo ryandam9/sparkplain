@@ -11,13 +11,16 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/emr"
 	"github.com/aws/aws-sdk-go-v2/service/emr/types"
 	"github.com/aws/smithy-go"
+
+	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
 )
 
 // stubEMR answers from fixed data. Tests never call real AWS.
 type stubEMR struct {
-	clusters map[string]*types.Cluster
-	pages    [][]types.ClusterSummary
-	steps    []types.StepSummary
+	clusters  map[string]*types.Cluster
+	pages     [][]types.ClusterSummary
+	steps     []types.StepSummary
+	instances []types.Instance
 }
 
 func (s *stubEMR) DescribeCluster(_ context.Context, in *emr.DescribeClusterInput, _ ...func(*emr.Options)) (*emr.DescribeClusterOutput, error) {
@@ -42,6 +45,10 @@ func (s *stubEMR) ListClusters(_ context.Context, in *emr.ListClustersInput, _ .
 
 func (s *stubEMR) ListSteps(context.Context, *emr.ListStepsInput, ...func(*emr.Options)) (*emr.ListStepsOutput, error) {
 	return &emr.ListStepsOutput{Steps: s.steps}, nil
+}
+
+func (s *stubEMR) ListInstances(context.Context, *emr.ListInstancesInput, ...func(*emr.Options)) (*emr.ListInstancesOutput, error) {
+	return &emr.ListInstancesOutput{Instances: s.instances}, nil
 }
 
 func summary(id, name string, created time.Time) types.ClusterSummary {
@@ -109,5 +116,23 @@ func TestAppInStepLog(t *testing.T) {
 	}
 	if id := AppInStepLog(strings.NewReader("no app here\n")); id != "" {
 		t.Errorf("app %q", id)
+	}
+}
+
+func TestInstancesMarkPrimary(t *testing.T) {
+	inst := func(id, dns string, created time.Time) types.Instance {
+		return types.Instance{Ec2InstanceId: aws.String(id), PrivateDnsName: aws.String(dns), PublicDnsName: aws.String(""), InstanceType: aws.String("m5.xlarge"),
+			Market: types.MarketTypeSpot, Status: &types.InstanceStatus{State: types.InstanceStateTerminated,
+				StateChangeReason: &types.InstanceStateChangeReason{Message: aws.String("Spot instance interrupted")},
+				Timeline:          &types.InstanceTimeline{CreationDateTime: aws.Time(created)}}}
+	}
+	t0 := time.Date(2026, 9, 26, 10, 0, 0, 0, time.UTC)
+	api := &stubEMR{instances: []types.Instance{inst("i-2", "ip-10-0-0-2.ec2.internal", t0.Add(time.Minute)), inst("i-1", "ip-10-0-0-1.ec2.internal", t0)}}
+	got, err := Instances(context.Background(), api, model.Cluster{ID: "j-1", PrimaryDNS: "ip-10-0-0-1.ec2.internal"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].ID != "i-1" || !got[0].Primary || got[1].Primary || got[1].Market != "SPOT" || got[1].StateReason != "Spot instance interrupted" {
+		t.Errorf("instances = %+v", got)
 	}
 }

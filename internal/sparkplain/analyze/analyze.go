@@ -46,6 +46,16 @@ type Input struct {
 	EventLog    *model.EventLog    // nil when not supplied or unreadable
 	EventSource model.SourceStatus // the Sources row for the event log
 	Thresholds  Thresholds
+
+	// From the EMR API and the cluster's logs (online and -from runs).
+	Cluster *model.Cluster
+	Steps   []model.Step
+	Logs    []model.LogFile
+	// LogsRead says the run was asked to read the cluster's logs;
+	// LogSources are then its Sources rows (EMR API, container, step and
+	// node logs).
+	LogsRead   bool
+	LogSources []model.SourceStatus
 }
 
 // ctx is shared state for the analyzers.
@@ -75,6 +85,13 @@ func Run(in Input) *model.Report {
 	c := &ctx{in: in, log: in.EventLog, t: in.Thresholds, conf: map[string]string{}, sys: map[string]string{}}
 	if c.t == (Thresholds{}) {
 		c.t = DefaultThresholds()
+	}
+	r.Cluster, r.Steps = in.Cluster, in.Steps
+	if in.LogsRead {
+		r.Logs = &model.LogsSection{Coverage: model.Complete, Files: in.Logs}
+		if r.Logs.Files == nil {
+			r.Logs.Files = []model.LogFile{}
+		}
 	}
 	if l := c.log; l != nil {
 		r.Application = l.Application

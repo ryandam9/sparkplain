@@ -51,17 +51,17 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("sparkplain", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var o options
-	fs.StringVar(&o.profile, "profile", "", "named AWS profile (online mode; phase 2)")
-	fs.StringVar(&o.region, "region", "", "AWS region override (online mode; phase 2)")
+	fs.StringVar(&o.profile, "profile", "", "named AWS profile for online runs (default for the default chain)")
+	fs.StringVar(&o.region, "region", "", "AWS region override (online runs)")
 	fs.StringVar(&o.configPath, "config", "", "YAML defaults file (default ~/.config/sparkplain/config.yaml)")
-	fs.StringVar(&o.clusterID, "cluster-id", "", "EMR cluster ID (online mode; phase 2)")
-	fs.StringVar(&o.clusterName, "cluster-name", "", "EMR cluster name (online mode; phase 2)")
+	fs.StringVar(&o.clusterID, "cluster-id", "", "EMR cluster ID: read its metadata and logs from AWS (needs -profile)")
+	fs.StringVar(&o.clusterName, "cluster-name", "", "EMR cluster name, instead of -cluster-id (the newest cluster of that name)")
 	fs.StringVar(&o.appID, "app-id", "", "Spark application ID, e.g. application_1700000000000_0042 (required)")
 	fs.StringVar(&o.eventLog, "eventlog", "", "event log: local file, rolling eventlog_v2_* folder, folder of logs, or History Server zip")
-	fs.StringVar(&o.from, "from", "", "offline log folder (phase 2)")
+	fs.StringVar(&o.from, "from", "", "local copy of the cluster's logs (containers/, steps/, node/) or of one application's container folders")
 	fs.StringVar(&o.out, "out", "", "output folder (default ~/sparkplain/<yyyy-mm-dd>/<app-id>/)")
 	fs.StringVar(&o.format, "format", "", "outputs, comma-separated: html, json, explorer (default all three; both = html,json)")
-	fs.IntVar(&o.workers, "workers", 16, "fetch concurrency (online mode; phase 2)")
+	fs.IntVar(&o.workers, "workers", 16, "how many log files to read at once")
 	fs.StringVar(&o.maxSize, "max-size", "", "largest file or zip entry to read, e.g. 10GiB (default 10GiB)")
 	fs.DurationVar(&o.timeout, "overall-timeout", 0, "deadline for the whole run (default 30m)")
 	fs.BoolVar(&o.noCloudWatch, "no-cloudwatch", false, "skip CloudWatch enrichment (phase 3)")
@@ -74,8 +74,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return nil
 	})
 	fs.Usage = func() {
-		fmt.Fprintf(stderr, "Usage: sparkplain -app-id <application id> -eventlog <path> [flags]\n\n")
-		fmt.Fprintf(stderr, "Turns one Spark application's event log into report.html, report.json and explorer.html.\n\nFlags:\n")
+		fmt.Fprintf(stderr, "Usage: sparkplain -app-id <application id> [-eventlog <path>] [-profile <p> -cluster-id <id> | -from <folder>] [flags]\n\n")
+		fmt.Fprintf(stderr, "Turns one Spark application's event log and YARN, step and node logs into report.html, report.json and explorer.html.\n\nFlags:\n")
 		fs.PrintDefaults()
 		fmt.Fprintf(stderr, "\nExit codes: 0 complete, 2 fatal, 3 partial (a source missing or unreadable), 130 interrupted.\n")
 	}
@@ -106,10 +106,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if !appIDRE.MatchString(o.appID) {
 		return fail("-app-id %q does not look like a Spark application ID", o.appID)
 	}
-	if set["from"] {
-		return fail("-from (an offline folder of container and step logs) arrives later in phase 2; pass -eventlog, or -cluster-id to read the logs from S3")
-	}
 	online := o.clusterID != "" || o.clusterName != ""
+	if online && o.from != "" {
+		return fail("-from reads a local copy of the cluster's logs, and -cluster-id reads them from S3: pass one or the other")
+	}
 	for _, name := range []string{"no-cloudwatch", "no-cloudtrail", "window-pad"} {
 		if set[name] {
 			fmt.Fprintf(stderr, "sparkplain: note: -%s is for AWS enrichment (phase 3) and is ignored\n", name)
@@ -172,8 +172,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "sparkplain: using the cluster's spark.eventLog.dir %s\n", evPath)
 		}
 	}
-	if evPath == "" && !online {
-		return fail("pass -eventlog <path> (a file, rolling folder, folder of logs, History Server zip or s3:// location), or -cluster-id to read from the cluster")
+	if evPath == "" && !online && o.from == "" {
+		return fail("pass -eventlog <path> (a file, rolling folder, folder of logs, History Server zip or s3:// location), -cluster-id to read from the cluster, or -from with a copy of its logs")
 	}
 	if o.show != "" {
 		file, line, err := eventlog.ParseLocation(o.show)
@@ -213,6 +213,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		in, err = cloud.resolve(ctx, evPath, o.appID, eventlog.Limits{MaxObjectBytes: maxSize})
 	}
 	switch {
+	case errors.Is(err, errNoEventLog) && !online:
+		src.Status, src.Detail = "not-supplied", "No event log was given. Pass -eventlog with an S3 copy or a History Server download; until then only the container, step and node logs are shown."
 	case errors.Is(err, errNoEventLog):
 		src.Status, src.Detail = "not-supplied", "The cluster keeps Spark event logs in HDFS (the default spark.eventLog.dir), which is gone once it ends. Pass -eventlog with an S3 copy or a History Server download, or set spark.eventLog.dir to S3 on the cluster."
 	case err != nil && eventlog.ErrorClass(err) == eventlog.ClassNotFound && !online:
@@ -251,15 +253,47 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
-	r := analyze.Run(analyze.Input{
+	lim := source.Limits{Workers: o.workers, MaxObject: maxSize}
+	var logs clusterLogs
+	mode := "offline-eventlog"
+	switch {
+	case online:
+		mode = "online"
+		logs = onlineLogs(ctx, cloud, cluster, log, o.appID, lim)
+	case o.from != "":
+		mode = "offline-logs"
+		if logs, err = offlineLogs(ctx, o.from, o.appID, log, lim); err != nil {
+			return fail("%v", err)
+		}
+	}
+	if ctx.Err() == context.Canceled {
+		fmt.Fprintln(stderr, "sparkplain: interrupted")
+		return exitInterrupted
+	}
+	ain := analyze.Input{
 		Tool:        "sparkplain " + version,
-		Mode:        "offline-eventlog",
+		Mode:        mode,
 		GeneratedAt: time.Now(),
 		TimeZone:    loc.String(),
 		EventLog:    log,
 		EventSource: src,
 		Thresholds:  cfg.Thresholds.apply(analyze.DefaultThresholds()),
-	})
+		Steps:       logs.steps,
+		Logs:        logs.files,
+		LogsRead:    online || o.from != "",
+	}
+	if logs.cluster != nil {
+		cl := *logs.cluster
+		cl.Instances = logs.instances
+		ain.Cluster = &cl
+	}
+	if logs.emr != nil {
+		ain.LogSources = append(ain.LogSources, *logs.emr)
+	} else if ain.LogsRead {
+		ain.LogSources = append(ain.LogSources, model.SourceStatus{Name: "EMR API", Status: "not-requested", Detail: "Not called: -from reads local files only."})
+	}
+	ain.LogSources = append(ain.LogSources, logs.sources...)
+	r := analyze.Run(ain)
 	if r.Application.ID == "" {
 		r.Application.ID = o.appID
 	}

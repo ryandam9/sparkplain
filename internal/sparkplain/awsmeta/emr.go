@@ -20,6 +20,7 @@ import (
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
 	"github.com/ryandam9/sparkplain/internal/sparkplain/redact"
+	"github.com/ryandam9/sparkplain/internal/sparkplain/source"
 )
 
 // EMRAPI is the part of the EMR client sparkplain uses: reads only. Tests
@@ -28,6 +29,7 @@ type EMRAPI interface {
 	DescribeCluster(ctx context.Context, in *emr.DescribeClusterInput, opts ...func(*emr.Options)) (*emr.DescribeClusterOutput, error)
 	ListClusters(ctx context.Context, in *emr.ListClustersInput, opts ...func(*emr.Options)) (*emr.ListClustersOutput, error)
 	ListSteps(ctx context.Context, in *emr.ListStepsInput, opts ...func(*emr.Options)) (*emr.ListStepsOutput, error)
+	ListInstances(ctx context.Context, in *emr.ListInstancesInput, opts ...func(*emr.Options)) (*emr.ListInstancesOutput, error)
 }
 
 // NewEMR makes a client from a loaded AWS config.
@@ -49,7 +51,7 @@ func Describe(ctx context.Context, api EMRAPI, id string) (model.Cluster, error)
 	}
 	c := out.Cluster
 	cl := model.Cluster{ID: aws.ToString(c.Id), Name: aws.ToString(c.Name), Release: aws.ToString(c.ReleaseLabel),
-		LogURI: aws.ToString(c.LogUri), ServiceRole: aws.ToString(c.ServiceRole),
+		LogURI: aws.ToString(c.LogUri), ServiceRole: aws.ToString(c.ServiceRole), PrimaryDNS: aws.ToString(c.MasterPublicDnsName),
 		SecurityConfig: aws.ToString(c.SecurityConfiguration), Source: "EMR DescribeCluster " + id}
 	if c.Ec2InstanceAttributes != nil {
 		cl.InstanceProfile = aws.ToString(c.Ec2InstanceAttributes.IamInstanceProfile)
@@ -57,6 +59,7 @@ func Describe(ctx context.Context, api EMRAPI, id string) (model.Cluster, error)
 	if c.Status != nil {
 		cl.State = string(c.Status.State)
 		if c.Status.StateChangeReason != nil {
+			cl.StateCode = string(c.Status.StateChangeReason.Code)
 			cl.StateReason = aws.ToString(c.Status.StateChangeReason.Message)
 		}
 		if t := c.Status.Timeline; t != nil {
@@ -148,6 +151,57 @@ func Steps(ctx context.Context, api EMRAPI, id string) ([]model.Step, error) {
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Started.Before(out[j].Started) })
 	return out, nil
+}
+
+// Instances lists the cluster's EC2 instances, current and ended
+// (ListInstances), marking the primary node by the DNS name DescribeCluster
+// gave. Node logs are kept by instance ID, the event log names hosts, and
+// this joins the two.
+func Instances(ctx context.Context, api EMRAPI, cl model.Cluster) ([]model.Instance, error) {
+	var out []model.Instance
+	p := emr.NewListInstancesPaginator(api, &emr.ListInstancesInput{ClusterId: aws.String(cl.ID)})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return out, fmt.Errorf("ListInstances %s: %w", cl.ID, err)
+		}
+		for _, i := range page.Instances {
+			in := model.Instance{ID: aws.ToString(i.Ec2InstanceId), PrivateDNS: aws.ToString(i.PrivateDnsName),
+				PrivateIP: aws.ToString(i.PrivateIpAddress), Type: aws.ToString(i.InstanceType), Market: string(i.Market)}
+			if st := i.Status; st != nil {
+				in.State = string(st.State)
+				if st.StateChangeReason != nil {
+					in.StateReason = redact.Text(aws.ToString(st.StateChangeReason.Message))
+				}
+				if t := st.Timeline; t != nil {
+					in.Created, in.Ended = aws.ToTime(t.CreationDateTime), aws.ToTime(t.EndDateTime)
+				}
+			}
+			if d := cl.PrimaryDNS; d != "" && (d == in.PrivateDNS || d == aws.ToString(i.PublicDnsName) || d == in.PrivateIP) {
+				in.Primary = true
+			}
+			out = append(out, in)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Created.Before(out[j].Created) })
+	return out, nil
+}
+
+// ErrorClass names an EMR API error's class for the Sources panel.
+func ErrorClass(err error) string {
+	var ae smithy.APIError
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return source.ClassTimeout
+	case errors.As(err, &ae):
+		switch ae.ErrorCode() {
+		case "AccessDeniedException", "AccessDenied", "UnauthorizedOperation", "ExpiredTokenException", "UnrecognizedClientException":
+			return source.ClassAccessDenied
+		case "ThrottlingException", "Throttling", "RequestLimitExceeded":
+			return source.ClassThrottled
+		}
+	}
+	return source.ClassOther
 }
 
 var appIDRE = regexp.MustCompile(`application_\d{10,}_\d{4,}`)

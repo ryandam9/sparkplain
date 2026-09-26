@@ -217,7 +217,11 @@ func TestSourceFlag(t *testing.T) {
 }
 
 // stubEMR answers DescribeCluster from a map. Tests never call real AWS.
-type stubEMR struct{ clusters map[string]*emrtypes.Cluster }
+type stubEMR struct {
+	clusters  map[string]*emrtypes.Cluster
+	steps     []emrtypes.StepSummary
+	instances []emrtypes.Instance
+}
 
 func (s stubEMR) DescribeCluster(_ context.Context, in *emr.DescribeClusterInput, _ ...func(*emr.Options)) (*emr.DescribeClusterOutput, error) {
 	c, ok := s.clusters[aws.ToString(in.ClusterId)]
@@ -229,8 +233,11 @@ func (s stubEMR) DescribeCluster(_ context.Context, in *emr.DescribeClusterInput
 func (stubEMR) ListClusters(context.Context, *emr.ListClustersInput, ...func(*emr.Options)) (*emr.ListClustersOutput, error) {
 	return &emr.ListClustersOutput{}, nil
 }
-func (stubEMR) ListSteps(context.Context, *emr.ListStepsInput, ...func(*emr.Options)) (*emr.ListStepsOutput, error) {
-	return &emr.ListStepsOutput{}, nil
+func (s stubEMR) ListSteps(context.Context, *emr.ListStepsInput, ...func(*emr.Options)) (*emr.ListStepsOutput, error) {
+	return &emr.ListStepsOutput{Steps: s.steps}, nil
+}
+func (s stubEMR) ListInstances(context.Context, *emr.ListInstancesInput, ...func(*emr.Options)) (*emr.ListInstancesOutput, error) {
+	return &emr.ListInstancesOutput{Instances: s.instances}, nil
 }
 
 // fakeAWS points the CLI's AWS at local folders (one per bucket) and a
@@ -240,7 +247,7 @@ func fakeAWS(t *testing.T, buckets map[string]string, clusters map[string]*emrty
 	saved := awsDeps
 	t.Cleanup(func() { awsDeps = saved })
 	awsDeps.config = func(context.Context, string, string) (aws.Config, error) { return aws.Config{Region: "us-east-1"}, nil }
-	awsDeps.emr = func(aws.Config) awsmeta.EMRAPI { return stubEMR{clusters} }
+	awsDeps.emr = func(aws.Config) awsmeta.EMRAPI { return stubEMR{clusters: clusters} }
 	awsDeps.s3 = func(_ context.Context, _ aws.Config, bucket string) (source.Store, error) {
 		root, ok := buckets[bucket]
 		if !ok {

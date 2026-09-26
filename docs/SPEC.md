@@ -47,7 +47,7 @@ Only the files the parsers need are downloaded, and each one streams straight in
 **Input modes**
 
 1. Online: `-cluster-id` + `-app-id`, everything fetched from S3 and AWS APIs.
-2. Offline: `-from <dir>`, any local folder mirroring the S3 layout below the application prefix (for example `container_*/stderr.gz`), plus an event log file. No AWS calls except optional enrichment.
+2. Offline: `-from <dir>`, a local copy of the cluster's log folder (`containers/`, `steps/`, `node/`, as `aws s3 cp --recursive <LogUri>/<cluster-id>/` makes it), a folder holding such copies (`j-…/containers/…`; the one holding the application wins), or one application's container folders (`container_*/stderr.gz`), plus an optional event log file. No AWS calls.
 
 ## 3. Data sources
 
@@ -184,7 +184,7 @@ sparkplain -from ./logs/application_1700000000000_0042 \
 | `-profile`, `-region`, `-config` | Named AWS profile (required online), region override, YAML defaults file at `~/.config/sparkplain/config.yaml` |
 | `-cluster-id`, `-cluster-name`, `-app-id` | Scope the run; `-app-id` required |
 | `-eventlog` | Optional. S3 prefix or object, local file, rolling folder, or History Server zip; falls back to `eventlog-prefix` in the config file |
-| `-from` | Offline input directory |
+| `-from` | Offline copy of the cluster's logs (see §2); not with `-cluster-id` |
 | `-out` | Output directory override |
 | `-format` | Comma-separated outputs: `html`, `json`, `explorer` (default all three; `both` still means `html,json`) |
 | `-workers`, `-max-size`, `-overall-timeout` | Fetch budgets: concurrency, per-object size cap, run deadline |
@@ -374,11 +374,13 @@ Fixtures (added, not regenerated, so existing expectations hold): `0046` exercis
   - Log times carry no zone and are read as UTC, the EMR default.
 - Fixtures (step 7's, made now to drive step 4's tests): `testdata/emrlogs/` holds the classified files of three test clusters, scrubbed by `scripts/fixtures/scrub_emrlogs.py`, which reuses `scrub_emr.py`'s rewriting so hosts match the event-log fixtures: `j-FIXTURE0049CLUSTER` (the `0049` run: a cast failure in 7 tasks, and a step that tried the absent `s3-dist-cp`), `j-FIXTURE0050CLUSTER` (the `0050` speculation run) and `j-FIXTURE0052CLUSTER` (a failed run: a Python traceback in the driver's `stdout`, exit 13 on both attempts). The scrubber had rewritten the timestamp in container and attempt IDs but kept the old application number (`container_…_0001_…` under `application_…_0049`), which no real cluster produces; it now rewrites both, and `0049` and `0050` were regenerated.
 
+- Phase 2 step 5a (built): online runs call `ListSteps` and `ListInstances` (both read-only; `ListInstances` joins the event log's host names to the instance IDs node logs are kept under, and marks the primary node by `DescribeCluster`'s primary DNS name) and read the logs under `<LogUri>/<cluster-id>/` with `yarnlog.Collect`: every file under `containers/<app-id>/`; the `stderr` of the steps that ran while the application started (up to 50; all steps without an event log), keeping the step whose log says it submitted the application and reading its controller log; and the NodeManager, ResourceManager and bootstrap logs of the nodes the event log names plus the primary node (without an event log, every node up to 50), skipping daemon logs last written before the application started. `-from` reads the same layout from a local folder. Each Sources row lists every object read or skipped and why (collapsible in `report.html`, complete in `report.json`). Two statuses join the Sources panel and do not make the run exit 3: `none` (looked, and nothing there is about this application, such as no step for an application started from a notebook) and `not-requested` (a plain `-eventlog` run does not read the cluster's logs). No container logs is `not-supplied` and exits 3: EMR uploads them to the log URI every few minutes and at the end, so their absence means a cluster without a log URI or an upload that has not happened yet.
+
 ## 9. Open questions
 
 - [ ] Where is the S3 copy of the event logs that the History Server reads (`s3a://…/sparklogs`), and can your AWS profile read it?
 - [ ] Is EMR on EC2 the only target? (Minimum release settled: EMR 7.3.0.)
-- [ ] Should the offline `-from` mode accept any folder layout, or only one mirroring the S3 structure?
+- [x] Should the offline `-from` mode accept any folder layout, or only one mirroring the S3 structure? Decided in phase 2: the S3 layout of the cluster's log folder, a folder of such copies, or one application's container folders (§2).
 - [ ] Are Kerberos, Lake Formation or Ranger enabled, and is HBase on the same cluster or external?
 - [ ] Does a CloudTrail trail record S3 data events for the log and data buckets?
 - [ ] Is the CloudWatch agent configured on your clusters?

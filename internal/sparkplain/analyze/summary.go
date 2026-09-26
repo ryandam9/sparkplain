@@ -130,10 +130,15 @@ func analyzeSources(c *ctx, r *model.Report) {
 	notYet := func(name, detail string) {
 		r.Sources = append(r.Sources, model.SourceStatus{Name: name, Status: "not-yet", Detail: detail})
 	}
-	notYet("Container logs", "Not read: this version of sparkplain reads the event log only. Planned for phase 2 (S3 fetching).")
-	notYet("Step logs", "Not read: planned for phase 2.")
-	notYet("Node logs", "Not read: planned for phase 2.")
-	notYet("EMR API", "Not called: planned for phase 3 (instance types, roles, security configuration).")
+	if c.in.LogsRead {
+		r.Sources = append(r.Sources, c.in.LogSources...)
+	} else {
+		for _, name := range []string{"Container logs", "Step logs", "Node logs"} {
+			r.Sources = append(r.Sources, model.SourceStatus{Name: name, Status: "not-requested",
+				Detail: "Not read: pass -cluster-id with -profile to read them from S3, or -from with a local copy of the cluster's log folder."})
+		}
+		r.Sources = append(r.Sources, model.SourceStatus{Name: "EMR API", Status: "not-requested", Detail: "Not called: pass -cluster-id with -profile."})
+	}
 	notYet("CloudWatch", "Not called: planned for phase 3 (host CPU, memory and disk).")
 	notYet("CloudTrail", "Not called: planned for phase 3 (AWS calls and AccessDenied).")
 }

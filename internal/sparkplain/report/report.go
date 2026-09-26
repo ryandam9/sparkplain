@@ -172,10 +172,24 @@ func funcs(loc *time.Location) template.FuncMap {
 		},
 		"statusLabel": statusLabel,
 		"srcPill": func(s string) string {
-			return map[string]string{"read": "full", "partial": "part", "error": "crit", "not-supplied": "none", "not-yet": "none"}[s]
+			return map[string]string{"read": "full", "partial": "part", "error": "crit", "not-supplied": "none", "not-yet": "none", "none": "none", "not-requested": "none"}[s]
 		},
 		"srcLabel": func(s string) string {
-			return map[string]string{"read": "Read", "partial": "Partly read", "error": "Could not read", "not-supplied": "Not supplied", "not-yet": "Not in this version"}[s]
+			return map[string]string{"read": "Read", "partial": "Partly read", "error": "Could not read", "not-supplied": "Not supplied", "not-yet": "Not in this version",
+				"none": "Nothing for this app", "not-requested": "Not requested"}[s]
+		},
+		"fileCounts": func(fs []model.SourceFile) map[string]int {
+			out := map[string]int{"read": 0, "skipped": 0, "error": 0}
+			for _, f := range fs {
+				out[f.Status]++
+			}
+			return out
+		},
+		"headFiles": func(fs []model.SourceFile, n int) []model.SourceFile {
+			if len(fs) > n {
+				return fs[:n]
+			}
+			return fs
 		},
 		"share":  shareBar,
 		"sharev": func(f float64) string { return fmt.Sprintf("%.4f", f) },
