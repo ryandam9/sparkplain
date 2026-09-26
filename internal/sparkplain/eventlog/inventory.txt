@@ -461,6 +461,7 @@ SparkListenerTaskEnd
     Task End Reason/Executor ID | used | failure kind and message
     Task End Reason/Exit Caused By App | used | whether Spark blamed the application for a lost executor
     Task End Reason/Full Stack Trace | used | full stack trace per distinct failure, redacted and capped
+    Task End Reason/Kill Reason | used | failure kind and message
     Task End Reason/Loss Reason | used | failure kind and message
     Task End Reason/Reason | used | failure kind and message
     Task End Reason/Stack Trace | aside | same frames as Full Stack Trace, which is kept

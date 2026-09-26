@@ -1,6 +1,6 @@
 """Scrub a real EMR event log into a committable fixture.
 
-Usage: scrub_emr.py <event log or History Server zip> <out file>
+Usage: scrub_emr.py <event log or History Server zip> <out file> [<new app id>]
 
 The log comes from a throwaway test cluster, but CLAUDE.md still forbids
 real hostnames, bucket names and IDs in testdata. Every string is rewritten:
@@ -15,6 +15,7 @@ import sys
 import zipfile
 
 src, out = sys.argv[1:3]
+new_app = sys.argv[3] if len(sys.argv) > 3 else "application_1790380000000_0049"
 if src.endswith(".zip"):
     z = zipfile.ZipFile(src)
     raw = z.read([n for n in z.namelist() if not n.endswith("/")][0]).decode("utf-8")
@@ -31,16 +32,18 @@ def host(m):
     return hosts[h]
 
 
+old_app = next(json.loads(l)["App ID"] for l in raw.splitlines() if '"SparkListenerApplicationStart"' in l)
+old_ts, new_ts = old_app.split("_")[1], new_app.split("_")[1]
 REPLACE = [
     (re.compile(r"ip-172-31-\d+-\d+"), host),
     (re.compile(r"\b172\.31\.\d+\.\d+\b"), lambda m: "10.0.2.99"),
-    (re.compile(r"application_1790408460617_0001"), lambda m: "application_1790380000000_0049"),
-    (re.compile(r"1790408460617"), lambda m: "1790380000000"),
-    (re.compile(r"sparkplain-test-a5165fcd"), lambda m: "sparkplain-fixtures"),
+    (re.compile(re.escape(old_app)), lambda m: new_app),
+    (re.compile(old_ts), lambda m: new_ts),
+    (re.compile(r"sparkplain-test-[0-9a-f]{8}"), lambda m: "sparkplain-fixtures"),
     (re.compile(r"ap-southeast-2"), lambda m: "us-east-1"),
     (re.compile(r"FAKE-hunter2-secret"), lambda m: "FAKE-EMR-PASSWORD-0010"),
 ]
-FORBIDDEN = ["172-31", "172.31.", "a5165fcd", "ap-southeast-2", "1790408460617", "hunter2"]
+FORBIDDEN = ["172-31", "172.31.", "sparkplain-test-", "ap-southeast-2", old_ts, "hunter2"]
 
 
 def fix(s):
