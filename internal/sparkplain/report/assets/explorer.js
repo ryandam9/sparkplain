@@ -302,6 +302,9 @@
       j.group ? fact("Job group", j.group) : null,
       fact("Code", j.name, "Where in the code the action ran.")));
     if (j.failure) s.appendChild(el("pre", { cls: "plan", text: j.failure }));
+    var jw = el("div", { cls: "dagwrap", hidden: true });
+    s.appendChild(jw);
+    jobDag(jw, j.id, null);
     var rows = [];
     j.stages.forEach(function (sid) { (stagesByID[sid] || []).forEach(function (st) { rows.push(st); }); });
     s.appendChild(el("h3", { text: "Stages" }));
@@ -405,7 +408,9 @@
       fact("Jobs", st.jobs.length ? jl : "—", "The actions this stage ran for."),
       fact("Runs after", st.parents.length ? pl : "Nothing: it reads its input directly.", "Stages whose output this stage reads.")));
     if (st.failure) { s.appendChild(el("h3", { text: "Why it failed" })); s.appendChild(el("pre", { cls: "plan", text: st.failure })); }
-    s.appendChild(el("div", { cls: "dagwrap", "data-dag": st.key, hidden: true }));
+    var sw = el("div", { cls: "dagwrap", hidden: true });
+    s.appendChild(sw);
+    st.jobs.some(function (jid) { return jobDag(sw, jid, st.id); });
     if (!det || !det.from) {
       s.appendChild(explain(D.collected ? "No task finished in this stage, so there is no task summary." : "Per-task detail was not collected for this run."));
       return s;
@@ -560,8 +565,10 @@
     var g = D.graphs[String(q.id)];
     if (g && g.length) {
       s.appendChild(el("h3", { text: "Plan" }));
-      s.appendChild(explain("The final physical plan (after adaptive re-planning). Data flows from the leaves up to the root. Metrics are totals across all tasks."));
-      s.appendChild(el("div", { cls: "dagwrap", "data-plan": String(q.id), hidden: true }));
+      s.appendChild(explain("The final physical plan, after adaptive re-planning. In the graph, data flows down from the scans to the result; the table lists the same operators from the result back to the scans, indented by depth, with every metric. Metrics are totals across all tasks."));
+      var pw = el("div", { cls: "dagwrap", hidden: true });
+      s.appendChild(pw);
+      planGraph(pw, q.id);
       var rows = [], seen = {};
       (function walk(i, depth) {
         if (seen[i] || !g[i]) return;
@@ -639,6 +646,71 @@
     return s;
   };
 
+
+
+  // ---------- graphs (laid out in Go, drawn here as SVG) ----------
+  var SVG = "http://www.w3.org/2000/svg";
+  function sv(tag, attrs) {
+    var n = document.createElementNS(SVG, tag);
+    Object.keys(attrs || {}).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+    return n;
+  }
+  function clip(t, n) { t = t || ""; return t.length > n ? t.slice(0, n - 1) + "…" : t; }
+  // drawGraph fills wrap with the layout; info(i) gives node i's title, sub
+  // line, link, extra class and tooltip.
+  function drawGraph(wrap, lay, info, caption) {
+    var svg = sv("svg", { "class": "dag", viewBox: "0 0 " + lay.w + " " + lay.h, width: lay.w, height: lay.h, role: "img" });
+    var W = 200, H = 48;
+    lay.edges.forEach(function (e) {
+      var a = lay.pos[e[0]], b = lay.pos[e[1]];
+      var x1 = a[0] + W / 2, y1 = a[1] + H, x2 = b[0] + W / 2, y2 = b[1], my = (y1 + y2) / 2;
+      svg.appendChild(sv("path", { "class": "edge", d: "M" + x1 + "," + y1 + " C" + x1 + "," + my + " " + x2 + "," + my + " " + x2 + "," + (y2 - 4), "marker-end": "url(#sp-arrow)" }));
+    });
+    var defs = sv("defs"), m = sv("marker", { id: "sp-arrow", viewBox: "0 0 8 8", refX: "4", refY: "4", markerWidth: "7", markerHeight: "7", orient: "auto" });
+    var mp = sv("path", { d: "M0,0 L8,4 L0,8 z" });
+    mp.style.fill = "var(--faint)";
+    m.appendChild(mp); defs.appendChild(m); svg.insertBefore(defs, svg.firstChild);
+    lay.pos.forEach(function (p, i) {
+      var inf = info(i);
+      var g = sv("g", { "class": "node" + (inf.cls ? " " + inf.cls : ""), transform: "translate(" + p[0] + "," + p[1] + ")" });
+      var t = sv("title"); t.textContent = inf.tip || inf.title; g.appendChild(t);
+      g.appendChild(sv("rect", { width: W, height: H, rx: 6 }));
+      var t1 = sv("text", { x: 10, y: 19 }); t1.textContent = clip(inf.title, 30); g.appendChild(t1);
+      var t2 = sv("text", { x: 10, y: 37, "class": "sub" }); t2.textContent = clip(inf.sub, 32); g.appendChild(t2);
+      if (inf.href) { var a = sv("a", { href: inf.href }); a.appendChild(g); svg.appendChild(a); } else svg.appendChild(g);
+    });
+    wrap.textContent = "";
+    wrap.appendChild(svg);
+    if (caption) wrap.appendChild(el("p", { cls: "cap", text: caption }));
+    wrap.hidden = false;
+  }
+  function jobDag(wrap, jobID, hot) {
+    var dag = D.jobDags[String(jobID)];
+    if (!dag) return false;
+    drawGraph(wrap, dag.layout, function (i) {
+      var sid = dag.stages[i], atts = stagesByID[sid] || [], st = atts[atts.length - 1];
+      if (!st) return { title: "Stage " + sid, sub: "not logged", cls: "skipped" };
+      return { title: "Stage " + sid + (st.attempt ? " (attempt " + (st.attempt + 1) + ")" : ""), sub: STATUS[st.status] + " · " + dur(span(st.submitted, st.completed)) + " · " + num(st.tasks) + " tasks",
+        href: "#stage/" + st.key, cls: (sid === hot ? "hot" : "") + (st.status === "failed" ? " failed" : "") + (st.status === "skipped" ? " skipped" : ""), tip: "Stage " + sid + ": " + st.name };
+    }, "Job " + jobID + "'s stages. Arrows point from a stage to the stages that read its output. " + (hot != null ? "This stage is outlined. " : "") + "Failed stages have a red outline and skipped ones (their output already existed) a dashed one; click a stage to open it.");
+    return true;
+  }
+  function planGraph(wrap, qid) {
+    var g = D.graphs[String(qid)], lay = D.planLayouts[String(qid)];
+    if (!g || !lay) return false;
+    drawGraph(wrap, lay, function (i) {
+      var n = g[i], rows = null, time = null;
+      (n.m || []).forEach(function (m) {
+        if (m[2] == null) return;
+        if (m[0] === "number of output rows") rows = m[2];
+        else if (time == null && (m[1] === "timing" || m[1] === "nsTiming") && m[2] > 0) time = m[1] === "nsTiming" ? m[2] / 1e6 : m[2];
+      });
+      var sub = rows != null ? num(rows) + " rows" : "";
+      if (time != null) sub += (sub ? " · " : "") + dur(time);
+      return { title: n.n, sub: sub || " ", tip: n.n + (n.d ? "\n" + n.d : "") };
+    }, "Data flows down the arrows, from the scans at the top to the result at the bottom. Rows and time are totals across tasks; the table below lists every metric.");
+    return true;
+  }
 
   // ---------- chart layer: Google Charts, loaded on demand ----------
   // Google Charts cannot be self-hosted, so this is the page's only network

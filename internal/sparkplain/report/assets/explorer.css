@@ -49,3 +49,7 @@ svg.dag a .node:hover rect{fill:var(--accent-soft)}
 .gchart .cap{font-size:12.5px;color:var(--muted);padding:4px 6px 2px;max-width:80ch}
 .gchart .plot{width:100%}
 .gchart.scrolly .plot{max-height:520px;overflow-y:auto}
+.dagwrap .cap{font-size:12.5px;color:var(--muted);padding:6px 4px 0;max-width:80ch}
+svg.dag .node.skipped rect{stroke-dasharray:4 3}
+svg.dag a{cursor:pointer}
+svg.dag{margin:0 auto}

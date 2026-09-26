@@ -90,6 +90,15 @@ func TestExplorerDataMatchesReport(t *testing.T) {
 			}
 		}
 	}
+	dags := d["jobDags"].(map[string]any)
+	for _, j := range r.Jobs.Jobs {
+		if _, ok := dags[fmt.Sprint(j.ID)]; ok != (len(j.StageIDs) >= 2) {
+			t.Errorf("job %d with %d stages: DAG present = %v", j.ID, len(j.StageIDs), ok)
+		}
+	}
+	if got, want := len(d["planLayouts"].(map[string]any)), len(d["graphs"].(map[string]any)); got != want {
+		t.Errorf("%d plan layouts for %d plan graphs", got, want)
+	}
 	if len(d["graphs"].(map[string]any)) == 0 || d["running"] == nil {
 		t.Error("plan graphs or running tasks missing")
 	}
@@ -109,9 +118,17 @@ func TestExplorerOnlyLoadsGoogleCharts(t *testing.T) {
 			t.Errorf("explorer loads something outside its script: %q", m)
 		}
 	}
-	urls := regexp.MustCompile(`https?://[^\s"'<>)]+`).FindAllString(page, -1)
-	if len(urls) != 1 || urls[0] != "https://www.gstatic.com/charts/loader.js" {
-		t.Errorf("explorer references %v; only the Google Charts loader is allowed", urls)
+	// The SVG namespace is an identifier browsers never fetch.
+	allowed := map[string]bool{"https://www.gstatic.com/charts/loader.js": true, "http://www.w3.org/2000/svg": true}
+	loader := false
+	for _, u := range regexp.MustCompile(`https?://[^\s"'<>)]+`).FindAllString(page, -1) {
+		if !allowed[u] {
+			t.Errorf("explorer references %s; only the Google Charts loader is allowed", u)
+		}
+		loader = loader || u == "https://www.gstatic.com/charts/loader.js"
+	}
+	if !loader {
+		t.Error("the Google Charts loader is missing")
 	}
 	if !strings.Contains(explorerJS, `GC_VERSION = "52"`) || strings.Contains(explorerJS, `load("current"`) {
 		t.Error("Google Charts must be pinned to a frozen release")

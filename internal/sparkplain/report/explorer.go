@@ -111,7 +111,9 @@ type xData struct {
 	CellCols   []string             `json:"cellCols"`
 	Running    *xRunning            `json:"running,omitempty"`
 	SQL        table                `json:"sql"`
-	Graphs     map[string][]xNode   `json:"graphs"` // by query ID
+	Graphs     map[string][]xNode   `json:"graphs"`      // by query ID
+	PlanLays   map[string]xLayout   `json:"planLayouts"` // by query ID, for graphs small enough to draw
+	JobDags    map[string]xJobDag   `json:"jobDags"`     // by job ID, for jobs with 2 to maxGraphNodes stages
 	RDDs       table                `json:"rdds"`
 	Runtime    table                `json:"runtime"`
 	Config     []xConfigGroup       `json:"config"`
@@ -154,6 +156,16 @@ type xDetail struct {
 	Cells   [][]int64           `json:"cells"`
 }
 
+// xJobDag is a job's stages as a graph: node i is stage Stages[i].
+type xJobDag struct {
+	Stages []int   `json:"stages"`
+	Layout xLayout `json:"layout"`
+}
+
+// maxGraphNodes caps the graphs the page draws; bigger ones are listed as
+// tables only.
+const maxGraphNodes = 300
+
 type xRunning struct {
 	Start    int64   `json:"start"`
 	BucketMs int64   `json:"bucketMs"`
@@ -188,6 +200,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		Summary: r.Summary.Sentences, KPIs: r.Summary.KPIs, HeapBytes: r.Memory.Config.HeapBytes,
 		Detail: map[string]xDetail{}, TaskCols: taskCols, CellCols: cellCols, Graphs: map[string][]xNode{},
 		Findings: []xFinding{}, Files: []string{}, Execs: []string{}, Notes: []string{},
+		PlanLays: map[string]xLayout{}, JobDags: map[string]xJobDag{},
 	}
 	files := map[string]int{}
 	fileIdx := func(s model.Source) int64 {
@@ -257,6 +270,29 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		}
 		d.Jobs.add(j.ID, j.Name, j.Description, j.Group, unixMs(j.Submitted), unixMs(j.Completed), j.Status,
 			orEmpty(j.StageIDs), sql, capText(j.Failure, 2000), src(j.Source))
+	}
+
+	parents := map[int][]int{}
+	for _, st := range r.Jobs.Stages {
+		parents[st.ID] = st.ParentIDs
+	}
+	for _, j := range r.Jobs.Jobs {
+		if len(j.StageIDs) < 2 || len(j.StageIDs) > maxGraphNodes {
+			continue
+		}
+		idx := map[int]int{}
+		for i, id := range j.StageIDs {
+			idx[id] = i
+		}
+		var edges [][2]int
+		for i, id := range j.StageIDs {
+			for _, p := range parents[id] {
+				if pi, ok := idx[p]; ok {
+					edges = append(edges, [2]int{pi, i})
+				}
+			}
+		}
+		d.JobDags[strconv.Itoa(j.ID)] = xJobDag{Stages: j.StageIDs, Layout: layered(len(j.StageIDs), edges)}
 	}
 
 	d.Stages = newTable("id", "attempt", "name", "status", "submitted", "completed", "numTasks", "jobs", "parents",
@@ -370,6 +406,15 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 			nodes[i] = xn
 		}
 		d.Graphs[strconv.FormatInt(g.QueryID, 10)] = nodes
+		if len(nodes) <= maxGraphNodes {
+			var edges [][2]int // data flows from each child up to its parent
+			for i, n := range g.Nodes {
+				for _, c := range n.Children {
+					edges = append(edges, [2]int{c, i})
+				}
+			}
+			d.PlanLays[strconv.FormatInt(g.QueryID, 10)] = layered(len(nodes), edges)
+		}
 	}
 	return d
 }
