@@ -3,6 +3,7 @@ package report
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -89,6 +90,7 @@ type FetchedSource struct {
 // script on S3) matched alongside the local ones.
 func LoadSourcesFrom(r *model.Report, roots []string, fetched []FetchedSource) ([]SourceFile, []string, error) {
 	var local []string
+	var notes []string
 	data := map[string][]byte{}
 	for _, f := range fetched {
 		local = append(local, f.Path)
@@ -96,6 +98,10 @@ func LoadSourcesFrom(r *model.Report, roots []string, fetched []FetchedSource) (
 	}
 	for _, root := range roots {
 		info, err := os.Stat(root)
+		if errors.Is(err, fs.ErrPermission) {
+			notes = append(notes, fmt.Sprintf("No permission to read %s, so its code is not shown.", root))
+			continue
+		}
 		if err != nil {
 			return nil, nil, fmt.Errorf("-source %s: %w", root, err)
 		}
@@ -126,7 +132,6 @@ func LoadSourcesFrom(r *model.Report, roots []string, fetched []FetchedSource) (
 			return nil, nil, err
 		}
 	}
-	var notes []string
 	byLocal := map[string]*SourceFile{}
 	var order []string
 	for _, logged := range codeFiles(r) {

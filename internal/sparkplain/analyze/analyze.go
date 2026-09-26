@@ -137,6 +137,7 @@ func Run(in Input) *model.Report {
 		r.Findings = []model.Finding{}
 	}
 	analyzeSources(c, r)
+	accessGaps(r)
 	analyzeCoverage(c, r)
 	analyzeSummary(c, r)
 	r.ExitCode = exitCode(c, r)

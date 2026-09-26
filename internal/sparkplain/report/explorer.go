@@ -142,6 +142,7 @@ type xData struct {
 	LogSources []xLogSource         `json:"logSources"`
 	Cluster    *xCluster            `json:"cluster,omitempty"`
 	AWS        *xAWS                `json:"aws,omitempty"`
+	AccessGaps []model.AccessGap    `json:"accessGaps,omitempty"`
 	Collected  bool                 `json:"collected"` // explorer data was gathered
 	Limits     model.ExplorerLimits `json:"limits"`
 	Shrinks    int                  `json:"shrinks"`
@@ -276,6 +277,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 
 	d.Logs, d.LogSources, d.Cluster = logData(r)
 	d.AWS = awsData(r)
+	d.AccessGaps = r.AccessGaps
 	d.LogCols = logLineCols
 	for _, f := range r.Findings {
 		xf := xFinding{Sev: string(f.Severity), Title: f.Title, Expl: f.Explanation, Fix: f.Fix}

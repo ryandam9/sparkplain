@@ -1,6 +1,8 @@
 package report
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -77,5 +79,22 @@ func TestExplorerCarriesClusterData(t *testing.T) {
 	}
 	if len(a["denied"].([]any)) != 1 || len(a["groups"].([]any)) != 1 {
 		t.Errorf("aws = %v", a)
+	}
+}
+
+// A -source path sparkplain may not read becomes a note, not an error.
+func TestLoadSourcesWithoutPermission(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root reads every folder")
+	}
+	parent := filepath.Join(t.TempDir(), "locked")
+	if err := os.Mkdir(parent, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(parent, 0o755) })
+	r, _ := buildWithExplorer(t, "application_1790380000000_0042")
+	_, notes, err := LoadSources(r, []string{filepath.Join(parent, "job.py")})
+	if err != nil || len(notes) == 0 || !strings.Contains(notes[0], "No permission to read") {
+		t.Errorf("err %v, notes %v", err, notes)
 	}
 }

@@ -75,3 +75,6 @@ details.logline[open]>summary::before{content:"▾ "}
 details.logline pre{white-space:pre-wrap;word-break:break-word;margin:0;font-size:12px}
 .logsrc{border-top:1px solid var(--line);padding-top:8px}
 .logsrc h3{display:flex;gap:8px;align-items:center}
+
+/* access gaps */
+.missing.access{border-color:var(--warn);margin-bottom:16px}

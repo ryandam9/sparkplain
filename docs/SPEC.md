@@ -267,7 +267,9 @@ explorer:
   max-stage-executor-cells: 1000000
 ```
 
-**Exit codes:** 0 complete, 2 fatal (usage, credentials, listing), 3 partial (a source missing or unreadable), 130 interrupted.
+**Exit codes:** 0 complete, 2 fatal (usage mistakes, a cluster that does not exist, output that cannot be written), 3 partial (a source missing or unreadable, including for lack of access), 130 interrupted.
+
+**No access is not fatal.** When a permission is refused or the credentials are missing, expired or wrong (any AWS call, or a local `-from` folder or `-source` path), sparkplain carries on with every other source. Each source it could not read for lack of access is printed on stderr as it finishes ("no access to CloudWatch, so the report does not show each node's CPU, containers waiting and other applications on the cluster (needs cloudwatch:GetMetricData and cloudwatch:ListMetrics)"), listed at the top of `report.html` and the explorer's overview with the permission it needs, recorded in `report.json` (`accessGaps`), and marked `accessDenied` in the Sources panel; the run exits 3. Without `DescribeCluster` an online run still reads an event log given with `-eventlog` or `eventlog-prefix`, but cannot find the cluster's logs, nodes or metrics, and says so. A missing `-profile`, a malformed application ID and a cluster ID that does not exist still stop the run with exit 2: there is nothing to report on.
 
 `-app-id` is required and must match the application ID inside the event log; a mismatch exits 2. A path that does not exist exits 2. A log that exists but is corrupt, truncated or still `.inprogress` still produces a report that marks what is missing, and exits 3.
 

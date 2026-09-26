@@ -30,6 +30,11 @@
       {{else if $r.Logs}}<strong>Event log: not read.</strong> <span>The summary, findings, identity and sources come from YARN's records and {{len $r.Logs.Files}} container, step and node log{{if ne (len $r.Logs.Files) 1}}s{{end}}; the sections built from the event log are empty. The Sources panel says why it is missing. Exit code {{$r.ExitCode}}.</span>
       {{else}}<strong>Event log: not read.</strong> <span>Every section below needs it. The Sources panel says what went wrong. Exit code {{$r.ExitCode}}.</span>{{end}}
     </div>
+    {{if $r.AccessGaps}}<div class="missing access">
+      <h3>No access to {{len $r.AccessGaps}} source{{if ne (len $r.AccessGaps) 1}}s{{end}}: parts of this report are missing</h3>
+      <ul>{{range $r.AccessGaps}}<li><b>{{.Source}}</b>: without it the report cannot show {{.Missing}}. It needs {{.Needs}}.</li>{{end}}</ul>
+      <p>sparkplain carried on with everything else. The Sources panel has each error.</p>
+    </div>{{end}}
   </header>
 
   <div class="layout">

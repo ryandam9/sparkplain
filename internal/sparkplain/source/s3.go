@@ -110,6 +110,8 @@ func classify(where string, err error) error {
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		class = ClassTimeout
+	case IsNoAccess(err):
+		class = ClassAccessDenied
 	case errors.As(err, &api):
 		switch code := api.ErrorCode(); {
 		case code == "AccessDenied" || code == "Forbidden" || code == "AllAccessDisabled" || strings.HasPrefix(code, "InvalidAccessKey") || code == "ExpiredToken":

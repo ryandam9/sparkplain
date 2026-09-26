@@ -275,6 +275,11 @@
   var views = {};
   views.overview = function () {
     var out = [];
+    if ((D.accessGaps || []).length) {
+      out.push(el("div", { cls: "missing access" }, el("h3", { text: "No access to " + D.accessGaps.length + (D.accessGaps.length === 1 ? " source" : " sources") + ": parts of this page are missing" }),
+        el("ul", null, D.accessGaps.map(function (g) { return el("li", null, el("b", { text: g.source }), ": without it this page cannot show " + g.missing + ". It needs " + g.needs + "."); })),
+        el("p", { text: "sparkplain carried on with everything else. The Logs tab lists each error." })));
+    }
     var story = el("div", { cls: "story" }, el("h2", { text: "What happened" }));
     (D.summary || []).forEach(function (s) { story.appendChild(el("p", { text: s })); });
     out.push(story);

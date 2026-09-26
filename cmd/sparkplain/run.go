@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	iofs "io/fs"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -151,12 +152,19 @@ func run(args []string, stdout, stderr io.Writer) int {
 	var logs clusterLogs
 	if online {
 		c, err := cloud.cluster(ctx, o.clusterID, o.clusterName)
-		if err != nil {
-			return fail("%v", err)
+		switch {
+		case errors.Is(err, errNoProfile), errors.Is(err, awsmeta.ErrNotFound):
+			return fail("%v", err) // a usage mistake: nothing to report on
+		case err != nil:
+			// No access to the EMR API (or no working credentials): carry
+			// on with what can be read without it.
+			fmt.Fprintf(stderr, "sparkplain: could not describe the cluster (%s): %v\n", awsmeta.ErrorClass(err), err)
+			logs = noCluster(firstNonEmpty(o.clusterID, o.clusterName), err)
+		default:
+			cluster = &c
+			fmt.Fprintf(stderr, "sparkplain: cluster %s (%s, %s, %s)\n", c.ID, c.Name, c.Release, c.State)
+			logs = emrMetadata(ctx, cloud, cluster)
 		}
-		cluster = &c
-		fmt.Fprintf(stderr, "sparkplain: cluster %s (%s, %s, %s)\n", c.ID, c.Name, c.Release, c.State)
-		logs = emrMetadata(ctx, cloud, cluster)
 	}
 	evPath := o.eventLog
 	if evPath == "" && cfg.EventLogPrefix != "" {
@@ -281,6 +289,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	var fetched []report.FetchedSource // the application's scripts, from S3
 	mode := "offline-eventlog"
 	switch {
+	case online && cluster == nil:
+		mode = "online" // no cluster details: its logs and metrics cannot be found
 	case online:
 		mode = "online"
 		logs.readLogs(ctx, cloud, log, o.appID, lim)
@@ -295,7 +305,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case o.from != "":
 		mode = "offline-logs"
 		if logs, err = offlineLogs(ctx, o.from, o.appID, log, lim); err != nil {
-			return fail("%v", err)
+			if !errors.Is(err, iofs.ErrPermission) {
+				return fail("%v", err)
+			}
+			for _, name := range []string{"Container logs", "Step logs", "Node logs"} {
+				logs.sources = append(logs.sources, model.SourceStatus{Name: name, Status: "error", Class: source.ClassAccessDenied, Location: o.from, Detail: err.Error()})
+			}
 		}
 	}
 	if ctx.Err() == context.Canceled {
@@ -332,6 +347,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	ain.LogSources = append(ain.LogSources, logs.sources...)
 	r := analyze.Run(ain)
+	for _, g := range r.AccessGaps {
+		fmt.Fprintf(stderr, "sparkplain: no access to %s, so the report does not show %s (needs %s).\n", g.Source, g.Missing, g.Needs)
+	}
 	if r.Application.ID == "" {
 		r.Application.ID = o.appID
 	}
@@ -499,6 +517,8 @@ func parseFormats(s string) (map[string]bool, error) {
 
 var errNoEventLog = errors.New("no event log location")
 
+var errNoProfile = errors.New("AWS access needs -profile (pass -profile default for the default profile)")
+
 func isS3(p string) bool { _, _, ok := source.ParseS3(p); return ok }
 
 // awsDeps is how the CLI reaches AWS. Tests replace it: tests never call
@@ -535,7 +555,7 @@ func (a *awsSession) config(ctx context.Context) (aws.Config, error) {
 	if a.profile == "" {
 		// SPEC §2: the profile is always explicit, so it is clear whose
 		// credentials read the logs.
-		return aws.Config{}, errors.New("AWS access needs -profile (pass -profile default for the default profile)")
+		return aws.Config{}, errNoProfile
 	}
 	if a.cfg == nil {
 		profile := a.profile

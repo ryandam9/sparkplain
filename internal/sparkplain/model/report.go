@@ -38,6 +38,17 @@ type Report struct {
 	Metrics *MetricsSection `json:"metrics,omitempty"`
 	// AWSCalls come from CloudTrail (online runs).
 	AWSCalls *AWSCallsSection `json:"awsCalls,omitempty"`
+	// AccessGaps are the sources sparkplain was not allowed to read, and
+	// what the report lacks because of it.
+	AccessGaps []AccessGap `json:"accessGaps,omitempty"`
+}
+
+// AccessGap is one source sparkplain had no access to.
+type AccessGap struct {
+	Source  string `json:"source"`
+	Needs   string `json:"needs"`   // the permission that would let it read the source
+	Missing string `json:"missing"` // what the report cannot show without it
+	Detail  string `json:"detail"`  // the error, as the Sources panel shows it
 }
 
 // Summary is the "What happened" block.

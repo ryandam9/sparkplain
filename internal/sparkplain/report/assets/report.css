@@ -192,3 +192,6 @@ table.runtime tr.grp th{background:var(--surface);color:var(--accent);font-size:
 tr.missingrow td:nth-child(2){color:var(--faint);font-style:italic}
 .topr{display:flex;gap:8px;align-items:center}
 a.themebtn{text-decoration:none}
+
+/* access gaps */
+.missing.access{margin-top:14px;border-color:var(--warn)}

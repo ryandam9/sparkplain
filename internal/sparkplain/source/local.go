@@ -50,7 +50,11 @@ func (l *LocalStore) List(ctx context.Context, prefix string) ([]Object, error) 
 		return nil
 	})
 	if err != nil {
-		return out, &Error{Class: ClassOther, Key: l.Location(prefix), Err: err}
+		class := ClassOther
+		if errors.Is(err, fs.ErrPermission) {
+			class = ClassAccessDenied
+		}
+		return out, &Error{Class: class, Key: l.Location(prefix), Err: err}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 	return out, nil

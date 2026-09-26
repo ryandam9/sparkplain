@@ -566,3 +566,17 @@ func callers(instances []model.Instance, log *model.EventLog, files []model.LogF
 	}
 	return out
 }
+
+// noCluster is what an online run can say when it could not describe the
+// cluster: the EMR API row with the error, and the sources that need the
+// cluster's details marked as unread.
+func noCluster(id string, err error) clusterLogs {
+	class := awsmeta.ErrorClass(err)
+	out := clusterLogs{emr: &model.SourceStatus{Name: "EMR API", Status: "error", Class: class, Location: "EMR DescribeCluster " + id,
+		Detail: "Could not describe the cluster: " + err.Error() + ". Without it sparkplain cannot find the cluster's logs, nodes or steps."}}
+	for _, name := range []string{"Container logs", "Step logs", "Node logs", "CloudWatch", "CloudTrail"} {
+		out.sources = append(out.sources, model.SourceStatus{Name: name, Status: "not-supplied",
+			Detail: "Not read: finding it needs the cluster's details from the EMR API, which could not be read."})
+	}
+	return out
+}

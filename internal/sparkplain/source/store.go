@@ -10,6 +10,8 @@ import (
 	"io"
 	"strings"
 	"time"
+
+	"github.com/aws/smithy-go"
 )
 
 // Object is one listed log file.
@@ -67,7 +69,41 @@ func ClassOf(err error) string {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return ClassTimeout
 	}
+	if IsNoAccess(err) {
+		return ClassAccessDenied
+	}
 	return ClassOther
+}
+
+// noAccessCodes are AWS error codes that mean the caller may not do this,
+// or its credentials are missing, expired or wrong.
+var noAccessCodes = map[string]bool{"AccessDenied": true, "AccessDeniedException": true, "Forbidden": true, "AllAccessDisabled": true,
+	"UnauthorizedOperation": true, "AuthFailure": true, "ExpiredToken": true, "ExpiredTokenException": true, "InvalidClientTokenId": true,
+	"UnrecognizedClientException": true, "InvalidAccessKeyId": true, "SignatureDoesNotMatch": true, "MissingAuthenticationToken": true}
+
+// noAccessText is what the SDK says, without an AWS error code, when it
+// has no usable credentials at all.
+var noAccessText = []string{"failed to retrieve credentials", "no EC2 IMDS role found", "failed to refresh cached credentials",
+	"failed to get shared config profile", "SharedConfigProfileNotExist", "the SSO session has expired", "token has expired", "no valid providers in chain"}
+
+// IsNoAccess reports whether err means sparkplain was not allowed to make
+// a call: a refused permission, or credentials that are missing, expired
+// or wrong.
+func IsNoAccess(err error) bool {
+	if err == nil {
+		return false
+	}
+	var ae smithy.APIError
+	if errors.As(err, &ae) && noAccessCodes[ae.ErrorCode()] {
+		return true
+	}
+	msg := err.Error()
+	for _, t := range noAccessText {
+		if strings.Contains(msg, t) {
+			return true
+		}
+	}
+	return false
 }
 
 // ParseS3 splits s3://bucket/key (or s3a://) into bucket and key.

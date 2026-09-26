@@ -205,10 +205,10 @@ func ErrorClass(err error) string {
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		return source.ClassTimeout
+	case source.IsNoAccess(err):
+		return source.ClassAccessDenied
 	case errors.As(err, &ae):
 		switch ae.ErrorCode() {
-		case "AccessDeniedException", "AccessDenied", "UnauthorizedOperation", "ExpiredTokenException", "UnrecognizedClientException":
-			return source.ClassAccessDenied
 		case "ThrottlingException", "Throttling", "RequestLimitExceeded":
 			return source.ClassThrottled
 		}
