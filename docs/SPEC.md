@@ -105,7 +105,8 @@ flowchart LR
 | `internal/sparkplain/awsmeta` | EMR, CloudWatch and CloudTrail clients on AWS SDK for Go v2 |
 | `internal/sparkplain/model` | Canonical types: `Application`, `Node`, `Executor`, `Job`, `Stage`, `TaskStats`, `MemorySample`, `ConfigEntry`, `Identity`, `AccessEvent`, `Finding` |
 | `internal/sparkplain/analyze` | One `Analyzer` per report section, each returning section data plus findings |
-| `internal/sparkplain/report` | `html/template` with an embedded chart library (`go:embed`), JSON writer |
+| `internal/sparkplain/report` | `html/template` with embedded CSS and script (`go:embed`); charts are inline SVG built in Go, so no chart library; JSON writer |
+| `internal/sparkplain/redact` | Secret redaction and text sanitising, applied by parsers before values enter the model |
 
 **Key design rules**
 
@@ -141,19 +142,20 @@ The report has ten analysis modules. Each answers a fixed set of questions and e
 - **HBase.** ZooKeeper quorum, authentication mode, connection errors.
 - **AWS calls.** Services and actions called by the job's role in its time window, plus every `AccessDenied`, from CloudTrail.
 
-**Secret handling.** Spark redacts matching config values in the event log, but sparkplain re-applies its own redaction regex (password, secret, token, key, credential) to config and log lines. The report shows that a credential is configured and where, never its value.
+**Secret handling.** Spark redacts matching config values in the event log, but sparkplain re-applies its own redaction regex (password, secret, token, key, credential) to config and log lines. The report shows that a credential is configured and where, never its value. In free text (exception messages, plans, JVM options) it hides `key=value` pairs whose key matches, URL passwords and AWS access key IDs; plan column lists such as `keys=[region#12]` are left alone. Because "key" is in the regex, some harmless Hadoop settings (for example key-provider cache sizes) are hidden too; that is deliberate.
 
 **Findings rules (initial set)**
 
-- Task skew: slowest task over 5× the stage median.
-- Spill: disk spill over 10% of shuffle write in any stage.
-- GC pressure: GC time over 10% of executor run time.
-- Low CPU use: executor CPU time under 30% of run time.
-- Over-provisioned memory: peak heap under 40% of configured executor memory.
-- Lost executors or nodes, spot interruptions, container OOM kills.
+- Task skew: slowest task over 5× the stage median (`skew-ratio`), only for stages with at least 5 successful tasks (`skew-min-tasks`) whose slowest task took at least 1 s (`skew-min-task`), so tiny stages do not raise noise.
+- Spill: disk spill over 10% of shuffle write in any stage (`spill-share`). Stages that spill but write no shuffle data (a sort before a file write) are flagged too. All spilling stages are grouped into one finding.
+- GC pressure: GC time over 10% of executor run time (`gc-share`).
+- Low CPU use: executor CPU time under 30% of run time (`low-cpu-share`). Spark counts only JVM CPU time, so for PySpark jobs the finding says that Python UDF work shows up as waiting. A companion info rule flags executor cores busy under the same share of the core time they held.
+- Over-provisioned memory: peak heap under 40% of configured executor memory (`memory-used-share`); a warning when peak heap passes 90%.
+- Lost executors or nodes, spot interruptions, container OOM kills. From the event log alone this means the removal reason: exit 137 (SIGKILL, usually a memory kill), heartbeat loss or lost node, decommissioning.
 - `AccessDenied` in CloudTrail or permission errors in container logs.
+- Also from the event log: failed jobs (critical when the last job failed and the app ended), stage retries, task attempts that failed and were retried, static AWS keys in the Spark configuration, and risky settings (unlimited `spark.driver.maxResultSize`, dynamic allocation without shuffle service or tracking, AQE off).
 
-Thresholds live in the config file so teams can tune them.
+The CPU, GC and over-provisioning rules skip runs with less than 1 minute of task time (`min-run-time`). Thresholds live in the config file so teams can tune them.
 
 ## 6. Report output and CLI
 
@@ -205,7 +207,31 @@ sparkplain -from ./logs/application_1700000000000_0042 \
 
 **JSON export** mirrors the model package, versioned with a `schemaVersion` field, so other tools or dashboards can consume it.
 
+**Times.** The HTML renders times in the config file's `timezone` (default: the local zone of the machine running sparkplain). Each time also carries its UTC instant, and the page's script relabels it in the viewer's browser zone, naming the zone. JSON times are UTC.
+
+**Config file** (`-config`, default `~/.config/sparkplain/config.yaml`; unknown keys are rejected):
+
+```yaml
+eventlog-prefix: ./spark-events/   # used when -eventlog is not given
+timezone: Australia/Sydney
+out: ~/reports
+format: both
+max-size: 10GiB
+overall-timeout: 30m
+thresholds:
+  skew-ratio: 5
+  skew-min-task: 1s
+  skew-min-tasks: 5
+  spill-share: 0.10
+  gc-share: 0.10
+  low-cpu-share: 0.30
+  memory-used-share: 0.40
+  min-run-time: 1m
+```
+
 **Exit codes:** 0 complete, 2 fatal (usage, credentials, listing), 3 partial (a source missing or unreadable), 130 interrupted.
+
+`-app-id` is required and must match the application ID inside the event log; a mismatch exits 2. A path that does not exist exits 2. A log that exists but is corrupt, truncated or still `.inprogress` still produces a report that marks what is missing, and exits 3.
 
 **IAM permissions:** `s3:ListBucket` and `s3:GetObject` on the log and event-log prefixes, `kms:Decrypt` for SSE-KMS buckets, `elasticmapreduce:ListClusters`, `DescribeCluster`, `ListInstances`, `ListInstanceGroups`, `ListInstanceFleets`, `ListSteps`, plus optional `cloudwatch:GetMetricData` and `cloudtrail:LookupEvents`.
 
@@ -237,6 +263,16 @@ Four phases, each shippable on its own. Phase 1 delivers most of the value from 
 | 4. Findings and polish | Full rules engine with tunable thresholds, Sources panel, redaction tests, fixture logs from EMR 7.3.0 onward | All findings rules covered by tests; CI benchmark and `govulncheck` pass |
 
 Testing: stub S3 and AWS clients, race detector on, fuzz targets for the event decoder and log classifiers.
+
+**Phase 1 status (built).** Offline mode only: `-eventlog` accepts a local file, rolling folder, folder holding logs (the highest attempt wins, preferring finished logs) or History Server zip. The online flags (`-profile`, `-cluster-id`, `-cluster-name`, `-from`) and `s3://` locations exit 2 and name the phase that adds them. Notes from building it:
+
+- Fixtures come from real PySpark 3.5.1 runs in `local-cluster` mode (`scripts/fixtures/`), scrubbed to EMR-like hosts, paths and IDs. Compressed variants are written with Spark's own `CompressionCodec`, so the lz4 and snappy readers are tested against the Java stream formats. The History Server zip is laid out as Spark's `zipEventLogFiles` writes it, but built by the script rather than downloaded.
+- Spark 3.5 does not log the driver's exit code (`ApplicationEnd` has only a timestamp), so the final status comes from the end event and the last job, and the report says so. A log without an end event is "incomplete".
+- Cached data sizes are logged only when `spark.eventLog.logBlockUpdates.enabled=true`; process RSS only when `spark.executor.processTreeMetrics.enabled=true`. The report says which is missing.
+- Key settings are compared with Spark 3.5 defaults. Comparing with EMR's own defaults needs the EMR API (phase 3).
+- The report uses system fonts. The sample's Google Fonts link would break the no-network rule.
+- Performance, measured with `scripts/benchlog` on 4 cores: a 1 GB log (245K tasks, real task-event layout) in 5.6 s at 30 MB peak RSS for the whole CLI; 1M tasks (2.4 GB) in 14.7 s at 68 MB.
+- Still open for the "done when" check: a real EMR 7.3.0+ event log, which cannot be generated here.
 
 ## 9. Open questions
 
