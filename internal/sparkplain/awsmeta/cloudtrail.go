@@ -42,7 +42,8 @@ const (
 // refused. Request parameters are never read; messages are redacted.
 func Calls(ctx context.Context, api CloudTrailAPI, users []string, from, to, now time.Time) (*model.AWSCallsSection, error) {
 	sec := &model.AWSCallsSection{From: from, To: to, Users: users, Coverage: model.Complete, Calls: []model.AWSCall{}, Denied: []model.AWSEvent{}}
-	sec.Missing = append(sec.Missing, "S3 object reads and writes: CloudTrail records them only as data events, which LookupEvents never returns.")
+	sec.Missing = append(sec.Missing, "S3 object reads and writes: CloudTrail records them only as data events, which LookupEvents never returns.",
+		"Some refusals: an STS AssumeRole refused for a role that does not exist never reached CloudTrail's event history in testing, so the container logs are checked too.")
 	if now.Sub(from) > lookupDays*24*time.Hour {
 		sec.Coverage = model.NoData
 		sec.Missing = append(sec.Missing, fmt.Sprintf("CloudTrail's event history keeps %d days; this run is older.", lookupDays))

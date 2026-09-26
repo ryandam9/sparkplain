@@ -17,7 +17,7 @@ func callsSection() *model.AWSCallsSection {
 	return &model.AWSCallsSection{Coverage: model.Complete, Users: []string{"i-1"}, Events: 5,
 		Calls:   []model.AWSCall{{Service: "sts.amazonaws.com", Action: "AssumeRole", Count: 2, Errors: 2}, {Service: "glue.amazonaws.com", Action: "GetTable", Count: 3}},
 		Denied:  []model.AWSEvent{deny("AssumeRole", "arn:aws:iam::000000000000:role/nope"), deny("AssumeRole", "arn:aws:iam::000000000000:role/nope")},
-		Missing: []string{"S3 object reads and writes: data events."}}
+		Missing: []string{"S3 object reads and writes: data events.", "Some refusals."}}
 }
 
 // Refusals only CloudTrail saw become the access-denied finding.

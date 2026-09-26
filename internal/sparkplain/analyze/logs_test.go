@@ -253,3 +253,27 @@ func TestNoLogsRequested(t *testing.T) {
 		}
 	}
 }
+
+// Exit 137 after HotSpot's out-of-memory banner is the JVM killing itself,
+// not YARN: no memory-kill finding, and the first error is the heap.
+func TestSelfKilledIsNotAMemoryKill(t *testing.T) {
+	out := logFile(t, "containers/application_1_1/container_1_1_01_000002/stdout", `# java.lang.OutOfMemoryError: GC overhead limit exceeded
+#   Executing /bin/sh -c "kill -9 14396
+`)
+	drv := logFile(t, driverErr, `26/09/26 16:10:29 INFO YarnAllocator: Completed container container_1_1_01_000002 on host: ip-10-0-2-10 (state: COMPLETE, exit status: 137)
+26/09/26 16:10:29 WARN YarnAllocator: Container from a bad node: container_1_1_01_000002 on host: ip-10-0-2-10. Exit status: 137. Diagnostics: [2026-09-26 16:10:29.891]Container killed on request. Exit code is 137
+26/09/26 16:10:29 ERROR YarnClusterScheduler: Lost executor 1 on ip-10-0-2-10: Container from a bad node: container_1_1_01_000002 on host: ip-10-0-2-10. Exit status: 137. Diagnostics: Container killed on request. Exit code is 137
+26/09/26 16:10:30 INFO ApplicationMaster: Final app status: FAILED, exitCode: 1, (reason: User application exited with status 1)
+`)
+	r := runWithLogs(nil, nil, drv, out)
+	got := rules(r)
+	if _, ok := got["executor-memory-kill"]; ok {
+		t.Error("a JVM that killed itself was reported as a YARN memory kill")
+	}
+	if got["out-of-memory"].Title != "1 executor ran out of memory (GC overhead limit exceeded)" {
+		t.Errorf("oom = %q", got["out-of-memory"].Title)
+	}
+	if got["log-first-failure"].Title != "First error: OutOfMemoryError: GC overhead limit exceeded" {
+		t.Errorf("first = %q", got["log-first-failure"].Title)
+	}
+}

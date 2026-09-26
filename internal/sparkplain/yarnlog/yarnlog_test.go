@@ -563,3 +563,33 @@ func TestCapacityAndRequests(t *testing.T) {
 		t.Errorf("step = %s %+v", got, step.Lines)
 	}
 }
+
+// HotSpot's banner when an executor's heap runs out: Spark starts
+// executors with -XX:OnOutOfMemoryError="kill -9 %p", so the JVM kills
+// itself and its container exits 137 with no YARN memory kill. Lines as
+// the phase 3 test cluster wrote them, in the executor's stdout.
+func TestHotSpotOutOfMemory(t *testing.T) {
+	res := classifyText(t, "containers/application_1700000000000_0001/container_1700000000000_0001_01_000002/stdout", `#
+# java.lang.OutOfMemoryError: GC overhead limit exceeded
+# -XX:OnOutOfMemoryError="kill -9 %p
+kill -9 %p
+kill -9 %p"
+#   Executing /bin/sh -c "kill -9 14396
+kill -9 14396
+kill -9 14396"...
+`, Options{})
+	if got := kinds(res); got != "out-of-memory/critical" {
+		t.Fatalf("kinds = %s", got)
+	}
+	f := res.Lines[0].Fields
+	if f["oom"] != "GC overhead limit exceeded" || f["selfKilled"] != "true" || f["root"] != "java.lang.OutOfMemoryError" {
+		t.Errorf("fields = %+v", f)
+	}
+	// In stderr after timed lines, the banner takes the last time seen.
+	res = classifyText(t, "containers/application_1700000000000_0001/container_1700000000000_0001_01_000002/stderr", `26/09/26 16:10:20 INFO Executor: Running task 0.0 in stage 0.0 (TID 0)
+# java.lang.OutOfMemoryError: Java heap space
+`, Options{})
+	if res.Lines[0].Time.IsZero() || res.Lines[0].Time.Format("15:04:05") != "16:10:20" {
+		t.Errorf("time = %v", res.Lines[0].Time)
+	}
+}

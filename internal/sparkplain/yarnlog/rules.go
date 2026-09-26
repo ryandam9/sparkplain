@@ -134,6 +134,12 @@ var (
 	bootstrapFailRE = regexp.MustCompile(`^(i-\w+): failed to start\. bootstrap action (\d+) failed with non-zero exit code`)
 	bootstrapDoneRE = regexp.MustCompile(`^(i-\w+): all bootstrap actions complete`)
 
+	// HotSpot's banner when a JVM started with -XX:OnOutOfMemoryError runs
+	// out of memory (Spark starts every executor with "kill -9 %p"), then
+	// the command it runs. Checked on the phase 3 test cluster.
+	hotspotOOMRE  = regexp.MustCompile(`^#\s+java\.lang\.OutOfMemoryError: ?(.*)$`)
+	hotspotKillRE = regexp.MustCompile(`^#\s+Executing /bin/sh -c "kill -9`)
+
 	// Anywhere. Checked in this order; the first match names the line.
 	oomRE       = regexp.MustCompile(`java\.lang\.OutOfMemoryError(?::\s*(.*))?|^MemoryError\b`)
 	accessRE    = regexp.MustCompile(`(?i)access denied|\bAccessDenied|status code: 403|403 Forbidden|is not authorized to perform|insufficient lake formation permission|\bExpiredToken\b|\bInvalidAccessKeyId\b|\bSignatureDoesNotMatch\b|UnrecognizedClientException`)

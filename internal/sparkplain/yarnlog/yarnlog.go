@@ -58,7 +58,7 @@ func Classify(r io.Reader, name string, f File, opt Options) (Result, error) {
 	if opt.MaxEntries <= 0 {
 		opt.MaxEntries = 500
 	}
-	c := &classifier{res: Result{Name: name, File: f}, opt: opt, index: map[string]int{}}
+	c := &classifier{res: Result{Name: name, File: f}, opt: opt, index: map[string]int{}, lastOOM: -1}
 	if m := idRE.FindStringSubmatch(opt.AppID); m != nil {
 		c.appKey = m[1]
 	}
@@ -102,6 +102,11 @@ type classifier struct {
 	shutdown bool // the driver told this executor to stop, so SIGTERM is expected
 
 	lastApp, lastState string // from the last "Application report for …"
+
+	// lastTime is the last logged time seen, given to lines that carry none
+	// (stacks, HotSpot's banner), so they sort near where they happened.
+	lastTime time.Time
+	lastOOM  int // index of the last HotSpot out-of-memory line, or -1
 
 	// The most executors the driver asked for at once, kept as one line.
 	maxDesired     int
@@ -162,7 +167,24 @@ func (c *classifier) feed(line string) {
 	}
 	if h, ok := parseHeader(kind, line); ok {
 		c.flush()
+		if !h.time.IsZero() {
+			c.lastTime = h.time
+		}
 		c.header(h, line)
+		return
+	}
+	if m := hotspotOOMRE.FindStringSubmatch(line); m != nil {
+		c.flush()
+		l := c.entry(model.LogOutOfMemory, model.Critical, c.lastTime, "java.lang.OutOfMemoryError: "+m[1])
+		l.Fields["oom"], l.Fields["root"], l.Fields["rootMessage"] = redact.Text(m[1]), "java.lang.OutOfMemoryError", redact.Text(m[1])
+		c.add(l)
+		c.lastOOM = len(c.res.Lines) - 1
+		return
+	}
+	if hotspotKillRE.MatchString(line) {
+		if c.lastOOM >= 0 && c.lastOOM < len(c.res.Lines) {
+			c.res.Lines[c.lastOOM].Fields["selfKilled"] = "true" // the JVM ran kill -9 on itself: exit 137 without YARN
+		}
 		return
 	}
 	if c.blk != nil {
@@ -640,7 +662,7 @@ func (c *classifier) flush() {
 			l = &model.LogLine{Kind: model.LogException, Severity: model.Warning}
 		}
 		l.Source = model.Source{File: c.res.Name, Line: b.start}
-		l.Fields, l.Count = map[string]string{}, 1
+		l.Fields, l.Count, l.Time = map[string]string{}, 1, c.lastTime
 		l.Text = clip(redact.Text(first), maxText)
 		b.lines = b.lines[1:]
 	}

@@ -3,6 +3,7 @@ package analyze
 import (
 	"fmt"
 	"path"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -249,6 +250,8 @@ func msTime(ms string) time.Time {
 	return time.UnixMilli(n).UTC()
 }
 
+var containerRE = regexp.MustCompile(`container_(?:e\d+_)?\d+_\d+_\d+_\d+`)
+
 // causeKinds are the lines that can be a failure's cause; exits, reports
 // and summaries only say that something failed.
 var causeKinds = map[model.LogKind]int{
@@ -289,6 +292,21 @@ func firstFailure(c *ctx, r *model.Report) {
 		return causeKinds[a.Kind] < causeKinds[b.Kind]
 	})
 	first := cands[0]
+	// A container's exit is the effect; its own log says the cause. Stdout
+	// carries no times, so a cause written there (HotSpot's out-of-memory
+	// banner, a traceback) sorts after the exit it caused.
+	if k := first.l.Kind; k == model.LogContainerEnd || k == model.LogLostExecutor {
+		id := first.l.Fields["container"]
+		if id == "" {
+			id = containerRE.FindString(first.l.Text)
+		}
+		for _, h := range cands {
+			if id != "" && h.f.Container == id && causeKinds[h.l.Kind] <= 1 {
+				first = h
+				break
+			}
+		}
+	}
 	c.logs.first = &first
 	l := first.l
 	ev := []model.Evidence{first.evidence(first.who() + ": " + first.says())}
@@ -394,11 +412,31 @@ func eventLogDirIn(c *ctx, r *model.Report, msg string) bool {
 // executor-memory-kill finding (or makes one), and reports out-of-memory
 // errors.
 func memoryKillFindings(c *ctx, r *model.Report) {
+	// A JVM that ran out of heap kills itself (-XX:OnOutOfMemoryError="kill
+	// -9 %p", which Spark sets), so its container also exits 137: that is
+	// an out-of-memory error, not YARN enforcing a memory limit.
+	selfKilled := map[string]bool{}
+	for _, h := range c.logs.hits {
+		if h.l.Kind == model.LogOutOfMemory && h.f.Container != "" {
+			selfKilled[h.f.Container] = true
+		}
+	}
+	mentions := func(text string) bool {
+		for id := range selfKilled {
+			if strings.Contains(text, id) {
+				return true
+			}
+		}
+		return false
+	}
 	var kills []hit
 	containers := map[string]bool{}
 	var usage string
 	for _, h := range c.logs.hits {
 		l := h.l
+		if l.Kind != model.LogMemoryKill && (selfKilled[l.Fields["container"]] || mentions(l.Text)) {
+			continue
+		}
 		switch {
 		case l.Kind == model.LogMemoryKill:
 			kills = append(kills, h)
@@ -523,6 +561,10 @@ func lostExecutorCauses(c *ctx, r *model.Report) {
 			}
 			f.Evidence = append(f.Evidence, h.evidence(fmt.Sprintf("executor %s's own log: %s", x, h.says())))
 			delete(last, x)
+			if rule == "executor-memory-kill" && h.l.Kind == model.LogOutOfMemory && !strings.Contains(f.Explanation, "killed itself") {
+				f.Explanation += " The executors' own logs show the Java heap ran out and the JVM killed itself (Spark starts executors with -XX:OnOutOfMemoryError=\"kill -9 %p\"), which also exits 137: this was the heap, not YARN's limit on the container."
+				f.Fix = "Give each task more heap: raise spark.executor.memory, run fewer cores per executor, or use more partitions so each task holds less. Raising spark.executor.memoryOverhead would not help here."
+			}
 		}
 		if rule == "executor-lost" {
 			f.Fix = "The evidence includes the last error in each lost executor's own log, when it wrote one. A lost executor with no error of its own usually lost its node (spot reclaim, a node failure) or stopped sending heartbeats under long garbage collection."
