@@ -118,13 +118,18 @@ func TestOnlineReadsClusterLogs(t *testing.T) {
 	copyTree(t, filepath.Join(emrlogs, "j-FIXTURE0049CLUSTER"), filepath.Join(bucket, "emr", "j-FIXTURE0049CLUSTER"))
 	// A node that did not run the application: its logs must not be read.
 	copyTree(t, filepath.Join(emrlogs, "j-FIXTURE0050CLUSTER", "node", "i-0fee0000000000002"), filepath.Join(bucket, "emr", "j-FIXTURE0049CLUSTER", "node", "i-0fee0000000000009"))
+	// The job set spark.eventLog.dir in its own arguments, not in the
+	// cluster's configuration.
+	ev, _ := os.ReadFile(filepath.Join(fx, "application_1790380000000_0049"))
+	os.MkdirAll(filepath.Join(bucket, "job-events"), 0o755)
+	os.WriteFile(filepath.Join(bucket, "job-events", "application_1790380000000_0049"), ev, 0o644)
 	cl := cluster("j-FIXTURE0049CLUSTER", "")
 	cl.MasterPublicDnsName = aws.String("ip-10-0-2-11.us-east-1.compute.internal")
 	fakeAWS(t, map[string]string{"logs": bucket}, map[string]*emrtypes.Cluster{"j-FIXTURE0049CLUSTER": cl})
 	t0 := time.Date(2026, 9, 26, 7, 40, 0, 0, time.UTC)
-	step := func(id string, start, end time.Time) emrtypes.StepSummary {
-		return emrtypes.StepSummary{Id: aws.String(id), Name: aws.String(id), Status: &emrtypes.StepStatus{State: emrtypes.StepStateCompleted,
-			Timeline: &emrtypes.StepTimeline{StartDateTime: aws.Time(start), EndDateTime: aws.Time(end)}}}
+	step := func(id string, start, end time.Time, args ...string) emrtypes.StepSummary {
+		return emrtypes.StepSummary{Id: aws.String(id), Name: aws.String(id), Config: &emrtypes.HadoopStepConfig{Jar: aws.String("command-runner.jar"), Args: args},
+			Status: &emrtypes.StepStatus{State: emrtypes.StepStateCompleted, Timeline: &emrtypes.StepTimeline{StartDateTime: aws.Time(start), EndDateTime: aws.Time(end)}}}
 	}
 	inst := func(id, dns string) emrtypes.Instance {
 		return emrtypes.Instance{Ec2InstanceId: aws.String(id), PrivateDnsName: aws.String(dns), PrivateIpAddress: aws.String("10.0.2.99"),
@@ -135,7 +140,7 @@ func TestOnlineReadsClusterLogs(t *testing.T) {
 		s := saved(c).(stubEMR)
 		s.steps = []emrtypes.StepSummary{
 			step("s-FIXTURESTEP0002", t0.Add(3*time.Hour), t0.Add(3*time.Hour+time.Minute)), // after the app: not searched
-			step("s-FIXTURESTEP0001", t0, t0.Add(5*time.Minute)),
+			step("s-FIXTURESTEP0001", t0, t0.Add(5*time.Minute), "spark-submit", "--conf", "spark.eventLog.dir=s3://logs/job-events/", "s3://code/emr_job.py"),
 		}
 		s.instances = []emrtypes.Instance{inst("i-0fee0000000000001", "ip-10-0-2-10.us-east-1.compute.internal"),
 			inst("i-0fee0000000000002", "ip-10-0-2-11.us-east-1.compute.internal"), inst("i-0fee0000000000009", "ip-10-0-2-77.us-east-1.compute.internal")}
@@ -143,9 +148,12 @@ func TestOnlineReadsClusterLogs(t *testing.T) {
 	}
 	dir := t.TempDir()
 	code, _, errs := runCLI(t, "-app-id", "application_1790380000000_0049", "-cluster-id", "j-FIXTURE0049CLUSTER", "-profile", "test",
-		"-eventlog", filepath.Join(fx, "application_1790380000000_0049"), "-out", dir, "-format", "json")
+		"-out", dir, "-format", "json")
 	if code != exitOK {
 		t.Fatalf("exit %d: %s", code, errs)
+	}
+	if !strings.Contains(errs, "using the spark.eventLog.dir a step set, s3://logs/job-events/") {
+		t.Errorf("the event log should come from the step's arguments: %s", errs)
 	}
 	r := readReport(t, dir)
 	if r.Mode != "online" || r.Cluster == nil || len(r.Cluster.Instances) != 3 || !r.Cluster.Instances[1].Primary {

@@ -36,10 +36,10 @@ const maxStepsSearched = 50
 // event log cannot say which ones ran the application.
 const maxNodesWithoutEventLog = 50
 
-// onlineLogs reads the EMR API (ListSteps, ListInstances) and the logs
-// under the cluster's log URI. It never fails the run: what it cannot
-// read is reported in the Sources rows.
-func onlineLogs(ctx context.Context, cloud *awsSession, cl *model.Cluster, log *model.EventLog, appID string, lim source.Limits) clusterLogs {
+// emrMetadata lists the cluster's steps and instances (ListSteps,
+// ListInstances). It never fails the run: a failed call is reported in
+// the EMR API row.
+func emrMetadata(ctx context.Context, cloud *awsSession, cl *model.Cluster) clusterLogs {
 	out := clusterLogs{cluster: cl}
 	emrRow := model.SourceStatus{Name: "EMR API", Status: "read", Location: cl.Source}
 	calls := []string{"DescribeCluster"}
@@ -69,7 +69,20 @@ func onlineLogs(ctx context.Context, cloud *awsSession, cl *model.Cluster, log *
 		emrRow.Detail += " Failed: " + errors.Join(problems...).Error() + "."
 	}
 	out.emr = &emrRow
+	return out
+}
 
+// readLogs reads the logs under the cluster's log URI. It never fails the
+// run: what it cannot read is reported in the Sources rows.
+func (out *clusterLogs) readLogs(ctx context.Context, cloud *awsSession, log *model.EventLog, appID string, lim source.Limits) {
+	cl := out.cluster
+	cfg, err := cloud.config(ctx)
+	if err != nil {
+		for _, name := range []string{"Container logs", "Step logs", "Node logs"} {
+			out.sources = append(out.sources, model.SourceStatus{Name: name, Status: "error", Class: source.ClassAccessDenied, Detail: err.Error()})
+		}
+		return
+	}
 	bucket, root, ok := yarnlog.LogRoot(cl.LogURI, cl.ID)
 	if !ok {
 		why := "The cluster has no log URI on S3, so EMR kept its logs only on its nodes."
@@ -79,7 +92,7 @@ func onlineLogs(ctx context.Context, cloud *awsSession, cl *model.Cluster, log *
 		for _, name := range []string{"Container logs", "Step logs", "Node logs"} {
 			out.sources = append(out.sources, model.SourceStatus{Name: name, Status: "not-supplied", Detail: why})
 		}
-		return out
+		return
 	}
 	st, err := awsDeps.s3(ctx, cfg, bucket)
 	if err != nil {
@@ -87,7 +100,7 @@ func onlineLogs(ctx context.Context, cloud *awsSession, cl *model.Cluster, log *
 			out.sources = append(out.sources, model.SourceStatus{Name: name, Status: "error", Class: source.ClassOf(err),
 				Location: "s3://" + bucket + "/" + root, Detail: "Could not open the log bucket: " + err.Error()})
 		}
-		return out
+		return
 	}
 	plan := yarnlog.Plan{Root: root, AppID: appID, Limits: lim}
 	plan.Steps, plan.Instances, plan.Since = narrow(out.steps, out.instances, log)
@@ -98,6 +111,25 @@ func onlineLogs(ctx context.Context, cloud *awsSession, cl *model.Cluster, log *
 			if out.steps[i].ID == s {
 				out.steps[i].AppID = appID
 			}
+		}
+	}
+}
+
+// stepEventLogDirs returns the S3 spark.eventLog.dir values the steps'
+// spark-submit arguments set, newest step first: jobs often set it per
+// job rather than in the cluster's configuration.
+func stepEventLogDirs(steps []model.Step) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, st := range steps {
+		for _, a := range st.Args {
+			a = strings.TrimPrefix(a, "--conf=")
+			v, ok := strings.CutPrefix(a, "spark.eventLog.dir=")
+			if !ok || !isS3(v) || seen[v] {
+				continue
+			}
+			seen[v] = true
+			out = append(out, v)
 		}
 	}
 	return out

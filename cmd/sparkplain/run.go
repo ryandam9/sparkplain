@@ -153,6 +153,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	defer cancel()
 	cloud := &awsSession{profile: o.profile, region: o.region}
 	var cluster *model.Cluster
+	var logs clusterLogs
 	if online {
 		c, err := cloud.cluster(ctx, o.clusterID, o.clusterName)
 		if err != nil {
@@ -160,6 +161,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		cluster = &c
 		fmt.Fprintf(stderr, "sparkplain: cluster %s (%s, %s, %s)\n", c.ID, c.Name, c.Release, c.State)
+		logs = emrMetadata(ctx, cloud, cluster)
 	}
 	evPath := o.eventLog
 	if evPath == "" && cfg.EventLogPrefix != "" {
@@ -207,16 +209,35 @@ func run(args []string, stdout, stderr io.Writer) int {
 	src := model.SourceStatus{Name: "Spark event log", Location: evPath}
 	var log *model.EventLog
 	var in *eventlog.Input
-	if evPath == "" {
-		err = errNoEventLog
-	} else {
+	var stepDirs []string
+	switch {
+	case evPath != "":
 		in, err = cloud.resolve(ctx, evPath, o.appID, eventlog.Limits{MaxObjectBytes: maxSize})
+	case online:
+		// Jobs often set spark.eventLog.dir in their own spark-submit
+		// arguments rather than in the cluster's configuration.
+		err = errNoEventLog
+		stepDirs = stepEventLogDirs(logs.steps)
+		for _, dir := range stepDirs {
+			in, err = cloud.resolve(ctx, dir, o.appID, eventlog.Limits{MaxObjectBytes: maxSize})
+			if err == nil || eventlog.ErrorClass(err) != eventlog.ClassNotFound {
+				evPath, src.Location = dir, dir
+				fmt.Fprintf(stderr, "sparkplain: using the spark.eventLog.dir a step set, %s\n", dir)
+				break
+			}
+			err = errNoEventLog
+		}
+	default:
+		err = errNoEventLog
 	}
 	switch {
 	case errors.Is(err, errNoEventLog) && !online:
 		src.Status, src.Detail = "not-supplied", "No event log was given. Pass -eventlog with an S3 copy or a History Server download; until then only the container, step and node logs are shown."
 	case errors.Is(err, errNoEventLog):
 		src.Status, src.Detail = "not-supplied", "The cluster keeps Spark event logs in HDFS (the default spark.eventLog.dir), which is gone once it ends. Pass -eventlog with an S3 copy or a History Server download, or set spark.eventLog.dir to S3 on the cluster."
+		if len(stepDirs) > 0 {
+			src.Detail = fmt.Sprintf("No event log for this application under the spark.eventLog.dir its cluster's steps set (%s). If the application never started SparkContext it wrote none; otherwise pass -eventlog with where it went.", strings.Join(stepDirs, ", "))
+		}
 	case err != nil && eventlog.ErrorClass(err) == eventlog.ClassNotFound && !online:
 		return fail("%v", err)
 	case err != nil:
@@ -254,12 +275,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	lim := source.Limits{Workers: o.workers, MaxObject: maxSize}
-	var logs clusterLogs
 	mode := "offline-eventlog"
 	switch {
 	case online:
 		mode = "online"
-		logs = onlineLogs(ctx, cloud, cluster, log, o.appID, lim)
+		logs.readLogs(ctx, cloud, log, o.appID, lim)
 	case o.from != "":
 		mode = "offline-logs"
 		if logs, err = offlineLogs(ctx, o.from, o.appID, log, lim); err != nil {
