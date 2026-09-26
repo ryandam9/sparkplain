@@ -29,7 +29,7 @@ SparkListenerBlockManagerAdded
     Block Manager ID | used | storage memory per executor
     Block Manager ID/Executor ID | used | storage memory per executor
     Block Manager ID/Host | used | storage memory per executor
-    Block Manager ID/Port | used | storage memory per executor
+    Block Manager ID/Port | aside | network port; not useful for investigation
     Event | used | event type
     Maximum Memory | aside | on-heap plus off-heap, both read separately
     Maximum Offheap Memory | used | storage memory per executor
@@ -40,7 +40,7 @@ SparkListenerBlockManagerRemoved
     Block Manager ID | planned:3 | when a block manager left
     Block Manager ID/Executor ID | planned:3 | when a block manager left
     Block Manager ID/Host | planned:3 | when a block manager left
-    Block Manager ID/Port | planned:3 | when a block manager left
+    Block Manager ID/Port | aside | network port
     Event | used | event type
     Timestamp | planned:3 | when a block manager left
 
@@ -49,16 +49,16 @@ SparkListenerBlockUpdated
     Block Updated Info/Block ID | used | cached block sizes per executor
     Block Updated Info/Block Manager ID | used | cached block sizes per executor
     Block Updated Info/Block Manager ID/Executor ID | used | cached block sizes per executor
-    Block Updated Info/Block Manager ID/Host | used | cached block sizes per executor
-    Block Updated Info/Block Manager ID/Port | used | cached block sizes per executor
+    Block Updated Info/Block Manager ID/Host | planned:3 | where each cached block lives and how it is stored
+    Block Updated Info/Block Manager ID/Port | aside | network port
     Block Updated Info/Disk Size | used | cached block sizes per executor
     Block Updated Info/Memory Size | used | cached block sizes per executor
-    Block Updated Info/Storage Level | used | cached block sizes per executor
-    Block Updated Info/Storage Level/Deserialized | used | cached block sizes per executor
-    Block Updated Info/Storage Level/Replication | used | cached block sizes per executor
-    Block Updated Info/Storage Level/Use Disk | used | cached block sizes per executor
-    Block Updated Info/Storage Level/Use Memory | used | cached block sizes per executor
-    Block Updated Info/Storage Level/Use Off Heap | used | cached block sizes per executor
+    Block Updated Info/Storage Level | planned:3 | where each cached block lives and how it is stored
+    Block Updated Info/Storage Level/Deserialized | planned:3 | where each cached block lives and how it is stored
+    Block Updated Info/Storage Level/Replication | planned:3 | where each cached block lives and how it is stored
+    Block Updated Info/Storage Level/Use Disk | planned:3 | where each cached block lives and how it is stored
+    Block Updated Info/Storage Level/Use Memory | planned:3 | where each cached block lives and how it is stored
+    Block Updated Info/Storage Level/Use Off Heap | planned:3 | where each cached block lives and how it is stored
     Event | used | event type
 
 org.apache.spark.sql.execution.ui.SparkListenerDriverAccumUpdates
@@ -85,16 +85,16 @@ SparkListenerExecutorAdded
     Event | used | event type
     Executor ID | used | executor identity, size, start
     Executor Info | used | executor identity, size, start
-    Executor Info/Attributes | used | executor identity, size, start
-    Executor Info/Attributes/* | used | executor identity, size, start
+    Executor Info/Attributes | planned:3 | container attributes and resources such as GPUs
+    Executor Info/Attributes/* | planned:3 | container attributes and resources such as GPUs
     Executor Info/Host | used | executor identity, size, start
-    Executor Info/Log Urls | used | executor identity, size, start
-    Executor Info/Log Urls/* | used | executor identity, size, start
-    Executor Info/Registration Time | used | executor identity, size, start
-    Executor Info/Request Time | used | executor identity, size, start
+    Executor Info/Log Urls | planned:3 | links to the executor's stdout and stderr
+    Executor Info/Log Urls/* | planned:3 | links to the executor's stdout and stderr
+    Executor Info/Registration Time | planned:3 | startup delay
+    Executor Info/Request Time | planned:3 | startup delay
     Executor Info/Resource Profile Id | used | executor identity, size, start
-    Executor Info/Resources | used | executor identity, size, start
-    Executor Info/Resources/* | used | executor identity, size, start; not seen in a fixture
+    Executor Info/Resources | planned:3 | container attributes and resources such as GPUs
+    Executor Info/Resources/* | planned:3 | container attributes and resources such as GPUs; not seen in a fixture
     Executor Info/Total Cores | used | executor identity, size, start
     Timestamp | used | executor identity, size, start
 
@@ -152,8 +152,8 @@ SparkListenerExecutorMetricsUpdate
     Executor Metrics Updated[]/Executor Metrics/ProcessTreePythonRSSMemory | used | peak memory and GC
     Executor Metrics Updated[]/Executor Metrics/ProcessTreePythonVMemory | used | virtual memory of the process tree
     Executor Metrics Updated[]/Executor Metrics/TotalGCTime | used | peak memory and GC
-    Executor Metrics Updated[]/Stage Attempt ID | used | driver memory samples (Spark logs these for the driver only)
-    Executor Metrics Updated[]/Stage ID | used | driver memory samples (Spark logs these for the driver only)
+    Executor Metrics Updated[]/Stage Attempt ID | planned:3 | which stage each driver memory sample belongs to
+    Executor Metrics Updated[]/Stage ID | planned:3 | which stage each driver memory sample belongs to
     Metrics Updated | aside | accumulator updates Spark leaves empty in logged heartbeats
 
 SparkListenerExecutorRemoved
@@ -286,7 +286,7 @@ org.apache.spark.sql.execution.ui.SparkListenerQueryExecutionMetrics
 SparkListenerResourceProfileAdded
     Event | used | event type
     Executor Resource Requests | used | resource profiles
-    Executor Resource Requests/* | used | resource profiles
+    Executor Resource Requests/* | used | requested amounts per resource
     Resource Profile Id | used | resource profiles
     Task Resource Requests | used | resource profiles
     Task Resource Requests/* | used | requested amounts per resource
@@ -331,15 +331,15 @@ org.apache.spark.sql.execution.ui.SparkListenerSQLExecutionStart
     physicalPlanDescription | used | query, plan and start
     rootExecutionId | planned:5 | parent query of a sub-query
     sparkPlanInfo | used | query, plan and start
-    sparkPlanInfo/children | used | query, plan and start
-    sparkPlanInfo/metadata | used | query, plan and start
-    sparkPlanInfo/metadata/* | used | query, plan and start
-    sparkPlanInfo/metrics | used | query, plan and start
-    sparkPlanInfo/metrics[]/accumulatorId | used | query, plan and start
-    sparkPlanInfo/metrics[]/metricType | used | query, plan and start
-    sparkPlanInfo/metrics[]/name | used | query, plan and start
-    sparkPlanInfo/nodeName | used | query, plan and start
-    sparkPlanInfo/simpleString | used | query, plan and start
+    sparkPlanInfo/children | used | plan operators and their metric IDs
+    sparkPlanInfo/metadata | used | plan operators and their metric IDs
+    sparkPlanInfo/metadata/* | used | plan operators and their metric IDs
+    sparkPlanInfo/metrics | used | plan operators and their metric IDs
+    sparkPlanInfo/metrics[]/accumulatorId | used | plan operators and their metric IDs
+    sparkPlanInfo/metrics[]/metricType | used | plan operators and their metric IDs
+    sparkPlanInfo/metrics[]/name | used | plan operators and their metric IDs
+    sparkPlanInfo/nodeName | used | plan operators and their metric IDs
+    sparkPlanInfo/simpleString | used | plan operators and their metric IDs
     time | used | query, plan and start
 
 SparkListenerStageCompleted
