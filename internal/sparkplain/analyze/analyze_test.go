@@ -246,6 +246,39 @@ func TestNoMemorySamples(t *testing.T) {
 	}
 }
 
+// Shapes taken from a real EMR run: stage 0's first task was slow only
+// because its executor was warming up (every task read 1.25M rows); stage 27's
+// slowest task read 24M rows against a 640K median.
+func TestRuleSkewNeedsData(t *testing.T) {
+	stage := func(id int, recs, recsP50, shuffle, shuffleP50 int64) *model.Stage {
+		return &model.Stage{ID: id, Name: "count at job.py:1", Status: model.StatusSucceeded,
+			TaskDuration: model.Dist{Count: 32, Max: 2300, P50: 94},
+			TaskRecords:  model.Dist{Count: 32, Max: recs, P50: recsP50},
+			TaskShuffle:  model.Dist{Count: 32, Max: shuffle, P50: shuffleP50},
+			Slowest:      &model.TaskRef{TaskID: 7, DurationMs: 2300, RecordsRead: recs, ShuffleReadBytes: shuffle, Source: model.Source{File: "f", Line: 9}}}
+	}
+	for _, tc := range []struct {
+		name string
+		st   *model.Stage
+		want bool
+		text string
+	}{
+		{"even rows, slow first task", stage(0, 1_250_000, 1_250_000, 0, 0), false, ""},
+		{"hot key", stage(27, 24_003_657, 639_470, 1_500<<20, 44<<20), true, "24,003,657 rows against a median of 639,470"},
+		{"bytes only", stage(5, 0, 0, 900<<20, 10<<20), true, "900 MiB of shuffle data"},
+	} {
+		l := synthetic(nil)
+		l.Stages = []*model.Stage{tc.st}
+		f, ok := runSynthetic(l)["stage-skew"]
+		if ok != tc.want {
+			t.Errorf("%s: stage-skew fired = %v, want %v", tc.name, ok, tc.want)
+		}
+		if ok && !strings.Contains(f.Explanation, tc.text) {
+			t.Errorf("%s: explanation %q lacks %q", tc.name, f.Explanation, tc.text)
+		}
+	}
+}
+
 func TestRuleLostAndDecommissioned(t *testing.T) {
 	lost := &model.Executor{ID: "1", Host: "h", Removed: time.Unix(1_790_000_100, 0), RemovedReason: "Executor heartbeat timed out", RemovalKind: model.RemovalLost}
 	dec := &model.Executor{ID: "2", Host: "h", Removed: time.Unix(1_790_000_100, 0), RemovedReason: "Executor decommission", RemovalKind: model.RemovalDecommissioned}

@@ -26,6 +26,7 @@ type stageAcc struct {
 	dur      distAcc
 	input    distAcc
 	shuffle  distAcc
+	records  distAcc
 	failures map[string]*model.TaskFailure
 	order    []string
 }
@@ -330,13 +331,14 @@ func (p *parser) taskEnd(e *taskEndEvent, src model.Source) {
 		p.seen(e.Info.FinishTime)
 	}
 	t.DurationMs = dur
-	var input, shuffle int64
+	var input, shuffle, records int64
 	if m := e.Metrics; m != nil {
 		t.RunTimeMs, t.CPUTimeNs, t.GCTimeMs, t.DeserializeMs = m.RunTime, m.CPUTime, m.GCTime, m.DeserializeTime
 		t.InputBytes, t.InputRecords = m.Input.Bytes, m.Input.Records
 		t.OutputBytes, t.OutputRecords = m.Output.Bytes, m.Output.Records
 		shuffle = m.ShuffleRead.RemoteBytes + m.ShuffleRead.LocalBytes
 		input = m.Input.Bytes
+		records = m.Input.Records + m.ShuffleRead.RecordsRead
 		t.ShuffleReadBytes, t.ShuffleRemoteBytes, t.ShuffleReadRecords = shuffle, m.ShuffleRead.RemoteBytes, m.ShuffleRead.RecordsRead
 		t.ShuffleFetchWaitMs = m.ShuffleRead.FetchWait
 		t.ShuffleWriteBytes, t.ShuffleWriteRecords = m.ShuffleWrite.Bytes, m.ShuffleWrite.Records
@@ -353,11 +355,12 @@ func (p *parser) taskEnd(e *taskEndEvent, src model.Source) {
 		a.dur.add(dur)
 		a.input.add(input)
 		a.shuffle.add(shuffle)
+		a.records.add(records)
 		if st.Slowest == nil || dur > st.Slowest.DurationMs {
 			st.Slowest = &model.TaskRef{
 				TaskID: e.Info.TaskID, Index: e.Info.Index, Attempt: e.Info.Attempt,
 				ExecutorID: redact.Text(e.Info.ExecutorID), Host: redact.Text(e.Info.Host),
-				DurationMs: dur, InputBytes: input, ShuffleReadBytes: shuffle, Source: src,
+				DurationMs: dur, InputBytes: input, ShuffleReadBytes: shuffle, RecordsRead: records, Source: src,
 			}
 		}
 		return
@@ -746,7 +749,7 @@ func (p *parser) finish() {
 	for _, a := range p.stages {
 		st := a.st
 		st.JobIDs = p.stageJobs[st.ID]
-		st.TaskDuration, st.TaskInput, st.TaskShuffle = a.dur.dist(), a.input.dist(), a.shuffle.dist()
+		st.TaskDuration, st.TaskInput, st.TaskShuffle, st.TaskRecords = a.dur.dist(), a.input.dist(), a.shuffle.dist(), a.records.dist()
 		for _, k := range a.order {
 			st.Failures = append(st.Failures, *a.failures[k])
 		}

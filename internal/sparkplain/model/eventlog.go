@@ -236,6 +236,7 @@ type TaskRef struct {
 	DurationMs       int64  `json:"durationMs"`
 	InputBytes       int64  `json:"inputBytes"`
 	ShuffleReadBytes int64  `json:"shuffleReadBytes"`
+	RecordsRead      int64  `json:"recordsRead"` // input plus shuffle rows
 	Source           Source `json:"source"`
 }
 
@@ -264,6 +265,7 @@ type Stage struct {
 	TaskDuration  Dist          `json:"taskDurationMs"`
 	TaskInput     Dist          `json:"taskInputBytes"`
 	TaskShuffle   Dist          `json:"taskShuffleReadBytes"`
+	TaskRecords   Dist          `json:"taskRecordsRead"` // input plus shuffle rows per task
 	Slowest       *TaskRef      `json:"slowestTask,omitempty"`
 	Failures      []TaskFailure `json:"failures,omitempty"`
 	CachedRDDs    []int         `json:"cachedRdds,omitempty"`

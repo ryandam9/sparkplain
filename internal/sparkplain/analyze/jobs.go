@@ -114,7 +114,7 @@ func skewFindings(c *ctx) {
 		if d.Count < int64(t.SkewMinTasks) || d.Max < t.SkewMinTask.Milliseconds() || d.P50 <= 0 || st.Slowest == nil {
 			continue
 		}
-		if float64(d.Max) > t.SkewRatio*float64(d.P50) {
+		if float64(d.Max) > t.SkewRatio*float64(d.P50) && dataSkewed(st, t.SkewRatio) {
 			found = append(found, skew{st, d.Max - d.P50})
 		}
 	}
@@ -124,13 +124,18 @@ func skewFindings(c *ctx) {
 			break
 		}
 		st, d := f.st, f.st.TaskDuration
-		expl := fmt.Sprintf("In stage %d (%s), the slowest of %s tasks took %s, %.0f× the median task (%s). The stage could not finish until that one task did.",
+		expl := fmt.Sprintf("In stage %d (%s), the slowest of %s tasks took %s, %.0f× the median task (%s).",
 			st.ID, st.Name, model.Num(d.Count), model.Duration(d.Max), float64(d.Max)/float64(d.P50), model.Duration(d.P50))
-		if sl := st.Slowest; sl.ShuffleReadBytes > 0 && st.TaskShuffle.P50 >= 0 {
-			expl += fmt.Sprintf(" It read %s of shuffle data against a median of %s, so one key or partition held far more data than the rest.", model.Bytes(sl.ShuffleReadBytes), model.Bytes(st.TaskShuffle.P50))
-		} else if sl.InputBytes > 0 {
-			expl += fmt.Sprintf(" It read %s of input against a median of %s.", model.Bytes(sl.InputBytes), model.Bytes(st.TaskInput.P50))
+		var read []string
+		if sl := st.Slowest; sl.RecordsRead > 0 {
+			read = append(read, fmt.Sprintf("%s rows against a median of %s", model.Num(sl.RecordsRead), model.Num(st.TaskRecords.P50)))
 		}
+		if sl := st.Slowest; sl.ShuffleReadBytes > 0 {
+			read = append(read, fmt.Sprintf("%s of shuffle data against %s", model.Bytes(sl.ShuffleReadBytes), model.Bytes(st.TaskShuffle.P50)))
+		} else if sl.InputBytes > 0 {
+			read = append(read, fmt.Sprintf("%s of input against %s", model.Bytes(sl.InputBytes), model.Bytes(st.TaskInput.P50)))
+		}
+		expl += " It read " + strings.Join(read, ", and ") + ", so one key or partition held far more data than the rest. The stage could not finish until that one task did."
 		fix := "Find the hot key (for example, count rows per join key) and salt it, filter out null or default keys before the join, or broadcast the smaller side."
 		if c.conf["spark.sql.adaptive.skewJoin.enabled"] == "false" || c.conf["spark.sql.adaptive.enabled"] == "false" {
 			fix = "Adaptive skew handling is switched off in this run; set spark.sql.adaptive.enabled=true and spark.sql.adaptive.skewJoin.enabled=true so Spark splits oversized join partitions. " + fix
@@ -148,6 +153,16 @@ func skewFindings(c *ctx) {
 			Fix: fix,
 		})
 	}
+}
+
+// dataSkewed reports whether the stage's slowest task also read far more data
+// than its median task: more than ratio times the median rows, or the median
+// shuffle or input bytes. A slow task that read the usual amount (typically
+// the first task on a fresh executor, warming up the JVM) is not skew.
+func dataSkewed(st *model.Stage, ratio float64) bool {
+	sl := st.Slowest
+	over := func(v, median int64) bool { return v > 0 && float64(v) > ratio*float64(median) }
+	return over(sl.RecordsRead, st.TaskRecords.P50) || over(sl.ShuffleReadBytes, st.TaskShuffle.P50) || over(sl.InputBytes, st.TaskInput.P50)
 }
 
 func failureFindings(c *ctx) {
