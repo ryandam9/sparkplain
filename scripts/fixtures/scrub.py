@@ -26,7 +26,7 @@ REPO = os.environ["SP_REPO"]
 IP = "192.0.2.2"
 DRIVER_HOST = "ip-10-0-1-10.ec2.internal"
 WORKER_HOSTS = ["ip-10-0-1-23.ec2.internal", "ip-10-0-1-37.ec2.internal"]
-FORBIDDEN = ["claude", "scratchpad", "/root", "192.0.2.", "/home/user", SCRATCH]
+FORBIDDEN = ["claude", "scratchpad", "/root", "192.0.2.", "/home/user", "home-user", SCRATCH]
 
 if os.path.isdir(src):
     parts = sorted((f for f in os.listdir(src) if f.startswith("events_")), key=lambda f: int(f.split("_")[1]))
@@ -70,6 +70,9 @@ PATHS = [(p, "/usr/lib/spark") for p in venv_pyspark] + [
 def fix_str(s):
     for a, b in PATHS:
         s = s.replace(a, b)
+    # Spark shortens long paths with "...", which defeats the exact
+    # replacements above; catch any remaining prefix of the scratch path.
+    s = re.sub(r"/mnt/tmp/-home-user-[A-Za-z0-9_.-]*(?:/[0-9a-f-]*)?\.*", "/mnt/tmp/...", s)
     s = s.replace(old_app, new_app)
     s = re.sub(r"\(192\.0\.2\.2 executor (\w+)\)", lambda m: "(%s executor %s)" % (exec_host.get(m.group(1), DRIVER_HOST), m.group(1)), s)
     s = re.sub(r"192\.0\.2\.2:(\d+)", lambda m: "%s:%s" % (port_host.get(int(m.group(1)), DRIVER_HOST), m.group(1)), s)
