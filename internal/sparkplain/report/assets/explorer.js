@@ -299,12 +299,12 @@
       var sev = { critical: "crit", warning: "warn", info: "info" }[f.sev] || "info";
       list.appendChild(el("article", { cls: "finding " + sev }, el("div", { cls: "stripe" }), el("div", { cls: "body" },
         el("div", { cls: "t" }, el("span", { cls: "pill " + ({ crit: "crit", warn: "part", info: "info" }[sev]), text: { crit: "Critical", warn: "Warning", info: "Info" }[sev] }), el("h3", { text: f.title })),
-        el("p", { text: f.expl }),
-        (f.ev || []).map(function (e) {
+        el("div", { cls: "fpart what" }, el("span", { cls: "k", text: { crit: "Error", warn: "Problem", info: "Note" }[sev] }), el("div", null, el("p", { text: f.expl }))),
+        (f.ev || []).length ? el("div", { cls: "fpart evid" }, el("span", { cls: "k", text: "Evidence" }), el("div", null, f.ev.map(function (e) {
           var h = refHref(e[1]), lh = logHref(e[2]);
           return el("div", { cls: "ev" }, h ? link(h, e[0]) : e[0], e[2] ? [" · ", lh ? link(lh, e[2]) : e[2]] : "");
-        }),
-        f.fix ? el("p", { cls: "fix", text: f.fix }) : null)));
+        }))) : null,
+        f.fix ? el("div", { cls: "fpart try" }, el("span", { cls: "k", text: "Try" }), el("div", null, el("p", { cls: "fix", text: f.fix }))) : null)));
     });
     fs.appendChild(list);
     out.push(fs);

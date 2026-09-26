@@ -124,11 +124,19 @@ tr.lost td{color:var(--muted)}
 .finding .body{padding:14px 16px;display:grid;gap:6px}
 .finding .t{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline}
 .finding .t h3{font-size:16px}
-.finding p{max-width:72ch}
+.finding p{max-width:100ch}
+/* A finding reads in three tinted bands, each labelled: what went wrong
+   (tinted by severity), the evidence (neutral) and what to try (green). */
+.fpart{display:grid;grid-template-columns:84px minmax(0,1fr);gap:2px 12px;padding:9px 12px;border-radius:6px;background:var(--na-soft)}
+.fpart>div{display:grid;gap:4px;min-width:0}
+.fpart .k{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding-top:3px}
+.finding.crit .fpart.what{background:var(--crit-soft)} .finding.crit .fpart.what .k{color:var(--crit)}
+.finding.warn .fpart.what{background:var(--warn-soft)} .finding.warn .fpart.what .k{color:var(--warn)}
+.finding.info .fpart.what{background:var(--accent-soft)} .finding.info .fpart.what .k{color:var(--accent)}
+.fpart.try{background:var(--ok-soft)} .fpart.try .k{color:var(--ok)}
+@media (max-width:600px){.fpart{grid-template-columns:minmax(0,1fr)}}
 .ev{font-family:var(--mono);font-size:12px;color:var(--muted);overflow-wrap:anywhere}
-.ev::before{content:"Evidence  ";font-family:var(--sans);letter-spacing:.04em;text-transform:uppercase;font-size:11px;color:var(--faint)}
 .fix{font-size:14px}
-.fix::before{content:"Try  ";letter-spacing:.04em;text-transform:uppercase;font-size:11px;color:var(--faint)}
 
 /* two-col facts */
 .facts{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}

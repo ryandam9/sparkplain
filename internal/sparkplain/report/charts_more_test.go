@@ -90,3 +90,20 @@ func TestLegendShowsUsedColours(t *testing.T) {
 		t.Errorf("legend = %v", got)
 	}
 }
+
+// Findings read in labelled bands, and "What happened" is a bullet list.
+func TestFindingBandsAndSummaryBullets(t *testing.T) {
+	r, _ := buildWithExplorer(t, "application_1790380000000_0044") // a failed run: critical findings
+	page := html(t, r, Options{})
+	for _, want := range []string{`<div class="fpart what"><span class="k">Error</span>`, `<div class="fpart evid"><span class="k">Evidence</span>`, `<div class="fpart try"><span class="k">Try</span>`, `<h2>What happened</h2>
+          <ul><li>`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("report lacks %q", want)
+		}
+	}
+	for _, want := range []string{`"fpart what"`, `"fpart evid"`, `"fpart try"`, `el("ul", null, (D.summary`} {
+		if !strings.Contains(explorerJS, want) {
+			t.Errorf("explorer lacks %s", want)
+		}
+	}
+}
