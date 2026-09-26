@@ -87,6 +87,14 @@
 
   // ---------- data ----------
   var jobs = objs(D.jobs), stages = objs(D.stages), execs = objs(D.executors), queries = objs(D.sql), rdds = objs(D.rdds);
+  var exclusions = objs(D.exclusions), runningTasks = objs(D.runningTasks), blockKinds = objs(D.blockKinds);
+  // extLink opens a log link in a new tab; such links point at the cluster's
+  // NodeManagers, which may be gone once the cluster ends.
+  function extLink(href, text) { return el("a", { href: href, text: text, target: "_blank", rel: "noopener noreferrer" }); }
+  function linkMap(m) {
+    var ks = Object.keys(m || {}).sort();
+    return ks.length ? el("span", null, ks.map(function (k, i) { return [i ? " · " : "", /^https?:\/\//.test(m[k]) ? extLink(m[k], k) : k + ": " + m[k]]; })) : null;
+  }
   var T = colIdx(D.taskCols), C = colIdx(D.cellCols);
   var jobByID = {}, stagesByID = {}, execByID = {}, queryByID = {};
   jobs.forEach(function (j) { jobByID[j.id] = j; });
@@ -197,7 +205,8 @@
     el("span", null, "App ", el("b", { cls: "mono", text: a.id || "unknown" }), a.attempt ? " · attempt " + a.attempt : ""),
     a.spark ? el("span", null, el("b", { text: "Spark " + a.spark }), a.master ? " · " + a.master : "", a.deploy ? " · " + a.deploy + " mode" : "") : null,
     a.user ? el("span", null, "User ", el("b", { text: a.user })) : null,
-    a.start ? el("span", null, el("b", { cls: "num" }, when(a.start, true), " → ", a.end ? when(a.end) : "still running"), " · ", dur(a.duration)) : null));
+    a.start ? el("span", null, el("b", { cls: "num" }, when(a.start, true), " → ", a.end ? when(a.end) : "still running"), " · ", dur(a.duration)) : null,
+    a.driverLogs && Object.keys(a.driverLogs).length ? el("span", { title: "Links to the cluster; they stop working once it is gone" }, "Driver logs ", linkMap(a.driverLogs)) : null));
   if (D.reportHref) { var rl = document.getElementById("sp-report"); rl.href = D.reportHref; rl.hidden = false; }
   var zone = "";
   try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) {}
@@ -253,6 +262,11 @@
     });
     fs.appendChild(list);
     out.push(fs);
+    if (runningTasks.length) {
+      var rs = section("Still running when the log ended", "These tasks started but the log has no end for them: the application was still running when the log was copied, or it stopped without closing the log." + (D.runningCapped ? " More tasks were running than are listed." : ""));
+      rs.appendChild(runningTable(runningTasks));
+      out.push(rs);
+    }
     var slow = stages.filter(function (s) { return s.completed && s.submitted; }).sort(function (x, y) { return (y.completed - y.submitted) - (x.completed - x.submitted); }).slice(0, 5);
     if (slow.length) {
       var ss = section("Longest stages", "Where the run spent its time. Open one for its task summary, slowest tasks and per-executor breakdown.");
@@ -266,6 +280,35 @@
     return out;
   };
 
+  function runningTable(rows) {
+    return table({
+      rows: rows, sort: 0, dir: "asc", page: 100,
+      cols: [
+        numCol("Task", "task"),
+        { h: "Stage", num: true, v: function (t) { return t.stage; }, f: function (t) { return link("#stage/" + t.stage + "." + t.stageAttempt, String(t.stage)); } },
+        numCol("Partition", "partition"),
+        { h: "Attempt", num: true, v: function (t) { return t.attempt; }, f: function (t) { return num(t.attempt + 1) + (t.spec ? " (speculative)" : ""); } },
+        { h: "Executor", v: function (t) { return t.exec; }, f: function (t) { return execLink(t.exec); } },
+        { h: "Host", v: function (t) { return t.host; }, f: function (t) { return t.host; } },
+        { h: "Launched", num: true, v: function (t) { return t.launched; }, f: function (t) { return when(t.launched); } },
+        { h: "Running for", num: true, title: "From launch to the last event in the log", v: function (t) { return t.launched; }, f: function (t) { return dur(lastEvent - t.launched); } }
+      ]
+    });
+  }
+  function exclusionTable(rows) {
+    return table({
+      rows: rows, sort: 0, dir: "asc", page: 100,
+      cols: [
+        { h: "When", num: true, v: function (x) { return x.time; }, f: function (x) { return when(x.time); } },
+        { h: "What", v: function (x) { return x.kind + x.target; }, f: function (x) { return x.kind === "executor" ? el("span", null, "Executor ", execLink(x.target)) : "Node " + x.target; } },
+        { h: "For", v: function (x) { return x.scope; }, f: function (x) { return x.scope === "stage" ? el("span", null, "Stage ", link("#stage/" + x.stage + "." + x.stageAttempt, String(x.stage))) : "The whole application"; } },
+        { h: "Because of", num: true, v: function (x) { return x.failures; }, f: function (x) { return x.kind === "executor" ? num(x.failures) + " failed task" + (x.failures === 1 ? "" : "s") : num(x.failures) + " excluded executor" + (x.failures === 1 ? "" : "s"); } },
+        { h: "Lifted", num: true, v: function (x) { return x.lifted; }, f: function (x) { return x.lifted ? el("span", null, when(x.lifted), el("span", { cls: "sub", text: "after " + dur(x.lifted - x.time) })) : (x.scope === "stage" ? "when the stage ended" : "not in this log"); } }
+      ]
+    });
+  }
+  var EXCL_EXPLAIN = "With spark.excludeOnFailure.enabled, Spark stops scheduling on an executor (or a whole node) after tasks fail there, for one stage or the rest of the application, until spark.excludeOnFailure.timeout passes.";
+  var lastEvent = Math.max(a.end || 0, (function () { var m = 0; runningTasks.forEach(function (t) { m = Math.max(m, t.launched); }); stages.forEach(function (s) { m = Math.max(m, s.completed || s.submitted || 0); }); return m; })());
   function jobTable(rows, o) {
     o = o || {};
     return table({
@@ -426,6 +469,10 @@
       st.gettingMs ? fact("Large results", dur(st.gettingMs) + " spent fetching results", "Results over spark.task.maxDirectResultSize go through the block manager, and the driver fetches them separately. " + bytes(st.resultSize) + " of results in all.") : null,
       st.push && (st.push[0] || st.push[2] || st.push[4]) ? fact("Push-based shuffle", bytes(st.push[1] + st.push[3]) + " read from merged shuffle files", num(st.push[0] + st.push[2]) + " merged blocks; " + num(st.push[4]) + " fell back to unmerged blocks" + (st.push[5] ? "; " + num(st.push[5]) + " corrupt chunks" : "") + ".") : null,
       st.cacheWrites && st.cacheWrites[0] ? fact("Cache writes", num(st.cacheWrites[0]) + " blocks, " + bytes(st.cacheWrites[1]), "Blocks the tasks stored in the cache.") : null));
+    var stEx = exclusions.filter(function (e) { return e.scope === "stage" && e.stage === st.id && e.stageAttempt === st.attempt; });
+    if (stEx.length) { s.appendChild(el("h3", { text: "Exclusions during this stage" })); s.appendChild(explain(EXCL_EXPLAIN)); s.appendChild(exclusionTable(stEx)); }
+    var stRun = runningTasks.filter(function (t) { return t.stage === st.id && t.stageAttempt === st.attempt; });
+    if (stRun.length) { s.appendChild(el("h3", { text: "Still running when the log ended" })); s.appendChild(runningTable(stRun)); }
     if (st.failures && st.failures.length) {
       s.appendChild(el("h3", { text: "Why tasks failed" }));
       s.appendChild(table({
@@ -502,6 +549,11 @@
   views.executors = function () {
     var s = section("Executors", "Executors are the worker processes that ran tasks. The driver coordinates and usually runs none.");
     s.appendChild(chartSlot("tall", "executorsTimeline"));
+    if (exclusions.length) {
+      s.appendChild(el("h3", { text: "Exclusions" }));
+      s.appendChild(explain(EXCL_EXPLAIN));
+      s.appendChild(exclusionTable(exclusions));
+    }
     s.appendChild(table({
       rows: execs, sort: 0, dir: "asc", filter: "Filter executors by ID, host or reason",
       text: function (x) { return x.id + " " + x.host + " " + (x.reason || ""); },
@@ -535,7 +587,16 @@
       fact("Data", bytes(x.input) + " read, " + bytes(x.output) + " written", "Shuffle: " + bytes(x.shRead) + " read, " + bytes(x.shWrite) + " written. Spill to disk " + bytes(x.diskSpill) + "."),
       x.minorGc || x.majorGc ? fact("Garbage collection", num(x.minorGc) + " minor (" + dur(x.minorGcMs) + "), " + num(x.majorGc) + " major (" + dur(x.majorGcMs) + ")", "Collections the JVM reported by the time of its last sample. Major collections pause everything and are the ones to watch.") : null,
       x.unified || x.vmem ? fact("More memory", (x.unified ? bytes(x.unified) + " unified (execution plus storage)" : "") + (x.vmem ? (x.unified ? "; " : "") + bytes(x.vmem) + " virtual" : ""), "Peaks Spark sampled; virtual memory counts reserved address space, not RAM used.") : null,
-      x.tasks ? fact("Task overheads", dur(x.sched) + " scheduler delay, " + bytes(x.resultSize) + " of results", "Summed over its tasks.") : null));
+      x.tasks ? fact("Task overheads", dur(x.sched) + " scheduler delay, " + bytes(x.resultSize) + " of results", "Summed over its tasks.") : null,
+      x.startupMs ? fact("Startup", dur(x.startupMs), "From asking the cluster manager for this executor to it registering with the driver.") : null,
+      Object.keys(x.logs || {}).length ? fact("Logs", linkMap(x.logs), "Links to the cluster; they stop working once it is gone.") : null,
+      Object.keys(x.resources || {}).length ? fact("Resources", Object.keys(x.resources).map(function (k) { return x.resources[k] + " " + k; }).join(", "), "Extra resources such as GPUs, by how many addresses Spark assigned.") : null,
+      x.bmRemoved ? fact("Block manager left", when(x.bmRemoved, true), "Cached blocks on this executor were lost then.") : null));
+    if (Object.keys(x.attrs || {}).length) s.appendChild(el("details", null, el("summary", { text: "Container attributes (" + Object.keys(x.attrs).length + ")" }),
+      el("div", { cls: "inner" }, el("dl", { cls: "kv" }, Object.keys(x.attrs).sort().map(function (k) { return [el("dt", { text: k }), el("dd", { cls: "mono", text: x.attrs[k] })]; })))));
+    var mine = exclusions.filter(function (e) { return e.kind === "executor" && e.target === id || e.kind === "node" && e.target === x.host; });
+    if (mine.length) { s.appendChild(el("h3", { text: "Exclusions" })); s.appendChild(explain(EXCL_EXPLAIN)); s.appendChild(exclusionTable(mine)); }
+
     var idx = D.execs.indexOf(id), cells = [];
     if (idx >= 0) stages.forEach(function (st) {
       var det = D.detail[st.key];
@@ -665,6 +726,26 @@
       ]
     }));
     if (rdds.some(function (r) { return !r.sizeKnown; })) s.appendChild(explain("Cached sizes are logged only when spark.eventLog.logBlockUpdates.enabled=true."));
+    rdds.forEach(function (r) {
+      if (!r.executors || !r.executors.length) return;
+      s.appendChild(el("details", null, el("summary", { text: "Where RDD " + r.id + " was cached (" + r.executors.length + " executor" + (r.executors.length === 1 ? "" : "s") + ")" }),
+        el("div", { cls: "inner" }, table({ rows: r.executors, sort: 3, dir: "desc", page: 100, cols: [
+          { h: "Executor", v: function (p) { return p[0]; }, f: function (p) { return execLink(p[0]); } },
+          { h: "Host", v: function (p) { return p[1]; }, f: function (p) { return p[1]; } },
+          { h: "Blocks", num: true, v: function (p) { return p[2]; }, f: function (p) { return num(p[2]); } },
+          { h: "In memory", num: true, v: function (p) { return p[3]; }, f: function (p) { return bytes(p[3]); } },
+          { h: "On disk", num: true, v: function (p) { return p[4]; }, f: function (p) { return bytes(p[4]); } },
+          { h: "Storage level", v: function (p) { return p[5]; }, f: function (p) { return p[5]; } }
+        ] }))));
+    });
+    if (blockKinds.length) {
+      s.appendChild(el("h3", { text: "Block manager activity" }));
+      s.appendChild(explain("Every block Spark stored, by kind: rdd blocks are cached partitions, broadcast blocks are broadcast variables, taskresult blocks are results too big to send directly."));
+      s.appendChild(table({ rows: blockKinds, sort: 1, dir: "desc", cols: [
+        { h: "Kind", v: function (k) { return k.kind; }, f: function (k) { return k.kind; } },
+        numCol("Updates", "updates"), numCol("Largest in memory", "maxMem", bytes), numCol("Largest on disk", "maxDisk", bytes)
+      ] }));
+    }
     return s;
   };
 
@@ -896,7 +977,11 @@
         var end = x.removed || appEnd;
         return { id: x.id, row: "Executor " + x.id, bar: x.host || "", color: bad ? th.fail : x.removed ? th.neutral : th.series, start: x.added, end: end,
           tip: "Executor " + x.id + " on " + x.host + "\n" + (x.removed ? "Removed: " + (x.reason || "no reason logged") : "Ran to the end") + ", " + dur(end - x.added) };
-      }), "How long each executor lived. Blue: ran to the end. Red: killed or lost. Grey: removed for another reason, such as being idle. Click one to open it.", "No executor was logged.");
+      }).concat(exclusions.filter(function (x) { return x.scope === "application"; }).map(function (x) {
+        var end = x.lifted || appEnd;
+        return { id: x.kind === "executor" ? x.target : "", row: (x.kind === "executor" ? "Executor " : "Node ") + x.target + " excluded", bar: num(x.failures) + " failures", color: th.fail, start: x.time, end: end,
+          tip: (x.kind === "executor" ? "Executor " : "Node ") + x.target + " excluded after " + num(x.failures) + " failures" + (x.lifted ? ", lifted after " + dur(x.lifted - x.time) : "") };
+      })), "How long each executor lived. Blue: ran to the end. Red: killed or lost, or a period it was excluded. Grey: removed for another reason, such as being idle. Click one to open it.", "No executor was logged.");
     },
     sqlTimeline: function (c, th) {
       c.link = function (r) { return "#query/" + r.id; };

@@ -17,10 +17,10 @@ SparkListenerApplicationStart
     App Attempt ID | used | application identity
     App ID | used | application identity
     App Name | used | application identity
-    Driver Attributes | planned:3 | links to the driver's logs and its container attributes
-    Driver Attributes/* | planned:3 | links to the driver's logs and its container attributes
-    Driver Logs | planned:3 | links to the driver's logs and its container attributes
-    Driver Logs/* | planned:3 | links to the driver's logs and its container attributes
+    Driver Attributes | used | links to the driver's logs and its container attributes
+    Driver Attributes/* | used | links to the driver's logs and its container attributes
+    Driver Logs | used | links to the driver's logs and its container attributes
+    Driver Logs/* | used | links to the driver's logs and its container attributes
     Event | used | event type
     Timestamp | used | application identity
     User | used | application identity
@@ -37,28 +37,28 @@ SparkListenerBlockManagerAdded
     Timestamp | used | storage memory per executor
 
 SparkListenerBlockManagerRemoved
-    Block Manager ID | planned:3 | when a block manager left
-    Block Manager ID/Executor ID | planned:3 | when a block manager left
-    Block Manager ID/Host | planned:3 | when a block manager left
+    Block Manager ID | used | when a block manager left
+    Block Manager ID/Executor ID | used | when a block manager left
+    Block Manager ID/Host | used | when a block manager left
     Block Manager ID/Port | aside | network port
     Event | used | event type
-    Timestamp | planned:3 | when a block manager left
+    Timestamp | used | when a block manager left
 
 SparkListenerBlockUpdated
     Block Updated Info | used | cached block sizes per executor
     Block Updated Info/Block ID | used | cached block sizes per executor
     Block Updated Info/Block Manager ID | used | cached block sizes per executor
     Block Updated Info/Block Manager ID/Executor ID | used | cached block sizes per executor
-    Block Updated Info/Block Manager ID/Host | planned:3 | where each cached block lives and how it is stored
+    Block Updated Info/Block Manager ID/Host | used | where each cached block lives and how it is stored
     Block Updated Info/Block Manager ID/Port | aside | network port
     Block Updated Info/Disk Size | used | cached block sizes per executor
     Block Updated Info/Memory Size | used | cached block sizes per executor
-    Block Updated Info/Storage Level | planned:3 | where each cached block lives and how it is stored
-    Block Updated Info/Storage Level/Deserialized | planned:3 | where each cached block lives and how it is stored
-    Block Updated Info/Storage Level/Replication | planned:3 | where each cached block lives and how it is stored
-    Block Updated Info/Storage Level/Use Disk | planned:3 | where each cached block lives and how it is stored
-    Block Updated Info/Storage Level/Use Memory | planned:3 | where each cached block lives and how it is stored
-    Block Updated Info/Storage Level/Use Off Heap | planned:3 | where each cached block lives and how it is stored
+    Block Updated Info/Storage Level | used | where each cached block lives and how it is stored
+    Block Updated Info/Storage Level/Deserialized | used | where each cached block lives and how it is stored
+    Block Updated Info/Storage Level/Replication | used | where each cached block lives and how it is stored
+    Block Updated Info/Storage Level/Use Disk | used | where each cached block lives and how it is stored
+    Block Updated Info/Storage Level/Use Memory | used | where each cached block lives and how it is stored
+    Block Updated Info/Storage Level/Use Off Heap | used | where each cached block lives and how it is stored
     Event | used | event type
 
 org.apache.spark.sql.execution.ui.SparkListenerDriverAccumUpdates
@@ -85,46 +85,46 @@ SparkListenerExecutorAdded
     Event | used | event type
     Executor ID | used | executor identity, size, start
     Executor Info | used | executor identity, size, start
-    Executor Info/Attributes | planned:3 | container attributes and resources such as GPUs
-    Executor Info/Attributes/* | planned:3 | container attributes and resources such as GPUs
+    Executor Info/Attributes | used | container attributes and resources such as GPUs
+    Executor Info/Attributes/* | used | container attributes and resources such as GPUs
     Executor Info/Host | used | executor identity, size, start
-    Executor Info/Log Urls | planned:3 | links to the executor's stdout and stderr
-    Executor Info/Log Urls/* | planned:3 | links to the executor's stdout and stderr
-    Executor Info/Registration Time | planned:3 | startup delay
-    Executor Info/Request Time | planned:3 | startup delay
+    Executor Info/Log Urls | used | links to the executor's stdout and stderr
+    Executor Info/Log Urls/* | used | links to the executor's stdout and stderr
+    Executor Info/Registration Time | used | startup delay
+    Executor Info/Request Time | used | startup delay
     Executor Info/Resource Profile Id | used | executor identity, size, start
-    Executor Info/Resources | planned:3 | container attributes and resources such as GPUs
-    Executor Info/Resources/* | planned:3 | container attributes and resources such as GPUs; not seen in a fixture
+    Executor Info/Resources | used | container attributes and resources such as GPUs
+    Executor Info/Resources/* | used | container attributes and resources such as GPUs; not seen in a fixture
     Executor Info/Total Cores | used | executor identity, size, start
     Timestamp | used | executor identity, size, start
 
 org.apache.spark.scheduler.SparkListenerExecutorBlacklisted
     Event | used | event type
-    executorId | planned:3 | exclusions and their lifting
-    taskFailures | planned:3 | exclusions and their lifting
-    time | planned:3 | exclusions and their lifting
+    executorId | used | exclusions and their lifting
+    taskFailures | used | exclusions and their lifting
+    time | used | exclusions and their lifting
 
 org.apache.spark.scheduler.SparkListenerExecutorBlacklistedForStage
     Event | used | event type
-    executorId | planned:3 | exclusions and their lifting
-    stageAttemptId | planned:3 | exclusions and their lifting
-    stageId | planned:3 | exclusions and their lifting
-    taskFailures | planned:3 | exclusions and their lifting
-    time | planned:3 | exclusions and their lifting
+    executorId | used | exclusions and their lifting
+    stageAttemptId | used | exclusions and their lifting
+    stageId | used | exclusions and their lifting
+    taskFailures | used | exclusions and their lifting
+    time | used | exclusions and their lifting
 
 org.apache.spark.scheduler.SparkListenerExecutorExcluded
     Event | used | event type
-    executorId | planned:3 | exclusions and their lifting
-    taskFailures | planned:3 | exclusions and their lifting
-    time | planned:3 | exclusions and their lifting
+    executorId | used | exclusions and their lifting
+    taskFailures | used | exclusions and their lifting
+    time | used | exclusions and their lifting
 
 org.apache.spark.scheduler.SparkListenerExecutorExcludedForStage
     Event | used | event type
-    executorId | planned:3 | exclusions and their lifting
-    stageAttemptId | planned:3 | exclusions and their lifting
-    stageId | planned:3 | exclusions and their lifting
-    taskFailures | planned:3 | exclusions and their lifting
-    time | planned:3 | exclusions and their lifting
+    executorId | used | exclusions and their lifting
+    stageAttemptId | used | exclusions and their lifting
+    stageId | used | exclusions and their lifting
+    taskFailures | used | exclusions and their lifting
+    time | used | exclusions and their lifting
 
 SparkListenerExecutorMetricsUpdate
     Event | used | event type
@@ -152,8 +152,8 @@ SparkListenerExecutorMetricsUpdate
     Executor Metrics Updated[]/Executor Metrics/ProcessTreePythonRSSMemory | used | peak memory and GC
     Executor Metrics Updated[]/Executor Metrics/ProcessTreePythonVMemory | used | virtual memory of the process tree
     Executor Metrics Updated[]/Executor Metrics/TotalGCTime | used | peak memory and GC
-    Executor Metrics Updated[]/Stage Attempt ID | planned:3 | which stage each driver memory sample belongs to
-    Executor Metrics Updated[]/Stage ID | planned:3 | which stage each driver memory sample belongs to
+    Executor Metrics Updated[]/Stage Attempt ID | aside | always -1 on the driver's samples (checked in every fixture), so they give no per-stage split; the samples feed the driver's peak memory
+    Executor Metrics Updated[]/Stage ID | aside | always -1 on the driver's samples (checked in every fixture), so they give no per-stage split; the samples feed the driver's peak memory
     Metrics Updated | aside | accumulator updates Spark leaves empty in logged heartbeats
 
 SparkListenerExecutorRemoved
@@ -164,13 +164,13 @@ SparkListenerExecutorRemoved
 
 org.apache.spark.scheduler.SparkListenerExecutorUnblacklisted
     Event | used | event type
-    executorId | planned:3 | exclusions and their lifting
-    time | planned:3 | exclusions and their lifting
+    executorId | used | exclusions and their lifting
+    time | used | exclusions and their lifting
 
 org.apache.spark.scheduler.SparkListenerExecutorUnexcluded
     Event | used | event type
-    executorId | planned:3 | exclusions and their lifting
-    time | planned:3 | exclusions and their lifting
+    executorId | used | exclusions and their lifting
+    time | used | exclusions and their lifting
 
 SparkListenerJobEnd
     Completion Time | used | job end and result
@@ -229,41 +229,41 @@ SparkListenerLogStart
 
 org.apache.spark.scheduler.SparkListenerNodeBlacklisted
     Event | used | event type; not seen in a fixture
-    executorFailures | planned:3 | exclusions and their lifting; not seen in a fixture
-    hostId | planned:3 | exclusions and their lifting; not seen in a fixture
-    time | planned:3 | exclusions and their lifting; not seen in a fixture
+    executorFailures | used | exclusions and their lifting; not seen in a fixture
+    hostId | used | exclusions and their lifting; not seen in a fixture
+    time | used | exclusions and their lifting; not seen in a fixture
 
 org.apache.spark.scheduler.SparkListenerNodeBlacklistedForStage
     Event | used | event type
-    executorFailures | planned:3 | exclusions and their lifting
-    hostId | planned:3 | exclusions and their lifting
-    stageAttemptId | planned:3 | exclusions and their lifting
-    stageId | planned:3 | exclusions and their lifting
-    time | planned:3 | exclusions and their lifting
+    executorFailures | used | exclusions and their lifting
+    hostId | used | exclusions and their lifting
+    stageAttemptId | used | exclusions and their lifting
+    stageId | used | exclusions and their lifting
+    time | used | exclusions and their lifting
 
 org.apache.spark.scheduler.SparkListenerNodeExcluded
     Event | used | event type; not seen in a fixture
-    executorFailures | planned:3 | exclusions and their lifting; not seen in a fixture
-    hostId | planned:3 | exclusions and their lifting; not seen in a fixture
-    time | planned:3 | exclusions and their lifting; not seen in a fixture
+    executorFailures | used | exclusions and their lifting; not seen in a fixture
+    hostId | used | exclusions and their lifting; not seen in a fixture
+    time | used | exclusions and their lifting; not seen in a fixture
 
 org.apache.spark.scheduler.SparkListenerNodeExcludedForStage
     Event | used | event type
-    executorFailures | planned:3 | exclusions and their lifting
-    hostId | planned:3 | exclusions and their lifting
-    stageAttemptId | planned:3 | exclusions and their lifting
-    stageId | planned:3 | exclusions and their lifting
-    time | planned:3 | exclusions and their lifting
+    executorFailures | used | exclusions and their lifting
+    hostId | used | exclusions and their lifting
+    stageAttemptId | used | exclusions and their lifting
+    stageId | used | exclusions and their lifting
+    time | used | exclusions and their lifting
 
 org.apache.spark.scheduler.SparkListenerNodeUnblacklisted
     Event | used | event type; not seen in a fixture
-    hostId | planned:3 | exclusions and their lifting; not seen in a fixture
-    time | planned:3 | exclusions and their lifting; not seen in a fixture
+    hostId | used | exclusions and their lifting; not seen in a fixture
+    time | used | exclusions and their lifting; not seen in a fixture
 
 org.apache.spark.scheduler.SparkListenerNodeUnexcluded
     Event | used | event type; not seen in a fixture
-    hostId | planned:3 | exclusions and their lifting; not seen in a fixture
-    time | planned:3 | exclusions and their lifting; not seen in a fixture
+    hostId | used | exclusions and their lifting; not seen in a fixture
+    time | used | exclusions and their lifting; not seen in a fixture
 
 org.apache.spark.sql.execution.ui.SparkListenerQueryExecutionMetrics
     Event | used | event type
@@ -576,8 +576,8 @@ SparkListenerTaskGettingResult
 
 SparkListenerTaskStart
     Event | used | event type
-    Stage Attempt ID | planned:3 | tasks still running when an in-progress log ends
-    Stage ID | planned:3 | tasks still running when an in-progress log ends
+    Stage Attempt ID | used | tasks still running when an in-progress log ends are listed
+    Stage ID | used | tasks still running when an in-progress log ends are listed
     Task Info | used | task identity and timing
     Task Info/Accumulables | aside | usually empty; holds the task's values only if it ended before Spark wrote its start (seen once, in the rolling fixture), and TaskEnd carries the same values
     Task Info/Accumulables[]/Count Failed Values | aside | usually empty; holds the task's values only if it ended before Spark wrote its start (seen once, in the rolling fixture), and TaskEnd carries the same values
@@ -596,8 +596,8 @@ SparkListenerTaskStart
     Task Info/Index | used | task identity, placement, speculation
     Task Info/Killed | aside | empty at task start (Spark may fill them if the task ended before the start was written); TaskEnd carries the final values
     Task Info/Launch Time | used | task identity, placement, speculation
-    Task Info/Locality | planned:3 | running tasks: placement
-    Task Info/Partition ID | planned:3 | running tasks: placement
+    Task Info/Locality | used | running tasks: placement
+    Task Info/Partition ID | used | running tasks: placement
     Task Info/Speculative | used | task identity, placement, speculation
     Task Info/Task ID | used | task identity, placement, speculation
 

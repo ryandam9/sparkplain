@@ -81,6 +81,7 @@ func analyzeExecutors(c *ctx, r *model.Report) {
 		s.Executors = []*model.Executor{}
 	}
 	s.Driver = c.log.Driver
+	s.Exclusions = c.log.Exclusions
 	s.Started = len(c.log.Executors)
 	for _, p := range c.series() {
 		if p.Count > s.Peak {

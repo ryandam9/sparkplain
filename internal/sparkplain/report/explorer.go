@@ -121,6 +121,10 @@ type xData struct {
 	RDDs       table                `json:"rdds"`
 	Runtime    table                `json:"runtime"`
 	Config     []xConfigGroup       `json:"config"`
+	Exclusions table                `json:"exclusions"`
+	RunTasks   table                `json:"runningTasks"`
+	RunCapped  bool                 `json:"runningCapped"`
+	BlockKinds table                `json:"blockKinds"`
 	Collected  bool                 `json:"collected"` // explorer data was gathered
 	Limits     model.ExplorerLimits `json:"limits"`
 	Shrinks    int                  `json:"shrinks"`
@@ -141,6 +145,8 @@ type xApp struct {
 	Start    int64  `json:"start"`
 	End      int64  `json:"end"`
 	Duration int64  `json:"duration"`
+	// DriverLogs are links to the driver's stdout and stderr.
+	DriverLogs map[string]string `json:"driverLogs,omitempty"`
 }
 
 type xFinding struct {
@@ -200,7 +206,8 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 	d := xData{
 		V: 1, Tool: r.Tool, Generated: unixMs(r.GeneratedAt), ReportHref: opt.ReportHref, T0: unixMs(a.Start),
 		App: xApp{ID: a.ID, Name: a.Name, User: a.User, Attempt: a.AttemptID, Spark: a.SparkVersion, Master: a.Master,
-			Deploy: a.DeployMode, Status: a.Status, Reason: a.StatusReason, Start: unixMs(a.Start), End: unixMs(a.End), Duration: a.DurationMs},
+			Deploy: a.DeployMode, Status: a.Status, Reason: a.StatusReason, Start: unixMs(a.Start), End: unixMs(a.End), Duration: a.DurationMs,
+			DriverLogs: a.DriverLogs},
 		Summary: r.Summary.Sentences, KPIs: r.Summary.KPIs, HeapBytes: r.Memory.Config.HeapBytes,
 		Detail: map[string]xDetail{}, TaskCols: taskCols, CellCols: cellCols, Graphs: map[string][]xNode{},
 		Findings: []xFinding{}, Files: []string{}, Execs: []string{}, Notes: []string{},
@@ -251,7 +258,8 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 	d.Executors = newTable("id", "host", "cores", "added", "removed", "reason", "kind", "tasks", "ok", "failed", "killed",
 		"dur", "run", "cpuNs", "gc", "input", "output", "shRead", "shWrite", "memSpill", "diskSpill",
 		"peakHeap", "peakOffHeap", "peakExec", "peakStorage", "peakRss", "storageMem", "src",
-		"minorGc", "minorGcMs", "majorGc", "majorGcMs", "unified", "vmem", "sched", "resultSize")
+		"minorGc", "minorGcMs", "majorGc", "majorGcMs", "unified", "vmem", "sched", "resultSize",
+		"startupMs", "logs", "attrs", "resources", "bmRemoved")
 	var all []*model.Executor
 	if r.Executors.Driver != nil {
 		all = append(all, r.Executors.Driver)
@@ -266,7 +274,8 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 			p.JVMHeap, p.JVMOffHeap, p.OnHeapExecution+p.OffHeapExecution, p.OnHeapStorage+p.OffHeapStorage,
 			p.ProcessJVMRSS+p.ProcessPythonRSS+p.ProcessOtherRSS, e.MaxOnHeapStorage+e.MaxOffHeapStorage, src(e.AddedSource),
 			p.MinorGCCount, p.MinorGCTimeMs, p.MajorGCCount, p.MajorGCTimeMs, p.OnHeapUnified+p.OffHeapUnified,
-			p.ProcessJVMVMem+p.ProcessPyVMem+p.ProcessOtherVMem, t.SchedulerDelayMs, t.ResultSizeBytes)
+			p.ProcessJVMVMem+p.ProcessPyVMem+p.ProcessOtherVMem, t.SchedulerDelayMs, t.ResultSizeBytes,
+			e.StartupMs, orMap(e.LogURLs), orMap(e.Attributes), orMap(e.Resources), unixMs(e.BlockManagerRemoved))
 	}
 
 	d.Jobs = newTable("id", "name", "desc", "group", "submitted", "completed", "status", "stages", "sql", "failure", "src", "failureStack")
@@ -333,10 +342,27 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 			refNames(q.Reads), refNames(q.Writes), plan, cut, src(q.Source))
 	}
 
-	d.RDDs = newTable("id", "name", "level", "partitions", "firstStage", "unpersisted", "mem", "disk", "sizeKnown")
+	d.RDDs = newTable("id", "name", "level", "partitions", "firstStage", "unpersisted", "mem", "disk", "sizeKnown", "executors")
 	for _, c := range r.IO.Cached {
-		d.RDDs.add(c.ID, c.Name, c.StorageLevel, c.Partitions, c.FirstStage, c.Unpersisted, c.MemoryBytes, c.DiskBytes, c.SizeKnown)
+		placed := [][]any{}
+		for _, pl := range c.Executors {
+			placed = append(placed, []any{pl.ExecutorID, pl.Host, pl.Blocks, pl.MemoryBytes, pl.DiskBytes, pl.StorageLevel})
+		}
+		d.RDDs.add(c.ID, c.Name, c.StorageLevel, c.Partitions, c.FirstStage, c.Unpersisted, c.MemoryBytes, c.DiskBytes, c.SizeKnown, placed)
 	}
+	d.BlockKinds = newTable("kind", "updates", "maxMem", "maxDisk")
+	for _, k := range r.IO.BlockKinds {
+		d.BlockKinds.add(k.Kind, k.Updates, k.MaxMemory, k.MaxDisk)
+	}
+	d.Exclusions = newTable("kind", "scope", "target", "stage", "stageAttempt", "time", "lifted", "failures", "src")
+	for _, x := range r.Executors.Exclusions {
+		d.Exclusions.add(x.Kind, x.Scope, x.Target, x.StageID, x.StageAttempt, unixMs(x.Time), unixMs(x.Lifted), x.Failures, src(x.Source))
+	}
+	d.RunTasks = newTable("task", "stage", "stageAttempt", "index", "partition", "attempt", "exec", "host", "launched", "locality", "spec", "src")
+	for _, t := range r.Jobs.RunningTasks {
+		d.RunTasks.add(t.TaskID, t.StageID, t.StageAttempt, t.Index, t.Partition, t.Attempt, t.ExecutorID, t.Host, unixMs(t.Launched), t.Locality, t.Speculative, src(t.Source))
+	}
+	d.RunCapped = r.Jobs.RunningCapped
 
 	d.Runtime = newTable("group", "label", "value", "from", "explain", "missing")
 	for _, row := range r.Config.Runtime {
@@ -479,4 +505,11 @@ func stageFailures(st *model.Stage) [][]any {
 		out = append(out, []any{f.Kind, f.Message, f.Count, orEmpty(f.Executors), byApp, stack})
 	}
 	return out
+}
+
+func orMap[V any](m map[string]V) map[string]V {
+	if m == nil {
+		return map[string]V{}
+	}
+	return m
 }

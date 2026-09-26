@@ -280,9 +280,7 @@ func FuzzParseLine(f *testing.F) {
 		f.Add([]byte(l))
 	}
 	f.Fuzz(func(t *testing.T, line []byte) {
-		p := &parser{opt: Options{MaxPlanBytes: 1024, MaxPlans: 2}, log: &model.EventLog{Stats: model.EventLogStats{ByType: map[string]int64{}, UnknownEvents: map[string]int64{}, UnknownFields: map[string]int64{}}},
-			execs: map[string]*model.Executor{}, jobs: map[int]*model.Job{}, stages: map[stageKey]*stageAcc{}, stageJobs: map[int][]int{},
-			sql: map[int64]*model.SQLQuery{}, sqlJobs: map[int64][]int{}, rdds: map[int]*model.CachedRDD{}, blocks: map[string]blockSize{}}
+		p := newParser(Options{MaxPlanBytes: 1024, MaxPlans: 2})
 		_ = p.line(line, model.Source{File: "f", Line: 1})
 		p.finish()
 	})

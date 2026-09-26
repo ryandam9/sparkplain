@@ -189,11 +189,13 @@ type envEvent struct {
 }
 
 type appStartEvent struct {
-	Name      string `json:"App Name"`
-	ID        string `json:"App ID"`
-	Timestamp int64  `json:"Timestamp"`
-	User      string `json:"User"`
-	AttemptID string `json:"App Attempt ID"`
+	DriverLogs       map[string]string `json:"Driver Logs"`
+	DriverAttributes map[string]string `json:"Driver Attributes"`
+	Name             string            `json:"App Name"`
+	ID               string            `json:"App ID"`
+	Timestamp        int64             `json:"Timestamp"`
+	User             string            `json:"User"`
+	AttemptID        string            `json:"App Attempt ID"`
 }
 
 type appEndEvent struct {
@@ -209,9 +211,16 @@ type executorAddedEvent struct {
 	Timestamp  int64  `json:"Timestamp"`
 	ExecutorID string `json:"Executor ID"`
 	Info       struct {
-		Host              string `json:"Host"`
-		Cores             int    `json:"Total Cores"`
-		ResourceProfileID int    `json:"Resource Profile Id"`
+		Host              string            `json:"Host"`
+		Cores             int               `json:"Total Cores"`
+		ResourceProfileID int               `json:"Resource Profile Id"`
+		LogURLs           map[string]string `json:"Log Urls"`
+		Attributes        map[string]string `json:"Attributes"`
+		Resources         map[string]struct {
+			Addresses []string `json:"addresses"`
+		} `json:"Resources"`
+		RequestTime      *int64 `json:"Request Time"`
+		RegistrationTime *int64 `json:"Registration Time"`
 	} `json:"Executor Info"`
 }
 
@@ -263,6 +272,7 @@ type blockUpdatedEvent struct {
 		BlockID      string         `json:"Block ID"`
 		MemorySize   int64          `json:"Memory Size"`
 		DiskSize     int64          `json:"Disk Size"`
+		Level        storageLevel   `json:"Storage Level"`
 	} `json:"Block Updated Info"`
 }
 
@@ -314,4 +324,27 @@ type stackFrame struct {
 	Method string `json:"Method Name"`
 	File   string `json:"File Name"`
 	Line   int    `json:"Line Number"`
+}
+
+type blockManagerRemovedEvent struct {
+	ID        blockManagerID `json:"Block Manager ID"`
+	Timestamp int64          `json:"Timestamp"`
+}
+
+type taskStartEvent struct {
+	StageID      int      `json:"Stage ID"`
+	StageAttempt int      `json:"Stage Attempt ID"`
+	Info         taskInfo `json:"Task Info"`
+}
+
+// exclusionEvent is any of Spark's executor or node exclusion events (and
+// their older "blacklist" names), which share these fields.
+type exclusionEvent struct {
+	Time             int64  `json:"time"`
+	ExecutorID       string `json:"executorId"`
+	HostID           string `json:"hostId"`
+	TaskFailures     int    `json:"taskFailures"`
+	ExecutorFailures int    `json:"executorFailures"`
+	StageID          int    `json:"stageId"`
+	StageAttempt     int    `json:"stageAttemptId"`
 }

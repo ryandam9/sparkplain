@@ -34,7 +34,10 @@ type stageAcc struct {
 	order    []string
 }
 
-type blockSize struct{ mem, disk int64 }
+type blockSize struct {
+	mem, disk   int64
+	level, host string
+}
 
 type parser struct {
 	opt        Options
@@ -53,6 +56,27 @@ type parser struct {
 	partial    bool           // the previous line was cut off by the end of a file
 	ex         *explorerAcc   // nil unless Options.Explorer is set
 	nestedSeen map[string]int // events of each type checked against the inventory
+	running    map[int64]*model.RunningTask
+	exclusions []*model.Exclusion
+	blockKinds map[string]*model.BlockKind
+}
+
+// newParser makes a parser with every map ready.
+func newParser(opt Options) *parser {
+	p := &parser{
+		opt: opt,
+		log: &model.EventLog{Stats: model.EventLogStats{
+			ByType: map[string]int64{}, UnknownEvents: map[string]int64{}, UnknownFields: map[string]int64{},
+		}},
+		execs: map[string]*model.Executor{}, jobs: map[int]*model.Job{}, stages: map[stageKey]*stageAcc{},
+		stageJobs: map[int][]int{}, sql: map[int64]*model.SQLQuery{}, sqlJobs: map[int64][]int{},
+		rdds: map[int]*model.CachedRDD{}, blocks: map[string]blockSize{},
+		running: map[int64]*model.RunningTask{}, blockKinds: map[string]*model.BlockKind{},
+	}
+	if opt.Explorer != nil {
+		p.ex = newExplorerAcc(*opt.Explorer)
+	}
+	return p
 }
 
 // Parse streams the event log and folds it into the model. It returns an
@@ -64,20 +88,9 @@ func Parse(ctx context.Context, in *Input, opt Options) (*model.EventLog, error)
 	if opt.MaxPlans <= 0 {
 		opt.MaxPlans = 500
 	}
-	p := &parser{
-		opt: opt,
-		log: &model.EventLog{Stats: model.EventLogStats{
-			Input: in.Location, Layout: in.Layout, InProgress: in.InProgress,
-			ByType: map[string]int64{}, UnknownEvents: map[string]int64{}, UnknownFields: map[string]int64{},
-			Notes: append([]string(nil), in.Notes...),
-		}},
-		execs: map[string]*model.Executor{}, jobs: map[int]*model.Job{}, stages: map[stageKey]*stageAcc{},
-		stageJobs: map[int][]int{}, sql: map[int64]*model.SQLQuery{}, sqlJobs: map[int64][]int{},
-		rdds: map[int]*model.CachedRDD{}, blocks: map[string]blockSize{},
-	}
-	if opt.Explorer != nil {
-		p.ex = newExplorerAcc(*opt.Explorer)
-	}
+	p := newParser(opt)
+	p.log.Stats.Input, p.log.Stats.Layout, p.log.Stats.InProgress = in.Location, in.Layout, in.InProgress
+	p.log.Stats.Notes = append([]string(nil), in.Notes...)
 	st := &p.log.Stats
 	var lastPartial model.Source
 	files, truncated, notes := in.eachLine(ctx, func(line []byte, src model.Source, partial bool) error {
@@ -174,6 +187,22 @@ func (p *parser) line(line []byte, src model.Source) error {
 			x.Cores, x.ResourceProfileID = e.Info.Cores, e.Info.ResourceProfileID
 			x.Added, x.AddedSource = ms(e.Timestamp), src
 			p.seen(e.Timestamp)
+			x.LogURLs, x.Attributes = redactMap(e.Info.LogURLs, false), redactMap(e.Info.Attributes, true)
+			for name, r := range e.Info.Resources {
+				if x.Resources == nil {
+					x.Resources = map[string]int{}
+				}
+				x.Resources[redact.Text(name)] = len(r.Addresses)
+			}
+			if t := e.Info.RequestTime; t != nil && *t > 0 {
+				x.Requested = ms(*t)
+			}
+			if t := e.Info.RegistrationTime; t != nil && *t > 0 {
+				x.Registered = ms(*t)
+			}
+			if !x.Requested.IsZero() && !x.Registered.IsZero() && !x.Registered.Before(x.Requested) {
+				x.StartupMs = x.Registered.Sub(x.Requested).Milliseconds()
+			}
 		})
 	case evExecRemoved:
 		var e executorRemovedEvent
@@ -205,6 +234,7 @@ func (p *parser) line(line []byte, src model.Source) error {
 			a := &p.log.Application
 			a.ID, a.Name, a.User, a.AttemptID = redact.Text(e.ID), redact.Text(e.Name), redact.Text(e.User), redact.Text(e.AttemptID)
 			a.Start, a.Source = ms(e.Timestamp), src
+			a.DriverLogs, a.DriverAttributes = redactMap(e.DriverLogs, false), redactMap(e.DriverAttributes, true)
 			p.seen(e.Timestamp)
 			if p.ex != nil {
 				p.ex.running.setOrigin(e.Timestamp)
@@ -226,8 +256,17 @@ func (p *parser) line(line []byte, src model.Source) error {
 	case evBlockUpdated:
 		var e blockUpdatedEvent
 		return p.decode(line, &e, func() {
-			if strings.HasPrefix(e.Info.BlockID, "rdd_") {
-				p.blocks[e.Info.BlockManager.ExecutorID+"/"+e.Info.BlockID] = blockSize{e.Info.MemorySize, e.Info.DiskSize}
+			bi := &e.Info
+			kind := blockKind(bi.BlockID)
+			k := p.blockKinds[kind]
+			if k == nil {
+				k = &model.BlockKind{Kind: kind}
+				p.blockKinds[kind] = k
+			}
+			k.Updates++
+			k.MaxMemory, k.MaxDisk = max(k.MaxMemory, bi.MemorySize), max(k.MaxDisk, bi.DiskSize)
+			if kind == "rdd" {
+				p.blocks[bi.BlockManager.ExecutorID+"/"+bi.BlockID] = blockSize{bi.MemorySize, bi.DiskSize, levelName(bi.Level), redact.Text(bi.BlockManager.Host)}
 			}
 		})
 	case evUnpersist:
@@ -258,7 +297,30 @@ func (p *parser) line(line []byte, src model.Source) error {
 		var e driverAccumEvent
 		return p.decode(line, &e, func() { p.ex.driverAccums(e.Updates) })
 	case evBMRemoved:
-		return nil
+		var e blockManagerRemovedEvent
+		return p.decode(line, &e, func() {
+			if e.ID.ExecutorID != "" {
+				p.executor(e.ID.ExecutorID, e.ID.Host).BlockManagerRemoved = ms(e.Timestamp)
+				p.seen(e.Timestamp)
+			}
+		})
+	case evTaskStart:
+		var e taskStartEvent
+		return p.decode(line, &e, func() {
+			i := &e.Info
+			if len(p.running) < maxRunningTasks || p.running[i.TaskID] != nil {
+				p.running[i.TaskID] = &model.RunningTask{TaskID: i.TaskID, StageID: e.StageID, StageAttempt: e.StageAttempt,
+					Index: i.Index, Partition: i.PartitionID, Attempt: i.Attempt, ExecutorID: redact.Text(i.ExecutorID),
+					Host: redact.Text(i.Host), Launched: ms(i.LaunchTime), Locality: i.Locality, Speculative: i.Speculative, Source: src}
+			} else {
+				p.log.RunningCapped = true
+			}
+			p.seen(i.LaunchTime)
+		})
+	}
+	if kind, lift, stage, ok := exclusionName(name); ok {
+		var e exclusionEvent
+		return p.decode(line, &e, func() { p.exclusion(kind, lift, stage, &e, src) })
 	}
 	if strings.HasPrefix(name, catalogPrefix) {
 		var e catalogEvent
@@ -337,6 +399,7 @@ func (p *parser) stageAcc(id, attempt int, src model.Source) *stageAcc {
 const StatusPending = "pending"
 
 func (p *parser) taskEnd(e *taskEndEvent, src model.Source) {
+	delete(p.running, e.Info.TaskID)
 	a := p.stageAcc(e.StageID, e.StageAttempt, src)
 	st := a.st
 	st.TaskSource.Extend(src)
@@ -877,8 +940,41 @@ func (p *parser) finish() {
 			r.MemoryBytes += b.mem
 			r.DiskBytes += b.disk
 			r.SizeKnown = true
+			if b.mem == 0 && b.disk == 0 {
+				continue // dropped from the cache
+			}
+			exec, _, _ := strings.Cut(key, "/")
+			exec = redact.Text(exec)
+			var pl *model.CachedPlacement
+			for i := range r.Executors {
+				if r.Executors[i].ExecutorID == exec {
+					pl = &r.Executors[i]
+				}
+			}
+			if pl == nil {
+				r.Executors = append(r.Executors, model.CachedPlacement{ExecutorID: exec, Host: b.host, StorageLevel: b.level})
+				pl = &r.Executors[len(r.Executors)-1]
+			}
+			pl.Blocks++
+			pl.MemoryBytes += b.mem
+			pl.DiskBytes += b.disk
 		}
 	}
+	for _, r := range p.rdds {
+		sort.Slice(r.Executors, func(i, j int) bool { return lessNumeric(r.Executors[i].ExecutorID, r.Executors[j].ExecutorID) })
+	}
+	for _, k := range p.blockKinds {
+		l.BlockKinds = append(l.BlockKinds, *k)
+	}
+	sort.Slice(l.BlockKinds, func(i, j int) bool { return l.BlockKinds[i].Kind < l.BlockKinds[j].Kind })
+	for _, x := range p.exclusions {
+		l.Exclusions = append(l.Exclusions, *x)
+	}
+	for _, t := range p.running {
+		l.RunningTasks = append(l.RunningTasks, *t)
+	}
+	sort.Slice(l.RunningTasks, func(i, j int) bool { return l.RunningTasks[i].TaskID < l.RunningTasks[j].TaskID })
+
 	for _, r := range p.rdds {
 		l.RDDs = append(l.RDDs, r)
 	}
@@ -967,4 +1063,105 @@ func stackText(frames []stackFrame) string {
 		fmt.Fprintf(&b, "at %s.%s(%s:%d)\n", f.Class, f.Method, f.File, f.Line)
 	}
 	return b.String()
+}
+
+// maxRunningTasks caps the tasks tracked between their start and end, so a
+// log whose tasks never end cannot use unbounded memory.
+const maxRunningTasks = 100_000
+
+// redactMap copies m with its values redacted; with byKey, values of keys
+// that look sensitive are hidden entirely.
+func redactMap(m map[string]string, byKey bool) map[string]string {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		if byKey {
+			v, _ = redact.Value(k, v)
+		} else {
+			v = redact.Text(v)
+		}
+		out[redact.Text(k)] = v
+	}
+	return out
+}
+
+// blockKind names a storage block's kind from its ID: rdd_3_1 is "rdd",
+// broadcast_4_piece0 is "broadcast", taskresult_12 is "taskresult".
+func blockKind(id string) string {
+	if i := strings.IndexAny(id, "_-"); i > 0 {
+		return id[:i]
+	}
+	return id
+}
+
+const exclusionPrefix = "org.apache.spark.scheduler.SparkListener"
+
+// exclusionName decodes an exclusion event's name: executor or node, whether
+// it lifts an exclusion, and whether it is for one stage.
+func exclusionName(name string) (kind string, lift, stage, ok bool) {
+	rest, found := strings.CutPrefix(name, exclusionPrefix)
+	if !found {
+		return "", false, false, false
+	}
+	switch {
+	case strings.HasPrefix(rest, "Executor"):
+		kind, rest = "executor", strings.TrimPrefix(rest, "Executor")
+	case strings.HasPrefix(rest, "Node"):
+		kind, rest = "node", strings.TrimPrefix(rest, "Node")
+	default:
+		return "", false, false, false
+	}
+	stage = strings.HasSuffix(rest, "ForStage")
+	switch strings.TrimSuffix(rest, "ForStage") {
+	case "Excluded", "Blacklisted":
+		return kind, false, stage, true
+	case "Unexcluded", "Unblacklisted":
+		return kind, true, stage, true
+	}
+	return "", false, false, false
+}
+
+// exclusion records one exclusion or its lifting. Spark writes each under
+// both its new and its old ("blacklist") name, so duplicates are merged.
+func (p *parser) exclusion(kind string, lift, stage bool, e *exclusionEvent, src model.Source) {
+	target := e.ExecutorID
+	if kind == "node" {
+		target = e.HostID
+	}
+	target = redact.Text(target)
+	at := ms(e.Time)
+	p.seen(e.Time)
+	if lift {
+		for i := len(p.exclusions) - 1; i >= 0; i-- {
+			x := p.exclusions[i]
+			if x.Kind == kind && x.Target == target && x.Scope == "application" {
+				if x.Lifted.IsZero() {
+					x.Lifted, x.LiftedSource = at, src
+				}
+				return
+			}
+		}
+		return
+	}
+	scope := "application"
+	if stage {
+		scope = "stage"
+	}
+	failures := e.TaskFailures
+	if kind == "node" {
+		failures = e.ExecutorFailures
+	}
+	for _, x := range p.exclusions {
+		if x.Kind == kind && x.Scope == scope && x.Target == target && x.Time.Equal(at) &&
+			(!stage || x.StageID == e.StageID && x.StageAttempt == e.StageAttempt) {
+			return // the same exclusion under Spark's other name
+		}
+	}
+	x := &model.Exclusion{Kind: kind, Scope: scope, Target: target, Time: at, Failures: failures, Source: src}
+	if stage {
+		x.StageID, x.StageAttempt = e.StageID, e.StageAttempt
+	}
+	p.exclusions = append(p.exclusions, x)
 }

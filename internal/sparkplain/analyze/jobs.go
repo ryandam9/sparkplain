@@ -18,6 +18,7 @@ func analyzeJobs(c *ctx, r *model.Report) {
 	}
 	s.Coverage = model.Complete
 	s.Jobs, s.Stages, s.SQL = c.log.Jobs, c.log.Stages, c.log.SQL
+	s.RunningTasks, s.RunningCapped = c.log.RunningTasks, c.log.RunningCapped
 	if s.Jobs == nil {
 		s.Jobs = []*model.Job{}
 	}

@@ -14,6 +14,7 @@ func analyzeIO(c *ctx, r *model.Report) {
 		return
 	}
 	s.Coverage = model.Complete
+	s.BlockKinds = c.log.BlockKinds
 	for _, st := range c.log.Stages {
 		s.Totals.Add(st.Totals)
 		t := st.Totals

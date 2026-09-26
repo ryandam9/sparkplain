@@ -123,9 +123,7 @@ func TestFixturesHaveNoUnknownFields(t *testing.T) {
 
 // A field Spark adds later is counted, even when it is nested.
 func TestNestedUnknownFieldCounted(t *testing.T) {
-	p := &parser{log: &model.EventLog{Stats: model.EventLogStats{ByType: map[string]int64{}, UnknownEvents: map[string]int64{}, UnknownFields: map[string]int64{}}},
-		execs: map[string]*model.Executor{}, jobs: map[int]*model.Job{}, stages: map[stageKey]*stageAcc{}, stageJobs: map[int][]int{},
-		sql: map[int64]*model.SQLQuery{}, sqlJobs: map[int64][]int{}, rdds: map[int]*model.CachedRDD{}, blocks: map[string]blockSize{}}
+	p := newParser(Options{})
 	line := `{"Event":"SparkListenerTaskEnd","Stage ID":1,"Stage Attempt ID":0,"Task Info":{"Task ID":1,"Brand New":7},"Task End Reason":{"Reason":"Success"}}`
 	if err := p.line([]byte(line), model.Source{File: "f", Line: 1}); err != nil {
 		t.Fatal(err)

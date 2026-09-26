@@ -1,0 +1,199 @@
+package eventlog
+
+import (
+	"bufio"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+)
+
+// rawEvents decodes every event of a plain fixture generically.
+func rawEvents(t *testing.T, name string) []map[string]any {
+	t.Helper()
+	f, err := os.Open(filepath.Join(fixtures, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	var out []map[string]any
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<20), 64<<20)
+	for sc.Scan() {
+		var e map[string]any
+		if json.Unmarshal(sc.Bytes(), &e) == nil {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// Spark writes every exclusion twice, under its new and its old name; the
+// parser keeps one of each, and notes when an application-level one lifted.
+func TestExclusionsMerged(t *testing.T) {
+	const name = "application_1790380000000_0046"
+	unique := map[string]bool{}
+	lifted := map[string]bool{}
+	for _, e := range rawEvents(t, name) {
+		ev, _ := e["Event"].(string)
+		short := strings.TrimPrefix(ev, exclusionPrefix)
+		if short == ev {
+			continue
+		}
+		switch {
+		case strings.Contains(short, "Unexcluded") || strings.Contains(short, "Unblacklisted"):
+			lifted[e["executorId"].(string)] = true
+		case strings.Contains(short, "Excluded") || strings.Contains(short, "Blacklisted"):
+			scope := "app"
+			if strings.HasSuffix(short, "ForStage") {
+				scope = "stage"
+			}
+			// The same exclusion under both names shares scope, executor and time.
+			unique[scope+"|"+e["executorId"].(string)+"|"+strconv.FormatInt(num(e["time"]), 10)] = true
+		}
+	}
+	l := parseFixture(t, name, name)
+	if len(l.Exclusions) != len(unique) || len(unique) == 0 {
+		t.Fatalf("%d exclusions, want %d distinct: %+v", len(l.Exclusions), len(unique), l.Exclusions)
+	}
+	var app, gotLifted int
+	for _, x := range l.Exclusions {
+		if x.Kind != "executor" || x.Failures < 1 || x.Time.IsZero() {
+			t.Errorf("bad exclusion %+v", x)
+		}
+		if x.Scope == "application" {
+			app++
+			if !x.Lifted.IsZero() {
+				gotLifted++
+				if !lifted[x.Target] {
+					t.Errorf("executor %s marked lifted without an Unexcluded event", x.Target)
+				}
+			}
+		}
+	}
+	if app == 0 || gotLifted != len(lifted) {
+		t.Errorf("%d application exclusions, %d lifted, want %d lifted", app, gotLifted, len(lifted))
+	}
+}
+
+func TestNodeExcludedForStage(t *testing.T) {
+	l := parseFixture(t, "application_1790380000000_0048", "application_1790380000000_0048")
+	var node bool
+	for _, x := range l.Exclusions {
+		if x.Kind == "node" && x.Scope == "stage" && x.Target != "" && x.Failures > 0 {
+			node = true
+		}
+	}
+	if !node {
+		t.Errorf("no node exclusion for a stage: %+v", l.Exclusions)
+	}
+}
+
+// Tasks that started but never ended in an in-progress log are listed.
+func TestRunningTasksAtLogEnd(t *testing.T) {
+	const name = "application_1790380000000_0047.inprogress"
+	started := map[int64]bool{}
+	for _, e := range rawEvents(t, name) {
+		switch e["Event"] {
+		case "SparkListenerTaskStart":
+			started[num(obj(e, "Task Info")["Task ID"])] = true
+		case "SparkListenerTaskEnd":
+			delete(started, num(obj(e, "Task Info")["Task ID"]))
+		}
+	}
+	l := parseFixture(t, name, "application_1790380000000_0047")
+	if len(l.RunningTasks) != len(started) || len(started) == 0 {
+		t.Fatalf("%d running tasks, want %d", len(l.RunningTasks), len(started))
+	}
+	for _, r := range l.RunningTasks {
+		if !started[r.TaskID] || r.Launched.IsZero() || r.ExecutorID == "" {
+			t.Errorf("unexpected running task %+v", r)
+		}
+	}
+	if done := parseFixture(t, mainApp, mainApp); len(done.RunningTasks) != 0 {
+		t.Errorf("a finished log lists %d running tasks", len(done.RunningTasks))
+	}
+}
+
+// Executor launch detail and driver links from the real EMR log.
+func TestExecutorLaunchDetail(t *testing.T) {
+	const name = "application_1790380000000_0049"
+	startup := map[string]int64{}
+	for _, e := range rawEvents(t, name) {
+		if e["Event"] == "SparkListenerExecutorAdded" {
+			info := obj(e, "Executor Info")
+			startup[e["Executor ID"].(string)] = num(info["Registration Time"]) - num(info["Request Time"])
+		}
+	}
+	l := parseFixture(t, name, name)
+	for _, x := range l.Executors {
+		want, ok := startup[x.ID]
+		if !ok {
+			continue
+		}
+		if x.StartupMs != want || x.LogURLs["stderr"] == "" || x.Attributes["CONTAINER_ID"] == "" {
+			t.Errorf("executor %s: startup %d (want %d), logs %v, attributes %v", x.ID, x.StartupMs, want, x.LogURLs, x.Attributes)
+		}
+	}
+	if l.Application.DriverLogs["stdout"] == "" || l.Application.DriverAttributes["CONTAINER_ID"] == "" {
+		t.Errorf("driver logs %v, attributes %v", l.Application.DriverLogs, l.Application.DriverAttributes)
+	}
+}
+
+// The driver's heartbeat samples carry stage -1 (they are not tied to a
+// stage), so they feed the driver's overall peak memory.
+func TestDriverHeartbeatSamples(t *testing.T) {
+	const name = "application_1790380000000_0046"
+	var want int64
+	for _, e := range rawEvents(t, name) {
+		if e["Event"] != "SparkListenerExecutorMetricsUpdate" {
+			continue
+		}
+		if e["Executor ID"] != "driver" {
+			t.Errorf("heartbeat logged for executor %v; Spark 3.5 logs only the driver's", e["Executor ID"])
+		}
+		for _, u := range e["Executor Metrics Updated"].([]any) {
+			m := u.(map[string]any)
+			if num(m["Stage ID"]) != -1 {
+				t.Errorf("driver sample for stage %v", m["Stage ID"])
+			}
+			want = max(want, num(obj(m, "Executor Metrics")["JVMHeapMemory"]))
+		}
+	}
+	l := parseFixture(t, name, name)
+	if want == 0 || l.Driver == nil || l.Driver.Peak.JVMHeap < want {
+		t.Errorf("driver peak heap %v, want at least %d", l.Driver, want)
+	}
+}
+
+// Where cached partitions were adds up to each cached RDD's size, and block
+// kinds are counted.
+func TestCachedPlacement(t *testing.T) {
+	const name = "application_1790380000000_0046"
+	l := parseFixture(t, name, name)
+	placed := 0
+	for _, r := range l.RDDs {
+		var mem, disk int64
+		for _, pl := range r.Executors {
+			mem, disk = mem+pl.MemoryBytes, disk+pl.DiskBytes
+			if pl.Host == "" || pl.StorageLevel == "" || pl.Blocks == 0 {
+				t.Errorf("rdd %d: incomplete placement %+v", r.ID, pl)
+			}
+		}
+		if len(r.Executors) > 0 {
+			placed++
+			if mem != r.MemoryBytes || disk != r.DiskBytes {
+				t.Errorf("rdd %d: placement holds %d+%d bytes, RDD %d+%d", r.ID, mem, disk, r.MemoryBytes, r.DiskBytes)
+			}
+		}
+	}
+	kinds := map[string]bool{}
+	for _, k := range l.BlockKinds {
+		kinds[k.Kind] = k.Updates > 0
+	}
+	if placed == 0 || !kinds["rdd"] || !kinds["broadcast"] {
+		t.Errorf("placed %d RDDs; block kinds %v", placed, kinds)
+	}
+}

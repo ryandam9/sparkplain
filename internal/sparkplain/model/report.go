@@ -159,6 +159,7 @@ type ExecSection struct {
 	DynamicAlloc string      `json:"dynamicAllocation"`
 	Executors    []*Executor `json:"executors"`
 	Driver       *Executor   `json:"driver,omitempty"`
+	Exclusions   []Exclusion `json:"exclusions,omitempty"`
 	Missing      []string    `json:"missing,omitempty"`
 }
 
@@ -257,8 +258,11 @@ type IOSection struct {
 	Totals   TaskTotals   `json:"totals"`
 	Stages   []StageIO    `json:"stages"`
 	Cached   []*CachedRDD `json:"cached"`
-	Data     []DataRef    `json:"data"`
-	Missing  []string     `json:"missing,omitempty"`
+	// BlockKinds totals block-manager updates per kind of block, when
+	// spark.eventLog.logBlockUpdates.enabled was on.
+	BlockKinds []BlockKind `json:"blockKinds,omitempty"`
+	Data       []DataRef   `json:"data"`
+	Missing    []string    `json:"missing,omitempty"`
 }
 
 // JobsSection is module 7.
@@ -269,8 +273,11 @@ type JobsSection struct {
 	SQL          []*SQLQuery `json:"sql"`
 	CriticalPath []int       `json:"criticalPath,omitempty"` // stage IDs of the longest job's slowest chain
 	CriticalJob  int         `json:"criticalJob"`
-	Failed       int         `json:"failedJobs"`
-	Missing      []string    `json:"missing,omitempty"`
+	// RunningTasks started but had not ended when the log ended.
+	RunningTasks  []RunningTask `json:"runningTasks,omitempty"`
+	RunningCapped bool          `json:"runningCapped,omitempty"`
+	Failed        int           `json:"failedJobs"`
+	Missing       []string      `json:"missing,omitempty"`
 }
 
 // ConfigGroup is one group of settings.

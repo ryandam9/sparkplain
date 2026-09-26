@@ -18,6 +18,12 @@ type EventLog struct {
 	Components       []Component       `json:"components,omitempty"`
 	// Explorer is collected only when the explorer page is wanted.
 	Explorer *Explorer `json:"-"`
+
+	Exclusions   []Exclusion   `json:"exclusions,omitempty"`
+	RunningTasks []RunningTask `json:"runningTasks,omitempty"` // only in logs that end before their tasks
+	// RunningCapped is true when more tasks were running than are listed.
+	RunningCapped bool        `json:"runningCapped,omitempty"`
+	BlockKinds    []BlockKind `json:"blockKinds,omitempty"`
 }
 
 // Component is a library version read from a jar name on the driver's
@@ -78,6 +84,10 @@ type Application struct {
 	ExitCode     *int      `json:"exitCode,omitempty"`
 	Source       Source    `json:"source"`
 	EndSource    Source    `json:"endSource,omitzero"`
+	// DriverLogs are the driver's stdout and stderr links, and
+	// DriverAttributes its YARN container attributes (redacted).
+	DriverLogs       map[string]string `json:"driverLogs,omitempty"`
+	DriverAttributes map[string]string `json:"driverAttributes,omitempty"`
 }
 
 // ResourceProfile is what each executor of a profile asked YARN for.
@@ -179,6 +189,60 @@ type Executor struct {
 	Tasks             TaskTotals `json:"tasks"`
 	AddedSource       Source     `json:"addedSource,omitzero"`
 	RemovedSource     Source     `json:"removedSource,omitzero"`
+	// Launch detail from SparkListenerExecutorAdded. StartupMs is from the
+	// resource request to registration with the driver, when both are known.
+	Requested  time.Time         `json:"requested,omitzero"`
+	Registered time.Time         `json:"registered,omitzero"`
+	StartupMs  int64             `json:"startupMs,omitempty"`
+	LogURLs    map[string]string `json:"logUrls,omitempty"`    // stdout, stderr
+	Attributes map[string]string `json:"attributes,omitempty"` // YARN container attributes, redacted
+	Resources  map[string]int    `json:"resources,omitempty"`  // extra resources (such as gpu) and how many addresses each
+	// BlockManagerRemoved is when the executor's block manager left, which can
+	// differ from the executor's own removal.
+	BlockManagerRemoved time.Time `json:"blockManagerRemoved,omitzero"`
+}
+
+// Exclusion is Spark's excludeOnFailure (formerly blacklist) taking an
+// executor or a whole node out of scheduling, for one stage or the whole
+// application. Spark writes each under both names; they are merged.
+type Exclusion struct {
+	Kind         string    `json:"kind"`  // executor or node
+	Scope        string    `json:"scope"` // application or stage
+	Target       string    `json:"target"`
+	StageID      int       `json:"stageId,omitempty"`
+	StageAttempt int       `json:"stageAttempt,omitempty"`
+	Time         time.Time `json:"time,omitzero"`
+	Failures     int       `json:"failures"` // failed tasks (executor) or excluded executors (node)
+	Lifted       time.Time `json:"lifted,omitzero"`
+	Source       Source    `json:"source"`
+	LiftedSource Source    `json:"liftedSource,omitzero"`
+}
+
+// RunningTask is a task that started but had not ended when the log ended.
+type RunningTask struct {
+	TaskID       int64     `json:"taskId"`
+	StageID      int       `json:"stageId"`
+	StageAttempt int       `json:"stageAttempt"`
+	Index        int       `json:"index"`
+	Partition    int       `json:"partition"`
+	Attempt      int       `json:"attempt"`
+	ExecutorID   string    `json:"executorId"`
+	Host         string    `json:"host"`
+	Launched     time.Time `json:"launched,omitzero"`
+	Locality     string    `json:"locality,omitempty"`
+	Speculative  bool      `json:"speculative,omitempty"`
+	Source       Source    `json:"source"`
+}
+
+// BlockKind totals the storage-block updates of one kind of block (RDD
+// partitions, broadcast pieces, large task results) when block updates
+// were logged.
+type BlockKind struct {
+	Kind      string `json:"kind"`
+	Updates   int64  `json:"updates"`
+	Blocks    int64  `json:"blocks"`
+	MaxMemory int64  `json:"maxMemoryBytes"` // largest in-memory size seen for one block
+	MaxDisk   int64  `json:"maxDiskBytes"`
 }
 
 // TaskTotals sums task metrics. Times are milliseconds except CPU time (ns),
@@ -433,6 +497,18 @@ type CachedRDD struct {
 	DiskBytes   int64  `json:"diskBytes"`
 	SizeKnown   bool   `json:"sizeKnown"`
 	Source      Source `json:"source"`
+	// Placement: where the cached partitions were at the end, per executor.
+	Executors []CachedPlacement `json:"executors,omitempty"`
+}
+
+// CachedPlacement is one executor's share of a cached RDD.
+type CachedPlacement struct {
+	ExecutorID   string `json:"executorId"`
+	Host         string `json:"host"`
+	Blocks       int    `json:"blocks"`
+	MemoryBytes  int64  `json:"memoryBytes"`
+	DiskBytes    int64  `json:"diskBytes"`
+	StorageLevel string `json:"storageLevel"`
 }
 
 // ConfigEntry is one effective setting.
