@@ -265,3 +265,60 @@ func TestSettingsCompare(t *testing.T) {
 		t.Error("parseSize")
 	}
 }
+
+func TestRuntimeTable(t *testing.T) {
+	r := fixtureReport(t, "application_1790380000000_0042", "application_1790380000000_0042", DefaultThresholds())
+	rows := map[string]model.RuntimeRow{}
+	groups := []string{}
+	for _, row := range r.Config.Runtime {
+		rows[row.Label] = row
+		if len(groups) == 0 || groups[len(groups)-1] != row.Group {
+			groups = append(groups, row.Group)
+		}
+		if row.Explain == "" || row.From == "" {
+			t.Errorf("%s lacks explanation or origin", row.Label)
+		}
+		if !row.Missing && row.Source.Line == 0 {
+			t.Errorf("%s has no source line", row.Label)
+		}
+	}
+	if strings.Join(groups, ",") != "Versions,Runtime,Locations" {
+		t.Errorf("groups out of order: %v", groups)
+	}
+	for label, want := range map[string]string{
+		"Spark": "3.5.1", "Scala": "2.12.18", "Hadoop": "3.3.4", "Java": "21.0.10 (Ubuntu), OpenJDK 64-Bit Server VM",
+		"Master": "local-cluster[2,2,1024]", "Deploy mode": "client", "Scheduler mode": "FIFO", "Operating system": "Linux 6.18.44-fc-v37 amd64",
+		"Java home": "/usr/lib/jvm/java-21-openjdk-amd64", "Spark home": "/usr/lib/spark", "SQL warehouse": "/mnt/fixture/main/warehouse",
+		"Event log directory": "file:///var/log/spark/apps/main", "Driver host": "ip-10-0-1-10.ec2.internal", "PySpark": "yes, Py4J 0.10.9.7",
+		"Default filesystem": "file:///", "Hadoop authentication": "simple",
+	} {
+		if got := rows[label].Value; got != want {
+			t.Errorf("%s = %q, want %q", label, got, want)
+		}
+	}
+	for _, label := range []string{"EMR release", "Local scratch directories"} {
+		if !rows[label].Missing || rows[label].Value != "not recorded" {
+			t.Errorf("%s should be marked not recorded: %+v", label, rows[label])
+		}
+	}
+	if rows["Spark"].Source.Line != 1 {
+		t.Errorf("Spark version should cite line 1, got %v", rows["Spark"].Source)
+	}
+}
+
+func TestRuntimeTableWithSparseEnvironment(t *testing.T) {
+	l := synthetic(map[string]string{"spark.master": "yarn"})
+	rows := Run(Input{Tool: "t", EventLog: l, EventSource: model.SourceStatus{Name: "Spark event log", Status: "read"}}).Config.Runtime
+	missing := 0
+	for _, r := range rows {
+		if r.Missing {
+			missing++
+			if r.Source.File != "" {
+				t.Errorf("%s is missing but cites a source", r.Label)
+			}
+		}
+	}
+	if missing < 8 {
+		t.Errorf("expected most rows to be not recorded, got %d missing", missing)
+	}
+}

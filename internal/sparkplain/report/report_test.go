@@ -126,3 +126,13 @@ func TestHostileTextIsEscaped(t *testing.T) {
 		t.Error("log text must be escaped")
 	}
 }
+
+func TestRuntimeEnvironmentTable(t *testing.T) {
+	html := render(t, build(t, "application_1790380000000_0042"), nil)
+	for _, want := range []string{`id="runtime"`, `href="#runtime"`, "Runtime environment", "Spark 3.5.1</b> · Java 21.0.10 · Hadoop 3.3.4",
+		"/usr/lib/jvm/java-21-openjdk-amd64", `<tr class="grp"><th colspan="4">Locations</th></tr>`, `class="missingrow"`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("report lacks %q", want)
+		}
+	}
+}

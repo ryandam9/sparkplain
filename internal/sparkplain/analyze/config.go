@@ -17,7 +17,12 @@ func analyzeConfig(c *ctx, r *model.Report) {
 		return
 	}
 	s.Coverage = model.Partial
-	s.Missing = []string{"Which settings came from EMR defaults, cluster configuration or spark-submit (needs the EMR API and step logs)"}
+	s.Missing = []string{
+		"Which settings came from EMR defaults, cluster configuration or spark-submit (needs the EMR API and step logs)",
+		"The EMR release label and the Python version (not in the event log)",
+		"Executors' own JVM and OS details (the event log records the driver's environment only)",
+	}
+	s.Runtime = runtimeRows(c)
 	byGroup := map[string][]model.ConfigView{}
 	for _, e := range c.log.Config {
 		v := model.ConfigView{ConfigEntry: e}

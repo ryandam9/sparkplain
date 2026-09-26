@@ -185,3 +185,8 @@ main,section,details .inner,.story{grid-template-columns:minmax(0,1fr)}
 .legend svg{display:inline-block;width:12px;height:12px;flex:none}
 table.keycfg{table-layout:fixed;min-width:640px}
 table.keycfg td{overflow-wrap:break-word}
+.subsection{display:grid;gap:10px;scroll-margin-top:16px}
+table.runtime{table-layout:fixed;min-width:680px}
+table.runtime td{overflow-wrap:break-word}
+table.runtime tr.grp th{background:var(--surface);color:var(--accent);font-size:12px;letter-spacing:.06em;text-transform:uppercase;padding-top:14px}
+tr.missingrow td:nth-child(2){color:var(--faint);font-style:italic}

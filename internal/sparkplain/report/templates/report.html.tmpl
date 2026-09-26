@@ -19,7 +19,7 @@
     <h1>{{if $a.Name}}{{$a.Name}}{{else}}Spark application{{end}} <span class="status {{statusClass $a.Status}}">{{statusLabel $a.Status}}</span></h1>
     <div class="idline">
       <span>App <b class="mono">{{if $a.ID}}{{$a.ID}}{{else}}unknown{{end}}</b>{{if $a.AttemptID}} · attempt {{$a.AttemptID}}{{end}}</span>
-      {{if $a.SparkVersion}}<span><b>Spark {{$a.SparkVersion}}</b>{{if $a.Master}} · {{$a.Master}}{{end}}{{if $a.DeployMode}} · {{$a.DeployMode}} mode{{end}}</span>{{end}}
+      {{if $a.SparkVersion}}<span><b>Spark {{$a.SparkVersion}}</b>{{with rt $r "Java"}} · Java {{.}}{{end}}{{with rt $r "Hadoop"}} · Hadoop {{.}}{{end}}{{if $a.Master}} · {{$a.Master}}{{end}}{{if $a.DeployMode}} · {{$a.DeployMode}} mode{{end}}</span>{{end}}
       {{if $a.User}}<span>User <b>{{$a.User}}</b></span>{{end}}
       {{if not $a.Start.IsZero}}<span><b class="num">{{time $a.Start "dt"}} → {{if $a.End.IsZero}}still running{{else}}{{time $a.End "hms"}}{{end}}</b> <span class="tzlabel">{{.Zone}}</span></span>{{end}}
     </div>
@@ -43,6 +43,7 @@
       <a href="#io">Storage and I/O <span class="dot {{cov $r.IO.Coverage}}"></span></a>
       <a href="#stages">Jobs and stages <span class="dot {{cov $r.Jobs.Coverage}}"></span></a>
       <a href="#sql">SQL queries <span class="dot {{cov $r.Jobs.Coverage}}"></span></a>
+      <a href="#runtime">Runtime environment <span class="dot {{cov $r.Config.Coverage}}"></span></a>
       <a href="#config">Configuration <span class="dot {{cov $r.Config.Coverage}}"></span></a>
       <a href="#access">Identity and access <span class="dot {{cov $r.Identity.Coverage}}"></span></a>
       <a href="#sources">Sources <span class="dot full"></span></a>
@@ -314,7 +315,19 @@
 
       <section id="config">
         <div class="sechead"><h2>Configuration</h2><span class="pill {{cov $r.Config.Coverage}}">{{covLabel $r.Config.Coverage}}</span></div>
-        {{$cf := $r.Config}}{{if $cf.Total}}
+        {{$cf := $r.Config}}{{if $cf.Runtime}}
+        <div id="runtime" class="subsection">
+          <h3>Runtime environment</h3>
+          <p class="note">Versions, runtime settings and locations the driver recorded when the application started. The event log holds the driver's environment only; executors on other hosts are not recorded and may differ.{{with $r.EventLog}}{{if .Files}} Line numbers refer to <span class="mono">{{(index .Files 0).Name}}</span>{{if gt (len .Files) 1}} and the parts after it{{end}}.{{end}}{{end}}</p>
+          <div class="tbl"><table class="runtime">
+            <colgroup><col style="width:20%"><col style="width:30%"><col style="width:22%"><col style="width:28%"></colgroup>
+            <thead><tr><th>Item</th><th>Value</th><th>Read from</th><th>What it means</th></tr></thead>
+            <tbody>{{$g := ""}}{{range $cf.Runtime}}{{if ne .Group $g}}{{$g = .Group}}<tr class="grp"><th colspan="4">{{.Group}}</th></tr>{{end}}
+            <tr{{if .Missing}} class="missingrow"{{end}}><td>{{.Label}}</td><td class="mono">{{.Value}}</td><td>{{.From}}{{if .Source.File}}<span class="sub srcref" title="{{src .Source}}">line {{.Source.Line}}</span>{{end}}</td><td>{{.Explain}}</td></tr>
+            {{end}}</tbody>
+          </table></div>
+        </div>
+        {{end}}{{if $cf.Total}}
         <p class="lede">{{num (int64 $cf.Total)}} settings were in effect. {{$cf.NonDefault}} of the key settings below differ from Spark 3.5's defaults (marked with a bar). {{$cf.Redacted}} values are hidden because their names suggest secrets.</p>
         <div class="tbl"><table class="cfg keycfg">
           <colgroup><col style="width:32%"><col style="width:20%"><col style="width:12%"><col style="width:36%"></colgroup>

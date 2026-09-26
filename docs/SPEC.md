@@ -129,7 +129,7 @@ The report has ten analysis modules. Each answers a fixed set of questions and e
 | 5 | Storage and I/O | Input and output bytes and records per stage; shuffle read and write; disk spill; cached RDDs and their size; S3 paths and tables read or written (from SQL plans) | Event log | 1 |
 | 6 | CPU | Executor CPU time versus run time (utilisation %) per stage and executor; host CPU over time where available | Event log, CloudWatch, node logs | 1, 3 |
 | 7 | Jobs, stages, tasks | Timeline of jobs and stages; critical path; skew (max versus median task time); retries, speculation, failed stages and reasons | Event log | 1 |
-| 8 | Configuration | Full effective config grouped (Spark, Hadoop, Hive, HBase, JVM); dynamic allocation settings; values that differ from EMR defaults; risky settings flagged | Event log environment, EMR API | 1 |
+| 8 | Configuration | Runtime environment table (versions of Spark, Scala, Java, Hadoop and notable libraries; master, deploy mode, OS, time zone, default filesystem; Java and Spark home, working, event log, warehouse and scratch directories); full effective config grouped (Spark, Hadoop, Hive, HBase, JVM); dynamic allocation settings; values that differ from EMR defaults; risky settings flagged | Event log environment, EMR API | 1 |
 | 9 | Identity and access | See below | Event log, container logs, EMR API, CloudTrail | 2, 3 |
 | 10 | Failures and findings | Root failure, first exception, and rule-based findings ranked by severity | All | 2, 4 |
 
@@ -200,7 +200,7 @@ sparkplain -from ./logs/application_1700000000000_0042 \
 5. Memory, CPU, I/O: charts per stage.
 6. Jobs and stages: sortable table with skew and spill columns; stage drill-down.
 7. SQL: queries with their physical plans and tables touched.
-8. Configuration: grouped, searchable, non-defaults highlighted.
+8. Configuration: a runtime environment table first (versions, runtime settings, locations, each with the property it was read from and its line), then key settings explained, then every setting grouped, searchable, non-defaults highlighted. The header line also shows the Java and Hadoop versions.
 9. Identity and access.
 10. Findings: ranked, each with evidence links.
 11. Sources: every file and API read, what was missing, and why.
@@ -269,6 +269,7 @@ Testing: stub S3 and AWS clients, race detector on, fuzz targets for the event d
 - Fixtures come from real PySpark 3.5.1 runs in `local-cluster` mode (`scripts/fixtures/`), scrubbed to EMR-like hosts, paths and IDs. Compressed variants are written with Spark's own `CompressionCodec`, so the lz4 and snappy readers are tested against the Java stream formats. The History Server zip is laid out as Spark's `zipEventLogFiles` writes it, but built by the script rather than downloaded.
 - Spark 3.5 does not log the driver's exit code (`ApplicationEnd` has only a timestamp), so the final status comes from the end event and the last job, and the report says so. A log without an end event is "incomplete".
 - Cached data sizes are logged only when `spark.eventLog.logBlockUpdates.enabled=true`; process RSS only when `spark.executor.processTreeMetrics.enabled=true`. The report says which is missing.
+- The runtime environment table is the driver's view only: the event log records no executor JVM or OS details. Library versions (Hadoop, Hive, EMRFS, AWS SDKs, Iceberg, Hudi, Delta, HBase, Py4J) come from jar names on the driver's classpath, since the log does not state them; Spark home is the folder holding `jars/spark-core_*.jar`. The EMR release and the Python version are not in the event log and show as "not recorded".
 - Key settings are compared with Spark 3.5 defaults. Comparing with EMR's own defaults needs the EMR API (phase 3).
 - The report uses system fonts. The sample's Google Fonts link would break the no-network rule.
 - Performance, measured with `scripts/benchlog` on 4 cores: a 1 GB log (245K tasks, real task-event layout) in 5.6 s at 30 MB peak RSS for the whole CLI; 1M tasks (2.4 GB) in 14.7 s at 68 MB.
