@@ -1,0 +1,4 @@
+/sparkplain
+/out/
+*.test
+*.prof

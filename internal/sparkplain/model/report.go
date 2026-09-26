@@ -1,0 +1,309 @@
+package model
+
+import "time"
+
+// Report is the full output of one run: what the HTML shows and what the
+// JSON export contains.
+type Report struct {
+	SchemaVersion string          `json:"schemaVersion"`
+	Tool          string          `json:"tool"`
+	GeneratedAt   time.Time       `json:"generatedAt"`
+	TimeZone      string          `json:"timeZone"`
+	ExitCode      int             `json:"exitCode"`
+	Mode          string          `json:"mode"` // offline-eventlog, …
+	Application   Application     `json:"application"`
+	Summary       Summary         `json:"summary"`
+	Coverage      []SectionStatus `json:"coverage"`
+	Findings      []Finding       `json:"findings"`
+	Timeline      Timeline        `json:"timeline"`
+	Nodes         NodesSection    `json:"nodes"`
+	Executors     ExecSection     `json:"executors"`
+	Memory        MemorySection   `json:"memory"`
+	CPU           CPUSection      `json:"cpu"`
+	IO            IOSection       `json:"io"`
+	Jobs          JobsSection     `json:"jobs"`
+	Config        ConfigSection   `json:"config"`
+	Identity      IdentitySection `json:"identity"`
+	Sources       []SourceStatus  `json:"sources"`
+	EventLog      *EventLogStats  `json:"eventLog,omitempty"`
+}
+
+// Summary is the "What happened" block.
+type Summary struct {
+	Sentences []string `json:"sentences"`
+	KPIs      []KPI    `json:"kpis"`
+}
+
+// KPI is one header card. Value and Unit are display text; the numbers they
+// come from are elsewhere in the report.
+type KPI struct {
+	Label   string `json:"label"`
+	Value   string `json:"value"`
+	Unit    string `json:"unit,omitempty"`
+	Explain string `json:"explain"`
+	Tone    string `json:"tone,omitempty"` // "", "crit" or "warn"
+}
+
+// SectionStatus says how complete one section is and what it is missing.
+type SectionStatus struct {
+	ID       string   `json:"id"`
+	Title    string   `json:"title"`
+	Coverage Coverage `json:"coverage"`
+	Shown    string   `json:"shown"`
+	Missing  []string `json:"missing,omitempty"`
+}
+
+// Evidence points a finding at the log line (or API call) behind it.
+type Evidence struct {
+	Source Source `json:"source,omitzero"`
+	Text   string `json:"text"`
+}
+
+// Finding is one problem or notable fact, with evidence and a suggested fix.
+type Finding struct {
+	Rule        string     `json:"rule"`
+	Severity    Severity   `json:"severity"`
+	Title       string     `json:"title"`
+	Explanation string     `json:"explanation"`
+	Evidence    []Evidence `json:"evidence"`
+	Fix         string     `json:"fix,omitempty"`
+	Section     string     `json:"section"`
+}
+
+// Timeline holds the Gantt chart and the event list.
+type Timeline struct {
+	Coverage       Coverage        `json:"coverage"`
+	Start          time.Time       `json:"start,omitzero"`
+	End            time.Time       `json:"end,omitzero"`
+	ExecutorSeries []CountPoint    `json:"executorSeries,omitempty"`
+	Jobs           []Bar           `json:"jobs,omitempty"`
+	Events         []TimelineEvent `json:"events,omitempty"`
+}
+
+// CountPoint is a step in a count-over-time series.
+type CountPoint struct {
+	Time  time.Time `json:"time"`
+	Count int       `json:"count"`
+}
+
+// Bar is one bar of a Gantt chart.
+type Bar struct {
+	ID     int       `json:"id"`
+	Label  string    `json:"label"`
+	Start  time.Time `json:"start"`
+	End    time.Time `json:"end"`
+	Status string    `json:"status"`
+	Stages []Bar     `json:"stages,omitempty"`
+}
+
+// TimelineEvent is one line in the timeline table.
+type TimelineEvent struct {
+	Time   time.Time `json:"time"`
+	Kind   string    `json:"kind"` // start, end, executors, executor-lost, job-failed, …
+	Text   string    `json:"text"`
+	Source Source    `json:"source,omitzero"`
+}
+
+// Host is one machine that ran the driver or executors.
+type Host struct {
+	Name          string     `json:"name"`
+	Driver        bool       `json:"driver"`
+	Executors     []string   `json:"executors"`
+	Cores         int        `json:"cores"`
+	FirstSeen     time.Time  `json:"firstSeen,omitzero"`
+	LastSeen      time.Time  `json:"lastSeen,omitzero"`
+	Lost          int        `json:"executorsLost"`
+	Tasks         TaskTotals `json:"tasks"`
+	PeakHeap      int64      `json:"peakHeapBytes"`
+	CPUShare      float64    `json:"cpuShare"`  // task CPU time / task run time
+	AllocatedCore float64    `json:"busyShare"` // task run time / (cores × executor lifetime)
+	Source        Source     `json:"source"`
+}
+
+// NodesSection is module 2.
+type NodesSection struct {
+	Coverage Coverage `json:"coverage"`
+	Lede     string   `json:"lede"`
+	Hosts    []Host   `json:"hosts"`
+	Missing  []string `json:"missing,omitempty"`
+}
+
+// Count is a labelled number, used for small breakdowns.
+type Count struct {
+	Label string `json:"label"`
+	N     int    `json:"n"`
+}
+
+// ExecSection is module 3.
+type ExecSection struct {
+	Coverage     Coverage    `json:"coverage"`
+	Started      int         `json:"started"`
+	Peak         int         `json:"peak"`
+	PeakAt       time.Time   `json:"peakAt,omitzero"`
+	EndedBy      []Count     `json:"endedBy"`
+	Cores        int         `json:"coresEach"`
+	DynamicAlloc string      `json:"dynamicAllocation"`
+	Executors    []*Executor `json:"executors"`
+	Driver       *Executor   `json:"driver,omitempty"`
+	Missing      []string    `json:"missing,omitempty"`
+}
+
+// MemoryConfig is the memory an executor asked for, and how Spark splits it.
+type MemoryConfig struct {
+	HeapBytes       int64   `json:"heapBytes"`
+	HeapFrom        string  `json:"heapFrom"`
+	OverheadBytes   int64   `json:"overheadBytes"`
+	OverheadFrom    string  `json:"overheadFrom"`
+	OffHeapBytes    int64   `json:"offHeapBytes"`
+	PySparkBytes    int64   `json:"pysparkBytes"`
+	ContainerBytes  int64   `json:"containerBytes"`
+	Cores           int     `json:"cores"`
+	MemoryFraction  float64 `json:"memoryFraction"`
+	StorageFraction float64 `json:"storageFraction"`
+	UnifiedBytes    int64   `json:"unifiedBytes"` // (heap − 300 MiB) × memoryFraction
+	DriverHeapBytes int64   `json:"driverHeapBytes"`
+}
+
+// ExecMemory is one executor's memory use against what it was given.
+type ExecMemory struct {
+	ID            string  `json:"id"`
+	Host          string  `json:"host"`
+	HeapBytes     int64   `json:"configuredHeapBytes"`
+	PeakHeap      int64   `json:"peakHeapBytes"`
+	PeakOffHeap   int64   `json:"peakOffHeapBytes"`
+	PeakRSS       int64   `json:"peakRssBytes"`
+	PeakStorage   int64   `json:"peakStorageBytes"`
+	PeakExecution int64   `json:"peakExecutionBytes"`
+	GCShare       float64 `json:"gcShare"`
+	Source        Source  `json:"source,omitzero"`
+}
+
+// StageSpill is one stage's spill against its shuffle write.
+type StageSpill struct {
+	StageID      int    `json:"stageId"`
+	Attempt      int    `json:"attempt"`
+	Name         string `json:"name"`
+	MemoryBytes  int64  `json:"memorySpillBytes"`
+	DiskBytes    int64  `json:"diskSpillBytes"`
+	ShuffleWrite int64  `json:"shuffleWriteBytes"`
+	Source       Source `json:"source"`
+}
+
+// MemorySection is module 4.
+type MemorySection struct {
+	Coverage       Coverage     `json:"coverage"`
+	Lede           string       `json:"lede"`
+	Config         MemoryConfig `json:"config"`
+	Executors      []ExecMemory `json:"executors"`
+	Driver         *ExecMemory  `json:"driver,omitempty"`
+	RSSKnown       bool         `json:"rssKnown"`
+	Spill          []StageSpill `json:"spill"`
+	TotalMemSpill  int64        `json:"totalMemorySpillBytes"`
+	TotalDiskSpill int64        `json:"totalDiskSpillBytes"`
+	GCShare        float64      `json:"gcShare"`
+	Missing        []string     `json:"missing,omitempty"`
+}
+
+// Utilisation compares CPU time to run time for one executor or stage.
+type Utilisation struct {
+	ID     string  `json:"id"`
+	Label  string  `json:"label"`
+	CPUMs  int64   `json:"cpuMs"`
+	RunMs  int64   `json:"runMs"`
+	Share  float64 `json:"share"`
+	Source Source  `json:"source,omitzero"`
+}
+
+// CPUSection is module 6.
+type CPUSection struct {
+	Coverage        Coverage      `json:"coverage"`
+	CPUMs           int64         `json:"cpuMs"`
+	RunMs           int64         `json:"runMs"`
+	Share           float64       `json:"share"`
+	AllocatedCoreMs int64         `json:"allocatedCoreMs"`
+	BusyShare       float64       `json:"busyShare"`
+	Executors       []Utilisation `json:"executors"`
+	Stages          []Utilisation `json:"stages"`
+	Missing         []string      `json:"missing,omitempty"`
+}
+
+// StageIO is one stage's data movement.
+type StageIO struct {
+	StageID int        `json:"stageId"`
+	Attempt int        `json:"attempt"`
+	Name    string     `json:"name"`
+	Totals  TaskTotals `json:"totals"`
+	Source  Source     `json:"source"`
+}
+
+// IOSection is module 5.
+type IOSection struct {
+	Coverage Coverage     `json:"coverage"`
+	Totals   TaskTotals   `json:"totals"`
+	Stages   []StageIO    `json:"stages"`
+	Cached   []*CachedRDD `json:"cached"`
+	Data     []DataRef    `json:"data"`
+	Missing  []string     `json:"missing,omitempty"`
+}
+
+// JobsSection is module 7.
+type JobsSection struct {
+	Coverage     Coverage    `json:"coverage"`
+	Jobs         []*Job      `json:"jobs"`
+	Stages       []*Stage    `json:"stages"`
+	SQL          []*SQLQuery `json:"sql"`
+	CriticalPath []int       `json:"criticalPath,omitempty"` // stage IDs of the longest job's slowest chain
+	CriticalJob  int         `json:"criticalJob"`
+	Failed       int         `json:"failedJobs"`
+	Missing      []string    `json:"missing,omitempty"`
+}
+
+// ConfigGroup is one group of settings.
+type ConfigGroup struct {
+	Name    string       `json:"name"`
+	Entries []ConfigView `json:"entries"`
+}
+
+// ConfigView is a setting as shown in the report.
+type ConfigView struct {
+	ConfigEntry
+	Default    string `json:"default,omitempty"`
+	NonDefault bool   `json:"nonDefault,omitempty"`
+	Explain    string `json:"explain,omitempty"`
+	Risk       string `json:"risk,omitempty"`
+}
+
+// ConfigSection is module 8.
+type ConfigSection struct {
+	Coverage   Coverage      `json:"coverage"`
+	Key        []ConfigView  `json:"key"` // the settings that matter most, explained
+	Groups     []ConfigGroup `json:"groups"`
+	Total      int           `json:"total"`
+	NonDefault int           `json:"nonDefault"`
+	Redacted   int           `json:"redacted"`
+	Missing    []string      `json:"missing,omitempty"`
+}
+
+// Fact is a labelled value with a one-line explanation.
+type Fact struct {
+	Label   string `json:"label"`
+	Value   string `json:"value"`
+	Explain string `json:"explain"`
+	Source  Source `json:"source,omitzero"`
+}
+
+// IdentitySection is module 9. Phase 1 only fills what the event log knows.
+type IdentitySection struct {
+	Coverage Coverage `json:"coverage"`
+	Facts    []Fact   `json:"facts"`
+	Missing  []string `json:"missing,omitempty"`
+}
+
+// SourceStatus is one row in the Sources panel.
+type SourceStatus struct {
+	Name     string `json:"name"`
+	Status   string `json:"status"` // read, partial, not-supplied, error, not-yet
+	Class    string `json:"errorClass,omitempty"`
+	Location string `json:"location,omitempty"`
+	Detail   string `json:"detail"`
+}
