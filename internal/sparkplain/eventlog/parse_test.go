@@ -215,8 +215,8 @@ func TestUnknownAndMalformedCounted(t *testing.T) {
 
 // The fixtures carry planted fake secrets; none may survive parsing.
 func TestPlantedSecretsNeverInModel(t *testing.T) {
-	for _, name := range []string{mainApp, "application_1790380000000_0044"} {
-		l := parseFixture(t, name, strings.TrimSuffix(name, ""))
+	for name, app := range fixtureInputs(t) {
+		l := parseFixture(t, name, app)
 		b, err := json.Marshal(l)
 		if err != nil {
 			t.Fatal(err)

@@ -37,21 +37,22 @@ type stageAcc struct {
 type blockSize struct{ mem, disk int64 }
 
 type parser struct {
-	opt       Options
-	log       *model.EventLog
-	execs     map[string]*model.Executor
-	jobs      map[int]*model.Job
-	stages    map[stageKey]*stageAcc
-	stageJobs map[int][]int
-	sql       map[int64]*model.SQLQuery
-	sqlJobs   map[int64][]int
-	plans     int
-	rdds      map[int]*model.CachedRDD
-	blocks    map[string]blockSize
-	sawEnd    bool
-	lastMs    int64
-	partial   bool         // the previous line was cut off by the end of a file
-	ex        *explorerAcc // nil unless Options.Explorer is set
+	opt        Options
+	log        *model.EventLog
+	execs      map[string]*model.Executor
+	jobs       map[int]*model.Job
+	stages     map[stageKey]*stageAcc
+	stageJobs  map[int][]int
+	sql        map[int64]*model.SQLQuery
+	sqlJobs    map[int64][]int
+	plans      int
+	rdds       map[int]*model.CachedRDD
+	blocks     map[string]blockSize
+	sawEnd     bool
+	lastMs     int64
+	partial    bool           // the previous line was cut off by the end of a file
+	ex         *explorerAcc   // nil unless Options.Explorer is set
+	nestedSeen map[string]int // events of each type checked against the inventory
 }
 
 // Parse streams the event log and folds it into the model. It returns an
@@ -130,12 +131,13 @@ func (p *parser) line(line []byte, src model.Source) error {
 	st := &p.log.Stats
 	st.Events++
 	st.ByType[name]++
-	if keys, ok := knownKeys[name]; ok {
+	if knownEvent(name) {
 		topLevelKeys(line, func(k []byte) {
-			if !keys[string(k)] {
+			if !topLevelKnown(name, string(k)) {
 				st.UnknownFields[name+"."+string(k)]++
 			}
 		})
+		p.checkNested(name, line)
 	}
 	switch name {
 	case evTaskEnd:
@@ -262,7 +264,7 @@ func (p *parser) line(line []byte, src model.Source) error {
 		var e catalogEvent
 		return p.decode(line, &e, func() { p.catalog(strings.TrimPrefix(name, catalogPrefix), &e, src) })
 	}
-	if !ignored[name] {
+	if !knownEvent(name) {
 		st.UnknownEvents[name]++
 	}
 	return nil

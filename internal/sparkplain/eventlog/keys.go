@@ -29,66 +29,6 @@ const (
 	catalogPrefix     = "org.apache.spark.sql.catalyst.catalog."
 )
 
-// ignored are events Spark writes that sparkplain knows and does not need.
-var ignored = map[string]bool{
-	evTaskStart: true, evTaskGetting: true,
-	"org.apache.spark.sql.execution.ui.SparkListenerSQLAdaptiveSQLMetricUpdates": true,
-	"SparkListenerSpeculativeTaskSubmitted":                                      true,
-	"SparkListenerExecutorExcluded":                                              true,
-	"SparkListenerExecutorExcludedForStage":                                      true,
-	"SparkListenerExecutorUnexcluded":                                            true,
-	"SparkListenerNodeExcluded":                                                  true,
-	"SparkListenerNodeExcludedForStage":                                          true,
-	"SparkListenerNodeUnexcluded":                                                true,
-	"SparkListenerExecutorBlacklisted":                                           true,
-	"SparkListenerExecutorBlacklistedForStage":                                   true,
-	"SparkListenerExecutorUnblacklisted":                                         true,
-	"SparkListenerNodeBlacklisted":                                               true,
-	"SparkListenerNodeBlacklistedForStage":                                       true,
-	"SparkListenerNodeUnblacklisted":                                             true,
-	"SparkListenerUnschedulableTaskSetAdded":                                     true,
-	"SparkListenerUnschedulableTaskSetRemoved":                                   true,
-	"SparkListenerMiscellaneousProcessAdded":                                     true,
-}
-
-// knownKeys lists the top-level fields of each event in Spark 3.5. Others are
-// counted as unknown fields, which flags schema drift in newer releases.
-var knownKeys = map[string]map[string]bool{}
-
-func init() {
-	add := func(ev string, keys ...string) {
-		m := map[string]bool{"Event": true}
-		for _, k := range keys {
-			m[k] = true
-		}
-		knownKeys[ev] = m
-	}
-	add(evLogStart, "Spark Version")
-	add(evResourceProfile, "Resource Profile Id", "Executor Resource Requests", "Task Resource Requests")
-	add(evBMAdded, "Block Manager ID", "Maximum Memory", "Timestamp", "Maximum Onheap Memory", "Maximum Offheap Memory")
-	add(evBMRemoved, "Block Manager ID", "Timestamp")
-	add(evEnv, "JVM Information", "Spark Properties", "Hadoop Properties", "System Properties", "Metrics Properties", "Classpath Entries")
-	add(evAppStart, "App Name", "App ID", "Timestamp", "User", "App Attempt ID", "Driver Logs", "Driver Attributes")
-	add(evAppEnd, "Timestamp", "ExitCode")
-	add(evExecAdded, "Timestamp", "Executor ID", "Executor Info")
-	add(evExecRemoved, "Timestamp", "Executor ID", "Removed Reason")
-	add(evJobStart, "Job ID", "Submission Time", "Stage Infos", "Stage IDs", "Properties")
-	add(evJobEnd, "Job ID", "Completion Time", "Job Result")
-	add(evStageSubmitted, "Stage Info", "Properties")
-	add(evStageCompleted, "Stage Info")
-	add(evTaskStart, "Stage ID", "Stage Attempt ID", "Task Info")
-	add(evTaskGetting, "Task Info")
-	add(evTaskEnd, "Stage ID", "Stage Attempt ID", "Task Type", "Task End Reason", "Task Info", "Task Executor Metrics", "Task Metrics")
-	add(evStageExecMetric, "Executor ID", "Stage ID", "Stage Attempt ID", "Executor Metrics")
-	add(evMetricsUpdate, "Executor ID", "Metrics Updated", "Executor Metrics Updated")
-	add(evBlockUpdated, "Block Updated Info")
-	add(evUnpersist, "RDD ID")
-	add(evSQLStart, "executionId", "rootExecutionId", "description", "details", "physicalPlanDescription", "sparkPlanInfo", "time", "modifiedConfigs", "jobTags")
-	add(evSQLEnd, "executionId", "time", "errorMessage")
-	add(evSQLAdaptive, "executionId", "physicalPlanDescription", "sparkPlanInfo")
-	add(evDriverAccum, "executionId", "accumUpdates")
-}
-
 // eventName pulls the "Event" value from a line without a full decode.
 // Spark always writes it first; other orders fall back to "".
 func eventName(line []byte) string {
