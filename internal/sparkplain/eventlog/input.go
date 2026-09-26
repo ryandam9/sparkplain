@@ -180,7 +180,7 @@ func (in *Input) resolveDir(dir, appID string) error {
 	}
 	pick := pickAttempt(cands)
 	if len(cands) > 1 {
-		in.Notes = append(in.Notes, fmt.Sprintf("Found %d logs for this application (%s); read %s, the latest attempt.", len(cands), strings.Join(cands, ", "), pick))
+		in.Notes = append(in.Notes, fmt.Sprintf("Found %d logs for this application (%s); read %s (the highest attempt, preferring a finished log).", len(cands), strings.Join(cands, ", "), pick))
 	}
 	full := filepath.Join(dir, pick)
 	st, err := os.Stat(full)
