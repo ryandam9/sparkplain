@@ -7,8 +7,11 @@ The design is in [docs/SPEC.md](docs/SPEC.md). This version is **phase 1**: it r
 ## Build
 
 ```sh
-go build ./cmd/sparkplain
+make build     # writes bin/sparkplain, stamped with the git version
+make install   # also copies it to ~/.local/bin or /usr/local/bin (PREFIX=... to override)
 ```
+
+Without make, `go build ./cmd/sparkplain` works too.
 
 ## Use
 
@@ -29,11 +32,19 @@ Exit codes: 0 complete, 2 fatal, 3 partial (something missing or unreadable, whi
 ## Develop
 
 ```sh
+make check     # gofmt check, go vet, go test -race, build and govulncheck: run before calling a task done
+make run       # builds, then writes a report for the committed fixture to out/ (ARGS="..." to override)
+make help      # lists every target
+```
+
+`make check` runs the same four commands as:
+
+```sh
 gofmt -l . && go vet ./...
 go test -race ./...
 go build ./cmd/sparkplain
 govulncheck ./...
 ```
 
-- Fixtures in `testdata/eventlog` come from real PySpark 3.5.1 runs, scrubbed. Regenerate them with `scripts/fixtures/generate.sh` (needs Java 17+ and `pyspark==3.5.1`; see the script header).
-- `go run ./scripts/benchlog -out /tmp/big.log -tasks 245000` writes a synthetic 1 GB log for the performance budget in SPEC §8.
+- Fixtures in `testdata/eventlog` come from real PySpark 3.5.1 runs, scrubbed. Regenerate them with `make fixtures` (runs `scripts/fixtures/generate.sh`; needs Java 17+, `pyspark==3.5.1` and `SP_SCRATCH`; see the script header).
+- `make bench-log` (`go run ./scripts/benchlog -out out/big.log -tasks 245000`) writes a synthetic 1 GB log for the performance budget in SPEC §8.
