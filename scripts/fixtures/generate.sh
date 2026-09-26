@@ -22,10 +22,24 @@ run() { # mode
   ls -d "$SCRATCH/run/ev/$1"/*
 }
 
+java_fixture() { # needs a JDK with javac (SP_JAVAC, default javac); built for Java 11
+  local jars src out=$SCRATCH/run/java ev=$SCRATCH/run/ev/java
+  jars=$("$PY" -c 'import pyspark, os; print(os.path.join(os.path.dirname(pyspark.__file__), "jars"))')
+  rm -rf "$out" "$ev" && mkdir -p "$out/classes" "$ev"
+  "${SP_JAVAC:-javac}" --release 11 -cp "$jars/*" -d "$out/classes" "$REPO/scripts/fixtures/java/ClaimsJob.java"
+  (cd "$out/classes" && "${SP_JAR:-jar}" cf "$out/claims.jar" .)
+  "$(dirname "$jars")/bin/spark-submit" --master 'local-cluster[2,1,1024]' --class ClaimsJob \
+    --conf spark.eventLog.enabled=true --conf "spark.eventLog.dir=file://$ev" \
+    --conf spark.hadoop.fs.s3a.secret.key=FAKE-S3A-SECRET-0001 "$out/claims.jar" "$out/totals" >"$SCRATCH/run/java.out" 2>&1
+  "$PY" "$REPO/scripts/fixtures/scrub.py" "$(ls -d "$ev"/*)" application_1790380000000_0051 "$OUT" plainonly
+}
+
 extra() { # the fixtures added for phase 1c
   "$PY" "$REPO/scripts/fixtures/scrub.py" "$(run investigate)" application_1790380000000_0046 "$OUT" plainonly
   run running >/dev/null
   "$PY" "$REPO/scripts/fixtures/scrub.py" "$SCRATCH/run/ev/running/snapshot" application_1790380000000_0047 "$OUT" snapshot
+  # A Java application, whose event log records user stack frames.
+  java_fixture
   # A node excluded for a stage leaves the task nowhere to run on a one-host
   # cluster, so the job aborts: a fixture of that failure.
   "$PY" "$REPO/scripts/fixtures/scrub.py" "$(run excluded)" application_1790380000000_0048 "$OUT" plainonly
