@@ -5,6 +5,7 @@ Usage: scrub.py <raw log file or eventlog_v2 dir> <new app id> <out dir> <kind>
         plainonly-> <out>/<appId> only
         rolling  -> <out>/eventlog_v2_<appId>/events_<n>_<appId>.zstd + appstatus marker
         inprogress -> <out>/<appId>.inprogress, cut in the middle of a line, no ApplicationEnd
+        snapshot -> <out>/<appId>.inprogress from a copy taken while the app ran (a torn last line is dropped)
 
 Scrubbing rewrites every string in every event:
   * local paths (scratch dirs, the repo checkout, the venv, /root) become neutral EMR-like paths
@@ -23,10 +24,12 @@ import zipfile
 src, new_app, out, kind = sys.argv[1:5]
 SCRATCH = os.environ["SP_SCRATCH"]
 REPO = os.environ["SP_REPO"]
-IP = "192.0.2.2"
+IP = os.environ.get("SP_LOCAL_IP", "192.0.2.2")  # SPARK_LOCAL_IP the workload ran with
+HOME = os.path.expanduser("~")
+USER = os.path.basename(HOME)
 DRIVER_HOST = "ip-10-0-1-10.ec2.internal"
 WORKER_HOSTS = ["ip-10-0-1-23.ec2.internal", "ip-10-0-1-37.ec2.internal"]
-FORBIDDEN = ["claude", "scratchpad", "/root", "192.0.2.", "/home/user", "home-user", SCRATCH]
+FORBIDDEN = ["claude", "scratchpad", "/root", "192.0.2.", "/home/user", "home-user", SCRATCH, IP, HOME, "/" + USER + "/"]
 
 if os.path.isdir(src):
     parts = sorted((f for f in os.listdir(src) if f.startswith("events_")), key=lambda f: int(f.split("_")[1]))
@@ -39,6 +42,11 @@ for i, f in enumerate(files):
     with open(f, encoding="utf-8") as fh:
         for l in fh:
             lines.append((i, l.rstrip("\n")))
+if kind == "snapshot" and lines:
+    try:
+        json.loads(lines[-1][1])
+    except ValueError:
+        lines.pop()  # the copy caught Spark mid-write
 
 old_app = None
 exec_port = {}
@@ -64,6 +72,7 @@ PATHS = [(p, "/usr/lib/spark") for p in venv_pyspark] + [
     (REPO, "/home/hadoop/src"),
     ("/tmp/claude-0", "/mnt/tmp"),
     ("/root", "/home/hadoop"),
+    (HOME, "/home/hadoop"),
 ]
 
 
@@ -72,7 +81,8 @@ def fix_str(s):
         s = s.replace(a, b)
     # Spark shortens long paths with "...", which defeats the exact
     # replacements above; catch any remaining prefix of the scratch path.
-    s = re.sub(r"/mnt/tmp/-home-user-[A-Za-z0-9_.-]*(?:/[0-9a-f-]*)?\.*", "/mnt/tmp/...", s)
+    s = re.sub(r"/tmp/claude-\d+", "/mnt/tmp", s)
+    s = re.sub(r"/mnt/tmp/-home-[A-Za-z0-9_.-]*(?:/[0-9a-f-]*)?\.*", "/mnt/tmp/...", s)
     s = s.replace(old_app, new_app)
     s = re.sub(r"\(192\.0\.2\.2 executor (\w+)\)", lambda m: "(%s executor %s)" % (exec_host.get(m.group(1), DRIVER_HOST), m.group(1)), s)
     s = re.sub(r"192\.0\.2\.2:(\d+)", lambda m: "%s:%s" % (port_host.get(int(m.group(1)), DRIVER_HOST), m.group(1)), s)
@@ -86,7 +96,7 @@ def walk(v, execid=None):
         for k, x in v.items():
             if k == "Host" and isinstance(x, str) and eid is not None:
                 out[k] = exec_host.get(eid, DRIVER_HOST)
-            elif k == "User" or (k == "user.name" and x == "root"):
+            elif k == "User" or (k == "user.name" and x in ("root", USER)):
                 out[k] = "hadoop"
             else:
                 out[fix_str(k)] = walk(x, eid)
@@ -148,6 +158,9 @@ elif kind == "inprogress":
     cut = data.rfind(b"\n", 0, len(data) - 1) + 1 + 40  # 40 bytes into the last line
     with open(os.path.join(out, new_app + ".inprogress"), "wb") as fh:
         fh.write(data[:cut])
+elif kind == "snapshot":
+    with open(os.path.join(out, new_app + ".inprogress"), "wb") as fh:
+        fh.write(text(scrubbed))
 elif kind == "rolling":
     d = os.path.join(out, "eventlog_v2_" + new_app)
     os.makedirs(d, exist_ok=True)
