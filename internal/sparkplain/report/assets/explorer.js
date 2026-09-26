@@ -1128,7 +1128,7 @@
     ch.draw(dt, { height: Math.min(capRows.length, 600) * 28 + 60, backgroundColor: css("--surface"), fontName: th.font,
       alternatingRowStyle: false,
       timeline: { showBarLabels: true, rowLabelStyle: { color: th.ink, fontName: th.font, fontSize: 12 }, barLabelStyle: { fontName: th.font, fontSize: 11 } },
-      avoidOverlappingGridLines: false, tooltip: { isHtml: false } });
+      hAxis: { format: "HH:mm:ss" }, avoidOverlappingGridLines: false, tooltip: { isHtml: false } });
     if (c.link) google.visualization.events.addListener(ch, "select", function () { var sel = ch.getSelection()[0]; if (sel && sel.row != null) location.hash = c.link(capRows[sel.row]); });
   }
   var STATUS_NOTE = " Blue: succeeded. Red: failed. Grey: running, incomplete or skipped.";

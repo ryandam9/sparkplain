@@ -22,6 +22,7 @@ td a:hover,.ev a:hover{text-decoration:underline}
 .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 .gchart{min-height:260px}
 .gchart.tall{min-height:420px}
+.gchart.tall.scrolly{min-height:0} /* a drawn timeline is as tall as its rows */
 .gchart .wait{color:var(--faint);font-size:13px;padding:16px}
 .tree td.op{white-space:nowrap}
 .tree .ind{display:inline-block}
