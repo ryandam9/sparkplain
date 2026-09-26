@@ -302,6 +302,7 @@
       j.group ? fact("Job group", j.group) : null,
       fact("Code", j.name, "Where in the code the action ran.")));
     if (j.failure) s.appendChild(el("pre", { cls: "plan", text: j.failure }));
+    if (j.failureStack) s.appendChild(el("details", null, el("summary", { text: "Stack trace of the job's failure" }), el("div", { cls: "inner" }, el("pre", { cls: "plan", text: j.failureStack }))));
     var jw = el("div", { cls: "dagwrap", hidden: true });
     s.appendChild(jw);
     jobDag(jw, j.id, null);
@@ -350,18 +351,29 @@
     ["runTimeMs", "Executor run time", dur, "Time the task's code ran on the executor."],
     ["gcTimeMs", "GC time", dur, "Time the JVM spent collecting garbage during the task."],
     ["deserializeMs", "Task deserialization", dur, "Time to unpack the task before running it; high on a cold executor."],
+    ["deserializeCpuMs", "Deserialization CPU", dur, "CPU time spent unpacking the task."],
+    ["schedulerDelayMs", "Scheduler delay", dur, "Time not spent running, unpacking or returning the task: launch overhead and waiting on the driver."],
+    ["resultSerializationMs", "Result serialization", dur, "Time to package the task's result for the driver."],
+    ["gettingResultMs", "Getting result", dur, "Time the driver spent fetching a result too big to send directly (over spark.task.maxDirectResultSize)."],
+    ["resultSizeBytes", "Result size", bytes, "Size of the result each task sent to the driver."],
     ["recordsRead", "Rows read", num, "Rows from input plus shuffle."],
     ["inputBytes", "Input size", bytes, "Bytes read from files and tables."],
     ["shuffleReadBytes", "Shuffle read", bytes, "Bytes fetched from earlier stages."],
     ["shuffleRecordsRead", "Shuffle rows read", num, "Rows fetched from earlier stages."],
+    ["shuffleRemoteBytes", "Shuffle read from other hosts", bytes, "Shuffle bytes fetched over the network rather than from this host."],
+    ["shuffleRemoteToDiskBytes", "Shuffle fetched to disk", bytes, "Remote shuffle blocks too big for memory, written to disk as they arrived."],
+    ["shuffleRemoteRequestsMs", "Shuffle fetch requests", dur, "Time the remote shuffle fetch requests took."],
     ["shuffleFetchWaitMs", "Shuffle fetch wait", dur, "Time spent waiting for shuffle data to arrive."],
     ["shuffleWriteBytes", "Shuffle write", bytes, "Bytes written for later stages."],
+    ["shuffleWriteTimeMs", "Shuffle write time", dur, "Time spent writing shuffle files."],
     ["memorySpillBytes", "Memory spill", bytes, "Size in memory of data that had to be spilled."],
     ["diskSpillBytes", "Disk spill", bytes, "Bytes written to local disk because data did not fit."],
     ["peakExecutionMemory", "Peak execution memory", bytes, "Most memory the task used for sorts, joins and aggregations."],
     ["outputBytes", "Output size", bytes, "Bytes written to files and tables."]
   ];
-  var SKEWY = { durationMs: 1, runTimeMs: 1, recordsRead: 1, inputBytes: 1, shuffleReadBytes: 1, shuffleRecordsRead: 1 };
+  var SKEWY = { durationMs: 1, runTimeMs: 1, recordsRead: 1, inputBytes: 1, shuffleReadBytes: 1, shuffleRecordsRead: 1, schedulerDelayMs: 1, resultSizeBytes: 1 };
+  var LOC = ["process-local", "node-local", "rack-local", "any host", "no preference"];
+  var LOC_EXPLAIN = "Where each task ran relative to its data: in the same executor (process-local), on the same host (node-local), in the same rack, or anywhere.";
   function taskRows(rows) {
     return rows.map(function (r) {
       var o = {};
@@ -377,7 +389,7 @@
       rows: taskRows(rows), sort: o.sort, dir: "desc", page: 50, scroll: true,
       rowCls: function (t) { return t.status === 1 ? "failedrow" : null; },
       cols: [
-        numCol("Task", "task"), numCol("Partition", "index"),
+        numCol("Task", "task"), numCol("Index", "index"), numCol("Partition", "part"),
         { h: "Attempt", num: true, v: function (t) { return t.attempt; }, f: function (t) { return num(t.attempt + 1) + (t.spec ? " (speculative)" : ""); } },
         { h: "Executor", v: function (t) { return t.execID; }, f: function (t) { return execLink(t.execID); } },
         { h: "Status", v: function (t) { return t.status; }, f: function (t) { return status(TS[t.status]); } },
@@ -385,6 +397,8 @@
         numCol("Duration", "dur", dur), numCol("Run", "run", dur), numCol("GC", "gc", dur), numCol("Deserialize", "deser", dur),
         numCol("Fetch wait", "fetch", dur), numCol("Rows read", "rows"), numCol("Input", "input", bytes),
         numCol("Shuffle read", "shRead", bytes), numCol("Shuffle write", "shWrite", bytes), numCol("Spill", "spill", bytes),
+        { h: "Locality", title: LOC_EXPLAIN, v: function (t) { return t.loc; }, f: function (t) { return LOC[t.loc] || "—"; } },
+        numCol("Scheduler delay", "sched", dur, "Launch overhead and waiting on the driver"), numCol("Result size", "result", bytes),
         { h: "Log line", v: function (t) { return t.line; }, f: function (t) { return el("span", { cls: "srcref", text: t.file >= 0 ? (D.files[t.file] || "?") + ":" + t.line : "" }); } }
       ]
     });
@@ -406,7 +420,27 @@
       fact("Tasks", num(st.ok) + " succeeded of " + num(st.tasks) + " attempts", (st.failed ? num(st.failed) + " failed, " : "") + (st.killed ? num(st.killed) + " killed, " : "") + num(st.numTasks) + " partitions."),
       fact("Task time", dur(st.dur), "All task attempts' durations added up."),
       fact("Jobs", st.jobs.length ? jl : "—", "The actions this stage ran for."),
-      fact("Runs after", st.parents.length ? pl : "Nothing: it reads its input directly.", "Stages whose output this stage reads.")));
+      fact("Runs after", st.parents.length ? pl : "Nothing: it reads its input directly.", "Stages whose output this stage reads."),
+      st.taskType ? fact("Kind", st.taskType === "ResultTask" ? "Result stage" : "Shuffle map stage", st.taskType === "ResultTask" ? "Its tasks return results to the driver or write output." : "Its tasks write shuffle files that later stages read.") : null,
+      st.tasks ? fact("Data locality", LOC.map(function (l, i) { return st.loc[i] ? num(st.loc[i]) + " " + l : null; }).filter(Boolean).join(", ") || "—", LOC_EXPLAIN) : null,
+      st.gettingMs ? fact("Large results", dur(st.gettingMs) + " spent fetching results", "Results over spark.task.maxDirectResultSize go through the block manager, and the driver fetches them separately. " + bytes(st.resultSize) + " of results in all.") : null,
+      st.push && (st.push[0] || st.push[2] || st.push[4]) ? fact("Push-based shuffle", bytes(st.push[1] + st.push[3]) + " read from merged shuffle files", num(st.push[0] + st.push[2]) + " merged blocks; " + num(st.push[4]) + " fell back to unmerged blocks" + (st.push[5] ? "; " + num(st.push[5]) + " corrupt chunks" : "") + ".") : null,
+      st.cacheWrites && st.cacheWrites[0] ? fact("Cache writes", num(st.cacheWrites[0]) + " blocks, " + bytes(st.cacheWrites[1]), "Blocks the tasks stored in the cache.") : null));
+    if (st.failures && st.failures.length) {
+      s.appendChild(el("h3", { text: "Why tasks failed" }));
+      s.appendChild(table({
+        rows: st.failures, page: 20,
+        cols: [
+          { h: "Kind", f: function (r) { return r[0]; } },
+          { h: "Message", f: function (r) { return el("span", null, r[1], r[4] != null ? el("span", { cls: "sub", text: r[4] ? "Spark says the application caused the executor to exit." : "Spark says the application did not cause the exit." }) : null); } },
+          { h: "Attempts", num: true, f: function (r) { return num(r[2]); } },
+          { h: "Executors", f: function (r) { return el("span", null, r[3].map(function (id, i) { return [i ? ", " : "", execLink(id)]; })); } }
+        ]
+      }));
+      st.failures.forEach(function (r) {
+        if (r[5]) s.appendChild(el("details", null, el("summary", { text: "Stack trace: " + clip(r[1], 90) }), el("div", { cls: "inner" }, el("pre", { cls: "plan", text: r[5] }))));
+      });
+    }
     if (st.failure) { s.appendChild(el("h3", { text: "Why it failed" })); s.appendChild(el("pre", { cls: "plan", text: st.failure })); }
     var sw = el("div", { cls: "dagwrap", hidden: true });
     s.appendChild(sw);
@@ -498,7 +532,10 @@
       fact("Cores", num(x.cores), "Tasks it could run at once."),
       fact("Tasks", num(x.ok) + " succeeded of " + num(x.tasks), (x.failed ? num(x.failed) + " failed. " : "") + "Task time " + dur(x.dur) + ", GC " + pct(x.run ? x.gc / x.run : null) + " of run time."),
       fact("Peak memory", x.peakHeap ? bytes(x.peakHeap) + " heap of " + bytes(D.heapBytes) : "Not recorded", "Execution " + bytes(x.peakExec) + ", storage " + bytes(x.peakStorage) + (x.peakRss ? ", process RSS " + bytes(x.peakRss) : "") + "."),
-      fact("Data", bytes(x.input) + " read, " + bytes(x.output) + " written", "Shuffle: " + bytes(x.shRead) + " read, " + bytes(x.shWrite) + " written. Spill to disk " + bytes(x.diskSpill) + ".")));
+      fact("Data", bytes(x.input) + " read, " + bytes(x.output) + " written", "Shuffle: " + bytes(x.shRead) + " read, " + bytes(x.shWrite) + " written. Spill to disk " + bytes(x.diskSpill) + "."),
+      x.minorGc || x.majorGc ? fact("Garbage collection", num(x.minorGc) + " minor (" + dur(x.minorGcMs) + "), " + num(x.majorGc) + " major (" + dur(x.majorGcMs) + ")", "Collections the JVM reported by the time of its last sample. Major collections pause everything and are the ones to watch.") : null,
+      x.unified || x.vmem ? fact("More memory", (x.unified ? bytes(x.unified) + " unified (execution plus storage)" : "") + (x.vmem ? (x.unified ? "; " : "") + bytes(x.vmem) + " virtual" : ""), "Peaks Spark sampled; virtual memory counts reserved address space, not RAM used.") : null,
+      x.tasks ? fact("Task overheads", dur(x.sched) + " scheduler delay, " + bytes(x.resultSize) + " of results", "Summed over its tasks.") : null));
     var idx = D.execs.indexOf(id), cells = [];
     if (idx >= 0) stages.forEach(function (st) {
       var det = D.detail[st.key];
@@ -551,6 +588,19 @@
     if (t === "average") return null; // Spark keeps per-task averages, not a meaningful total
     return num(v);
   }
+  // spreadText shows a metric's per-task min, median and max, and the task
+  // and stage that hit the max, as Spark's SQL tab does. Spark stores
+  // "average" metrics per task as ten times the value.
+  function spreadText(m) {
+    var f = function (v) {
+      if (m[1] === "size") return bytes(v);
+      if (m[1] === "timing") return dur(v);
+      if (m[1] === "nsTiming") return dur(v / 1e6);
+      if (m[1] === "average") return (v / 10).toFixed(1);
+      return num(v);
+    };
+    return "min " + f(m[4]) + ", median " + f(m[5]) + ", max " + f(m[6]) + " in task " + m[7] + " of stage " + m[8];
+  }
   views.query = function (id) {
     var q = queryByID[id];
     if (!q) return notFound("Query " + id);
@@ -581,7 +631,12 @@
         cols: [
           { h: "Operator", f: function (r) { return el("span", { cls: "op" }, el("span", { cls: "ind", style: "width:" + r.depth * 16 + "px" }), el("b", { text: r.n.n }), r.n.d ? el("span", { cls: "sub", text: r.n.d }) : null); } },
           { h: "Metrics", f: function (r) {
-            var parts = (r.n.m || []).map(function (m) { var v = metricText(m); return v == null || v === "not recorded" || m[2] === 0 ? null : el("span", null, m[0] + " ", el("b", { text: v })); }).filter(Boolean);
+            var parts = (r.n.m || []).map(function (m) {
+              var v = metricText(m);
+              if (m[1] === "average" && m.length > 3) v = spreadText(m);
+              if (v == null || v === "not recorded" || m[2] === 0) return null;
+              return el("span", { title: m.length > 3 ? m[3] + " tasks reported it" : null }, m[0] + " ", el("b", { text: v }), m.length > 3 && m[1] !== "average" ? " (" + spreadText(m) + ")" : "");
+            }).filter(Boolean);
             return el("span", { cls: "metricv" }, parts.length ? parts.map(function (p, i) { return [i ? " · " : "", p]; }) : "—");
           } }
         ]

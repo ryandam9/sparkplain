@@ -87,6 +87,15 @@ const (
 	MetricPeakExecMemory  = "peakExecutionMemory"
 	MetricOutputBytes     = "outputBytes"
 	MetricShuffleRecsRead = "shuffleRecordsRead"
+	MetricSchedulerDelay  = "schedulerDelayMs"
+	MetricResultSize      = "resultSizeBytes"
+	MetricResultSer       = "resultSerializationMs"
+	MetricGettingResult   = "gettingResultMs"
+	MetricShuffleWriteMs  = "shuffleWriteTimeMs"
+	MetricShuffleRemote   = "shuffleRemoteBytes"
+	MetricRemoteToDisk    = "shuffleRemoteToDiskBytes"
+	MetricFetchReqs       = "shuffleRemoteRequestsMs"
+	MetricDeserializeCPU  = "deserializeCpuMs"
 )
 
 // StageDetail is one stage attempt as the explorer shows it.
@@ -121,6 +130,10 @@ type TaskSample struct {
 	ShuffleRead   int64  `json:"shuffleReadBytes"`
 	ShuffleWrite  int64  `json:"shuffleWriteBytes"`
 	Spill         int64  `json:"spillBytes"` // memory plus disk
+	PartitionID   int    `json:"partitionId"`
+	Locality      string `json:"locality,omitempty"` // PROCESS_LOCAL, NODE_LOCAL, RACK_LOCAL, ANY, NO_PREF
+	SchedDelayMs  int64  `json:"schedulerDelayMs"`
+	ResultSize    int64  `json:"resultSizeBytes"`
 	Source        Source `json:"source"`
 }
 
@@ -167,4 +180,13 @@ type SQLMetric struct {
 	Type  string `json:"type"`
 	Value int64  `json:"value"`
 	Known bool   `json:"known"`
+	// Per-task spread, from each task's update (as Spark's SQL tab shows):
+	// how many tasks reported it, the min, median and max, and the task and
+	// stage that hit the max. Tasks is 0 when no task reported it.
+	Tasks     int64 `json:"tasks,omitempty"`
+	Min       int64 `json:"min,omitempty"`
+	Median    int64 `json:"median,omitempty"`
+	Max       int64 `json:"max,omitempty"`
+	MaxTaskID int64 `json:"maxTaskId,omitempty"`
+	MaxStage  int   `json:"maxStage,omitempty"`
 }

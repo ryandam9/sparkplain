@@ -2,6 +2,7 @@ package eventlog
 
 import (
 	"container/heap"
+	"encoding/json"
 	"math/rand/v2"
 	"sort"
 	"strconv"
@@ -26,6 +27,40 @@ type explorerAcc struct {
 	plans       map[int64]*planGraph
 	wanted      map[int64]bool  // accumulator IDs of kept plans' metrics
 	accVals     map[int64]int64 // latest value of each wanted accumulator
+	accTasks    map[int64]*opDist
+}
+
+// opDist is one SQL metric's per-task spread, like the "(min, med, max)"
+// Spark's SQL tab shows, with the task that hit the max.
+type opDist struct {
+	d                 distAcc
+	maxTask, maxStage int64
+}
+
+// taskAccums folds one task's SQL metric updates into per-metric spreads.
+func (x *explorerAcc) taskAccums(stage int, task int64, raw []byte) {
+	var list []accumulable
+	if json.Unmarshal(raw, &list) != nil {
+		return
+	}
+	for _, a := range list {
+		if a.Metadata != "sql" || !x.wanted[a.ID] {
+			continue
+		}
+		v, ok := a.update()
+		if !ok {
+			continue
+		}
+		o := x.accTasks[a.ID]
+		if o == nil {
+			o = &opDist{}
+			x.accTasks[a.ID] = o
+		}
+		if o.d.n == 0 || v > o.d.max {
+			o.maxTask, o.maxStage = task, int64(stage)
+		}
+		o.d.add(v)
+	}
 }
 
 // Floors for the per-stage caps: the budget never shrinks a stage below these.
@@ -37,26 +72,39 @@ const (
 	histogramBins  = 40
 )
 
-// stageMetrics names the per-stage distributions, in the order of
-// stageDetailAcc.metrics and metricValues.
-var stageMetrics = []string{
-	model.MetricDuration, model.MetricRunTime, model.MetricGCTime, model.MetricDeserialize,
-	model.MetricRecordsRead, model.MetricInputBytes, model.MetricShuffleRead, model.MetricShuffleRecsRead,
-	model.MetricFetchWait, model.MetricShuffleWrite, model.MetricMemorySpill, model.MetricDiskSpill,
-	model.MetricPeakExecMemory, model.MetricOutputBytes,
-}
-
-func metricValues(t *model.TaskTotals) [14]int64 {
-	return [14]int64{
-		t.DurationMs, t.RunTimeMs, t.GCTimeMs, t.DeserializeMs,
-		t.InputRecords + t.ShuffleReadRecords, t.InputBytes, t.ShuffleReadBytes, t.ShuffleReadRecords,
-		t.ShuffleFetchWaitMs, t.ShuffleWriteBytes, t.MemorySpillBytes, t.DiskSpillBytes,
-		t.PeakExecutionMemory, t.OutputBytes,
-	}
+// stageMetrics are the per-stage distributions, each read from one task's
+// totals. The first is duration, which the histogram uses.
+var stageMetrics = []struct {
+	name string
+	get  func(t *model.TaskTotals) int64
+}{
+	{model.MetricDuration, func(t *model.TaskTotals) int64 { return t.DurationMs }},
+	{model.MetricRunTime, func(t *model.TaskTotals) int64 { return t.RunTimeMs }},
+	{model.MetricGCTime, func(t *model.TaskTotals) int64 { return t.GCTimeMs }},
+	{model.MetricDeserialize, func(t *model.TaskTotals) int64 { return t.DeserializeMs }},
+	{model.MetricDeserializeCPU, func(t *model.TaskTotals) int64 { return t.DeserializeCPUNs / 1e6 }},
+	{model.MetricSchedulerDelay, func(t *model.TaskTotals) int64 { return t.SchedulerDelayMs }},
+	{model.MetricResultSer, func(t *model.TaskTotals) int64 { return t.ResultSerializationMs }},
+	{model.MetricGettingResult, func(t *model.TaskTotals) int64 { return t.GettingResultMs }},
+	{model.MetricResultSize, func(t *model.TaskTotals) int64 { return t.ResultSizeBytes }},
+	{model.MetricRecordsRead, func(t *model.TaskTotals) int64 { return t.InputRecords + t.ShuffleReadRecords }},
+	{model.MetricInputBytes, func(t *model.TaskTotals) int64 { return t.InputBytes }},
+	{model.MetricShuffleRead, func(t *model.TaskTotals) int64 { return t.ShuffleReadBytes }},
+	{model.MetricShuffleRemote, func(t *model.TaskTotals) int64 { return t.ShuffleRemoteBytes }},
+	{model.MetricRemoteToDisk, func(t *model.TaskTotals) int64 { return t.ShuffleRemoteToDiskBytes }},
+	{model.MetricShuffleRecsRead, func(t *model.TaskTotals) int64 { return t.ShuffleReadRecords }},
+	{model.MetricFetchWait, func(t *model.TaskTotals) int64 { return t.ShuffleFetchWaitMs }},
+	{model.MetricFetchReqs, func(t *model.TaskTotals) int64 { return t.ShuffleRemoteReqsMs }},
+	{model.MetricShuffleWrite, func(t *model.TaskTotals) int64 { return t.ShuffleWriteBytes }},
+	{model.MetricShuffleWriteMs, func(t *model.TaskTotals) int64 { return t.ShuffleWriteTimeNs / 1e6 }},
+	{model.MetricMemorySpill, func(t *model.TaskTotals) int64 { return t.MemorySpillBytes }},
+	{model.MetricDiskSpill, func(t *model.TaskTotals) int64 { return t.DiskSpillBytes }},
+	{model.MetricPeakExecMemory, func(t *model.TaskTotals) int64 { return t.PeakExecutionMemory }},
+	{model.MetricOutputBytes, func(t *model.TaskTotals) int64 { return t.OutputBytes }},
 }
 
 type stageDetailAcc struct {
-	metrics [14]distAcc // successful tasks only, as in the History Server
+	metrics []distAcc // successful tasks only, as in the History Server; same order as stageMetrics
 	slowest slowHeap
 	sample  []model.TaskSample
 	seen    int64
@@ -70,7 +118,7 @@ func newExplorerAcc(lim model.ExplorerLimits) *explorerAcc {
 		lim: lim, stages: map[stageKey]*stageDetailAcc{},
 		sampleCap: lim.SamplePerStage, slowestCap: lim.SlowestPerStage,
 		running: runningAcc{width: 100},
-		plans:   map[int64]*planGraph{}, wanted: map[int64]bool{}, accVals: map[int64]int64{},
+		plans:   map[int64]*planGraph{}, wanted: map[int64]bool{}, accVals: map[int64]int64{}, accTasks: map[int64]*opDist{},
 	}
 }
 
@@ -78,7 +126,8 @@ func (x *explorerAcc) stage(k stageKey) *stageDetailAcc {
 	s := x.stages[k]
 	if s == nil {
 		// A fixed seed per stage attempt makes reruns produce the same page.
-		s = &stageDetailAcc{rng: rand.New(rand.NewPCG(uint64(k.id), uint64(k.attempt))), cells: map[string]*model.StageExecutorCell{}}
+		s = &stageDetailAcc{rng: rand.New(rand.NewPCG(uint64(k.id), uint64(k.attempt))), cells: map[string]*model.StageExecutorCell{},
+			metrics: make([]distAcc, len(stageMetrics))}
 		x.stages[k] = s
 	}
 	return s
@@ -91,10 +140,12 @@ func (x *explorerAcc) task(k stageKey, e *taskEndEvent, t *model.TaskTotals, pea
 		x.running.add(e.Info.LaunchTime, e.Info.FinishTime)
 	}
 	if t.Succeeded == 1 {
-		v := metricValues(t)
-		for i := range s.metrics {
-			s.metrics[i].add(v[i])
+		for i, m := range stageMetrics {
+			s.metrics[i].add(m.get(t))
 		}
+	}
+	if len(e.Info.Accumulables) > 2 && len(x.wanted) > 0 {
+		x.taskAccums(k.id, e.Info.TaskID, e.Info.Accumulables)
 	}
 	execID := redact.Text(e.Info.ExecutorID)
 	if c := x.cell(s, execID); c != nil {
@@ -117,7 +168,8 @@ func (x *explorerAcc) task(k stageKey, e *taskEndEvent, t *model.TaskTotals, pea
 		DurationMs: t.DurationMs, RunTimeMs: t.RunTimeMs, GCTimeMs: t.GCTimeMs, DeserializeMs: t.DeserializeMs,
 		FetchWaitMs: t.ShuffleFetchWaitMs, RecordsRead: t.InputRecords + t.ShuffleReadRecords,
 		InputBytes: t.InputBytes, ShuffleRead: t.ShuffleReadBytes, ShuffleWrite: t.ShuffleWriteBytes,
-		Spill: t.MemorySpillBytes + t.DiskSpillBytes, Source: src,
+		Spill: t.MemorySpillBytes + t.DiskSpillBytes, PartitionID: e.Info.PartitionID, Locality: e.Info.Locality,
+		SchedDelayMs: t.SchedulerDelayMs, ResultSize: t.ResultSizeBytes, Source: src,
 	}
 
 	// Slowest tasks: keep the top slowestCap by duration.
@@ -258,9 +310,9 @@ func (x *explorerAcc) build(l *model.EventLog) *model.Explorer {
 	for _, st := range l.Stages {
 		d := model.StageDetail{ID: st.ID, Attempt: st.Attempt, Metrics: map[string]model.Quartiles{}}
 		if s := x.stages[stageKey{st.ID, st.Attempt}]; s != nil {
-			for i, name := range stageMetrics {
+			for i, m := range stageMetrics {
 				if q := s.metrics[i].quartiles(); q.Count > 0 {
-					d.Metrics[name] = q
+					d.Metrics[m.name] = q
 				}
 			}
 			d.Duration = s.metrics[0].histogram(histogramBins)
@@ -285,7 +337,12 @@ func (x *explorerAcc) build(l *model.EventLog) *model.Explorer {
 		for i := range g.nodes {
 			for j, id := range g.accIDs[i] {
 				v, ok := x.accVals[id]
-				g.nodes[i].Metrics[j].Value, g.nodes[i].Metrics[j].Known = v, ok
+				m := &g.nodes[i].Metrics[j]
+				m.Value, m.Known = v, ok
+				if o := x.accTasks[id]; o != nil && o.d.n > 0 {
+					m.Tasks, m.Min, m.Median, m.Max = o.d.n, o.d.min, o.d.quantile(0.5), o.d.max
+					m.MaxTaskID, m.MaxStage = o.maxTask, int(o.maxStage)
+				}
 			}
 		}
 		out.SQL = append(out.SQL, model.SQLGraph{QueryID: q.ID, Nodes: g.nodes, Truncated: g.truncated})
@@ -389,12 +446,18 @@ func (r *runningAcc) result() model.RunningTasks {
 // Metadata "sql" and a string Value; Spark's own task metrics use numbers.
 type accumulable struct {
 	ID       int64  `json:"ID"`
+	Update   any    `json:"Update"`
 	Value    any    `json:"Value"`
 	Metadata string `json:"Metadata"`
 }
 
-func (a accumulable) int() (int64, bool) {
-	switch v := a.Value.(type) {
+// update is this task's contribution, for per-task accumulables.
+func (a accumulable) update() (int64, bool) { return anyInt(a.Update) }
+
+func (a accumulable) int() (int64, bool) { return anyInt(a.Value) }
+
+func anyInt(v any) (int64, bool) {
+	switch v := v.(type) {
 	case string:
 		n, err := strconv.ParseInt(v, 10, 64)
 		return n, err == nil

@@ -315,6 +315,9 @@ func peakOf(m execMetrics, src model.Source) model.PeakMemory {
 		DirectPool: m.DirectPoolMemory, MappedPool: m.MappedPoolMemory,
 		ProcessJVMRSS: m.ProcessTreeJVMRSSMemory, ProcessPythonRSS: m.ProcessTreePythonRSSMemory,
 		ProcessOtherRSS: m.ProcessTreeOtherRSSMemory, TotalGCTimeMs: m.TotalGCTime,
+		MinorGCCount: m.MinorGCCount, MinorGCTimeMs: m.MinorGCTime, MajorGCCount: m.MajorGCCount, MajorGCTimeMs: m.MajorGCTime,
+		OnHeapUnified: m.OnHeapUnifiedMemory, OffHeapUnified: m.OffHeapUnifiedMemory,
+		ProcessJVMVMem: m.ProcessTreeJVMVMemory, ProcessPyVMem: m.ProcessTreePythonVMemory, ProcessOtherVMem: m.ProcessTreeOtherVMemory,
 		HeapSource: src, RSSSource: src,
 	}
 }
@@ -370,6 +373,42 @@ func (p *parser) taskEnd(e *taskEndEvent, src model.Source) {
 		t.ShuffleWriteBytes, t.ShuffleWriteRecords = m.ShuffleWrite.Bytes, m.ShuffleWrite.Records
 		t.MemorySpillBytes, t.DiskSpillBytes = m.MemorySpilled, m.DiskSpilled
 		t.PeakExecutionMemory = m.PeakExecutionMemory
+		t.ResultSizeBytes, t.ResultSerializationMs, t.DeserializeCPUNs = m.ResultSize, m.ResultSerialization, m.DeserializeCPU
+		sr := &m.ShuffleRead
+		t.ShuffleWriteTimeNs = m.ShuffleWrite.TimeNs
+		t.ShuffleLocalBlocks, t.ShuffleRemoteBlocks = sr.LocalBlocks, sr.RemoteBlks
+		t.ShuffleRemoteToDiskBytes, t.ShuffleRemoteReqsMs = sr.RemoteDisk, sr.RemoteReqs
+		t.PushMergedLocalBlocks, t.PushMergedLocalBytes, t.PushMergedLocalChunks = sr.Push.LocalBlocks, sr.Push.LocalBytes, sr.Push.LocalChunks
+		t.PushMergedRemoteBlocks, t.PushMergedRemoteBytes, t.PushMergedRemoteChunks = sr.Push.RemoteBlocks, sr.Push.RemoteBytes, sr.Push.RemoteChunks
+		t.PushMergedRemoteReqsMs, t.PushFallbacks, t.PushCorruptChunks = sr.Push.RemoteRequests, sr.Push.Fallbacks, sr.Push.CorruptChunks
+		for _, b := range m.UpdatedBlocks {
+			t.UpdatedBlocks++
+			t.UpdatedBlockBytes += b.Status.MemorySize + b.Status.DiskSize
+		}
+	}
+	// The Spark UI's timing split: "Getting Result Time" is when the driver
+	// started fetching a large result, and scheduler delay is what is left of
+	// the duration after deserializing, running, serializing and fetching.
+	if e.Info.GettingTime > 0 && e.Info.FinishTime >= e.Info.GettingTime {
+		t.GettingResultMs = e.Info.FinishTime - e.Info.GettingTime
+	}
+	if dur > 0 {
+		t.SchedulerDelayMs = max(0, dur-t.RunTimeMs-t.DeserializeMs-t.ResultSerializationMs-t.GettingResultMs)
+	}
+	switch e.Info.Locality {
+	case "PROCESS_LOCAL":
+		t.LocalityProcess = 1
+	case "NODE_LOCAL":
+		t.LocalityNode = 1
+	case "RACK_LOCAL":
+		t.LocalityRack = 1
+	case "ANY":
+		t.LocalityAny = 1
+	case "NO_PREF":
+		t.LocalityNoPref = 1
+	}
+	if st.TaskType == "" {
+		st.TaskType = e.TaskType
 	}
 	st.Totals.Add(t)
 	x := p.executor(e.Info.ExecutorID, e.Info.Host)
@@ -411,10 +450,13 @@ func (p *parser) taskEnd(e *taskEndEvent, src model.Source) {
 				a.order = append(a.order, key)
 			}
 		} else {
-			f = &model.TaskFailure{Kind: kind, Message: msg, Source: src}
+			f = &model.TaskFailure{Kind: kind, Message: msg, Source: src, ExitCausedByApp: e.Reason.ExitByApp}
 			a.failures[key] = f
 			a.order = append(a.order, key)
 		}
+	}
+	if f.StackTrace == "" && e.Reason.FullStack != "" {
+		f.StackTrace = redact.Text(truncate(e.Reason.FullStack, maxStackTrace))
 	}
 	f.Count++
 	if eid := redact.Text(e.Info.ExecutorID); !contains(f.Executors, eid) && len(f.Executors) < 20 {
@@ -632,6 +674,7 @@ func (p *parser) jobEnd(e *jobEndEvent, src model.Source) {
 		j.Status = model.StatusFailed
 		if e.Result.Exception != nil {
 			j.Failure = redact.Text(truncate(e.Result.Exception.Message, 4000))
+			j.FailureStack = redact.Text(truncate(stackText(e.Result.Exception.Stack), maxStackTrace))
 		} else {
 			j.Failure = redact.Text(e.Result.Result)
 		}
@@ -912,4 +955,16 @@ func (p *parser) settleApplication() {
 	if p.sawEnd && !a.Start.IsZero() {
 		a.DurationMs = a.End.Sub(a.Start).Milliseconds()
 	}
+}
+
+// maxStackTrace caps each stack trace kept, per distinct failure.
+const maxStackTrace = 16 << 10
+
+// stackText formats Spark's structured frames the way the JVM prints them.
+func stackText(frames []stackFrame) string {
+	var b strings.Builder
+	for _, f := range frames {
+		fmt.Fprintf(&b, "at %s.%s(%s:%d)\n", f.Class, f.Method, f.File, f.Line)
+	}
+	return b.String()
 }

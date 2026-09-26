@@ -1,5 +1,7 @@
 package eventlog
 
+import "encoding/json"
+
 // JSON shapes of the Spark 3.5 events sparkplain reads. Only the fields used
 // are declared; encoding/json skips the rest. Field names are Spark's
 // JsonProtocol names, checked against the fixtures in testdata/eventlog.
@@ -17,6 +19,15 @@ type execMetrics struct {
 	ProcessTreePythonRSSMemory int64
 	ProcessTreeOtherRSSMemory  int64
 	TotalGCTime                int64
+	MinorGCCount               int64
+	MinorGCTime                int64
+	MajorGCCount               int64
+	MajorGCTime                int64
+	OnHeapUnifiedMemory        int64
+	OffHeapUnifiedMemory       int64
+	ProcessTreeJVMVMemory      int64
+	ProcessTreePythonVMemory   int64
+	ProcessTreeOtherVMemory    int64
 }
 
 type taskInfo struct {
@@ -30,6 +41,12 @@ type taskInfo struct {
 	FinishTime  int64  `json:"Finish Time"`
 	Failed      bool   `json:"Failed"`
 	Killed      bool   `json:"Killed"`
+	PartitionID int    `json:"Partition ID"`
+	Locality    string `json:"Locality"`
+	GettingTime int64  `json:"Getting Result Time"` // when the driver started fetching a large result; 0 if it did not
+	// Accumulables are the task's SQL metric updates; decoded only when the
+	// explorer wants them.
+	Accumulables json.RawMessage `json:"Accumulables"`
 }
 
 type taskEndReason struct {
@@ -40,10 +57,15 @@ type taskEndReason struct {
 	ExecutorID  string `json:"Executor ID"`
 	LossReason  string `json:"Loss Reason"`
 	Message     string `json:"Message"`
+	FullStack   string `json:"Full Stack Trace"`
+	ExitByApp   *bool  `json:"Exit Caused By App"`
 }
 
 type taskMetrics struct {
 	DeserializeTime     int64 `json:"Executor Deserialize Time"`
+	DeserializeCPU      int64 `json:"Executor Deserialize CPU Time"`
+	ResultSize          int64 `json:"Result Size"`
+	ResultSerialization int64 `json:"Result Serialization Time"`
 	RunTime             int64 `json:"Executor Run Time"`
 	CPUTime             int64 `json:"Executor CPU Time"`
 	PeakExecutionMemory int64 `json:"Peak Execution Memory"`
@@ -55,11 +77,33 @@ type taskMetrics struct {
 		RemoteBytes int64 `json:"Remote Bytes Read"`
 		LocalBytes  int64 `json:"Local Bytes Read"`
 		RecordsRead int64 `json:"Total Records Read"`
+		LocalBlocks int64 `json:"Local Blocks Fetched"`
+		RemoteBlks  int64 `json:"Remote Blocks Fetched"`
+		RemoteDisk  int64 `json:"Remote Bytes Read To Disk"`
+		RemoteReqs  int64 `json:"Remote Requests Duration"`
+		Push        struct {
+			CorruptChunks  int64 `json:"Corrupt Merged Block Chunks"`
+			Fallbacks      int64 `json:"Merged Fetch Fallback Count"`
+			LocalBlocks    int64 `json:"Merged Local Blocks Fetched"`
+			LocalBytes     int64 `json:"Merged Local Bytes Read"`
+			LocalChunks    int64 `json:"Merged Local Chunks Fetched"`
+			RemoteBlocks   int64 `json:"Merged Remote Blocks Fetched"`
+			RemoteBytes    int64 `json:"Merged Remote Bytes Read"`
+			RemoteChunks   int64 `json:"Merged Remote Chunks Fetched"`
+			RemoteRequests int64 `json:"Merged Remote Requests Duration"`
+		} `json:"Push Based Shuffle"`
 	} `json:"Shuffle Read Metrics"`
 	ShuffleWrite struct {
 		Bytes   int64 `json:"Shuffle Bytes Written"`
 		Records int64 `json:"Shuffle Records Written"`
+		TimeNs  int64 `json:"Shuffle Write Time"`
 	} `json:"Shuffle Write Metrics"`
+	UpdatedBlocks []struct {
+		Status struct {
+			MemorySize int64 `json:"Memory Size"`
+			DiskSize   int64 `json:"Disk Size"`
+		} `json:"Status"`
+	} `json:"Updated Blocks"`
 	Input struct {
 		Bytes   int64 `json:"Bytes Read"`
 		Records int64 `json:"Records Read"`
@@ -71,6 +115,7 @@ type taskMetrics struct {
 }
 
 type taskEndEvent struct {
+	TaskType     string        `json:"Task Type"`
 	StageID      int           `json:"Stage ID"`
 	StageAttempt int           `json:"Stage Attempt ID"`
 	Reason       taskEndReason `json:"Task End Reason"`
@@ -128,7 +173,8 @@ type jobEndEvent struct {
 	Result    struct {
 		Result    string `json:"Result"`
 		Exception *struct {
-			Message string `json:"Message"`
+			Message string       `json:"Message"`
+			Stack   []stackFrame `json:"Stack Trace"`
 		} `json:"Exception"`
 	} `json:"Job Result"`
 }
@@ -261,4 +307,11 @@ type catalogEvent struct {
 	Database string `json:"database"`
 	Name     string `json:"name"`
 	NewName  string `json:"newName"`
+}
+
+type stackFrame struct {
+	Class  string `json:"Declaring Class"`
+	Method string `json:"Method Name"`
+	File   string `json:"File Name"`
+	Line   int    `json:"Line Number"`
 }

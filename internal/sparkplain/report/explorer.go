@@ -30,6 +30,8 @@ type ExplorerOptions struct {
 
 // Caps on text that would otherwise dominate the page's size.
 const (
+	maxStackText     = 8 << 10  // per stack trace
+	maxStackTraces   = 3        // per stage
 	maxPlanText      = 16 << 10 // per query
 	maxPlanTextTotal = 4 << 20  // all queries together
 )
@@ -85,8 +87,10 @@ func (t *table) add(v ...any) {
 // page and so are sent once instead of on every row.
 var (
 	taskCols = []string{"task", "index", "attempt", "exec", "status", "spec", "launch", "dur", "run", "gc", "deser",
-		"fetch", "rows", "input", "shRead", "shWrite", "spill", "file", "line"}
-	cellCols = []string{"exec", "tasks", "ok", "failed", "killed", "dur", "gc", "input", "shRead", "shWrite",
+		"fetch", "rows", "input", "shRead", "shWrite", "spill", "file", "line", "part", "loc", "sched", "result"}
+	// localities are the task "loc" codes, in order.
+	localities = []string{"PROCESS_LOCAL", "NODE_LOCAL", "RACK_LOCAL", "ANY", "NO_PREF"}
+	cellCols   = []string{"exec", "tasks", "ok", "failed", "killed", "dur", "gc", "input", "shRead", "shWrite",
 		"diskSpill", "peakHeap", "peakExec"}
 )
 
@@ -173,10 +177,10 @@ type xRunning struct {
 }
 
 type xNode struct {
-	Name     string   `json:"n"`
-	Detail   string   `json:"d,omitempty"`
-	Children []int    `json:"c,omitempty"`
-	Metrics  [][3]any `json:"m,omitempty"` // name, type, value (null when not recorded)
+	Name     string  `json:"n"`
+	Detail   string  `json:"d,omitempty"`
+	Children []int   `json:"c,omitempty"`
+	Metrics  [][]any `json:"m,omitempty"` // name, type, value (null when not recorded), then tasks, min, median, max, max task, max stage when tasks reported it
 }
 
 type xConfigGroup struct {
@@ -246,7 +250,8 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 
 	d.Executors = newTable("id", "host", "cores", "added", "removed", "reason", "kind", "tasks", "ok", "failed", "killed",
 		"dur", "run", "cpuNs", "gc", "input", "output", "shRead", "shWrite", "memSpill", "diskSpill",
-		"peakHeap", "peakOffHeap", "peakExec", "peakStorage", "peakRss", "storageMem", "src")
+		"peakHeap", "peakOffHeap", "peakExec", "peakStorage", "peakRss", "storageMem", "src",
+		"minorGc", "minorGcMs", "majorGc", "majorGcMs", "unified", "vmem", "sched", "resultSize")
 	var all []*model.Executor
 	if r.Executors.Driver != nil {
 		all = append(all, r.Executors.Driver)
@@ -259,17 +264,19 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 			t.Tasks, t.Succeeded, t.Failed, t.Killed, t.DurationMs, t.RunTimeMs, t.CPUTimeNs, t.GCTimeMs,
 			t.InputBytes, t.OutputBytes, t.ShuffleReadBytes, t.ShuffleWriteBytes, t.MemorySpillBytes, t.DiskSpillBytes,
 			p.JVMHeap, p.JVMOffHeap, p.OnHeapExecution+p.OffHeapExecution, p.OnHeapStorage+p.OffHeapStorage,
-			p.ProcessJVMRSS+p.ProcessPythonRSS+p.ProcessOtherRSS, e.MaxOnHeapStorage+e.MaxOffHeapStorage, src(e.AddedSource))
+			p.ProcessJVMRSS+p.ProcessPythonRSS+p.ProcessOtherRSS, e.MaxOnHeapStorage+e.MaxOffHeapStorage, src(e.AddedSource),
+			p.MinorGCCount, p.MinorGCTimeMs, p.MajorGCCount, p.MajorGCTimeMs, p.OnHeapUnified+p.OffHeapUnified,
+			p.ProcessJVMVMem+p.ProcessPyVMem+p.ProcessOtherVMem, t.SchedulerDelayMs, t.ResultSizeBytes)
 	}
 
-	d.Jobs = newTable("id", "name", "desc", "group", "submitted", "completed", "status", "stages", "sql", "failure", "src")
+	d.Jobs = newTable("id", "name", "desc", "group", "submitted", "completed", "status", "stages", "sql", "failure", "src", "failureStack")
 	for _, j := range r.Jobs.Jobs {
 		var sql any
 		if j.SQLExecutionID != nil {
 			sql = *j.SQLExecutionID
 		}
 		d.Jobs.add(j.ID, j.Name, j.Description, j.Group, unixMs(j.Submitted), unixMs(j.Completed), j.Status,
-			orEmpty(j.StageIDs), sql, capText(j.Failure, 2000), src(j.Source))
+			orEmpty(j.StageIDs), sql, capText(j.Failure, 2000), src(j.Source), capText(j.FailureStack, maxStackText))
 	}
 
 	parents := map[int][]int{}
@@ -297,14 +304,21 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 
 	d.Stages = newTable("id", "attempt", "name", "status", "submitted", "completed", "numTasks", "jobs", "parents",
 		"tasks", "ok", "failed", "killed", "dur", "run", "gc", "input", "inputRows", "output", "outputRows",
-		"shRead", "shReadRows", "shWrite", "shWriteRows", "memSpill", "diskSpill", "p50", "max", "failure", "cached", "src")
+		"shRead", "shReadRows", "shWrite", "shWriteRows", "memSpill", "diskSpill", "p50", "max", "failure", "cached", "src",
+		"taskType", "loc", "sched", "resultSize", "gettingMs", "shWriteMs", "shRemote", "shRemoteDisk", "shLocalBlocks", "shRemoteBlocks",
+		"push", "cacheWrites", "failures")
 	for _, st := range r.Jobs.Stages {
 		t := st.Totals
 		d.Stages.add(st.ID, st.Attempt, st.Name, st.Status, unixMs(st.Submitted), unixMs(st.Completed), st.NumTasks,
 			orEmpty(st.JobIDs), orEmpty(st.ParentIDs), t.Tasks, t.Succeeded, t.Failed, t.Killed, t.DurationMs, t.RunTimeMs, t.GCTimeMs,
 			t.InputBytes, t.InputRecords, t.OutputBytes, t.OutputRecords, t.ShuffleReadBytes, t.ShuffleReadRecords,
 			t.ShuffleWriteBytes, t.ShuffleWriteRecords, t.MemorySpillBytes, t.DiskSpillBytes,
-			st.TaskDuration.P50, st.TaskDuration.Max, capText(st.FailureReason, 2000), orEmpty(st.CachedRDDs), src(st.Source))
+			st.TaskDuration.P50, st.TaskDuration.Max, capText(st.FailureReason, 2000), orEmpty(st.CachedRDDs), src(st.Source),
+			st.TaskType, []int64{t.LocalityProcess, t.LocalityNode, t.LocalityRack, t.LocalityAny, t.LocalityNoPref},
+			t.SchedulerDelayMs, t.ResultSizeBytes, t.GettingResultMs, t.ShuffleWriteTimeNs/1e6, t.ShuffleRemoteBytes,
+			t.ShuffleRemoteToDiskBytes, t.ShuffleLocalBlocks, t.ShuffleRemoteBlocks,
+			[]int64{t.PushMergedLocalBlocks, t.PushMergedLocalBytes, t.PushMergedRemoteBlocks, t.PushMergedRemoteBytes, t.PushFallbacks, t.PushCorruptChunks, t.PushMergedRemoteReqsMs},
+			[]int64{t.UpdatedBlocks, t.UpdatedBlockBytes}, stageFailures(st))
 	}
 
 	d.SQL = newTable("id", "desc", "start", "end", "error", "jobs", "reads", "writes", "plan", "planCut", "src")
@@ -364,9 +378,15 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		if d.T0 > 0 && launch > 0 {
 			launch -= d.T0
 		}
+		loc := int64(-1)
+		for i, l := range localities {
+			if t.Locality == l {
+				loc = int64(i)
+			}
+		}
 		return []int64{t.TaskID, int64(t.Index), int64(t.Attempt), execIdx(t.ExecutorID), status, spec, launch,
 			t.DurationMs, t.RunTimeMs, t.GCTimeMs, t.DeserializeMs, t.FetchWaitMs, t.RecordsRead, t.InputBytes,
-			t.ShuffleRead, t.ShuffleWrite, t.Spill, fileIdx(t.Source), t.Source.Line}
+			t.ShuffleRead, t.ShuffleWrite, t.Spill, fileIdx(t.Source), t.Source.Line, int64(t.PartitionID), loc, t.SchedDelayMs, t.ResultSize}
 	}
 	for _, sd := range x.Stages {
 		xd := xDetail{Metrics: map[string][7]int64{}, Hist: [][3]int64{}, Slowest: [][]int64{}, Sample: [][]int64{}, Cells: [][]int64{}, From: sd.SampledFrom}
@@ -401,7 +421,11 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 				if m.Known {
 					v = m.Value
 				}
-				xn.Metrics = append(xn.Metrics, [3]any{m.Name, m.Type, v})
+				row := []any{m.Name, m.Type, v}
+				if m.Tasks > 0 {
+					row = append(row, m.Tasks, m.Min, m.Median, m.Max, m.MaxTaskID, m.MaxStage)
+				}
+				xn.Metrics = append(xn.Metrics, row)
 			}
 			nodes[i] = xn
 		}
@@ -434,6 +458,25 @@ func refNames(refs []model.DataRef) []string {
 			name += " (" + r.Format + ")"
 		}
 		out = append(out, name)
+	}
+	return out
+}
+
+// stageFailures lists why a stage's tasks failed: kind, message, count,
+// executors, whether Spark blamed the app for a lost executor (null when it
+// did not say), and a stack trace for the first few reasons.
+func stageFailures(st *model.Stage) [][]any {
+	out := [][]any{}
+	for i, f := range st.Failures {
+		stack := ""
+		if i < maxStackTraces {
+			stack = capText(f.StackTrace, maxStackText)
+		}
+		var byApp any
+		if f.ExitCausedByApp != nil {
+			byApp = *f.ExitCausedByApp
+		}
+		out = append(out, []any{f.Kind, f.Message, f.Count, orEmpty(f.Executors), byApp, stack})
 	}
 	return out
 }

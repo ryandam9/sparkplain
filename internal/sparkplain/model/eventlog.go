@@ -95,18 +95,28 @@ type ResourceProfile struct {
 // PeakMemory holds the highest sampled executor memory metrics, in bytes.
 // Spark samples these on heartbeats and at task end, so short spikes can be missed.
 type PeakMemory struct {
-	JVMHeap          int64  `json:"jvmHeap"`
-	JVMOffHeap       int64  `json:"jvmOffHeap"`
-	OnHeapExecution  int64  `json:"onHeapExecution"`
-	OnHeapStorage    int64  `json:"onHeapStorage"`
-	OffHeapExecution int64  `json:"offHeapExecution"`
-	OffHeapStorage   int64  `json:"offHeapStorage"`
-	DirectPool       int64  `json:"directPool"`
-	MappedPool       int64  `json:"mappedPool"`
-	ProcessJVMRSS    int64  `json:"processTreeJvmRss"`
-	ProcessPythonRSS int64  `json:"processTreePythonRss"`
-	ProcessOtherRSS  int64  `json:"processTreeOtherRss"`
-	TotalGCTimeMs    int64  `json:"totalGcTimeMs"`
+	JVMHeap          int64 `json:"jvmHeap"`
+	JVMOffHeap       int64 `json:"jvmOffHeap"`
+	OnHeapExecution  int64 `json:"onHeapExecution"`
+	OnHeapStorage    int64 `json:"onHeapStorage"`
+	OffHeapExecution int64 `json:"offHeapExecution"`
+	OffHeapStorage   int64 `json:"offHeapStorage"`
+	DirectPool       int64 `json:"directPool"`
+	MappedPool       int64 `json:"mappedPool"`
+	ProcessJVMRSS    int64 `json:"processTreeJvmRss"`
+	ProcessPythonRSS int64 `json:"processTreePythonRss"`
+	ProcessOtherRSS  int64 `json:"processTreeOtherRss"`
+	TotalGCTimeMs    int64 `json:"totalGcTimeMs"`
+	// JVM garbage collector counters (running totals) and unified memory.
+	MinorGCCount     int64  `json:"minorGcCount"`
+	MinorGCTimeMs    int64  `json:"minorGcTimeMs"`
+	MajorGCCount     int64  `json:"majorGcCount"`
+	MajorGCTimeMs    int64  `json:"majorGcTimeMs"`
+	OnHeapUnified    int64  `json:"onHeapUnified"`
+	OffHeapUnified   int64  `json:"offHeapUnified"`
+	ProcessJVMVMem   int64  `json:"processTreeJvmVmem"`
+	ProcessPyVMem    int64  `json:"processTreePythonVmem"`
+	ProcessOtherVMem int64  `json:"processTreeOtherVmem"`
 	HeapSource       Source `json:"heapSource,omitzero"`
 	RSSSource        Source `json:"rssSource,omitzero"`
 }
@@ -131,6 +141,15 @@ func (p *PeakMemory) Merge(o PeakMemory) {
 	p.ProcessPythonRSS = max(p.ProcessPythonRSS, o.ProcessPythonRSS)
 	p.ProcessOtherRSS = max(p.ProcessOtherRSS, o.ProcessOtherRSS)
 	p.TotalGCTimeMs = max(p.TotalGCTimeMs, o.TotalGCTimeMs)
+	p.MinorGCCount = max(p.MinorGCCount, o.MinorGCCount)
+	p.MinorGCTimeMs = max(p.MinorGCTimeMs, o.MinorGCTimeMs)
+	p.MajorGCCount = max(p.MajorGCCount, o.MajorGCCount)
+	p.MajorGCTimeMs = max(p.MajorGCTimeMs, o.MajorGCTimeMs)
+	p.OnHeapUnified = max(p.OnHeapUnified, o.OnHeapUnified)
+	p.OffHeapUnified = max(p.OffHeapUnified, o.OffHeapUnified)
+	p.ProcessJVMVMem = max(p.ProcessJVMVMem, o.ProcessJVMVMem)
+	p.ProcessPyVMem = max(p.ProcessPyVMem, o.ProcessPyVMem)
+	p.ProcessOtherVMem = max(p.ProcessOtherVMem, o.ProcessOtherVMem)
 }
 
 // Executor removal kinds, classified from Spark's removal reason text.
@@ -188,6 +207,41 @@ type TaskTotals struct {
 	MemorySpillBytes    int64 `json:"memorySpillBytes"`
 	DiskSpillBytes      int64 `json:"diskSpillBytes"`
 	PeakExecutionMemory int64 `json:"peakExecutionMemoryMax"`
+
+	// Result handling. SchedulerDelayMs is what the Spark UI calls scheduler
+	// delay: task duration not spent deserializing, running, serializing the
+	// result or fetching it (launch overhead and waiting on the driver).
+	ResultSizeBytes       int64 `json:"resultSizeBytes"`
+	ResultSerializationMs int64 `json:"resultSerializationMs"`
+	GettingResultMs       int64 `json:"gettingResultMs"`
+	SchedulerDelayMs      int64 `json:"schedulerDelayMs"`
+	DeserializeCPUNs      int64 `json:"deserializeCpuNs"`
+	// Shuffle detail.
+	ShuffleWriteTimeNs       int64 `json:"shuffleWriteTimeNs"`
+	ShuffleLocalBlocks       int64 `json:"shuffleLocalBlocks"`
+	ShuffleRemoteBlocks      int64 `json:"shuffleRemoteBlocks"`
+	ShuffleRemoteToDiskBytes int64 `json:"shuffleRemoteToDiskBytes"`
+	ShuffleRemoteReqsMs      int64 `json:"shuffleRemoteRequestsMs"`
+	// Push-based shuffle: blocks and bytes read from merged shuffle files.
+	PushMergedLocalBlocks  int64 `json:"pushMergedLocalBlocks"`
+	PushMergedLocalBytes   int64 `json:"pushMergedLocalBytes"`
+	PushMergedLocalChunks  int64 `json:"pushMergedLocalChunks"`
+	PushMergedRemoteBlocks int64 `json:"pushMergedRemoteBlocks"`
+	PushMergedRemoteBytes  int64 `json:"pushMergedRemoteBytes"`
+	PushMergedRemoteChunks int64 `json:"pushMergedRemoteChunks"`
+	PushMergedRemoteReqsMs int64 `json:"pushMergedRemoteRequestsMs"`
+	PushFallbacks          int64 `json:"pushFallbacks"`
+	PushCorruptChunks      int64 `json:"pushCorruptChunks"`
+	// Cache blocks the tasks wrote (only tracked when
+	// spark.taskMetrics.trackUpdatedBlockStatuses is on).
+	UpdatedBlocks     int64 `json:"updatedBlocks"`
+	UpdatedBlockBytes int64 `json:"updatedBlockBytes"`
+	// Data locality of the tasks.
+	LocalityProcess int64 `json:"localityProcess"`
+	LocalityNode    int64 `json:"localityNode"`
+	LocalityRack    int64 `json:"localityRack"`
+	LocalityAny     int64 `json:"localityAny"`
+	LocalityNoPref  int64 `json:"localityNoPref"`
 }
 
 // Add folds o into t.
@@ -215,6 +269,32 @@ func (t *TaskTotals) Add(o TaskTotals) {
 	t.MemorySpillBytes += o.MemorySpillBytes
 	t.DiskSpillBytes += o.DiskSpillBytes
 	t.PeakExecutionMemory = max(t.PeakExecutionMemory, o.PeakExecutionMemory)
+	t.ResultSizeBytes += o.ResultSizeBytes
+	t.ResultSerializationMs += o.ResultSerializationMs
+	t.GettingResultMs += o.GettingResultMs
+	t.SchedulerDelayMs += o.SchedulerDelayMs
+	t.DeserializeCPUNs += o.DeserializeCPUNs
+	t.ShuffleWriteTimeNs += o.ShuffleWriteTimeNs
+	t.ShuffleLocalBlocks += o.ShuffleLocalBlocks
+	t.ShuffleRemoteBlocks += o.ShuffleRemoteBlocks
+	t.ShuffleRemoteToDiskBytes += o.ShuffleRemoteToDiskBytes
+	t.ShuffleRemoteReqsMs += o.ShuffleRemoteReqsMs
+	t.PushMergedLocalBlocks += o.PushMergedLocalBlocks
+	t.PushMergedLocalBytes += o.PushMergedLocalBytes
+	t.PushMergedLocalChunks += o.PushMergedLocalChunks
+	t.PushMergedRemoteBlocks += o.PushMergedRemoteBlocks
+	t.PushMergedRemoteBytes += o.PushMergedRemoteBytes
+	t.PushMergedRemoteChunks += o.PushMergedRemoteChunks
+	t.PushMergedRemoteReqsMs += o.PushMergedRemoteReqsMs
+	t.PushFallbacks += o.PushFallbacks
+	t.PushCorruptChunks += o.PushCorruptChunks
+	t.UpdatedBlocks += o.UpdatedBlocks
+	t.UpdatedBlockBytes += o.UpdatedBlockBytes
+	t.LocalityProcess += o.LocalityProcess
+	t.LocalityNode += o.LocalityNode
+	t.LocalityRack += o.LocalityRack
+	t.LocalityAny += o.LocalityAny
+	t.LocalityNoPref += o.LocalityNoPref
 }
 
 // Dist summarises a per-task distribution. P50 and P95 are exact for up to
@@ -249,6 +329,12 @@ type TaskFailure struct {
 	Count     int64    `json:"count"`
 	Executors []string `json:"executors"`
 	Source    Source   `json:"source"`
+	// StackTrace is the first full stack trace logged for this reason,
+	// redacted and capped.
+	StackTrace string `json:"stackTrace,omitempty"`
+	// ExitCausedByApp says, for a lost executor, whether Spark blamed the
+	// application for the exit (nil when Spark did not say).
+	ExitCausedByApp *bool `json:"exitCausedByApp,omitempty"`
 }
 
 // Stage is one stage attempt.
@@ -264,6 +350,7 @@ type Stage struct {
 	Status        string        `json:"status"`
 	FailureReason string        `json:"failureReason,omitempty"`
 	Totals        TaskTotals    `json:"totals"`
+	TaskType      string        `json:"taskType,omitempty"` // ResultTask or ShuffleMapTask
 	TaskDuration  Dist          `json:"taskDurationMs"`
 	TaskInput     Dist          `json:"taskInputBytes"`
 	TaskShuffle   Dist          `json:"taskShuffleReadBytes"`
@@ -296,6 +383,7 @@ type Job struct {
 	Completed      time.Time `json:"completed,omitzero"`
 	Status         string    `json:"status"`
 	Failure        string    `json:"failure,omitempty"`
+	FailureStack   string    `json:"failureStack,omitempty"` // stack trace of the job's exception, redacted
 	Source         Source    `json:"source"`
 	EndSource      Source    `json:"endSource,omitzero"`
 }

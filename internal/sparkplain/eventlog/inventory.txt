@@ -134,23 +134,23 @@ SparkListenerExecutorMetricsUpdate
     Executor Metrics Updated[]/Executor Metrics/DirectPoolMemory | used | peak memory and GC
     Executor Metrics Updated[]/Executor Metrics/JVMHeapMemory | used | peak memory and GC
     Executor Metrics Updated[]/Executor Metrics/JVMOffHeapMemory | used | peak memory and GC
-    Executor Metrics Updated[]/Executor Metrics/MajorGCCount | planned:2 | GC counts and times; unified memory
-    Executor Metrics Updated[]/Executor Metrics/MajorGCTime | planned:2 | GC counts and times; unified memory
+    Executor Metrics Updated[]/Executor Metrics/MajorGCCount | used | GC counts and times; unified memory
+    Executor Metrics Updated[]/Executor Metrics/MajorGCTime | used | GC counts and times; unified memory
     Executor Metrics Updated[]/Executor Metrics/MappedPoolMemory | used | peak memory and GC
-    Executor Metrics Updated[]/Executor Metrics/MinorGCCount | planned:2 | GC counts and times; unified memory
-    Executor Metrics Updated[]/Executor Metrics/MinorGCTime | planned:2 | GC counts and times; unified memory
+    Executor Metrics Updated[]/Executor Metrics/MinorGCCount | used | GC counts and times; unified memory
+    Executor Metrics Updated[]/Executor Metrics/MinorGCTime | used | GC counts and times; unified memory
     Executor Metrics Updated[]/Executor Metrics/OffHeapExecutionMemory | used | peak memory and GC
     Executor Metrics Updated[]/Executor Metrics/OffHeapStorageMemory | used | peak memory and GC
-    Executor Metrics Updated[]/Executor Metrics/OffHeapUnifiedMemory | planned:2 | GC counts and times; unified memory
+    Executor Metrics Updated[]/Executor Metrics/OffHeapUnifiedMemory | used | GC counts and times; unified memory
     Executor Metrics Updated[]/Executor Metrics/OnHeapExecutionMemory | used | peak memory and GC
     Executor Metrics Updated[]/Executor Metrics/OnHeapStorageMemory | used | peak memory and GC
-    Executor Metrics Updated[]/Executor Metrics/OnHeapUnifiedMemory | planned:2 | GC counts and times; unified memory
+    Executor Metrics Updated[]/Executor Metrics/OnHeapUnifiedMemory | used | GC counts and times; unified memory
     Executor Metrics Updated[]/Executor Metrics/ProcessTreeJVMRSSMemory | used | peak memory and GC
-    Executor Metrics Updated[]/Executor Metrics/ProcessTreeJVMVMemory | planned:2 | virtual memory of the process tree
+    Executor Metrics Updated[]/Executor Metrics/ProcessTreeJVMVMemory | used | virtual memory of the process tree
     Executor Metrics Updated[]/Executor Metrics/ProcessTreeOtherRSSMemory | used | peak memory and GC
-    Executor Metrics Updated[]/Executor Metrics/ProcessTreeOtherVMemory | planned:2 | virtual memory of the process tree
+    Executor Metrics Updated[]/Executor Metrics/ProcessTreeOtherVMemory | used | virtual memory of the process tree
     Executor Metrics Updated[]/Executor Metrics/ProcessTreePythonRSSMemory | used | peak memory and GC
-    Executor Metrics Updated[]/Executor Metrics/ProcessTreePythonVMemory | planned:2 | virtual memory of the process tree
+    Executor Metrics Updated[]/Executor Metrics/ProcessTreePythonVMemory | used | virtual memory of the process tree
     Executor Metrics Updated[]/Executor Metrics/TotalGCTime | used | peak memory and GC
     Executor Metrics Updated[]/Stage Attempt ID | used | driver memory samples (Spark logs these for the driver only)
     Executor Metrics Updated[]/Stage ID | used | driver memory samples (Spark logs these for the driver only)
@@ -179,11 +179,11 @@ SparkListenerJobEnd
     Job Result | used | job end and result
     Job Result/Exception | used | job outcome and error
     Job Result/Exception/Message | used | job outcome and error
-    Job Result/Exception/Stack Trace | planned:2 | stack trace of the job's failure
-    Job Result/Exception/Stack Trace[]/Declaring Class | planned:2 | stack trace of the job's failure
-    Job Result/Exception/Stack Trace[]/File Name | planned:2 | stack trace of the job's failure
-    Job Result/Exception/Stack Trace[]/Line Number | planned:2 | stack trace of the job's failure
-    Job Result/Exception/Stack Trace[]/Method Name | planned:2 | stack trace of the job's failure
+    Job Result/Exception/Stack Trace | used | stack trace of the job's failure, formatted and redacted
+    Job Result/Exception/Stack Trace[]/Declaring Class | used | stack trace of the job's failure, formatted and redacted
+    Job Result/Exception/Stack Trace[]/File Name | used | stack trace of the job's failure, formatted and redacted
+    Job Result/Exception/Stack Trace[]/Line Number | used | stack trace of the job's failure, formatted and redacted
+    Job Result/Exception/Stack Trace[]/Method Name | used | stack trace of the job's failure, formatted and redacted
     Job Result/Result | used | job outcome and error
 
 SparkListenerJobStart
@@ -390,23 +390,23 @@ SparkListenerStageExecutorMetrics
     Executor Metrics/DirectPoolMemory | used | peak memory and GC
     Executor Metrics/JVMHeapMemory | used | peak memory and GC
     Executor Metrics/JVMOffHeapMemory | used | peak memory and GC
-    Executor Metrics/MajorGCCount | planned:2 | GC counts and times; unified memory
-    Executor Metrics/MajorGCTime | planned:2 | GC counts and times; unified memory
+    Executor Metrics/MajorGCCount | used | GC counts and times; unified memory
+    Executor Metrics/MajorGCTime | used | GC counts and times; unified memory
     Executor Metrics/MappedPoolMemory | used | peak memory and GC
-    Executor Metrics/MinorGCCount | planned:2 | GC counts and times; unified memory
-    Executor Metrics/MinorGCTime | planned:2 | GC counts and times; unified memory
+    Executor Metrics/MinorGCCount | used | GC counts and times; unified memory
+    Executor Metrics/MinorGCTime | used | GC counts and times; unified memory
     Executor Metrics/OffHeapExecutionMemory | used | peak memory and GC
     Executor Metrics/OffHeapStorageMemory | used | peak memory and GC
-    Executor Metrics/OffHeapUnifiedMemory | planned:2 | GC counts and times; unified memory
+    Executor Metrics/OffHeapUnifiedMemory | used | GC counts and times; unified memory
     Executor Metrics/OnHeapExecutionMemory | used | peak memory and GC
     Executor Metrics/OnHeapStorageMemory | used | peak memory and GC
-    Executor Metrics/OnHeapUnifiedMemory | planned:2 | GC counts and times; unified memory
+    Executor Metrics/OnHeapUnifiedMemory | used | GC counts and times; unified memory
     Executor Metrics/ProcessTreeJVMRSSMemory | used | peak memory and GC
-    Executor Metrics/ProcessTreeJVMVMemory | planned:2 | virtual memory of the process tree
+    Executor Metrics/ProcessTreeJVMVMemory | used | virtual memory of the process tree
     Executor Metrics/ProcessTreeOtherRSSMemory | used | peak memory and GC
-    Executor Metrics/ProcessTreeOtherVMemory | planned:2 | virtual memory of the process tree
+    Executor Metrics/ProcessTreeOtherVMemory | used | virtual memory of the process tree
     Executor Metrics/ProcessTreePythonRSSMemory | used | peak memory and GC
-    Executor Metrics/ProcessTreePythonVMemory | planned:2 | virtual memory of the process tree
+    Executor Metrics/ProcessTreePythonVMemory | used | virtual memory of the process tree
     Executor Metrics/TotalGCTime | used | peak memory and GC
     Stage Attempt ID | used | stage the peak belongs to
     Stage ID | used | stage the peak belongs to
@@ -451,19 +451,19 @@ SparkListenerTaskEnd
     Stage Attempt ID | used | stage the task belongs to
     Stage ID | used | stage the task belongs to
     Task End Reason | used | why the task ended
-    Task End Reason/Accumulator Updates | planned:2 | metrics of the failed attempt, folded into the stage's failed-task totals
+    Task End Reason/Accumulator Updates | aside | the failed attempt's metrics, the same values as its Task Metrics, which are read
     Task End Reason/Accumulator Updates[]/Count Failed Values | aside | Spark bookkeeping flags
-    Task End Reason/Accumulator Updates[]/ID | planned:2 | which metric and the failed attempt's value
+    Task End Reason/Accumulator Updates[]/ID | aside | repeat the failed attempt's Task Metrics
     Task End Reason/Accumulator Updates[]/Internal | aside | Spark bookkeeping flags
-    Task End Reason/Accumulator Updates[]/Update | planned:2 | which metric and the failed attempt's value
+    Task End Reason/Accumulator Updates[]/Update | aside | repeat the failed attempt's Task Metrics
     Task End Reason/Class Name | used | failure kind and message
     Task End Reason/Description | used | failure kind and message
     Task End Reason/Executor ID | used | failure kind and message
-    Task End Reason/Exit Caused By App | planned:2 | whether a lost executor's exit was the application's fault
-    Task End Reason/Full Stack Trace | planned:2 | full stack trace per distinct failure, redacted and capped
+    Task End Reason/Exit Caused By App | used | whether Spark blamed the application for a lost executor
+    Task End Reason/Full Stack Trace | used | full stack trace per distinct failure, redacted and capped
     Task End Reason/Loss Reason | used | failure kind and message
     Task End Reason/Reason | used | failure kind and message
-    Task End Reason/Stack Trace | planned:2 | full stack trace per distinct failure, redacted and capped
+    Task End Reason/Stack Trace | aside | same frames as Full Stack Trace, which is kept
     Task End Reason/Stack Trace[]/Declaring Class | aside | same frames as Full Stack Trace, which is kept
     Task End Reason/Stack Trace[]/File Name | aside | same frames as Full Stack Trace, which is kept
     Task End Reason/Stack Trace[]/Line Number | aside | same frames as Full Stack Trace, which is kept
@@ -472,50 +472,50 @@ SparkListenerTaskEnd
     Task Executor Metrics/DirectPoolMemory | used | peak memory and GC
     Task Executor Metrics/JVMHeapMemory | used | peak memory and GC
     Task Executor Metrics/JVMOffHeapMemory | used | peak memory and GC
-    Task Executor Metrics/MajorGCCount | planned:2 | GC counts and times; unified memory
-    Task Executor Metrics/MajorGCTime | planned:2 | GC counts and times; unified memory
+    Task Executor Metrics/MajorGCCount | used | GC counts and times; unified memory
+    Task Executor Metrics/MajorGCTime | used | GC counts and times; unified memory
     Task Executor Metrics/MappedPoolMemory | used | peak memory and GC
-    Task Executor Metrics/MinorGCCount | planned:2 | GC counts and times; unified memory
-    Task Executor Metrics/MinorGCTime | planned:2 | GC counts and times; unified memory
+    Task Executor Metrics/MinorGCCount | used | GC counts and times; unified memory
+    Task Executor Metrics/MinorGCTime | used | GC counts and times; unified memory
     Task Executor Metrics/OffHeapExecutionMemory | used | peak memory and GC
     Task Executor Metrics/OffHeapStorageMemory | used | peak memory and GC
-    Task Executor Metrics/OffHeapUnifiedMemory | planned:2 | GC counts and times; unified memory
+    Task Executor Metrics/OffHeapUnifiedMemory | used | GC counts and times; unified memory
     Task Executor Metrics/OnHeapExecutionMemory | used | peak memory and GC
     Task Executor Metrics/OnHeapStorageMemory | used | peak memory and GC
-    Task Executor Metrics/OnHeapUnifiedMemory | planned:2 | GC counts and times; unified memory
+    Task Executor Metrics/OnHeapUnifiedMemory | used | GC counts and times; unified memory
     Task Executor Metrics/ProcessTreeJVMRSSMemory | used | peak memory and GC
-    Task Executor Metrics/ProcessTreeJVMVMemory | planned:2 | virtual memory of the process tree
+    Task Executor Metrics/ProcessTreeJVMVMemory | used | virtual memory of the process tree
     Task Executor Metrics/ProcessTreeOtherRSSMemory | used | peak memory and GC
-    Task Executor Metrics/ProcessTreeOtherVMemory | planned:2 | virtual memory of the process tree
+    Task Executor Metrics/ProcessTreeOtherVMemory | used | virtual memory of the process tree
     Task Executor Metrics/ProcessTreePythonRSSMemory | used | peak memory and GC
-    Task Executor Metrics/ProcessTreePythonVMemory | planned:2 | virtual memory of the process tree
+    Task Executor Metrics/ProcessTreePythonVMemory | used | virtual memory of the process tree
     Task Executor Metrics/TotalGCTime | used | peak memory and GC
     Task Info | used | task identity and timing
-    Task Info/Accumulables | planned:2 | per-task SQL metric updates, folded into per-operator distributions
+    Task Info/Accumulables | used | per-task SQL metric updates, folded into per-operator min, median and max
     Task Info/Accumulables[]/Count Failed Values | aside | Spark bookkeeping flags; internal entries repeat Task Metrics
-    Task Info/Accumulables[]/ID | planned:2 | which SQL metric, this task's value, and the sql marker
+    Task Info/Accumulables[]/ID | used | which SQL metric, this task's value, and the sql marker
     Task Info/Accumulables[]/Internal | aside | Spark bookkeeping flags; internal entries repeat Task Metrics
-    Task Info/Accumulables[]/Metadata | planned:2 | which SQL metric, this task's value, and the sql marker
+    Task Info/Accumulables[]/Metadata | used | which SQL metric, this task's value, and the sql marker
     Task Info/Accumulables[]/Name | aside | the plan already names each metric by ID
-    Task Info/Accumulables[]/Update | planned:2 | which SQL metric, this task's value, and the sql marker
+    Task Info/Accumulables[]/Update | used | which SQL metric, this task's value, and the sql marker
     Task Info/Accumulables[]/Value | aside | running total so far; the stage's final total is read from StageCompleted
     Task Info/Attempt | used | task identity, placement, speculation
     Task Info/Executor ID | used | task identity, placement, speculation
     Task Info/Failed | used | task end and outcome
     Task Info/Finish Time | used | task end and outcome
-    Task Info/Getting Result Time | planned:2 | time the driver spent fetching a large result; part of scheduler delay
+    Task Info/Getting Result Time | used | when the driver began fetching a large result; gives fetch time and scheduler delay
     Task Info/Host | used | task identity, placement, speculation
     Task Info/Index | used | task identity, placement, speculation
     Task Info/Killed | used | task end and outcome
     Task Info/Launch Time | used | task identity, placement, speculation
-    Task Info/Locality | planned:2 | data locality (process, node, rack, any)
-    Task Info/Partition ID | planned:2 | partition the task computed
+    Task Info/Locality | used | data locality (process, node, rack, any), per task and counted per stage
+    Task Info/Partition ID | used | partition the task computed
     Task Info/Speculative | used | task identity, placement, speculation
     Task Info/Task ID | used | task identity, placement, speculation
     Task Metrics | used | task metrics
     Task Metrics/Disk Bytes Spilled | used | time, CPU, GC, memory and spill
     Task Metrics/Executor CPU Time | used | time, CPU, GC, memory and spill
-    Task Metrics/Executor Deserialize CPU Time | planned:2 | result size and serialization; deserialize CPU
+    Task Metrics/Executor Deserialize CPU Time | used | result size and serialization; deserialize CPU
     Task Metrics/Executor Deserialize Time | used | time, CPU, GC, memory and spill
     Task Metrics/Executor Run Time | used | time, CPU, GC, memory and spill
     Task Metrics/Input Metrics | used | I/O and shuffle
@@ -527,37 +527,51 @@ SparkListenerTaskEnd
     Task Metrics/Output Metrics/Bytes Written | used | bytes and rows read and written
     Task Metrics/Output Metrics/Records Written | used | bytes and rows read and written
     Task Metrics/Peak Execution Memory | used | time, CPU, GC, memory and spill
-    Task Metrics/Result Serialization Time | planned:2 | result size and serialization; deserialize CPU
-    Task Metrics/Result Size | planned:2 | result size and serialization; deserialize CPU
+    Task Metrics/Result Serialization Time | used | result size and serialization; deserialize CPU
+    Task Metrics/Result Size | used | result size and serialization; deserialize CPU
     Task Metrics/Shuffle Read Metrics | used | I/O and shuffle
     Task Metrics/Shuffle Read Metrics/Fetch Wait Time | used | shuffle read
-    Task Metrics/Shuffle Read Metrics/Local Blocks Fetched | planned:2 | shuffle fetch detail
+    Task Metrics/Shuffle Read Metrics/Local Blocks Fetched | used | shuffle fetch detail
     Task Metrics/Shuffle Read Metrics/Local Bytes Read | used | shuffle read
-    Task Metrics/Shuffle Read Metrics/Push Based Shuffle | planned:2 | push-based shuffle merge detail
-    Task Metrics/Shuffle Read Metrics/Push Based Shuffle/Corrupt Merged Block Chunks | planned:2 | push-based shuffle merge detail
-    Task Metrics/Shuffle Read Metrics/Push Based Shuffle/Merged Fetch Fallback Count | planned:2 | push-based shuffle merge detail
-    Task Metrics/Shuffle Read Metrics/Push Based Shuffle/Merged Local Blocks Fetched | planned:2 | push-based shuffle merge detail
-    Task Metrics/Shuffle Read Metrics/Push Based Shuffle/Merged Local Bytes Read | planned:2 | push-based shuffle merge detail
-    Task Metrics/Shuffle Read Metrics/Push Based Shuffle/Merged Local Chunks Fetched | planned:2 | push-based shuffle merge detail
-    Task Metrics/Shuffle Read Metrics/Push Based Shuffle/Merged Remote Blocks Fetched | planned:2 | push-based shuffle merge detail
-    Task Metrics/Shuffle Read Metrics/Push Based Shuffle/Merged Remote Bytes Read | planned:2 | push-based shuffle merge detail
-    Task Metrics/Shuffle Read Metrics/Push Based Shuffle/Merged Remote Chunks Fetched | planned:2 | push-based shuffle merge detail
-    Task Metrics/Shuffle Read Metrics/Push Based Shuffle/Merged Remote Requests Duration | planned:2 | push-based shuffle merge detail
-    Task Metrics/Shuffle Read Metrics/Remote Blocks Fetched | planned:2 | shuffle fetch detail
+    Task Metrics/Shuffle Read Metrics/Push Based Shuffle | used | push-based shuffle merge detail
+    Task Metrics/Shuffle Read Metrics/Push Based Shuffle/Corrupt Merged Block Chunks | used | push-based shuffle merge detail
+    Task Metrics/Shuffle Read Metrics/Push Based Shuffle/Merged Fetch Fallback Count | used | push-based shuffle merge detail
+    Task Metrics/Shuffle Read Metrics/Push Based Shuffle/Merged Local Blocks Fetched | used | push-based shuffle merge detail
+    Task Metrics/Shuffle Read Metrics/Push Based Shuffle/Merged Local Bytes Read | used | push-based shuffle merge detail
+    Task Metrics/Shuffle Read Metrics/Push Based Shuffle/Merged Local Chunks Fetched | used | push-based shuffle merge detail
+    Task Metrics/Shuffle Read Metrics/Push Based Shuffle/Merged Remote Blocks Fetched | used | push-based shuffle merge detail
+    Task Metrics/Shuffle Read Metrics/Push Based Shuffle/Merged Remote Bytes Read | used | push-based shuffle merge detail
+    Task Metrics/Shuffle Read Metrics/Push Based Shuffle/Merged Remote Chunks Fetched | used | push-based shuffle merge detail
+    Task Metrics/Shuffle Read Metrics/Push Based Shuffle/Merged Remote Requests Duration | used | push-based shuffle merge detail
+    Task Metrics/Shuffle Read Metrics/Remote Blocks Fetched | used | shuffle fetch detail
     Task Metrics/Shuffle Read Metrics/Remote Bytes Read | used | shuffle read
-    Task Metrics/Shuffle Read Metrics/Remote Bytes Read To Disk | planned:2 | shuffle fetch detail
-    Task Metrics/Shuffle Read Metrics/Remote Requests Duration | planned:2 | shuffle fetch detail
+    Task Metrics/Shuffle Read Metrics/Remote Bytes Read To Disk | used | shuffle fetch detail
+    Task Metrics/Shuffle Read Metrics/Remote Requests Duration | used | shuffle fetch detail
     Task Metrics/Shuffle Read Metrics/Total Records Read | used | shuffle read
     Task Metrics/Shuffle Write Metrics | used | I/O and shuffle
     Task Metrics/Shuffle Write Metrics/Shuffle Bytes Written | used | shuffle write
     Task Metrics/Shuffle Write Metrics/Shuffle Records Written | used | shuffle write
-    Task Metrics/Shuffle Write Metrics/Shuffle Write Time | planned:2 | time writing shuffle files (nanoseconds)
-    Task Metrics/Updated Blocks | planned:2 | cache blocks the task wrote
-    Task Type | planned:2 | result or shuffle-map task
+    Task Metrics/Shuffle Write Metrics/Shuffle Write Time | used | time writing shuffle files (nanoseconds)
+    Task Metrics/Updated Blocks | used | cache blocks the task wrote (tracked only with spark.taskMetrics.trackUpdatedBlockStatuses)
+    Task Type | used | stage kind: result or shuffle-map tasks
 
 SparkListenerTaskGettingResult
-    Event | used | event type; not seen in a fixture
-    Task Info | used | task identity and timing; not seen in a fixture
+    Event | used | event type
+    Task Info | aside | marks when the driver began fetching a large result; the task's TaskEnd carries the same Task Info, including Getting Result Time
+    Task Info/Accumulables | aside | marks when the driver began fetching a large result; the task's TaskEnd carries the same Task Info, including Getting Result Time
+    Task Info/Attempt | aside | marks when the driver began fetching a large result; the task's TaskEnd carries the same Task Info, including Getting Result Time
+    Task Info/Executor ID | aside | marks when the driver began fetching a large result; the task's TaskEnd carries the same Task Info, including Getting Result Time
+    Task Info/Failed | aside | marks when the driver began fetching a large result; the task's TaskEnd carries the same Task Info, including Getting Result Time
+    Task Info/Finish Time | aside | marks when the driver began fetching a large result; the task's TaskEnd carries the same Task Info, including Getting Result Time
+    Task Info/Getting Result Time | aside | marks when the driver began fetching a large result; the task's TaskEnd carries the same Task Info, including Getting Result Time
+    Task Info/Host | aside | marks when the driver began fetching a large result; the task's TaskEnd carries the same Task Info, including Getting Result Time
+    Task Info/Index | aside | marks when the driver began fetching a large result; the task's TaskEnd carries the same Task Info, including Getting Result Time
+    Task Info/Killed | aside | marks when the driver began fetching a large result; the task's TaskEnd carries the same Task Info, including Getting Result Time
+    Task Info/Launch Time | aside | marks when the driver began fetching a large result; the task's TaskEnd carries the same Task Info, including Getting Result Time
+    Task Info/Locality | aside | marks when the driver began fetching a large result; the task's TaskEnd carries the same Task Info, including Getting Result Time
+    Task Info/Partition ID | aside | marks when the driver began fetching a large result; the task's TaskEnd carries the same Task Info, including Getting Result Time
+    Task Info/Speculative | aside | marks when the driver began fetching a large result; the task's TaskEnd carries the same Task Info, including Getting Result Time
+    Task Info/Task ID | aside | marks when the driver began fetching a large result; the task's TaskEnd carries the same Task Info, including Getting Result Time
 
 SparkListenerTaskStart
     Event | used | event type
