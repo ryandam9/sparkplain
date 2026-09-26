@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"net/url"
 	"strings"
 	"time"
 
@@ -38,6 +39,8 @@ type Options struct {
 	// Location is the time zone times are rendered in before the page's
 	// script converts them to the viewer's zone. Nil means UTC.
 	Location *time.Location
+	// ExplorerHref links to explorer.html; empty when it was not written.
+	ExplorerHref string
 }
 
 type page struct {
@@ -52,6 +55,7 @@ type page struct {
 	Warn     int
 	Info     int
 	Tasks    int64
+	Explorer string
 }
 
 // WriteHTML renders the report page.
@@ -64,7 +68,7 @@ func WriteHTML(w io.Writer, r *model.Report, opt Options) error {
 	if err != nil {
 		return err
 	}
-	p := page{R: r, CSS: template.CSS(css), JS: template.JS(js), Zone: zoneLabel(loc, r.Application.Start)}
+	p := page{R: r, CSS: template.CSS(css), JS: template.JS(js), Zone: zoneLabel(loc, r.Application.Start), Explorer: opt.ExplorerHref}
 	for _, c := range r.Coverage {
 		switch c.Coverage {
 		case model.Complete:
@@ -216,11 +220,17 @@ func funcs(loc *time.Location) template.FuncMap {
 		"gantt":     func(r *model.Report) template.HTML { return gantt(r, loc) },
 		"memChart":  memChart,
 		"hasPrefix": strings.HasPrefix,
-		"add":       func(a, b int) int { return a + b },
-		"short":     func(s string, n int) string { return capText(s, n) },
-		"lower":     strings.ToLower,
-		"rt":        runtimeValue,
-		"int64":     func(n int) int64 { return int64(n) },
+		// explorerURL links an Evidence.Ref ("stage:27.0") to its view in
+		// the explorer ("explorer.html#stage/27.0").
+		"explorerURL": func(href, ref string) template.URL {
+			kind, id, _ := strings.Cut(ref, ":")
+			return template.URL(href + "#" + url.PathEscape(kind) + "/" + url.PathEscape(id))
+		},
+		"add":   func(a, b int) int { return a + b },
+		"short": func(s string, n int) string { return capText(s, n) },
+		"lower": strings.ToLower,
+		"rt":    runtimeValue,
+		"int64": func(n int) int64 { return int64(n) },
 		"cpuShare": func(t model.TaskTotals) float64 {
 			if t.RunTimeMs <= 0 {
 				return 0

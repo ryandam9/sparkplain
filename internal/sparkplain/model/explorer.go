@@ -30,7 +30,7 @@ type ExplorerLimits struct {
 
 // DefaultExplorerLimits are the SPEC §6 defaults.
 func DefaultExplorerLimits() ExplorerLimits {
-	return ExplorerLimits{SlowestPerStage: 100, SamplePerStage: 1000, MaxSampledTasks: 200_000, MaxStageExecutorCells: 1_000_000}
+	return ExplorerLimits{SlowestPerStage: 100, SamplePerStage: 1000, MaxSampledTasks: 100_000, MaxStageExecutorCells: 1_000_000}
 }
 
 // WithDefaults fills zero fields from DefaultExplorerLimits.

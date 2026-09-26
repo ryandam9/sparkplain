@@ -13,18 +13,20 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/analyze"
+	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
 )
 
 // fileConfig is the YAML defaults file (SPEC §6), by default
 // ~/.config/sparkplain/config.yaml. Flags override it.
 type fileConfig struct {
-	EventLogPrefix string        `yaml:"eventlog-prefix"`
-	TimeZone       string        `yaml:"timezone"`
-	Out            string        `yaml:"out"`
-	Format         string        `yaml:"format"`
-	MaxSize        string        `yaml:"max-size"`
-	OverallTimeout time.Duration `yaml:"overall-timeout"`
-	Thresholds     thresholds    `yaml:"thresholds"`
+	EventLogPrefix string               `yaml:"eventlog-prefix"`
+	TimeZone       string               `yaml:"timezone"`
+	Out            string               `yaml:"out"`
+	Format         string               `yaml:"format"`
+	MaxSize        string               `yaml:"max-size"`
+	OverallTimeout time.Duration        `yaml:"overall-timeout"`
+	Thresholds     thresholds           `yaml:"thresholds"`
+	Explorer       model.ExplorerLimits `yaml:"explorer"`
 }
 
 // thresholds mirrors analyze.Thresholds with optional fields, so a file

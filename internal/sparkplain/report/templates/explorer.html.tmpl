@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · sparkplain explorer</title>
+<style>{{.CSS}}</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand"><b>sparkplain</b> explorer · <span id="sp-tool"></span></div>
+    <div class="topr">
+      <a id="sp-report" class="themebtn" hidden>Plain-language report</a>
+      <button type="button" class="themebtn" id="themebtn" hidden>Light / dark</button>
+    </div>
+  </div>
+  <header class="head" id="sp-head"></header>
+  <div class="banner" id="sp-banner" role="status" hidden></div>
+  <nav class="tabs" id="sp-tabs" aria-label="Explorer tabs"></nav>
+  <main id="sp-main"><noscript><p class="missing">The explorer draws everything with its own embedded script, so it needs JavaScript. The plain-language report (report.html) works without it.</p></noscript></main>
+  <footer><span>Everything on this page comes from the Spark event log. Values from a task sample say so.</span><span class="tzlabel"></span></footer>
+</div>
+{{.Data}}
+<script>{{.JS}}</script>
+</body>
+</html>

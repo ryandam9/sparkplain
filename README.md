@@ -25,7 +25,13 @@ sparkplain -app-id application_1700000000000_0042 -eventlog /var/log/spark/apps/
 sparkplain -app-id application_1700000000000_0042 -eventlog ./application_1700000000000_0042.zip
 ```
 
-It writes `report.html` and `report.json` to `~/sparkplain/<yyyy-mm-dd>/<app-id>/` (or `-out`). The HTML is one self-contained file that makes no network calls when opened. Run `sparkplain -h` for all flags; SPEC §6 describes them and the config file.
+It writes three files to `~/sparkplain/<yyyy-mm-dd>/<app-id>/` (or `-out`):
+
+- `report.html`: the plain-language report. One self-contained file that makes no network calls when opened.
+- `report.json`: the same content for other tools.
+- `explorer.html`: an interactive, History Server–style view of the run (jobs, stages with task summaries and samples, executors, SQL plans, storage, environment). It loads Google Charts from `www.gstatic.com`, so its charts need internet access; its tables work without it.
+
+`-format` picks which to write, e.g. `-format html,json` (or `both`) to skip the explorer. Run `sparkplain -h` for all flags; SPEC §6 describes them and the config file.
 
 Exit codes: 0 complete, 2 fatal, 3 partial (something missing or unreadable, which the report's Sources panel explains), 130 interrupted.
 

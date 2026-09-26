@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -130,5 +131,52 @@ func TestParseSize(t *testing.T) {
 		if got := parseSize(in); got != want {
 			t.Errorf("parseSize(%q) = %d, want %d", in, got, want)
 		}
+	}
+}
+
+func TestFormats(t *testing.T) {
+	log := filepath.Join(fx, "application_1790380000000_0042")
+	for _, c := range []struct {
+		format string
+		want   []string
+	}{
+		{"", []string{"report.html", "report.json", "explorer.html"}},
+		{"both", []string{"report.html", "report.json"}},
+		{"explorer", []string{"explorer.html"}},
+		{"html, explorer", []string{"report.html", "explorer.html"}},
+	} {
+		dir := t.TempDir()
+		args := []string{"-app-id", "application_1790380000000_0042", "-eventlog", log, "-out", dir}
+		if c.format != "" {
+			args = append(args, "-format", c.format)
+		}
+		if code, _, errs := runCLI(t, args...); code != exitOK {
+			t.Fatalf("-format %q: exit %d: %s", c.format, code, errs)
+		}
+		entries, _ := os.ReadDir(dir)
+		var got []string
+		for _, e := range entries {
+			got = append(got, e.Name())
+		}
+		if len(got) != len(c.want) {
+			t.Errorf("-format %q wrote %v, want %v", c.format, got, c.want)
+		}
+		for _, w := range c.want {
+			if _, err := os.Stat(filepath.Join(dir, w)); err != nil {
+				t.Errorf("-format %q: %s missing", c.format, w)
+			}
+		}
+		html, _ := os.ReadFile(filepath.Join(dir, "report.html"))
+		ex, _ := os.ReadFile(filepath.Join(dir, "explorer.html"))
+		hasX, hasR := slices.Contains(c.want, "explorer.html"), slices.Contains(c.want, "report.html")
+		if hasR && bytes.Contains(html, []byte(`href="explorer.html"`)) != hasX {
+			t.Errorf("-format %q: report links to the explorer = %v, want %v", c.format, !hasX, hasX)
+		}
+		if hasX && bytes.Contains(ex, []byte(`"reportHref":"report.html"`)) != hasR {
+			t.Errorf("-format %q: explorer links to the report = %v, want %v", c.format, !hasR, hasR)
+		}
+	}
+	if code, _, errs := runCLI(t, "-app-id", "application_1_2", "-eventlog", log, "-format", "pdf"); code != exitFatal || !strings.Contains(errs, `"pdf"`) {
+		t.Errorf("unknown format: exit %d, %s", code, errs)
 	}
 }

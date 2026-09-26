@@ -190,3 +190,5 @@ table.runtime{table-layout:fixed;min-width:680px}
 table.runtime td{overflow-wrap:break-word}
 table.runtime tr.grp th{background:var(--surface);color:var(--accent);font-size:12px;letter-spacing:.06em;text-transform:uppercase;padding-top:14px}
 tr.missingrow td:nth-child(2){color:var(--faint);font-style:italic}
+.topr{display:flex;gap:8px;align-items:center}
+a.themebtn{text-decoration:none}

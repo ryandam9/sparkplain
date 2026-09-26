@@ -12,7 +12,7 @@
 <div class="wrap">
   <div class="top">
     <div class="brand"><b>sparkplain</b> report · {{$r.Tool}} · generated {{time $r.GeneratedAt "dt"}}</div>
-    <button type="button" class="themebtn" id="themebtn" hidden>Light / dark</button>
+    <div class="topr">{{if .Explorer}}<a class="themebtn" href="{{.Explorer}}">Open the explorer</a>{{end}}<button type="button" class="themebtn" id="themebtn" hidden>Light / dark</button></div>
   </div>
 
   <header class="head">
@@ -77,7 +77,7 @@
           {{range $r.Findings}}<article class="finding {{sev .Severity}}"><div class="stripe"></div><div class="body">
             <div class="t"><span class="pill {{sevPill .Severity}}">{{sevLabel .Severity}}</span><h3>{{.Title}}</h3></div>
             <p>{{.Explanation}}</p>
-            {{range .Evidence}}<p class="ev">{{if .Source.File}}{{src .Source}} {{end}}{{.Text}}</p>{{end}}
+            {{range .Evidence}}<p class="ev">{{if .Source.File}}{{src .Source}} {{end}}{{if and $.Explorer .Ref}}<a href="{{explorerURL $.Explorer .Ref}}">{{.Text}}</a>{{else}}{{.Text}}{{end}}</p>{{end}}
             {{if .Fix}}<p class="fix">{{.Fix}}</p>{{end}}
           </div></article>
           {{end}}

@@ -55,7 +55,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&o.eventLog, "eventlog", "", "event log: local file, rolling eventlog_v2_* folder, folder of logs, or History Server zip")
 	fs.StringVar(&o.from, "from", "", "offline log folder (phase 2)")
 	fs.StringVar(&o.out, "out", "", "output folder (default ~/sparkplain/<yyyy-mm-dd>/<app-id>/)")
-	fs.StringVar(&o.format, "format", "", "html, json or both (default both)")
+	fs.StringVar(&o.format, "format", "", "outputs, comma-separated: html, json, explorer (default all three; both = html,json)")
 	fs.IntVar(&o.workers, "workers", 16, "fetch concurrency (online mode; phase 2)")
 	fs.StringVar(&o.maxSize, "max-size", "", "largest file or zip entry to read, e.g. 10GiB (default 10GiB)")
 	fs.DurationVar(&o.timeout, "overall-timeout", 0, "deadline for the whole run (default 30m)")
@@ -65,7 +65,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.BoolVar(&o.showVersion, "version", false, "print the version and exit")
 	fs.Usage = func() {
 		fmt.Fprintf(stderr, "Usage: sparkplain -app-id <application id> -eventlog <path> [flags]\n\n")
-		fmt.Fprintf(stderr, "Turns one Spark application's event log into report.html and report.json.\n\nFlags:\n")
+		fmt.Fprintf(stderr, "Turns one Spark application's event log into report.html, report.json and explorer.html.\n\nFlags:\n")
 		fs.PrintDefaults()
 		fmt.Fprintf(stderr, "\nExit codes: 0 complete, 2 fatal, 3 partial (a source missing or unreadable), 130 interrupted.\n")
 	}
@@ -115,9 +115,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return fail("%v", err)
 	}
-	format := firstNonEmpty(o.format, cfg.Format, "both")
-	if format != "html" && format != "json" && format != "both" {
-		return fail("-format must be html, json or both, not %q", format)
+	outputs, err := parseFormats(firstNonEmpty(o.format, cfg.Format, "html,json,explorer"))
+	if err != nil {
+		return fail("%v", err)
 	}
 	maxSize := int64(10 << 30)
 	if s := firstNonEmpty(o.maxSize, cfg.MaxSize); s != "" {
@@ -174,7 +174,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "sparkplain: could not read the event log (%s): %v\n", src.Class, err)
 	default:
 		start := time.Now()
-		log, err = eventlog.Parse(ctx, in, eventlog.Options{})
+		opt := eventlog.Options{}
+		if outputs["explorer"] {
+			lim := cfg.Explorer.WithDefaults()
+			opt.Explorer = &lim
+		}
+		log, err = eventlog.Parse(ctx, in, opt)
 		in.Close()
 		if err != nil {
 			if ctx.Err() == context.Canceled {
@@ -214,14 +219,33 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return fail("creating %s: %v", outDir, err)
 	}
 	var written []string
-	if format != "json" {
+	ropt := report.Options{Location: loc}
+	if outputs["explorer"] {
+		ropt.ExplorerHref = "explorer.html"
+	}
+	if outputs["html"] {
 		p := filepath.Join(outDir, "report.html")
-		if err := writeFile(p, func(w io.Writer) error { return report.WriteHTML(w, r, report.Options{Location: loc}) }); err != nil {
+		if err := writeFile(p, func(w io.Writer) error { return report.WriteHTML(w, r, ropt) }); err != nil {
 			return fail("writing %s: %v", p, err)
 		}
 		written = append(written, p)
 	}
-	if format != "html" {
+	if outputs["explorer"] {
+		p := filepath.Join(outDir, "explorer.html")
+		var x *model.Explorer
+		if log != nil {
+			x = log.Explorer
+		}
+		xopt := report.ExplorerOptions{}
+		if outputs["html"] {
+			xopt.ReportHref = "report.html"
+		}
+		if err := writeFile(p, func(w io.Writer) error { return report.WriteExplorer(w, r, x, xopt) }); err != nil {
+			return fail("writing %s: %v", p, err)
+		}
+		written = append(written, p)
+	}
+	if outputs["json"] {
 		p := filepath.Join(outDir, "report.json")
 		if err := writeFile(p, func(w io.Writer) error { return report.WriteJSON(w, r) }); err != nil {
 			return fail("writing %s: %v", p, err)
@@ -324,4 +348,25 @@ func parseSize(s string) int64 {
 		return -1
 	}
 	return int64(n * m)
+}
+
+// parseFormats reads -format: a comma-separated list of html, json and
+// explorer, where "both" means html and json.
+func parseFormats(s string) (map[string]bool, error) {
+	out := map[string]bool{}
+	for _, f := range strings.Split(s, ",") {
+		switch f = strings.TrimSpace(strings.ToLower(f)); f {
+		case "html", "json", "explorer":
+			out[f] = true
+		case "both":
+			out["html"], out["json"] = true, true
+		case "":
+		default:
+			return nil, fmt.Errorf("-format takes html, json, explorer or both (comma-separated), not %q", f)
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("-format names no outputs")
+	}
+	return out, nil
 }

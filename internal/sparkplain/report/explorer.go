@@ -1,0 +1,394 @@
+package report
+
+import (
+	"bytes"
+	_ "embed"
+	"encoding/json"
+	"fmt"
+	"html/template"
+	"io"
+	"strconv"
+	"time"
+
+	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
+)
+
+var (
+	//go:embed assets/explorer.css
+	explorerCSS string
+	//go:embed assets/explorer.js
+	explorerJS string
+	//go:embed templates/explorer.html.tmpl
+	explorerTmpl string
+)
+
+// ExplorerOptions control the explorer page.
+type ExplorerOptions struct {
+	// ReportHref links to report.html; empty when it was not written.
+	ReportHref string
+}
+
+// Caps on text that would otherwise dominate the page's size.
+const (
+	maxPlanText      = 16 << 10 // per query
+	maxPlanTextTotal = 4 << 20  // all queries together
+)
+
+// WriteExplorer renders explorer.html (SPEC §6, Explorer page): the page's
+// own script draws everything from the data embedded as JSON. x may be nil
+// when the explorer data was not collected or the event log was unreadable.
+func WriteExplorer(w io.Writer, r *model.Report, x *model.Explorer, opt ExplorerOptions) error {
+	data, err := json.Marshal(explorerData(r, x, opt)) // escapes <, > and &, so no value can close the script tag
+	if err != nil {
+		return err
+	}
+	t, err := template.New("explorer").Parse(explorerTmpl)
+	if err != nil {
+		return err
+	}
+	title := r.Application.Name
+	if title == "" {
+		title = r.Application.ID
+	}
+	var buf bytes.Buffer
+	err = t.Execute(&buf, struct {
+		Title string
+		CSS   template.CSS
+		JS    template.JS
+		Data  template.HTML
+	}{title, template.CSS(css + "\n" + explorerCSS), template.JS(explorerJS),
+		template.HTML(`<script type="application/json" id="sp-data">` + string(data) + `</script>`)})
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(buf.Bytes())
+	return err
+}
+
+// table is rows of values under column names. The page's script reads
+// columns by name, so their order can change without breaking it.
+type table struct {
+	Cols []string `json:"cols"`
+	Rows [][]any  `json:"rows"`
+}
+
+func newTable(cols ...string) table { return table{Cols: cols, Rows: [][]any{}} }
+
+func (t *table) add(v ...any) {
+	if len(v) != len(t.Cols) {
+		panic(fmt.Sprintf("row has %d values for %d columns", len(v), len(t.Cols)))
+	}
+	t.Rows = append(t.Rows, v)
+}
+
+// Column names of task and stage × executor rows, which are the bulk of the
+// page and so are sent once instead of on every row.
+var (
+	taskCols = []string{"task", "index", "attempt", "exec", "status", "spec", "launch", "dur", "run", "gc", "deser",
+		"fetch", "rows", "input", "shRead", "shWrite", "spill", "file", "line"}
+	cellCols = []string{"exec", "tasks", "ok", "failed", "killed", "dur", "gc", "input", "shRead", "shWrite",
+		"diskSpill", "peakHeap", "peakExec"}
+)
+
+type xData struct {
+	V          int                  `json:"v"`
+	Tool       string               `json:"tool"`
+	Generated  int64                `json:"generated"`
+	ReportHref string               `json:"reportHref,omitempty"`
+	T0         int64                `json:"t0"` // Unix ms that task launch offsets count from
+	App        xApp                 `json:"app"`
+	Summary    []string             `json:"summary"`
+	KPIs       []model.KPI          `json:"kpis"`
+	Findings   []xFinding           `json:"findings"`
+	Files      []string             `json:"files"`
+	Execs      []string             `json:"execs"` // executor IDs; task and cell rows use their index
+	Executors  table                `json:"executors"`
+	HeapBytes  int64                `json:"heapBytes"`
+	Jobs       table                `json:"jobs"`
+	Stages     table                `json:"stages"`
+	Detail     map[string]xDetail   `json:"detail"` // by "id.attempt"
+	TaskCols   []string             `json:"taskCols"`
+	CellCols   []string             `json:"cellCols"`
+	Running    *xRunning            `json:"running,omitempty"`
+	SQL        table                `json:"sql"`
+	Graphs     map[string][]xNode   `json:"graphs"` // by query ID
+	RDDs       table                `json:"rdds"`
+	Runtime    table                `json:"runtime"`
+	Config     []xConfigGroup       `json:"config"`
+	Collected  bool                 `json:"collected"` // explorer data was gathered
+	Limits     model.ExplorerLimits `json:"limits"`
+	Shrinks    int                  `json:"shrinks"`
+	CellsCap   bool                 `json:"cellsCapped"`
+	Notes      []string             `json:"notes"`
+}
+
+type xApp struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	User     string `json:"user"`
+	Attempt  string `json:"attempt"`
+	Spark    string `json:"spark"`
+	Master   string `json:"master"`
+	Deploy   string `json:"deploy"`
+	Status   string `json:"status"`
+	Reason   string `json:"reason"`
+	Start    int64  `json:"start"`
+	End      int64  `json:"end"`
+	Duration int64  `json:"duration"`
+}
+
+type xFinding struct {
+	Sev      string      `json:"sev"`
+	Title    string      `json:"title"`
+	Expl     string      `json:"expl"`
+	Fix      string      `json:"fix,omitempty"`
+	Evidence [][3]string `json:"ev"` // text, ref, file:line
+}
+
+type xDetail struct {
+	Metrics map[string][7]int64 `json:"m"` // count, sum, min, p25, p50, p75, max
+	Hist    [][3]int64          `json:"h"` // lo, hi, count
+	Slowest [][]int64           `json:"slow"`
+	Sample  [][]int64           `json:"sample"`
+	From    int64               `json:"from"`
+	Cells   [][]int64           `json:"cells"`
+}
+
+type xRunning struct {
+	Start    int64   `json:"start"`
+	BucketMs int64   `json:"bucketMs"`
+	Busy     []int64 `json:"busy"`
+}
+
+type xNode struct {
+	Name     string   `json:"n"`
+	Detail   string   `json:"d,omitempty"`
+	Children []int    `json:"c,omitempty"`
+	Metrics  [][3]any `json:"m,omitempty"` // name, type, value (null when not recorded)
+}
+
+type xConfigGroup struct {
+	Name    string  `json:"name"`
+	Entries [][]any `json:"entries"` // key, value, default, non-default, explain
+}
+
+func unixMs(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.UnixMilli()
+}
+
+func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData {
+	a := r.Application
+	d := xData{
+		V: 1, Tool: r.Tool, Generated: unixMs(r.GeneratedAt), ReportHref: opt.ReportHref, T0: unixMs(a.Start),
+		App: xApp{ID: a.ID, Name: a.Name, User: a.User, Attempt: a.AttemptID, Spark: a.SparkVersion, Master: a.Master,
+			Deploy: a.DeployMode, Status: a.Status, Reason: a.StatusReason, Start: unixMs(a.Start), End: unixMs(a.End), Duration: a.DurationMs},
+		Summary: r.Summary.Sentences, KPIs: r.Summary.KPIs, HeapBytes: r.Memory.Config.HeapBytes,
+		Detail: map[string]xDetail{}, TaskCols: taskCols, CellCols: cellCols, Graphs: map[string][]xNode{},
+		Findings: []xFinding{}, Files: []string{}, Execs: []string{}, Notes: []string{},
+	}
+	files := map[string]int{}
+	fileIdx := func(s model.Source) int64 {
+		if s.File == "" {
+			return -1
+		}
+		i, ok := files[s.File]
+		if !ok {
+			i = len(d.Files)
+			files[s.File] = i
+			d.Files = append(d.Files, s.File)
+		}
+		return int64(i)
+	}
+	src := func(s model.Source) any {
+		if s.File == "" {
+			return nil
+		}
+		return []int64{fileIdx(s), s.Line}
+	}
+	execs := map[string]int{}
+	execIdx := func(id string) int64 {
+		i, ok := execs[id]
+		if !ok {
+			i = len(d.Execs)
+			execs[id] = i
+			d.Execs = append(d.Execs, id)
+		}
+		return int64(i)
+	}
+
+	for _, f := range r.Findings {
+		xf := xFinding{Sev: string(f.Severity), Title: f.Title, Expl: f.Explanation, Fix: f.Fix}
+		for _, e := range f.Evidence {
+			loc := ""
+			if !e.Source.IsZero() {
+				loc = e.Source.String()
+			}
+			xf.Evidence = append(xf.Evidence, [3]string{e.Text, e.Ref, loc})
+		}
+		d.Findings = append(d.Findings, xf)
+	}
+
+	d.Executors = newTable("id", "host", "cores", "added", "removed", "reason", "kind", "tasks", "ok", "failed", "killed",
+		"dur", "run", "cpuNs", "gc", "input", "output", "shRead", "shWrite", "memSpill", "diskSpill",
+		"peakHeap", "peakOffHeap", "peakExec", "peakStorage", "peakRss", "storageMem", "src")
+	var all []*model.Executor
+	if r.Executors.Driver != nil {
+		all = append(all, r.Executors.Driver)
+	}
+	all = append(all, r.Executors.Executors...)
+	for _, e := range all {
+		execIdx(e.ID)
+		p, t := e.Peak, e.Tasks
+		d.Executors.add(e.ID, e.Host, e.Cores, unixMs(e.Added), unixMs(e.Removed), e.RemovedReason, e.RemovalKind,
+			t.Tasks, t.Succeeded, t.Failed, t.Killed, t.DurationMs, t.RunTimeMs, t.CPUTimeNs, t.GCTimeMs,
+			t.InputBytes, t.OutputBytes, t.ShuffleReadBytes, t.ShuffleWriteBytes, t.MemorySpillBytes, t.DiskSpillBytes,
+			p.JVMHeap, p.JVMOffHeap, p.OnHeapExecution+p.OffHeapExecution, p.OnHeapStorage+p.OffHeapStorage,
+			p.ProcessJVMRSS+p.ProcessPythonRSS+p.ProcessOtherRSS, e.MaxOnHeapStorage+e.MaxOffHeapStorage, src(e.AddedSource))
+	}
+
+	d.Jobs = newTable("id", "name", "desc", "group", "submitted", "completed", "status", "stages", "sql", "failure", "src")
+	for _, j := range r.Jobs.Jobs {
+		var sql any
+		if j.SQLExecutionID != nil {
+			sql = *j.SQLExecutionID
+		}
+		d.Jobs.add(j.ID, j.Name, j.Description, j.Group, unixMs(j.Submitted), unixMs(j.Completed), j.Status,
+			orEmpty(j.StageIDs), sql, capText(j.Failure, 2000), src(j.Source))
+	}
+
+	d.Stages = newTable("id", "attempt", "name", "status", "submitted", "completed", "numTasks", "jobs", "parents",
+		"tasks", "ok", "failed", "killed", "dur", "run", "gc", "input", "inputRows", "output", "outputRows",
+		"shRead", "shReadRows", "shWrite", "shWriteRows", "memSpill", "diskSpill", "p50", "max", "failure", "cached", "src")
+	for _, st := range r.Jobs.Stages {
+		t := st.Totals
+		d.Stages.add(st.ID, st.Attempt, st.Name, st.Status, unixMs(st.Submitted), unixMs(st.Completed), st.NumTasks,
+			orEmpty(st.JobIDs), orEmpty(st.ParentIDs), t.Tasks, t.Succeeded, t.Failed, t.Killed, t.DurationMs, t.RunTimeMs, t.GCTimeMs,
+			t.InputBytes, t.InputRecords, t.OutputBytes, t.OutputRecords, t.ShuffleReadBytes, t.ShuffleReadRecords,
+			t.ShuffleWriteBytes, t.ShuffleWriteRecords, t.MemorySpillBytes, t.DiskSpillBytes,
+			st.TaskDuration.P50, st.TaskDuration.Max, capText(st.FailureReason, 2000), orEmpty(st.CachedRDDs), src(st.Source))
+	}
+
+	d.SQL = newTable("id", "desc", "start", "end", "error", "jobs", "reads", "writes", "plan", "planCut", "src")
+	planBudget := maxPlanTextTotal
+	for _, q := range r.Jobs.SQL {
+		plan, cut := q.Plan, q.PlanTruncated
+		if len(plan) > maxPlanText || len(plan) > planBudget {
+			plan, cut = capText(plan, min(maxPlanText, max(0, planBudget))), true
+		}
+		planBudget -= len(plan)
+		d.SQL.add(q.ID, q.Description, unixMs(q.Start), unixMs(q.End), capText(q.Error, 2000), orEmpty(q.JobIDs),
+			refNames(q.Reads), refNames(q.Writes), plan, cut, src(q.Source))
+	}
+
+	d.RDDs = newTable("id", "name", "level", "partitions", "firstStage", "unpersisted", "mem", "disk", "sizeKnown")
+	for _, c := range r.IO.Cached {
+		d.RDDs.add(c.ID, c.Name, c.StorageLevel, c.Partitions, c.FirstStage, c.Unpersisted, c.MemoryBytes, c.DiskBytes, c.SizeKnown)
+	}
+
+	d.Runtime = newTable("group", "label", "value", "from", "explain", "missing")
+	for _, row := range r.Config.Runtime {
+		d.Runtime.add(row.Group, row.Label, row.Value, row.From, row.Explain, row.Missing)
+	}
+	for _, g := range r.Config.Groups {
+		xg := xConfigGroup{Name: g.Name, Entries: [][]any{}}
+		for _, e := range g.Entries {
+			xg.Entries = append(xg.Entries, []any{e.Key, e.Value, e.Default, e.NonDefault, e.Explain})
+		}
+		d.Config = append(d.Config, xg)
+	}
+
+	if x == nil {
+		d.Notes = append(d.Notes, "Per-task detail was not collected for this run, so stage summaries, samples and charts are missing.")
+		return d
+	}
+	d.Collected, d.Limits, d.Shrinks, d.CellsCap = true, x.Limits, x.SampleShrinks, x.CellsCapped
+	if x.SampleShrinks > 0 {
+		d.Notes = append(d.Notes, fmt.Sprintf("This run has many tasks, so each stage keeps a smaller sample (the app-wide budget of %s sampled tasks halved every sample %d times). Charts drawn from samples say so.",
+			model.Num(int64(x.Limits.MaxSampledTasks)), x.SampleShrinks))
+	}
+	if x.CellsCapped {
+		d.Notes = append(d.Notes, fmt.Sprintf("Per-executor totals stop after %s stage × executor pairs, so later stages have no per-executor table.", model.Num(int64(x.Limits.MaxStageExecutorCells))))
+	}
+	taskRow := func(t model.TaskSample) []int64 {
+		status := int64(0)
+		switch t.Status {
+		case model.StatusFailed:
+			status = 1
+		case "killed":
+			status = 2
+		}
+		spec := int64(0)
+		if t.Speculative {
+			spec = 1
+		}
+		launch := t.LaunchMs
+		if d.T0 > 0 && launch > 0 {
+			launch -= d.T0
+		}
+		return []int64{t.TaskID, int64(t.Index), int64(t.Attempt), execIdx(t.ExecutorID), status, spec, launch,
+			t.DurationMs, t.RunTimeMs, t.GCTimeMs, t.DeserializeMs, t.FetchWaitMs, t.RecordsRead, t.InputBytes,
+			t.ShuffleRead, t.ShuffleWrite, t.Spill, fileIdx(t.Source), t.Source.Line}
+	}
+	for _, sd := range x.Stages {
+		xd := xDetail{Metrics: map[string][7]int64{}, Hist: [][3]int64{}, Slowest: [][]int64{}, Sample: [][]int64{}, Cells: [][]int64{}, From: sd.SampledFrom}
+		for k, q := range sd.Metrics {
+			xd.Metrics[k] = [7]int64{q.Count, q.Sum, q.Min, q.P25, q.P50, q.P75, q.Max}
+		}
+		for _, b := range sd.Duration {
+			xd.Hist = append(xd.Hist, [3]int64{b.Lo, b.Hi, b.Count})
+		}
+		for _, t := range sd.Slowest {
+			xd.Slowest = append(xd.Slowest, taskRow(t))
+		}
+		for _, t := range sd.Sample {
+			xd.Sample = append(xd.Sample, taskRow(t))
+		}
+		for _, c := range sd.Executors {
+			t, p := c.Tasks, c.Peak
+			xd.Cells = append(xd.Cells, []int64{execIdx(c.ExecutorID), t.Tasks, t.Succeeded, t.Failed, t.Killed, t.DurationMs, t.GCTimeMs,
+				t.InputBytes, t.ShuffleReadBytes, t.ShuffleWriteBytes, t.DiskSpillBytes, p.JVMHeap, p.OnHeapExecution + p.OffHeapExecution})
+		}
+		d.Detail[strconv.Itoa(sd.ID)+"."+strconv.Itoa(sd.Attempt)] = xd
+	}
+	if len(x.Running.BusyMs) > 0 {
+		d.Running = &xRunning{Start: unixMs(x.Running.Start), BucketMs: x.Running.BucketMs, Busy: x.Running.BusyMs}
+	}
+	for _, g := range x.SQL {
+		nodes := make([]xNode, len(g.Nodes))
+		for i, n := range g.Nodes {
+			xn := xNode{Name: n.Name, Detail: n.Detail, Children: n.Children}
+			for _, m := range n.Metrics {
+				var v any
+				if m.Known {
+					v = m.Value
+				}
+				xn.Metrics = append(xn.Metrics, [3]any{m.Name, m.Type, v})
+			}
+			nodes[i] = xn
+		}
+		d.Graphs[strconv.FormatInt(g.QueryID, 10)] = nodes
+	}
+	return d
+}
+
+func orEmpty[T any](v []T) []T {
+	if v == nil {
+		return []T{}
+	}
+	return v
+}
+
+func refNames(refs []model.DataRef) []string {
+	out := []string{}
+	for _, r := range refs {
+		name := r.Name
+		if r.Format != "" {
+			name += " (" + r.Format + ")"
+		}
+		out = append(out, name)
+	}
+	return out
+}
