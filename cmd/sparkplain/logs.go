@@ -407,7 +407,7 @@ func (out *clusterLogs) fetchScripts(ctx context.Context, cloud *awsSession, app
 
 // runWindow is when the application ran: from the event log, else from
 // YARN's summary in the logs, else from the step that submitted it.
-func runWindow(log *model.EventLog, files []model.LogFile, steps []model.Step) (from, to time.Time, ok bool) {
+func runWindow(log *model.EventLog, files []model.LogFile, steps []model.Step, cl *model.Cluster) (from, to time.Time, ok bool) {
 	if log != nil && !log.Application.Start.IsZero() {
 		from, to = log.Application.Start, log.Application.End
 		if to.IsZero() {
@@ -429,7 +429,12 @@ func runWindow(log *model.EventLog, files []model.LogFile, steps []model.Step) (
 	}
 	for _, st := range steps {
 		if st.AppID != "" && !st.Started.IsZero() {
+			// A step cancelled with its cluster has no end: the cluster's
+			// end bounds it.
 			to = st.Ended
+			if to.IsZero() && cl != nil {
+				to = cl.Ended
+			}
 			if to.IsZero() {
 				to = awsDeps.now()
 			}
@@ -448,7 +453,7 @@ func (out *clusterLogs) readMetrics(ctx context.Context, cloud *awsSession, log 
 		row.Status, row.Detail = "not-requested", "Not called: -no-cloudwatch."
 		return
 	}
-	from, to, ok := runWindow(log, out.files, out.steps)
+	from, to, ok := runWindow(log, out.files, out.steps, out.cluster)
 	if !ok {
 		row.Status, row.Detail = "not-supplied", "Not called: nothing says when the application ran (no event log, YARN summary or step)."
 		return
@@ -494,7 +499,7 @@ func (out *clusterLogs) readCalls(ctx context.Context, cloud *awsSession, log *m
 		row.Status, row.Detail = "not-requested", "Not called: -no-cloudtrail."
 		return
 	}
-	from, to, ok := runWindow(log, out.files, out.steps)
+	from, to, ok := runWindow(log, out.files, out.steps, out.cluster)
 	if !ok {
 		row.Status, row.Detail = "not-supplied", "Not called: nothing says when the application ran (no event log, YARN summary or step)."
 		return

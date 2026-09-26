@@ -18,11 +18,15 @@ func series(name, stat, scope string, start time.Time, vs ...float64) model.Seri
 }
 
 func metricsRun(t *testing.T, pending, free, apps []float64, cpu, mem float64) *model.Report {
+	return metricsRunFor(t, 10*time.Minute, pending, free, apps, cpu, mem)
+}
+
+func metricsRunFor(t *testing.T, run time.Duration, pending, free, apps []float64, cpu, mem float64) *model.Report {
 	t.Helper()
 	l := synthetic(nil, &model.Executor{ID: "1", Host: "ip-10-0-0-2.ec2.internal", Cores: 4})
 	start := l.Application.Start
-	l.Application.End = start.Add(10 * time.Minute)
-	l.Application.DurationMs = 600_000
+	l.Application.End = start.Add(run)
+	l.Application.DurationMs = run.Milliseconds()
 	cl := &model.Cluster{ID: "j-1", Instances: []model.Instance{{ID: "i-2", PrivateDNS: "ip-10-0-0-2.ec2.internal", Role: "CORE", Created: start.Add(-time.Hour)}}}
 	m := &model.MetricsSection{Coverage: model.Complete, From: start.Add(-5 * time.Minute), To: start.Add(15 * time.Minute),
 		Cluster: []model.Series{series("ContainerPending", "Maximum", "j-1", start, pending...), series("YARNMemoryAvailablePercentage", "Minimum", "j-1", start, free...),
@@ -65,6 +69,12 @@ func TestMetricFindings(t *testing.T) {
 		if _, ok := full[rule]; ok {
 			t.Errorf("%s should not fire", rule)
 		}
+	}
+	// A short run that spent most of its time waiting counts too (the
+	// NOAA run: 2 min 50 s, containers waiting throughout).
+	short := rules(metricsRunFor(t, 170*time.Second, []float64{49, 8, 37}, []float64{44, 44, 44}, []float64{1}, 30, 50))
+	if f := short["waited-for-capacity"]; f.Title != "Containers waited 2 min 50 s while 44% of YARN memory was free" {
+		t.Errorf("short run = %+v", f)
 	}
 	// A minute of waiting is normal start-up.
 	if _, ok := rules(metricsRun(t, []float64{20, 0, 0}, []float64{40}, []float64{1}, 30, 50))["waited-for-capacity"]; ok {

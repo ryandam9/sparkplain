@@ -33,6 +33,9 @@ func analyzeMetrics(c *ctx, r *model.Report) {
 		for _, st := range r.Steps {
 			if st.AppID != "" && !st.Started.IsZero() {
 				start, end = st.Started, st.Ended
+				if end.IsZero() && r.Cluster != nil {
+					end = r.Cluster.Ended // cancelled with its cluster
+				}
 			}
 		}
 	}
@@ -120,7 +123,11 @@ func analyzeMetrics(c *ctx, r *model.Report) {
 		waitMin = min(waitMin, runMin)
 		m.Summary = append(m.Summary, model.Fact{Label: "Containers waiting", Value: fmt.Sprintf("%.0f at most, for %s", peak, model.Duration(int64(waitMin*60000))),
 			Explain: "Containers YARN had been asked for but had not placed, across the whole cluster.", Source: src(pending)})
-		if timed && waitMin >= pendingMinMinutes && runMin > 0 && waitMin/runMin >= pendingMinShare {
+		// Minutes of waiting over a fair share of the run, or most of a
+		// short run spent waiting.
+		long := waitMin >= pendingMinMinutes && runMin > 0 && waitMin/runMin >= pendingMinShare
+		most := waitMin >= 1 && runMin > 0 && waitMin/runMin >= 0.5
+		if timed && (long || most) {
 			ev := []model.Evidence{{Source: src(pending), Text: fmt.Sprintf("CloudWatch: up to %.0f containers waiting, for %s of the %s run", peak, model.Duration(int64(waitMin*60000)), model.Duration(int64(runMin*60000)))}}
 			f := model.Finding{Rule: "waited-for-capacity", Severity: model.Warning, Section: "nodes"}
 			avgFree := -1.0
