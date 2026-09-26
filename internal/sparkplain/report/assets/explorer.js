@@ -187,7 +187,6 @@
     charts.push({ el: d, draw: draw });
     return d;
   }
-  window.SP = { D: D, el: el, bytes: bytes, dur: dur, num: num, pct: pct, charts: charts, stages: stages, execs: execs, jobs: jobs, T: T, C: C };
 
   // ---------- header ----------
   var a = D.app;
@@ -501,6 +500,7 @@
       if (!det) return;
       det.cells.forEach(function (r) { if (r[C.exec] === idx) { var o = {}; D.cellCols.forEach(function (c, i) { o[c] = r[i]; }); o.stage = st; cells.push(o); } });
     });
+    if (D.collected && id !== "driver") { s.appendChild(el("h3", { text: "Peak heap by stage" })); s.appendChild(chartSlot("", "execHeap:" + id)); }
     s.appendChild(el("h3", { text: "Stages it worked on" }));
     if (!cells.length) s.appendChild(explain(D.collected ? "No stage × executor totals for this executor." : "Per-task detail was not collected for this run."));
     else s.appendChild(table({
@@ -519,6 +519,7 @@
 
   views.sql = function () {
     var s = section("SQL / DataFrame", "Each query is one DataFrame action or SQL statement. Open one for its plan with row counts and time per operator.");
+    if (queries.length) s.appendChild(chartSlot("", "sqlTimeline"));
     s.appendChild(table({
       rows: queries, sort: 0, dir: "asc", filter: "Filter queries by ID, description or table",
       text: function (q) { return q.id + " " + q.desc + " " + q.reads.join(" ") + " " + q.writes.join(" "); },
@@ -638,6 +639,212 @@
     return s;
   };
 
+
+  // ---------- chart layer: Google Charts, loaded on demand ----------
+  // Google Charts cannot be self-hosted, so this is the page's only network
+  // request. Release 52 is pinned (a frozen version) rather than "current".
+  var LOADER = "https://www.gstatic.com/charts/loader.js", GC_VERSION = "52";
+  var gc = { state: "idle", queue: [] };
+  var banner = document.getElementById("sp-banner");
+  function showBanner(text) { banner.textContent = text; banner.hidden = false; }
+  function loadCharts(cb) {
+    if (gc.state === "ready") { cb(); return; }
+    if (gc.state === "failed") return;
+    gc.queue.push(cb);
+    if (gc.state === "loading") return;
+    gc.state = "loading";
+    var fail = function () {
+      if (gc.state === "ready") return;
+      gc.state = "failed";
+      showBanner("Charts could not load. They are drawn with Google Charts, which this page loads from www.gstatic.com, so they need internet access. Everything else on the page works without it.");
+      charts.forEach(function (c) { waitText(c, "Chart unavailable: Google Charts could not be loaded."); });
+    };
+    var slow = setTimeout(function () { if (gc.state === "loading") showBanner("Charts are still loading from www.gstatic.com. Tables and details work in the meantime."); }, 10000);
+    var s = document.createElement("script");
+    s.src = LOADER;
+    s.async = true;
+    s.onerror = function () { clearTimeout(slow); fail(); };
+    s.onload = function () {
+      try {
+        google.charts.load(GC_VERSION, { packages: ["corechart", "timeline"] });
+        google.charts.setOnLoadCallback(function () {
+          clearTimeout(slow);
+          gc.state = "ready";
+          banner.hidden = true;
+          var q = gc.queue; gc.queue = [];
+          q.forEach(function (f) { f(); });
+        });
+      } catch (e) { clearTimeout(slow); fail(); }
+    };
+    document.head.appendChild(s);
+  }
+  function waitText(c, text) { var w = c.el.querySelector(".wait"); if (w) w.textContent = text; }
+
+  function css(name) { return getComputedStyle(root).getPropertyValue(name).trim(); }
+  function theme() {
+    return { ink: css("--ink"), muted: css("--muted"), line: css("--line"), font: css("--sans").replace(/"/g, "'") || "sans-serif",
+      series: css("--viz-series"), fail: css("--viz-fail"), neutral: css("--viz-neutral") };
+  }
+  function baseOpts(th, extra) {
+    var o = {
+      backgroundColor: "transparent", fontName: th.font, fontSize: 12, height: 280,
+      chartArea: { left: 72, right: 20, top: 30, bottom: 48, width: "100%", height: "100%" },
+      legend: { position: "top", alignment: "start", textStyle: { color: th.ink } },
+      hAxis: axis(th), vAxis: axis(th),
+      tooltip: { textStyle: { color: "#15212B" } }
+    };
+    Object.keys(extra || {}).forEach(function (k) { o[k] = extra[k]; });
+    return o;
+  }
+  function withFormat(axis, f) { axis.format = f; return axis; }
+  // axis is the recessive default axis, with extra settings merged in.
+  function axis(th, extra) {
+    var o = { textStyle: { color: th.muted }, gridlines: { color: th.line }, minorGridlines: { color: "transparent" }, baselineColor: th.line, titleTextStyle: { color: th.muted, italic: false } };
+    Object.keys(extra || {}).forEach(function (k) { o[k] = extra[k]; });
+    return o;
+  }
+  // frame replaces the slot's placeholder with a plot area and a caption.
+  function frame(c, caption) {
+    c.el.textContent = "";
+    var plot = el("div", { cls: "plot" });
+    c.el.appendChild(plot);
+    if (caption) c.el.appendChild(el("p", { cls: "cap", text: caption }));
+    return plot;
+  }
+  function statusColor(th, s) { return s === "succeeded" ? th.series : s === "failed" ? th.fail : th.neutral; }
+  var appEnd = a.end || (function () { var m = a.start || 0; stages.forEach(function (s) { m = Math.max(m, s.completed || 0); }); return m; })();
+
+  function timeline(c, th, rows, caption, emptyText) {
+    if (!rows.length) { waitText(c, emptyText); return; }
+    var capRows = rows.slice(0, 600);
+    var plot = frame(c, caption + (rows.length > capRows.length ? " Showing the first " + num(capRows.length) + " of " + num(rows.length) + "." : ""));
+    c.el.classList.add("scrolly");
+    var dt = new google.visualization.DataTable();
+    dt.addColumn({ type: "string", id: "Row" });
+    dt.addColumn({ type: "string", id: "Bar" });
+    dt.addColumn({ type: "string", role: "style" });
+    dt.addColumn({ type: "string", role: "tooltip" });
+    dt.addColumn({ type: "date", id: "Start" });
+    dt.addColumn({ type: "date", id: "End" });
+    capRows.forEach(function (r) { dt.addRow([r.row, r.bar, r.color, r.tip, new Date(r.start), new Date(Math.max(r.end, r.start + 1))]); });
+    var ch = new google.visualization.Timeline(plot);
+    ch.draw(dt, { height: Math.min(capRows.length, 600) * 28 + 60, backgroundColor: css("--surface"), fontName: th.font,
+      alternatingRowStyle: false,
+      timeline: { showBarLabels: true, rowLabelStyle: { color: th.ink, fontName: th.font, fontSize: 12 }, barLabelStyle: { fontName: th.font, fontSize: 11 } },
+      avoidOverlappingGridLines: false, tooltip: { isHtml: false } });
+    if (c.link) google.visualization.events.addListener(ch, "select", function () { var sel = ch.getSelection()[0]; if (sel && sel.row != null) location.hash = c.link(capRows[sel.row]); });
+  }
+  var STATUS_NOTE = " Blue: succeeded. Red: failed. Grey: running, incomplete or skipped.";
+
+  var DRAW = {
+    running: function (c, th) {
+      var R = D.running;
+      if (!R || !R.busy.length) { waitText(c, D.collected ? "No tasks finished, so there is nothing to chart." : "Per-task detail was not collected for this run."); return; }
+      var workers = execs.filter(function (x) { return x.id !== "driver"; });
+      function slotsAt(t) { var n = 0; workers.forEach(function (x) { if (x.added && x.added <= t && t < (x.removed || appEnd + 1)) n += x.cores; }); return n; }
+      var dt = new google.visualization.DataTable();
+      dt.addColumn("datetime", "Time");
+      dt.addColumn("number", "Tasks running (average)");
+      dt.addColumn("number", "Task slots (executor cores)");
+      R.busy.forEach(function (b, i) { var t = R.start + i * R.bucketMs; dt.addRow([new Date(t), Math.round(b / R.bucketMs * 10) / 10, slotsAt(t + R.bucketMs / 2)]); });
+      var plot = frame(c, "Average tasks running in each " + dur(R.bucketMs) + " bucket, against the cores of the executors alive then. Task times are stamped by the driver, so running tasks can briefly exceed the slots.");
+      new google.visualization.ComboChart(plot).draw(dt, baseOpts(th, {
+        seriesType: "area", colors: [th.series, th.neutral],
+        series: { 0: { areaOpacity: 0.25, lineWidth: 2 }, 1: { type: "steppedArea", areaOpacity: 0, lineWidth: 2, lineDashStyle: [4, 4] } },
+        hAxis: withFormat(baseOpts(th).hAxis, "HH:mm:ss")
+      }));
+    },
+    jobsTimeline: function (c, th) {
+      c.link = function (r) { return "#job/" + r.id; };
+      timeline(c, th, jobs.filter(function (j) { return j.submitted; }).map(function (j) {
+        var end = j.completed || appEnd;
+        return { id: j.id, row: "Job " + j.id, bar: (j.desc || j.name || "").slice(0, 80), color: statusColor(th, j.status), start: j.submitted, end: end,
+          tip: "Job " + j.id + ": " + (j.desc || j.name) + "\n" + (STATUS[j.status] || j.status) + ", " + dur(end - j.submitted) };
+      }), "When each job ran. Click a bar to open the job." + STATUS_NOTE, "No job has a start time.");
+    },
+    executorsTimeline: function (c, th) {
+      c.link = function (r) { return "#executor/" + encodeURIComponent(r.id); };
+      timeline(c, th, execs.filter(function (x) { return x.id !== "driver" && x.added; }).map(function (x) {
+        var bad = x.kind === "memory-kill" || x.kind === "lost";
+        var end = x.removed || appEnd;
+        return { id: x.id, row: "Executor " + x.id, bar: x.host || "", color: bad ? th.fail : x.removed ? th.neutral : th.series, start: x.added, end: end,
+          tip: "Executor " + x.id + " on " + x.host + "\n" + (x.removed ? "Removed: " + (x.reason || "no reason logged") : "Ran to the end") + ", " + dur(end - x.added) };
+      }), "How long each executor lived. Blue: ran to the end. Red: killed or lost. Grey: removed for another reason, such as being idle. Click one to open it.", "No executor was logged.");
+    },
+    sqlTimeline: function (c, th) {
+      c.link = function (r) { return "#query/" + r.id; };
+      timeline(c, th, queries.filter(function (q) { return q.start; }).map(function (q) {
+        var st = queryStatus(q), end = q.end || appEnd;
+        return { id: q.id, row: "Query " + q.id, bar: (q.desc || "").slice(0, 80), color: statusColor(th, st), start: q.start, end: end,
+          tip: "Query " + q.id + ": " + q.desc + "\n" + (STATUS[st] || st) + ", " + dur(end - q.start) };
+      }), "When each query ran. Click a bar to open its plan." + STATUS_NOTE, "No query was logged.");
+    },
+    durationHistogram: function (c, th, key) {
+      var det = D.detail[key];
+      if (!det || !det.h.length) { waitText(c, "No successful task to chart."); return; }
+      var dt = new google.visualization.DataTable();
+      dt.addColumn("string", "Duration");
+      dt.addColumn("number", "Tasks");
+      dt.addColumn({ type: "string", role: "tooltip" });
+      det.h.forEach(function (b) { var range = b[0] === b[1] ? dur(b[0]) : dur(b[0]) + " to " + dur(b[1]); dt.addRow([dur(b[0]), b[2], range + ": " + num(b[2]) + " tasks"]); });
+      var plot = frame(c, "Successful tasks by how long they took (every task, not a sample). A long tail on the right means a few tasks held the stage up.");
+      new google.visualization.ColumnChart(plot).draw(dt, baseOpts(th, { colors: [th.series], legend: { position: "none" }, bar: { groupWidth: "88%" },
+        hAxis: axis(th, { textStyle: { color: th.muted, fontSize: 10 }, slantedText: true, slantedTextAngle: 40 }), vAxis: axis(th, { title: "Tasks", format: "#,###", minValue: 0 }) }));
+    },
+    taskScatter: function (c, th, key) {
+      var det = D.detail[key];
+      if (!det || !det.sample.length) { waitText(c, "No task to chart."); return; }
+      var seen = {}, pts = [];
+      det.slow.concat(det.sample).forEach(function (r) { if (!seen[r[T.task]]) { seen[r[T.task]] = 1; pts.push(r); } });
+      var st0 = null;
+      stages.forEach(function (s) { if (s.key === key) st0 = s.submitted; });
+      pts.forEach(function (r) { var at = (D.t0 || 0) + r[T.launch]; if (st0 == null || at < st0) st0 = at; });
+      var dt = new google.visualization.DataTable();
+      dt.addColumn("number", "Started (s after the stage)");
+      dt.addColumn("number", "Succeeded");
+      dt.addColumn({ type: "string", role: "tooltip" });
+      dt.addColumn("number", "Failed or killed");
+      dt.addColumn({ type: "string", role: "tooltip" });
+      pts.forEach(function (r) {
+        var at = ((D.t0 || 0) + r[T.launch] - st0) / 1000, secs = r[T.dur] / 1000, bad = r[T.status] !== 0;
+        var tip = "Task " + r[T.task] + " (partition " + r[T.index] + ") on executor " + execName(r[T.exec]) + "\n" + dur(r[T.dur]) + ", " + num(r[T.rows]) + " rows read";
+        dt.addRow(bad ? [at, null, null, secs, tip] : [at, secs, tip, null, null]);
+      });
+      var plot = frame(c, "Each dot is a task: when it started, counted from the start of the stage, and how long it took. Dots high above the rest are stragglers; check whether they read more rows. " +
+        (det.sample.length < det.from ? "From a sample of " + num(det.sample.length) + " of " + num(det.from) + " tasks plus the slowest " + num(det.slow.length) + "." : "Every task of this stage."));
+      new google.visualization.ScatterChart(plot).draw(dt, baseOpts(th, { colors: [th.series, th.fail], pointSize: 5, dataOpacity: 0.75,
+        series: { 0: { pointShape: "circle" }, 1: { pointShape: "triangle", pointSize: 8 } },
+        hAxis: axis(th, { title: "Started, seconds after the stage began", minValue: 0 }),
+        vAxis: axis(th, { title: "Duration (s)", minValue: 0 }) }));
+    },
+    execHeap: function (c, th, id) {
+      var idx = D.execs.indexOf(id), pts = [];
+      if (idx >= 0) stages.forEach(function (st) {
+        var det = D.detail[st.key];
+        if (det) det.cells.forEach(function (r) { if (r[C.exec] === idx && r[C.peakHeap] > 0) pts.push([st, r[C.peakHeap]]); });
+      });
+      if (!pts.length) { waitText(c, "No heap samples were logged for this executor (spark.eventLog.logStageExecutorMetrics turns them on)."); return; }
+      var dt = new google.visualization.DataTable();
+      dt.addColumn("string", "Stage");
+      dt.addColumn("number", "Peak heap (MiB)");
+      dt.addColumn({ type: "string", role: "tooltip" });
+      dt.addColumn("number", "Configured heap (MiB)");
+      pts.forEach(function (p) { dt.addRow(["Stage " + p[0].key, Math.round(p[1] / 1048576), "Stage " + p[0].key + " (" + p[0].name + "): peak heap " + bytes(p[1]), D.heapBytes ? Math.round(D.heapBytes / 1048576) : null]); });
+      var plot = frame(c, "The highest Java heap use sampled while each stage ran on this executor, against the heap it was given. Samples are peaks, so short spikes can be missed.");
+      new google.visualization.ComboChart(plot).draw(dt, baseOpts(th, { seriesType: "bars", colors: [th.series, th.neutral],
+        series: { 1: { type: "line", lineWidth: 2, lineDashStyle: [4, 4], pointSize: 0 } }, bar: { groupWidth: "80%" },
+        hAxis: axis(th, { textStyle: { color: th.muted, fontSize: 10 }, slantedText: true }),
+        vAxis: axis(th, { title: "MiB", format: "#,###", minValue: 0 }) }));
+    }
+  };
+  function drawSlot(c) {
+    var name = c.draw.split(":")[0], arg = c.draw.slice(name.length + 1);
+    if (!DRAW[name] || !document.body.contains(c.el)) return;
+    try { DRAW[name](c, theme(), arg); } catch (e) { waitText(c, "This chart could not be drawn: " + e.message); }
+  }
+  var resizeTimer;
+  window.addEventListener("resize", function () { clearTimeout(resizeTimer); resizeTimer = setTimeout(redrawCharts, 250); });
+
   function notFound(what) { return section(what + " is not in this log", "It may have been cut off, or the link is from another run."); }
 
   // ---------- routing ----------
@@ -652,15 +859,15 @@
     charts.length = 0;
     main.textContent = "";
     add(main, views[name](arg));
-    if (window.SPDraw) window.SPDraw(main);
     drawCharts();
     window.scrollTo(0, 0);
   }
-  function drawCharts() { if (window.SPCharts) window.SPCharts(charts); else charts.forEach(function (c) { var w = c.el.querySelector(".wait"); if (w) w.textContent = chartsState; }); }
-  function redrawCharts() { if (window.SPCharts) window.SPCharts(charts); }
-  var chartsState = "Charts are not available in this version.";
-  window.SPRoute = route;
-  window.SPChartsState = function (s) { chartsState = s; drawCharts(); };
+  function drawCharts() {
+    if (!charts.length) return;
+    var mine = charts.slice();
+    loadCharts(function () { mine.forEach(drawSlot); });
+  }
+  function redrawCharts() { if (gc.state === "ready") charts.forEach(drawSlot); }
   window.addEventListener("hashchange", route);
   route();
 })();

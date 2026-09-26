@@ -41,3 +41,11 @@ svg.dag a .node:hover rect{fill:var(--accent-soft)}
 .dagwrap{overflow:auto;max-height:640px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px}
 @media (max-width:900px){.grid2{grid-template-columns:minmax(0,1fr)}}
 .st{white-space:nowrap}
+/* chart palette, validated (dataviz validator) against each theme's surface:
+   series = categorical slot 1, fail = status critical, neutral = everything else */
+:root{--viz-series:#2a78d6;--viz-fail:#B83227;--viz-neutral:#6F7C88}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--viz-series:#3987e5;--viz-fail:#e66767;--viz-neutral:#8C99A5}}
+:root[data-theme="dark"]{--viz-series:#3987e5;--viz-fail:#e66767;--viz-neutral:#8C99A5}
+.gchart .cap{font-size:12.5px;color:var(--muted);padding:4px 6px 2px;max-width:80ch}
+.gchart .plot{width:100%}
+.gchart.scrolly .plot{max-height:520px;overflow-y:auto}

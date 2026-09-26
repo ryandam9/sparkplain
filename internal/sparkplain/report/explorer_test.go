@@ -98,14 +98,30 @@ func TestExplorerDataMatchesReport(t *testing.T) {
 	}
 }
 
-// Until the charts arrive (step 3) the page loads nothing from the network.
-func TestExplorerLoadsNothingExternal(t *testing.T) {
+// The page's only network request is the Google Charts loader, pinned to a
+// frozen release, asking only for chart packages that render in the browser
+// (CLAUDE.md: never GeoChart or Map, which send data to Google).
+func TestExplorerOnlyLoadsGoogleCharts(t *testing.T) {
 	r, x := buildWithExplorer(t, "application_1790380000000_0042")
-	page := renderExplorer(t, r, x)
-	for _, re := range []string{`<link\b`, `<script[^>]+src=`, `@import`, `url\(\s*['"]?https?:`, `<iframe`} {
+	page := dataRE.ReplaceAllString(renderExplorer(t, r, x), "") // log values may contain URLs; they are data, not loads
+	for _, re := range []string{`<link\b`, `<script[^>]+src=`, `@import`, `url\(\s*['"]?https?:`, `<iframe`, `<img\b`} {
 		if m := regexp.MustCompile(re).FindString(page); m != "" {
-			t.Errorf("explorer loads something external: %q", m)
+			t.Errorf("explorer loads something outside its script: %q", m)
 		}
+	}
+	urls := regexp.MustCompile(`https?://[^\s"'<>)]+`).FindAllString(page, -1)
+	if len(urls) != 1 || urls[0] != "https://www.gstatic.com/charts/loader.js" {
+		t.Errorf("explorer references %v; only the Google Charts loader is allowed", urls)
+	}
+	if !strings.Contains(explorerJS, `GC_VERSION = "52"`) || strings.Contains(explorerJS, `load("current"`) {
+		t.Error("Google Charts must be pinned to a frozen release")
+	}
+	pk := regexp.MustCompile(`packages:\s*\[([^\]]*)\]`).FindAllStringSubmatch(explorerJS, -1)
+	if len(pk) != 1 || strings.TrimSpace(pk[0][1]) != `"corechart", "timeline"` {
+		t.Errorf("chart packages %v; only corechart and timeline are allowed", pk)
+	}
+	if regexp.MustCompile(`(?i)geochart|visualization\.map\b|"map"`).MatchString(explorerJS) {
+		t.Error("GeoChart and Map send data to Google and must not be used")
 	}
 }
 
