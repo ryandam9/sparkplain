@@ -47,11 +47,11 @@ func TestRunWritesBothReports(t *testing.T) {
 	if code != exitOK {
 		t.Fatalf("exit %d: %s %s", code, out, errs)
 	}
-	html, err := os.ReadFile(filepath.Join(dir, "report.html"))
+	html, err := os.ReadFile(outPath(dir, "report.html"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	js, err := os.ReadFile(filepath.Join(dir, "report.json"))
+	js, err := os.ReadFile(outPath(dir, "report.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestCorruptEventLogDegrades(t *testing.T) {
 	if code != exitPartial {
 		t.Fatalf("exit %d: %s", code, errs)
 	}
-	html, err := os.ReadFile(filepath.Join(out, "report.html"))
+	html, err := os.ReadFile(outPath(out, "report.html"))
 	if err != nil || !bytes.Contains(html, []byte("Could not read")) {
 		t.Fatalf("degraded report missing: %v", err)
 	}
@@ -122,10 +122,10 @@ func TestConfigFileThresholdsAndFormat(t *testing.T) {
 	if code != exitOK {
 		t.Fatalf("exit %d: %s", code, errs)
 	}
-	if _, err := os.Stat(filepath.Join(out, "report.html")); err == nil {
+	if _, err := os.Stat(outPath(out, "report.html")); err == nil {
 		t.Error("format json should not write html")
 	}
-	js, _ := os.ReadFile(filepath.Join(out, "report.json"))
+	js, _ := os.ReadFile(outPath(out, "report.json"))
 	if bytes.Contains(js, []byte(`"rule": "stage-skew"`)) {
 		t.Error("skew-ratio 100 from the config file should silence the skew rule")
 	}
@@ -161,6 +161,9 @@ func TestFormats(t *testing.T) {
 		{"explorer", []string{"explorer.html"}},
 		{"html, explorer", []string{"report.html", "explorer.html"}},
 	} {
+		for i, w := range c.want {
+			c.want[i] = "application_1790380000000_0042-" + w // named after the application
+		}
 		dir := t.TempDir()
 		args := []string{"-app-id", "application_1790380000000_0042", "-eventlog", log, "-out", dir}
 		if c.format != "" {
@@ -182,13 +185,13 @@ func TestFormats(t *testing.T) {
 				t.Errorf("-format %q: %s missing", c.format, w)
 			}
 		}
-		html, _ := os.ReadFile(filepath.Join(dir, "report.html"))
-		ex, _ := os.ReadFile(filepath.Join(dir, "explorer.html"))
-		hasX, hasR := slices.Contains(c.want, "explorer.html"), slices.Contains(c.want, "report.html")
-		if hasR && bytes.Contains(html, []byte(`href="explorer.html"`)) != hasX {
+		html, _ := os.ReadFile(outPath(dir, "report.html"))
+		ex, _ := os.ReadFile(outPath(dir, "explorer.html"))
+		hasX, hasR := slices.Contains(c.want, "application_1790380000000_0042-explorer.html"), slices.Contains(c.want, "application_1790380000000_0042-report.html")
+		if hasR && bytes.Contains(html, []byte(`href="application_1790380000000_0042-explorer.html"`)) != hasX {
 			t.Errorf("-format %q: report links to the explorer = %v, want %v", c.format, !hasX, hasX)
 		}
-		if hasX && bytes.Contains(ex, []byte(`"reportHref":"report.html"`)) != hasR {
+		if hasX && bytes.Contains(ex, []byte(`"reportHref":"application_1790380000000_0042-report.html"`)) != hasR {
 			t.Errorf("-format %q: explorer links to the report = %v, want %v", c.format, !hasR, hasR)
 		}
 	}
@@ -215,7 +218,7 @@ func TestSourceFlag(t *testing.T) {
 	if code != exitOK {
 		t.Fatalf("exit %d: %s", code, errs)
 	}
-	page, _ := os.ReadFile(filepath.Join(dir, "explorer.html"))
+	page, _ := os.ReadFile(outPath(dir, "explorer.html"))
 	if !bytes.Contains(page, []byte("writeTotals(byProvider, args[0]);")) {
 		t.Error("the Java source should be embedded")
 	}
@@ -366,14 +369,14 @@ func TestOnlineEventLog(t *testing.T) {
 		if code != exitOK && code != exitPartial {
 			t.Fatalf("%v: exit %d: %s", args, code, errs)
 		}
-		js, _ := os.ReadFile(filepath.Join(dir, "report.json"))
+		js, _ := os.ReadFile(outPath(dir, "report.json"))
 		if !bytes.Contains(js, []byte(`"id": "application_1790380000000_0042"`)) || !strings.Contains(out, "wrote") {
 			t.Errorf("%v: no report for the S3 event log: %s", args, errs)
 		}
 	}
 	dir := t.TempDir()
 	code, _, errs := runCLI(t, "-app-id", app, "-out", dir, "-cluster-id", "j-hdfs", "-profile", "test")
-	js, _ := os.ReadFile(filepath.Join(dir, "report.json"))
+	js, _ := os.ReadFile(outPath(dir, "report.json"))
 	if code != exitPartial || !bytes.Contains(js, []byte("HDFS")) {
 		t.Errorf("an HDFS event log dir should give a partial report saying why: exit %d, %s", code, errs)
 	}
@@ -383,4 +386,14 @@ func TestOnlineEventLog(t *testing.T) {
 	if code, _, errs := runCLI(t, "-app-id", app, "-cluster-id", "j-s3"); code != exitFatal || !strings.Contains(errs, "-profile") {
 		t.Errorf("AWS access without -profile: exit %d, %s", code, errs)
 	}
+}
+
+// outPath is the output of a kind ("report.html", "report.json",
+// "explorer.html") in dir, whatever application it is named after.
+func outPath(dir, kind string) string {
+	m, _ := filepath.Glob(filepath.Join(dir, "*-"+kind))
+	if len(m) == 1 {
+		return m[0]
+	}
+	return filepath.Join(dir, "missing-"+kind)
 }

@@ -20,7 +20,7 @@ const emrlogs = "../../testdata/emrlogs"
 
 func readReport(t *testing.T, dir string) model.Report {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(dir, "report.json"))
+	b, err := os.ReadFile(outPath(dir, "report.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestFromFolder(t *testing.T) {
 			}
 			// The 0049 step's command carries a planted password.
 			for _, name := range []string{"report.json", "report.html", "explorer.html"} {
-				if b, _ := os.ReadFile(filepath.Join(dir, name)); strings.Contains(string(b), "FAKE-EMR-PASSWORD") {
+				if b, _ := os.ReadFile(outPath(dir, name)); strings.Contains(string(b), "FAKE-EMR-PASSWORD") {
 					t.Errorf("%s holds the planted password", name)
 				}
 			}
@@ -197,7 +197,7 @@ func TestOnlineReadsClusterLogs(t *testing.T) {
 			t.Errorf("%s = %+v", name, s)
 		}
 	}
-	page, _ := os.ReadFile(filepath.Join(dir, "explorer.html"))
+	page, _ := os.ReadFile(outPath(dir, "explorer.html"))
 	if !strings.Contains(string(page), "from pyspark.sql import SparkSession") || !strings.Contains(string(page), "s3://logs/code/emr_job.py") {
 		t.Error("the explorer should embed the script fetched from S3")
 	}

@@ -76,7 +76,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	})
 	fs.Usage = func() {
 		fmt.Fprintf(stderr, "Usage: sparkplain -app-id <application id> [-eventlog <path>] [-profile <p> -cluster-id <id> | -from <folder>] [flags]\n\n")
-		fmt.Fprintf(stderr, "Turns one Spark application's event log and YARN, step and node logs into report.html, report.json and explorer.html.\n\nFlags:\n")
+		fmt.Fprintf(stderr, "Turns one Spark application's event log and YARN, step and node logs into <app-id>-report.html, <app-id>-report.json and <app-id>-explorer.html.\n\nFlags:\n")
 		fs.PrintDefaults()
 		fmt.Fprintf(stderr, "\nExit codes: 0 complete, 2 fatal, 3 partial (a source missing or unreadable), 130 interrupted.\n")
 	}
@@ -359,17 +359,17 @@ func run(args []string, stdout, stderr io.Writer) int {
 	var written []string
 	ropt := report.Options{Location: loc}
 	if outputs["explorer"] {
-		ropt.ExplorerHref = "explorer.html"
+		ropt.ExplorerHref = outputName(r.Application.ID, "explorer.html")
 	}
 	if outputs["html"] {
-		p := filepath.Join(outDir, "report.html")
+		p := filepath.Join(outDir, outputName(r.Application.ID, "report.html"))
 		if err := writeFile(p, func(w io.Writer) error { return report.WriteHTML(w, r, ropt) }); err != nil {
 			return fail("writing %s: %v", p, err)
 		}
 		written = append(written, p)
 	}
 	if outputs["explorer"] {
-		p := filepath.Join(outDir, "explorer.html")
+		p := filepath.Join(outDir, outputName(r.Application.ID, "explorer.html"))
 		var x *model.Explorer
 		if log != nil {
 			x = log.Explorer
@@ -382,7 +382,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			}
 		}
 		if outputs["html"] {
-			xopt.ReportHref = "report.html"
+			xopt.ReportHref = outputName(r.Application.ID, "report.html")
 		}
 		if err := writeFile(p, func(w io.Writer) error { return report.WriteExplorer(w, r, x, xopt) }); err != nil {
 			return fail("writing %s: %v", p, err)
@@ -390,7 +390,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		written = append(written, p)
 	}
 	if outputs["json"] {
-		p := filepath.Join(outDir, "report.json")
+		p := filepath.Join(outDir, outputName(r.Application.ID, "report.json"))
 		if err := writeFile(p, func(w io.Writer) error { return report.WriteJSON(w, r) }); err != nil {
 			return fail("writing %s: %v", p, err)
 		}
@@ -413,6 +413,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "sparkplain: partial report (exit 3): see the Sources panel for what is missing")
 	}
 	return r.ExitCode
+}
+
+// outputName names an output after its application, such as
+// application_1700000000000_0042-report.html, so reports of different
+// applications never overwrite each other in one folder. The ID was
+// checked against appIDRE, so it is safe in a file name.
+func outputName(appID, kind string) string {
+	return appID + "-" + kind
 }
 
 func eventSourceDetail(l *model.EventLog, took time.Duration) (string, string) {

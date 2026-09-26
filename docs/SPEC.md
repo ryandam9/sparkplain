@@ -159,7 +159,7 @@ The CPU, GC and over-provisioning rules skip runs with less than 1 minute of tas
 
 ## 6. Report output and CLI
 
-Each run writes `report.html` and `report.json` to `~/sparkplain/<yyyy-mm-dd>/<app-id>/` unless `-out` is given.
+Each run writes `<app-id>-report.html`, `<app-id>-report.json` and `<app-id>-explorer.html` (such as `application_1700000000000_0042-report.html`) to `~/sparkplain/<yyyy-mm-dd>/<app-id>/` unless `-out` is given; naming them after the application keeps reports of different applications apart when they share an output folder. Elsewhere this spec calls them `report.html`, `report.json` and `explorer.html` for short.
 
 **Usage**
 

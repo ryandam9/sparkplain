@@ -81,11 +81,11 @@ func TestNoAccessToCluster(t *testing.T) {
 	if s := sourceOf(r, "Container logs"); s.Status != "not-supplied" || !strings.Contains(s.Detail, "cluster's details") {
 		t.Errorf("containers = %+v", s)
 	}
-	html, _ := os.ReadFile(filepath.Join(dir, "report.html"))
+	html, _ := os.ReadFile(outPath(dir, "report.html"))
 	if !strings.Contains(string(html), "No access to 1 source: parts of this report are missing") {
 		t.Error("report.html should open with the access notice")
 	}
-	page, _ := os.ReadFile(filepath.Join(dir, "explorer.html"))
+	page, _ := os.ReadFile(outPath(dir, "explorer.html"))
 	if !strings.Contains(string(page), `"accessGaps"`) {
 		t.Error("the explorer should carry the access gaps")
 	}
