@@ -217,6 +217,35 @@ func TestRuleMemoryOverAndNearLimit(t *testing.T) {
 	}
 }
 
+// Stock Spark leaves spark.eventLog.logStageExecutorMetrics off, so a log can
+// carry no memory samples at all. Peak heap must then read "not recorded",
+// never 0 B, and no memory rule may fire on the missing numbers.
+func TestNoMemorySamples(t *testing.T) {
+	conf := map[string]string{"spark.executor.memory": "8g"}
+	x := &model.Executor{ID: "1", Host: "h", Cores: 2, Tasks: model.TaskTotals{RunTimeMs: 600_000, CPUTimeNs: 500_000 * 1e6}}
+	r := Run(Input{Tool: "t", EventLog: synthetic(conf, x), EventSource: model.SourceStatus{Name: "Spark event log", Status: "read"}})
+	if r.Memory.HeapKnown {
+		t.Error("HeapKnown with no samples")
+	}
+	if !strings.Contains(strings.Join(r.Memory.Missing, " "), "spark.eventLog.logStageExecutorMetrics") {
+		t.Errorf("Missing does not explain the gap: %q", r.Memory.Missing)
+	}
+	for _, k := range r.Summary.KPIs {
+		if k.Label == "Peak heap" && (k.Value != "—" || !strings.Contains(k.Unit, "not recorded")) {
+			t.Errorf("Peak heap KPI = %+v", k)
+		}
+	}
+	for _, rule := range []string{"memory-over-provisioned", "memory-heap-near-limit"} {
+		if _, ok := rules(r)[rule]; ok {
+			t.Errorf("%s fired without memory samples", rule)
+		}
+	}
+	x.Peak.JVMHeap = 1 << 30
+	if r := Run(Input{Tool: "t", EventLog: synthetic(conf, x), EventSource: model.SourceStatus{Name: "Spark event log", Status: "read"}}); !r.Memory.HeapKnown {
+		t.Error("HeapKnown false with a sample")
+	}
+}
+
 func TestRuleLostAndDecommissioned(t *testing.T) {
 	lost := &model.Executor{ID: "1", Host: "h", Removed: time.Unix(1_790_000_100, 0), RemovedReason: "Executor heartbeat timed out", RemovalKind: model.RemovalLost}
 	dec := &model.Executor{ID: "2", Host: "h", Removed: time.Unix(1_790_000_100, 0), RemovedReason: "Executor decommission", RemovalKind: model.RemovalDecommissioned}

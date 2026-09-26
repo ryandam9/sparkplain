@@ -261,7 +261,7 @@ func analyzeSummary(c *ctx, r *model.Report) {
 		{Label: "Executors", Value: fmt.Sprint(len(c.log.Executors)), Unit: fmt.Sprintf("started · %d peak", r.Executors.Peak), Explain: fmt.Sprintf("Worker processes Spark launched, and the most at once. %d ended early.", killed), Tone: execTone},
 		{Label: "Executor size", Value: fmt.Sprint(mem.Cores), Unit: "cores · " + model.Bytes(mem.ContainerBytes), Explain: fmt.Sprintf("%s heap plus %s overhead, per executor.", model.Bytes(mem.HeapBytes), model.Bytes(mem.OverheadBytes))},
 		cpuKPI(r.CPU),
-		{Label: "Peak heap", Value: model.Bytes(peakHeap), Unit: "of " + model.Bytes(mem.HeapBytes), Explain: "Highest Java heap use sampled on any executor."},
+		heapKPI(r.Memory, peakHeap),
 		{Label: "Data read", Value: model.Bytes(io.InputBytes), Explain: fmt.Sprintf("%s rows from files and tables.", model.Num(io.InputRecords))},
 		{Label: "Data written", Value: model.Bytes(io.OutputBytes), Explain: fmt.Sprintf("%s rows. Shuffles moved %s more.", model.Num(io.OutputRecords), model.Bytes(io.ShuffleWriteBytes))},
 		{Label: "Findings", Value: fmt.Sprint(crit + warn + info), Unit: fmt.Sprintf("%d critical · %d warning", crit, warn), Explain: "Problems and notes found by the rules below.", Tone: findTone},
@@ -303,4 +303,14 @@ func cpuKPI(c model.CPUSection) model.KPI {
 		k.Value, k.Unit = fmt.Sprintf("%.1f", float64(c.CPUMs)/3.6e6), "hours"
 	}
 	return k
+}
+
+// heapKPI shows the highest executor heap sample, or says none was recorded
+// rather than showing 0 B.
+func heapKPI(m model.MemorySection, peak int64) model.KPI {
+	if !m.HeapKnown {
+		return model.KPI{Label: "Peak heap", Value: "—", Unit: "not recorded · " + model.Bytes(m.Config.HeapBytes) + " heap",
+			Explain: "The event log holds no executor memory samples. Set spark.eventLog.logStageExecutorMetrics=true to record them."}
+	}
+	return model.KPI{Label: "Peak heap", Value: model.Bytes(peak), Unit: "of " + model.Bytes(m.Config.HeapBytes), Explain: "Highest Java heap use sampled on any executor."}
 }

@@ -177,19 +177,19 @@
           <div class="fact"><span class="l">Spilled to disk</span><span class="v num">{{bytes $m.TotalDiskSpill}}</span><span class="x">{{bytes $m.TotalMemSpill}} of in-memory data was written out as {{bytes $m.TotalDiskSpill}} on disk because it did not fit.</span></div>
           <div class="fact"><span class="l">Garbage collection</span><span class="v num">{{pct $m.GCShare}} of task time</span><span class="x">Time the JVM spent reclaiming memory instead of running tasks. Above 10% is a warning sign.</span></div>
         </div>
-        <h3>Peak heap against the configured heap</h3>
+        {{if $m.HeapKnown}}<h3>Peak heap against the configured heap</h3>
         <div class="chart">{{memChart $r}}
           <div class="legend"><span><i class="sw" style="background:var(--surface-2);border:1px solid var(--line)"></i>Configured heap</span><span><i class="sw" style="background:var(--accent)"></i>Peak heap used</span><span><i class="sw" style="background:var(--crit)"></i>Over 90% of the heap</span></div>
-        </div>
-        <p class="explain"><b>These are peaks, not continuous readings.</b> Spark samples executor memory on heartbeats and at the end of each task, so short spikes can be missed.{{if not $m.RSSKnown}} Whole-process memory (RSS, including Python) was not recorded; set spark.executor.processTreeMetrics.enabled=true to get it.{{end}}</p>
+        </div>{{end}}
+        <p class="explain"><b>These are peaks, not continuous readings.</b> Spark samples executor memory on heartbeats and at the end of each task, so short spikes can be missed.{{if not $m.HeapKnown}} <b>This run recorded no executor memory samples</b>, so peak heap, off-heap and execution memory show as —; set spark.eventLog.logStageExecutorMetrics=true to record them.{{end}}{{if not $m.RSSKnown}} Whole-process memory (RSS, including Python) was not recorded; set spark.executor.processTreeMetrics.enabled=true to get it.{{end}}</p>
         <div class="tbl scroll"><table>
           <thead><tr><th data-sort="num">Executor</th><th data-sort="text">Host</th><th class="num" data-sort="num">Peak heap</th><th class="num" data-sort="num">Off-heap</th><th class="num" data-sort="num">Execution</th><th class="num" data-sort="num">Storage</th><th class="num" data-sort="num">Process RSS</th><th data-sort="num">GC</th></tr></thead>
-          <tbody>{{if $m.Driver}}{{with $m.Driver}}<tr><td class="mono">driver</td><td class="mono">{{.Host}}</td><td class="num" data-v="{{.PeakHeap}}">{{bytes .PeakHeap}} <span class="sub">of {{bytes .HeapBytes}}</span></td><td class="num" data-v="{{.PeakOffHeap}}">{{bytes .PeakOffHeap}}</td><td class="num">—</td><td class="num">—</td><td class="num" data-v="{{.PeakRSS}}">{{if .PeakRSS}}{{bytes .PeakRSS}}{{else}}—{{end}}</td><td>—</td></tr>{{end}}{{end}}
+          <tbody>{{if $m.Driver}}{{with $m.Driver}}<tr><td class="mono">driver</td><td class="mono">{{.Host}}</td><td class="num" data-v="{{.PeakHeap}}">{{if .PeakHeap}}{{bytes .PeakHeap}}{{else}}—{{end}} <span class="sub">of {{bytes .HeapBytes}}</span></td><td class="num" data-v="{{.PeakOffHeap}}">{{if .PeakOffHeap}}{{bytes .PeakOffHeap}}{{else}}—{{end}}</td><td class="num">—</td><td class="num">—</td><td class="num" data-v="{{.PeakRSS}}">{{if .PeakRSS}}{{bytes .PeakRSS}}{{else}}—{{end}}</td><td>—</td></tr>{{end}}{{end}}
           {{range $m.Executors}}<tr><td class="mono" data-v="{{.ID}}">{{.ID}}</td><td class="mono">{{.Host}}</td>
             <td class="num" data-v="{{.PeakHeap}}">{{if .PeakHeap}}{{bytes .PeakHeap}}{{else}}—{{end}} <span class="sub">of {{bytes .HeapBytes}}</span></td>
-            <td class="num" data-v="{{.PeakOffHeap}}">{{bytes .PeakOffHeap}}</td>
-            <td class="num" data-v="{{.PeakExecution}}">{{bytes .PeakExecution}}</td>
-            <td class="num" data-v="{{.PeakStorage}}">{{bytes .PeakStorage}}</td>
+            <td class="num" data-v="{{.PeakOffHeap}}">{{if $m.HeapKnown}}{{bytes .PeakOffHeap}}{{else}}—{{end}}</td>
+            <td class="num" data-v="{{.PeakExecution}}">{{if $m.HeapKnown}}{{bytes .PeakExecution}}{{else}}—{{end}}</td>
+            <td class="num" data-v="{{.PeakStorage}}">{{if $m.HeapKnown}}{{bytes .PeakStorage}}{{else}}—{{end}}</td>
             <td class="num" data-v="{{.PeakRSS}}">{{if .PeakRSS}}{{bytes .PeakRSS}}{{else}}—{{end}}</td>
             <td data-v="{{sharev .GCShare}}">{{if gcBad .GCShare}}<span class="warnv">{{pct .GCShare}}</span>{{else}}{{pct .GCShare}}{{end}}</td></tr>
           {{end}}</tbody>

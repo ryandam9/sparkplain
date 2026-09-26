@@ -196,6 +196,7 @@ type MemorySection struct {
 	Config         MemoryConfig `json:"config"`
 	Executors      []ExecMemory `json:"executors"`
 	Driver         *ExecMemory  `json:"driver,omitempty"`
+	HeapKnown      bool         `json:"heapKnown"`
 	RSSKnown       bool         `json:"rssKnown"`
 	Spill          []StageSpill `json:"spill"`
 	TotalMemSpill  int64        `json:"totalMemorySpillBytes"`

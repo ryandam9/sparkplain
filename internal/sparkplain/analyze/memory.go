@@ -98,6 +98,9 @@ func analyzeMemory(c *ctx, r *model.Report) {
 			PeakStorage: x.Peak.OnHeapStorage + x.Peak.OffHeapStorage, PeakExecution: x.Peak.OnHeapExecution + x.Peak.OffHeapExecution,
 			GCShare: share(x.Tasks.GCTimeMs, x.Tasks.RunTimeMs), Source: x.Peak.HeapSource,
 		}
+		if em.PeakHeap > 0 {
+			s.HeapKnown = true
+		}
 		if em.PeakRSS > 0 {
 			s.RSSKnown = true
 		}
@@ -108,6 +111,9 @@ func analyzeMemory(c *ctx, r *model.Report) {
 	if d := c.log.Driver; d != nil {
 		s.Driver = &model.ExecMemory{ID: "driver", Host: d.Host, HeapBytes: m.DriverHeapBytes, PeakHeap: d.Peak.JVMHeap, PeakOffHeap: d.Peak.JVMOffHeap,
 			PeakRSS: d.Peak.ProcessJVMRSS + d.Peak.ProcessPythonRSS + d.Peak.ProcessOtherRSS, Source: d.Peak.HeapSource}
+	}
+	if !s.HeapKnown {
+		s.Missing = append([]string{"Peak heap, off-heap and execution memory per executor: the event log holds no memory samples (set spark.eventLog.logStageExecutorMetrics=true to record them)"}, s.Missing...)
 	}
 	s.GCShare = share(totalGC, totalRun)
 	for _, st := range c.log.Stages {
