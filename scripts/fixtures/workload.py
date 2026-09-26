@@ -145,7 +145,9 @@ if mode == "investigate":
     spark.range(0, 1000).selectExpr("sum(id)").collect()
     sc.setLocalProperty("callSite.short", None)
     sc.setJobDescription("large task results")
-    spark.range(0, 4, numPartitions=4).selectExpr("repeat('x', 3000000) AS big").collect()
+    # Random bytes do not compress, so each 3 MB result is over Spark's 1 MB
+    # direct-result limit and the driver fetches it separately.
+    sc.parallelize(range(4), 4).map(lambda i: os.urandom(3_000_000)).collect()
     sc.setJobDescription("per-query settings")
     spark.conf.set("spark.sql.shuffle.partitions", "7")
     spark.conf.set("spark.myapp.session.token", "FAKE-SESSION-TOKEN-0009")
