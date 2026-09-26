@@ -127,18 +127,22 @@ type TimelineEvent struct {
 type Host struct {
 	Name string `json:"name"`
 	// Instance is the EC2 instance behind the host (EMR API runs only).
-	Instance      *Instance  `json:"instance,omitempty"`
-	Driver        bool       `json:"driver"`
-	Executors     []string   `json:"executors"`
-	Cores         int        `json:"cores"`
-	FirstSeen     time.Time  `json:"firstSeen,omitzero"`
-	LastSeen      time.Time  `json:"lastSeen,omitzero"`
-	Lost          int        `json:"executorsLost"`
-	Tasks         TaskTotals `json:"tasks"`
-	PeakHeap      int64      `json:"peakHeapBytes"`
-	CPUShare      float64    `json:"cpuShare"`  // task CPU time / task run time
-	AllocatedCore float64    `json:"busyShare"` // task run time / (cores × executor lifetime)
-	Source        Source     `json:"source"`
+	Instance *Instance `json:"instance,omitempty"`
+	// YARNMemoryBytes and YARNVCores are what the host's NodeManager
+	// offered YARN, from the ResourceManager or NodeManager log.
+	YARNMemoryBytes int64      `json:"yarnMemoryBytes,omitempty"`
+	YARNVCores      int        `json:"yarnVCores,omitempty"`
+	Driver          bool       `json:"driver"`
+	Executors       []string   `json:"executors"`
+	Cores           int        `json:"cores"`
+	FirstSeen       time.Time  `json:"firstSeen,omitzero"`
+	LastSeen        time.Time  `json:"lastSeen,omitzero"`
+	Lost            int        `json:"executorsLost"`
+	Tasks           TaskTotals `json:"tasks"`
+	PeakHeap        int64      `json:"peakHeapBytes"`
+	CPUShare        float64    `json:"cpuShare"`  // task CPU time / task run time
+	AllocatedCore   float64    `json:"busyShare"` // task run time / (cores × executor lifetime)
+	Source          Source     `json:"source"`
 }
 
 // NodesSection is module 2.

@@ -28,6 +28,10 @@ const (
 	LogAppSummary   LogKind = "app-summary"    // the ResourceManager's summary: user, queue, resources used
 	LogBootstrap    LogKind = "bootstrap"      // a bootstrap action's outcome
 	LogError        LogKind = "error"          // any other ERROR or FATAL line
+	// What YARN had and what Spark asked for (phase 3, step 2).
+	LogNodeCapacity      LogKind = "node-capacity"      // a node's YARN memory and vCores
+	LogContainerAssigned LogKind = "container-assigned" // YARN placed one of the application's containers
+	LogYarnRequest       LogKind = "yarn-request"       // Spark asked YARN for (or cancelled) containers of a size
 )
 
 // LogLine is one classified line of a container, step or node log, or one

@@ -80,3 +80,40 @@ func TestNodesWithoutCluster(t *testing.T) {
 		t.Error("idle-nodes needs the EMR API")
 	}
 }
+
+// The NOAA test run: 12,288 MB nodes, the driver's 2,432 MB container on
+// one, and executors of 11,264 MB, so only one executor fitted while
+// dynamic allocation wanted up to 42.
+func TestExecutorFit(t *testing.T) {
+	rm := logFile(t, rmLog, `2024-01-01 10:00:00,000 INFO org.apache.hadoop.yarn.server.resourcemanager.ResourceTrackerService (IPC Server handler 0 on default port 8025): NodeManager from node ip-10-0-0-2.ec2.internal(cmPort: 8041 httpPort: 8042) registered with capability: <memory:12288, vCores:4>, assigned nodeId ip-10-0-0-2.ec2.internal:8041
+2024-01-01 10:00:01,000 INFO org.apache.hadoop.yarn.server.resourcemanager.ResourceTrackerService (IPC Server handler 1 on default port 8025): NodeManager from node ip-10-0-0-3.ec2.internal(cmPort: 8041 httpPort: 8042) registered with capability: <memory:12288, vCores:4>, assigned nodeId ip-10-0-0-3.ec2.internal:8041
+2024-01-01 10:01:00,000 INFO org.apache.hadoop.yarn.server.resourcemanager.scheduler.common.fica.FiCaSchedulerNode (SchedulerEventDispatcher:Event Processor): Assigned container container_1_1_01_000001 of capacity <memory:2432, max memory:12288, vCores:1, max vCores:4> on host ip-10-0-0-3.ec2.internal:8041, which has 1 containers, <memory:2432, vCores:1> used and <memory:9856, vCores:3> available after allocation
+`)
+	drv := logFile(t, driverErr, `24/01/01 10:01:10 INFO YarnAllocator: Will request 50 executor container(s) for  ResourceProfile Id: 0, each with 4 core(s) and 11264 MB memory. with custom resources: <memory:11264, max memory:2147483647, vCores:4, max vCores:2147483647>
+24/01/01 10:01:11 INFO YarnAllocator: Launching executor with 9485m of heap (plus 1779m overhead/off heap) and 4 cores
+24/01/01 10:01:15 INFO YarnAllocator: Canceling requests for 49 executor container(s) to have a new desired total 1 executors.
+24/01/01 10:01:20 INFO YarnAllocator: Driver requested a total number of 42 executor(s) for resource profile id: 0.
+24/01/01 10:01:25 INFO YarnAllocator: Driver requested a total number of 7 executor(s) for resource profile id: 0.
+`)
+	l := synthetic(nil, &model.Executor{ID: "1", Host: "ip-10-0-0-2.ec2.internal", Cores: 4})
+	r := runWithLogs(l, nil, rm, drv)
+	f := rules(r)["executor-fit"]
+	if f.Title != "Spark wanted 42 executors; the cluster had room for 1" || !strings.Contains(f.Explanation, "ip-10-0-0-3.ec2.internal had room for none") ||
+		!strings.Contains(f.Fix, "spark.executor.memory=4096m and spark.executor.cores=2") {
+		t.Errorf("fit = %+v", f)
+	}
+	if len(f.Evidence) != 4 || f.Evidence[0].Source.Line != 4 {
+		t.Errorf("evidence = %+v", f.Evidence)
+	}
+	for _, h := range r.Nodes.Hosts {
+		if h.Name == "ip-10-0-0-2.ec2.internal" && (h.YARNMemoryBytes != 12288<<20 || h.YARNVCores != 4) {
+			t.Errorf("host capacity = %+v", h)
+		}
+	}
+	// Room for all it wanted: no finding.
+	few := logFile(t, driverErr, `24/01/01 10:01:10 INFO YarnAllocator: Will request 1 executor container(s) for  ResourceProfile Id: 0, each with 4 core(s) and 11264 MB memory.
+`)
+	if _, ok := rules(runWithLogs(l, nil, rm, few))["executor-fit"]; ok {
+		t.Error("a demand the cluster could meet raised executor-fit")
+	}
+}

@@ -129,6 +129,7 @@ func analyzeLogs(c *ctx, r *model.Report) {
 	connectionFindings(c)
 	stepAndAttemptFindings(c, r)
 	bootstrapFinding(c, r)
+	fitFindings(c, r)
 	r.Logs.Coverage = model.Complete
 	for _, s := range r.Sources {
 		switch s.Name {

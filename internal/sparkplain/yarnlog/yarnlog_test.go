@@ -521,3 +521,45 @@ func FuzzClassify(f *testing.F) {
 		}
 	})
 }
+
+// Capacity lines are node-wide, so they are kept though they name no
+// application; container placements are kept for this application only.
+func TestCapacityAndRequests(t *testing.T) {
+	nm := classifyText(t, "node/i-0fee0000000000001/applications/hadoop-yarn/hadoop-yarn-nodemanager-ip-10-0-0-2.log",
+		`2024-01-01 10:00:00,000 INFO org.apache.hadoop.yarn.server.nodemanager.NodeStatusUpdaterImpl (main): Registered with ResourceManager as ip-10-0-0-2.ec2.internal:8041 with total resource of <memory:12288, vCores:4>
+`, Options{AppID: "application_1700000000000_0001"})
+	if got := kinds(nm); got != "node-capacity/info" || nm.Lines[0].Fields["memoryMB"] != "12288" || nm.Lines[0].Fields["host"] != "ip-10-0-0-2.ec2.internal" {
+		t.Errorf("nodemanager = %s %+v", got, nm.Lines)
+	}
+	rm := classifyText(t, "node/i-0fee0000000000002/applications/hadoop-yarn/hadoop-yarn-resourcemanager-ip-10-0-0-1.log",
+		`2024-01-01 10:00:00,000 INFO org.apache.hadoop.yarn.server.resourcemanager.scheduler.common.fica.FiCaSchedulerNode (SchedulerEventDispatcher:Event Processor): Assigned container container_1700000000000_0001_01_000002 of capacity <memory:11264, max memory:12288, vCores:1, max vCores:4> on host ip-10-0-0-2.ec2.internal:8041, which has 1 containers, <memory:11264, vCores:1> used and <memory:1024, vCores:3> available after allocation
+2024-01-01 10:00:01,000 INFO org.apache.hadoop.yarn.server.resourcemanager.scheduler.common.fica.FiCaSchedulerNode (SchedulerEventDispatcher:Event Processor): Assigned container container_1700000000000_0009_01_000002 of capacity <memory:1024, max memory:12288, vCores:1, max vCores:4> on host ip-10-0-0-2.ec2.internal:8041, which has 2 containers, <memory:12288, vCores:2> used and <memory:0, vCores:2> available after allocation
+`, Options{AppID: "application_1700000000000_0001"})
+	if got := kinds(rm); got != "container-assigned/info" {
+		t.Fatalf("resourcemanager = %s", got)
+	}
+	if f := rm.Lines[0].Fields; f["memoryMB"] != "11264" || f["availableMB"] != "1024" || f["host"] != "ip-10-0-0-2.ec2.internal" || f["vcores"] != "1" {
+		t.Errorf("assigned = %+v", f)
+	}
+	drv := classifyText(t, "containers/application_1700000000000_0001/container_1700000000000_0001_01_000001/stderr", `24/01/01 10:01:10 INFO YarnAllocator: Will request 50 executor container(s) for  ResourceProfile Id: 0, each with 4 core(s) and 11264 MB memory. with custom resources: <memory:11264>
+24/01/01 10:01:11 INFO YarnAllocator: Launching executor with 9485m of heap (plus 1779m overhead/off heap) and 4 cores
+24/01/01 10:01:12 INFO YarnAllocator: Launching executor with 9485m of heap (plus 1779m overhead/off heap) and 4 cores
+24/01/01 10:01:15 INFO YarnAllocator: Canceling requests for 49 executor container(s) to have a new desired total 1 executors.
+24/01/01 10:01:16 INFO YarnAllocator: Will request 2 executor container(s) for  ResourceProfile Id: 0, each with 4 core(s) and 11264 MB memory.
+24/01/01 10:01:20 INFO YarnAllocator: Driver requested a total number of 42 executor(s) for resource profile id: 0.
+24/01/01 10:01:25 INFO YarnAllocator: Driver requested a total number of 7 executor(s) for resource profile id: 0.
+`, Options{})
+	var whats []string
+	for _, l := range drv.Lines {
+		whats = append(whats, l.Fields["what"]+"@"+strconv.FormatInt(l.Source.Line, 10))
+	}
+	if strings.Join(whats, " ") != "launch@2 executors@1 most-desired@6" || drv.Lines[0].Count != 2 {
+		t.Errorf("driver requests = %v, %+v", whats, drv.Lines)
+	}
+	step := classifyText(t, "steps/s-FIXTURESTEP0001/stderr", `26/09/26 11:08:19 INFO Client: Verifying our application has not requested more than the maximum memory capability of the cluster (12288 MB per container)
+26/09/26 11:08:19 INFO Client: Will allocate AM container, with 2432 MB memory including 384 MB overhead
+`, Options{})
+	if got := kinds(step); got != "yarn-request/info yarn-request/info" || step.Lines[1].Fields["memoryMB"] != "2432" || step.Lines[0].Fields["what"] != "max-container" {
+		t.Errorf("step = %s %+v", got, step.Lines)
+	}
+}

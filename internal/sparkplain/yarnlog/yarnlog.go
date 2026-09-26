@@ -75,6 +75,12 @@ func Classify(r io.Reader, name string, f File, opt Options) (Result, error) {
 	}
 	c.closeReport()
 	c.flush()
+	if c.maxRequestLine != nil {
+		c.add(c.maxRequestLine)
+	}
+	if c.maxDesiredLine != nil {
+		c.add(c.maxDesiredLine)
+	}
 	c.res.Read, c.res.Truncated = c.n, lr.truncated
 	if err == io.EOF {
 		err = nil
@@ -96,6 +102,12 @@ type classifier struct {
 	shutdown bool // the driver told this executor to stop, so SIGTERM is expected
 
 	lastApp, lastState string // from the last "Application report for …"
+
+	// The most executors the driver asked for at once, kept as one line.
+	maxDesired     int
+	maxDesiredLine *model.LogLine
+	maxRequest     int
+	maxRequestLine *model.LogLine
 }
 
 // block is a multi-line entry being read: an exception with its stack, a
@@ -191,12 +203,12 @@ func (c *classifier) header(h header, line string) {
 		c.controller(h)
 		return
 	case ResourceManager:
-		if c.mine(line) {
+		if !c.capacity(h) && c.mine(line) {
 			c.resourceManager(h)
 		}
 		return
 	case NodeManager:
-		if c.mine(line) {
+		if !c.capacity(h) && c.mine(line) {
 			c.nodeManager(h)
 		}
 		return
@@ -314,6 +326,45 @@ func (c *classifier) header(h header, line string) {
 		if c.shutdown {
 			l.Fields["afterShutdown"] = "true"
 		}
+	case willRequestRE.MatchString(msg):
+		// Dynamic allocation asks again and again; the largest request says
+		// the executor size and how many Spark wanted at once.
+		m := willRequestRE.FindStringSubmatch(msg)
+		if n, _ := strconv.Atoi(m[1]); n > c.maxRequest || c.maxRequestLine == nil {
+			c.maxRequest = n
+			l = c.entry(model.LogYarnRequest, model.Info, h.time, msg)
+			l.Fields["what"], l.Fields["count"], l.Fields["profile"], l.Fields["cores"], l.Fields["memoryMB"] = "executors", m[1], m[2], m[3], m[4]
+			c.maxRequestLine = l
+		}
+		return
+	case cancelRE.MatchString(msg):
+		return // the most desired total below says what the churn added up to
+	case desiredRE.MatchString(msg):
+		m := desiredRE.FindStringSubmatch(msg)
+		if n, _ := strconv.Atoi(m[1]); n > c.maxDesired || c.maxDesiredLine == nil {
+			c.maxDesired = n
+			c.maxDesiredLine = c.entry(model.LogYarnRequest, model.Info, h.time, msg)
+			c.maxDesiredLine.Fields["what"], c.maxDesiredLine.Fields["total"] = "most-desired", m[1]
+		}
+		return
+	case launchHeapRE.MatchString(msg):
+		m := launchHeapRE.FindStringSubmatch(msg)
+		l = c.entry(model.LogYarnRequest, model.Info, h.time, msg)
+		l.Fields["what"], l.Fields["heapMB"], l.Fields["overheadMB"], l.Fields["cores"] = "launch", m[1], m[2], m[3]
+		c.add(l)
+		return
+	case amRequestRE.MatchString(msg):
+		m := amRequestRE.FindStringSubmatch(msg)
+		l = c.entry(model.LogYarnRequest, model.Info, h.time, msg)
+		l.Fields["what"], l.Fields["memoryMB"], l.Fields["overheadMB"] = "am", m[1], m[2]
+		c.add(l)
+		return
+	case maxAllocRE.MatchString(msg):
+		m := maxAllocRE.FindStringSubmatch(msg)
+		l = c.entry(model.LogYarnRequest, model.Info, h.time, msg)
+		l.Fields["what"], l.Fields["memoryMB"] = "max-container", m[1]
+		c.add(l)
+		return
 	case shutdownCmdRE.MatchString(msg):
 		c.shutdown = true
 		return
@@ -388,7 +439,30 @@ func (c *classifier) controller(h header) {
 	}
 }
 
+// capacity keeps a node's YARN capacity, which the ResourceManager and
+// NodeManager log once per node for every application to share.
+func (c *classifier) capacity(h header) bool {
+	m := rmCapacityRE.FindStringSubmatch(h.msg)
+	if m == nil {
+		m = nmCapacityRE.FindStringSubmatch(h.msg)
+	}
+	if m == nil {
+		return false
+	}
+	l := c.entry(model.LogNodeCapacity, model.Info, h.time, h.msg)
+	l.Fields["host"], l.Fields["memoryMB"], l.Fields["vcores"] = m[1], m[2], m[3]
+	c.add(l)
+	return true
+}
+
 func (c *classifier) resourceManager(h header) {
+	if m := assignedRE.FindStringSubmatch(h.msg); m != nil {
+		l := c.entry(model.LogContainerAssigned, model.Info, h.time, h.msg)
+		l.Fields["container"], l.Fields["memoryMB"], l.Fields["nodeMaxMB"], l.Fields["vcores"] = m[1], m[2], m[3], m[4]
+		l.Fields["host"], l.Fields["containersOnNode"], l.Fields["usedMB"], l.Fields["availableMB"] = m[6], m[7], m[8], m[9]
+		c.add(l)
+		return
+	}
 	if m := rmAttemptRE.FindStringSubmatch(h.msg); m != nil {
 		code, _ := strconv.Atoi(m[3])
 		sev := model.Info
