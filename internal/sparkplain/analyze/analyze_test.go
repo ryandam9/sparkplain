@@ -1,0 +1,267 @@
+package analyze
+
+import (
+	"context"
+	"encoding/json"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/ryandam9/sparkplain/internal/sparkplain/eventlog"
+	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
+)
+
+const fixtures = "../../../testdata/eventlog"
+
+func fixtureReport(t *testing.T, name, app string, th Thresholds) *model.Report {
+	t.Helper()
+	in, err := eventlog.Resolve(filepath.Join(fixtures, name), app, eventlog.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	l, err := eventlog.Parse(context.Background(), in, eventlog.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := "read"
+	if l.Stats.Truncated {
+		status = "partial"
+	}
+	return Run(Input{Tool: "sparkplain test", GeneratedAt: time.Unix(0, 0), TimeZone: "UTC", EventLog: l,
+		EventSource: model.SourceStatus{Name: "Spark event log", Status: status}, Thresholds: th})
+}
+
+func rules(r *model.Report) map[string]model.Finding {
+	m := map[string]model.Finding{}
+	for _, f := range r.Findings {
+		if _, ok := m[f.Rule]; !ok {
+			m[f.Rule] = f
+		}
+	}
+	return m
+}
+
+func TestMainFixtureFindings(t *testing.T) {
+	r := fixtureReport(t, "application_1790380000000_0042", "application_1790380000000_0042", DefaultThresholds())
+	got := rules(r)
+	for rule, sev := range map[string]model.Severity{
+		"executor-memory-kill": model.Critical,
+		"job-failed":           model.Warning, // the app carried on after it
+		"stage-skew":           model.Warning,
+		"memory-spill":         model.Warning,
+		"access-static-keys":   model.Warning,
+		"task-retries":         model.Info,
+	} {
+		f, ok := got[rule]
+		if !ok {
+			t.Errorf("missing finding %s; have %v", rule, keys(got))
+			continue
+		}
+		if f.Severity != sev {
+			t.Errorf("%s severity %s, want %s", rule, f.Severity, sev)
+		}
+		if f.Explanation == "" || len(f.Evidence) == 0 {
+			t.Errorf("%s lacks explanation or evidence", rule)
+		}
+		for _, e := range f.Evidence {
+			if e.Text == "" {
+				t.Errorf("%s has empty evidence", rule)
+			}
+		}
+	}
+	if !strings.Contains(got["stage-skew"].Title, "Stage 18") || got["stage-skew"].Evidence[0].Source.Line == 0 {
+		t.Errorf("skew finding should point at stage 18's slowest task: %+v", got["stage-skew"])
+	}
+	if !strings.Contains(got["job-failed"].Explanation, "ValueError: bad row 13") {
+		t.Errorf("job failure should name the Python error: %s", got["job-failed"].Explanation)
+	}
+	for i := 1; i < len(r.Findings); i++ {
+		if r.Findings[i-1].Severity.Rank() > r.Findings[i].Severity.Rank() {
+			t.Fatal("findings not ranked by severity")
+		}
+	}
+	if r.ExitCode != 0 {
+		t.Errorf("exit code %d, want 0 for a fully read log", r.ExitCode)
+	}
+	if n := len(r.Summary.Sentences); n < 2 || n > 4 {
+		t.Errorf("summary has %d sentences", n)
+	}
+	if len(r.Summary.KPIs) != 9 || len(r.Coverage) != 10 || len(r.Sources) != 7 {
+		t.Errorf("kpis %d coverage %d sources %d", len(r.Summary.KPIs), len(r.Coverage), len(r.Sources))
+	}
+	if len(r.Nodes.Hosts) != 3 || !r.Nodes.Hosts[0].Driver {
+		t.Errorf("hosts %+v", r.Nodes.Hosts)
+	}
+	if r.Memory.Config.HeapBytes != 1<<30 || r.Memory.Config.OverheadBytes != 384<<20 || !r.Memory.RSSKnown {
+		t.Errorf("memory config %+v", r.Memory.Config)
+	}
+	if r.Executors.Started != 2 || r.Executors.Peak != 2 {
+		t.Errorf("executors started %d peak %d", r.Executors.Started, r.Executors.Peak)
+	}
+	var sawIO bool
+	for _, d := range r.IO.Data {
+		if d.Access == "write" && d.Name == "spark_catalog.claims.region_totals" {
+			sawIO = true
+		}
+	}
+	if !sawIO || r.IO.Totals.InputBytes != 2713968999 {
+		t.Errorf("io data %+v totals %d", r.IO.Data, r.IO.Totals.InputBytes)
+	}
+}
+
+func keys(m map[string]model.Finding) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+func TestThresholdsAreTunable(t *testing.T) {
+	th := DefaultThresholds()
+	th.SkewRatio = 50
+	th.SpillShare = 1e9
+	r := fixtureReport(t, "application_1790380000000_0042", "application_1790380000000_0042", th)
+	got := rules(r)
+	if _, ok := got["stage-skew"]; ok {
+		t.Error("skew should not fire at ratio 50")
+	}
+	if f, ok := got["memory-spill"]; ok && !strings.Contains(f.Evidence[0].Text, "no shuffle") {
+		t.Error("spill against shuffle write should not fire at a huge threshold")
+	}
+}
+
+func TestFailedAndInProgressApps(t *testing.T) {
+	r := fixtureReport(t, "application_1790380000000_0044", "application_1790380000000_0044", DefaultThresholds())
+	if f := rules(r)["job-failed"]; f.Severity != model.Critical || !strings.Contains(f.Title, "application ended") {
+		t.Errorf("failed app: %+v", f)
+	}
+	if !strings.Contains(r.Summary.Sentences[0], "failed") {
+		t.Errorf("summary: %s", r.Summary.Sentences[0])
+	}
+	p := fixtureReport(t, "application_1790380000000_0045.inprogress", "application_1790380000000_0045", DefaultThresholds())
+	if p.ExitCode != 3 || !strings.Contains(p.Summary.Sentences[0], "had not finished") {
+		t.Errorf("in-progress: exit %d, %s", p.ExitCode, p.Summary.Sentences[0])
+	}
+}
+
+func TestNoEventLog(t *testing.T) {
+	r := Run(Input{Tool: "t", EventSource: model.SourceStatus{Name: "Spark event log", Status: "error", Class: "corrupt", Detail: "bad"}})
+	if r.ExitCode != 3 || r.Jobs.Coverage != model.NeedsEventLog || r.Memory.Coverage != model.NeedsEventLog || len(r.Summary.Sentences) == 0 {
+		t.Errorf("exit %d jobs %s", r.ExitCode, r.Jobs.Coverage)
+	}
+	if _, err := json.Marshal(r); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReportHasNoPlantedSecrets(t *testing.T) {
+	for _, n := range []string{"application_1790380000000_0042", "application_1790380000000_0044"} {
+		r := fixtureReport(t, n, n, DefaultThresholds())
+		b, _ := json.Marshal(r)
+		if m := regexp.MustCompile(`FAKE-[A-Z0-9-]+|AKIAIOSFODNN7EXAMPLE`).FindAllString(string(b), 3); m != nil {
+			t.Errorf("%s: secrets leaked: %v", n, m)
+		}
+	}
+}
+
+// synthetic builds a small event log for rules the fixtures do not trigger.
+func synthetic(conf map[string]string, execs ...*model.Executor) *model.EventLog {
+	start := time.Unix(1_790_000_000, 0).UTC()
+	l := &model.EventLog{Application: model.Application{ID: "application_1_1", Name: "synthetic", User: "hadoop", Start: start, End: start.Add(time.Hour), DurationMs: 3_600_000, Status: model.StatusSucceeded}}
+	for k, v := range conf {
+		l.Config = append(l.Config, model.ConfigEntry{Key: k, Value: v, Group: "Spark", Origin: "Spark Properties", Source: model.Source{File: "f", Line: 4}})
+	}
+	for _, x := range execs {
+		if x.Added.IsZero() {
+			x.Added = start
+		}
+		l.Executors = append(l.Executors, x)
+	}
+	return l
+}
+
+func runSynthetic(l *model.EventLog) map[string]model.Finding {
+	return rules(Run(Input{Tool: "t", EventLog: l, EventSource: model.SourceStatus{Name: "Spark event log", Status: "read"}}))
+}
+
+func TestRuleGCPressureLowCPUAndIdle(t *testing.T) {
+	x := &model.Executor{ID: "1", Host: "h", Cores: 4, Tasks: model.TaskTotals{RunTimeMs: 600_000, GCTimeMs: 120_000, CPUTimeNs: 60_000 * 1e6}}
+	got := runSynthetic(synthetic(nil, x))
+	for _, r := range []string{"memory-gc-pressure", "cpu-low", "cpu-idle-executors"} {
+		if _, ok := got[r]; !ok {
+			t.Errorf("missing %s; have %v", r, keys(got))
+		}
+	}
+	x2 := &model.Executor{ID: "1", Host: "h", Cores: 1, Tasks: model.TaskTotals{RunTimeMs: 3_000_000, GCTimeMs: 1000, CPUTimeNs: 2_500_000 * 1e6}}
+	got = runSynthetic(synthetic(nil, x2))
+	for _, r := range []string{"memory-gc-pressure", "cpu-low", "cpu-idle-executors"} {
+		if _, ok := got[r]; ok {
+			t.Errorf("%s fired on a healthy executor", r)
+		}
+	}
+}
+
+func TestRuleMemoryOverAndNearLimit(t *testing.T) {
+	conf := map[string]string{"spark.executor.memory": "8g"}
+	low := &model.Executor{ID: "1", Host: "h", Cores: 2, Tasks: model.TaskTotals{RunTimeMs: 600_000, CPUTimeNs: 500_000 * 1e6}, Peak: model.PeakMemory{JVMHeap: 1 << 30}}
+	if f, ok := runSynthetic(synthetic(conf, low))["memory-over-provisioned"]; !ok || !strings.Contains(f.Title, "8.0 GiB") {
+		t.Errorf("over-provisioned: %+v", f)
+	}
+	high := &model.Executor{ID: "1", Host: "h", Cores: 2, Tasks: model.TaskTotals{RunTimeMs: 600_000, CPUTimeNs: 500_000 * 1e6}, Peak: model.PeakMemory{JVMHeap: 7900 << 20}}
+	if _, ok := runSynthetic(synthetic(conf, high))["memory-heap-near-limit"]; !ok {
+		t.Error("near-limit should fire")
+	}
+}
+
+func TestRuleLostAndDecommissioned(t *testing.T) {
+	lost := &model.Executor{ID: "1", Host: "h", Removed: time.Unix(1_790_000_100, 0), RemovedReason: "Executor heartbeat timed out", RemovalKind: model.RemovalLost}
+	dec := &model.Executor{ID: "2", Host: "h", Removed: time.Unix(1_790_000_100, 0), RemovedReason: "Executor decommission", RemovalKind: model.RemovalDecommissioned}
+	got := runSynthetic(synthetic(nil, lost, dec))
+	if _, ok := got["executor-lost"]; !ok {
+		t.Error("executor-lost missing")
+	}
+	if _, ok := got["executor-decommissioned"]; !ok {
+		t.Error("executor-decommissioned missing")
+	}
+}
+
+func TestRuleConfigRisks(t *testing.T) {
+	got := runSynthetic(synthetic(map[string]string{
+		"spark.driver.maxResultSize": "0", "spark.dynamicAllocation.enabled": "true", "spark.sql.adaptive.enabled": "false",
+	}))
+	for _, r := range []string{"config-unlimited-result", "config-dynalloc-no-shuffle", "config-aqe-off"} {
+		if _, ok := got[r]; !ok {
+			t.Errorf("missing %s", r)
+		}
+	}
+	got = runSynthetic(synthetic(map[string]string{"spark.dynamicAllocation.enabled": "true", "spark.shuffle.service.enabled": "true"}))
+	if _, ok := got["config-dynalloc-no-shuffle"]; ok {
+		t.Error("shuffle service on should silence the rule")
+	}
+}
+
+func TestShortError(t *testing.T) {
+	msg := "Job aborted due to stage failure: Task 1 in stage 30.0 failed 3 times, most recent failure: Lost task 1.2 (TID 1): org.apache.spark.api.python.PythonException: Traceback (most recent call last):\n  File \"x.py\", line 3, in f\n    raise ValueError(\"bad\")\nValueError: bad\n\n\tat org.apache.X"
+	if got := shortError(msg); got != "Job aborted due to stage failure: Task 1 in stage 30.0 failed 3 times — ValueError: bad" {
+		t.Errorf("got %q", got)
+	}
+	if got := shortError("java.lang.OutOfMemoryError: Java heap space\n\tat x"); got != "java.lang.OutOfMemoryError: Java heap space" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestSettingsCompare(t *testing.T) {
+	if !sameValue(settingByKey["spark.executor.memory"], "1024m") || sameValue(settingByKey["spark.executor.memory"], "2g") {
+		t.Error("size compare")
+	}
+	if !sameValue(settingByKey["spark.sql.autoBroadcastJoinThreshold"], "10485760") {
+		t.Error("10MB default should equal 10485760 bytes")
+	}
+	if parseSize("512", 1<<20) != 512<<20 || parseSize("1.5g", 1) != 3<<29 || parseSize("abc", 1) != -1 {
+		t.Error("parseSize")
+	}
+}
