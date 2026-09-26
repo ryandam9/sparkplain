@@ -557,14 +557,14 @@
     st.jobs.some(function (jid) { return jobDag(sw, jid, st.id); });
     var ops = D.stageOps[st.key];
     if (ops) {
-      s.appendChild(el("h3", { text: "What this stage computes" }));
       var ow = el("div", { cls: "dagwrap", hidden: true });
       s.appendChild(ow);
       drawGraph(ow, ops.layout, function (i) {
         var r = ops.rdds[i];
         return { title: r[2] || r[1], sub: "RDD " + r[0] + (r[2] ? " · " + r[1] : "") + (r[5] ? " · " + num(r[5]) + " cached" : ""),
           cls: r[6] ? "hot" : "", tip: "RDD " + r[0] + " (" + r[1] + ")" + (r[2] ? ", made by " + r[2] : "") + "\n" + (r[3] || "") + "\n" + num(r[4]) + " partitions" + (r[6] ? ", cached as " + r[6] : "") + (r[8] && r[8] !== "DETERMINATE" ? ", output " + r[8].toLowerCase() : "") + (r[7] ? ", barrier" : "") };
-      }, "The RDDs this stage computes, named by the operation that made each (Spark's stage graph). Data flows down the arrows. Cached RDDs are outlined.");
+      }, { t: "What this stage computes", shows: "The RDDs this stage computes, named by the operation that made each (Spark's stage graph). Data flows down the arrows. Cached RDDs are outlined.",
+        read: "Read it top to bottom, like the code. A long chain is fine; what matters is which step is slow, which the task table below shows." });
     }
     s.appendChild(codePanel(st.code, st.submitted, null));
     if (st.details) s.appendChild(el("details", null, el("summary", { text: "Where in the code: the full call stack Spark recorded" }), el("div", { cls: "inner" }, el("pre", { cls: "plan", text: st.details }))));
@@ -981,7 +981,7 @@
   function clip(t, n) { t = t || ""; return t.length > n ? t.slice(0, n - 1) + "…" : t; }
   // drawGraph fills wrap with the layout; info(i) gives node i's title, sub
   // line, link, extra class and tooltip.
-  function drawGraph(wrap, lay, info, caption) {
+  function drawGraph(wrap, lay, info, g) {
     var svg = sv("svg", { "class": "dag", viewBox: "0 0 " + lay.w + " " + lay.h, width: lay.w, height: lay.h, role: "img" });
     var W = 200, H = 48;
     lay.edges.forEach(function (e) {
@@ -1003,8 +1003,9 @@
       if (inf.href) { var a = sv("a", { href: inf.href }); a.appendChild(g); svg.appendChild(a); } else svg.appendChild(g);
     });
     wrap.textContent = "";
+    if (g.t) wrap.appendChild(el("h4", { text: g.t }));
     wrap.appendChild(svg);
-    if (caption) wrap.appendChild(el("p", { cls: "cap", text: caption }));
+    add(wrap, guideNodes(g));
     wrap.hidden = false;
   }
   function jobDag(wrap, jobID, hot) {
@@ -1015,7 +1016,8 @@
       if (!st) return { title: "Stage " + sid, sub: "not logged", cls: "skipped" };
       return { title: "Stage " + sid + (st.attempt ? " (attempt " + (st.attempt + 1) + ")" : ""), sub: STATUS[st.status] + " · " + dur(span(st.submitted, st.completed)) + " · " + num(st.tasks) + " tasks",
         href: "#stage/" + st.key, cls: (sid === hot ? "hot" : "") + (st.status === "failed" ? " failed" : "") + (st.status === "skipped" ? " skipped" : ""), tip: "Stage " + sid + ": " + st.name };
-    }, "Job " + jobID + "'s stages. Arrows point from a stage to the stages that read its output. " + (hot != null ? "This stage is outlined. " : "") + "Failed stages have a red outline and skipped ones (their output already existed) a dashed one; click a stage to open it.");
+    }, { t: "Job " + jobID + "'s stages", shows: "Arrows point from a stage to the stages that read its output. " + (hot != null ? "This stage is outlined. " : "") + "Failed stages have a red outline and skipped ones (their output already existed) a dashed one; click a stage to open it.",
+      read: "Each arrow is a shuffle: data written by one stage and read over the network by the next, so fewer arrows usually means less data moved. Skipped stages are good news: Spark reused output it already had." });
     return true;
   }
   function planGraph(wrap, qid) {
@@ -1031,7 +1033,8 @@
       var sub = rows != null ? num(rows) + " rows" : "";
       if (time != null) sub += (sub ? " · " : "") + dur(time);
       return { title: n.n, sub: sub || " ", tip: n.n + (n.d ? "\n" + n.d : "") };
-    }, "Data flows down the arrows, from the scans at the top to the result at the bottom. Rows and time are totals across tasks; the table below lists every metric.");
+    }, { t: "Query plan", shows: "Data flows down the arrows, from the scans at the top to the result at the bottom. Rows and time are totals across tasks; the table below lists every metric.",
+      read: "Row counts should shrink as filters and aggregations apply. A step whose rows jump up (often a join) or that takes most of the time is where to look first." });
     return true;
   }
 
@@ -1100,21 +1103,29 @@
     Object.keys(extra || {}).forEach(function (k) { o[k] = extra[k]; });
     return o;
   }
-  // frame replaces the slot's placeholder with a plot area and a caption.
-  function frame(c, caption) {
+  // guideNodes explains a chart: what it shows, and how to read it (which
+  // way is good, and what pattern to look for).
+  function guideNodes(g) {
+    return [g.shows ? el("p", { cls: "cap", text: g.shows }) : null,
+      g.read ? el("p", { cls: "read" }, el("b", { text: "How to read it " }), g.read) : null];
+  }
+  // frame replaces the slot's placeholder with a titled plot area and its
+  // guide: g has t (the title), shows and read.
+  function frame(c, g) {
     c.el.textContent = "";
+    if (g.t) c.el.appendChild(el("h4", { text: g.t }));
     var plot = el("div", { cls: "plot" });
     c.el.appendChild(plot);
-    if (caption) c.el.appendChild(el("p", { cls: "cap", text: caption }));
+    add(c.el, guideNodes(g));
     return plot;
   }
   function statusColor(th, s) { return s === "succeeded" ? th.series : s === "failed" ? th.fail : th.neutral; }
   var appEnd = a.end || (function () { var m = a.start || 0; stages.forEach(function (s) { m = Math.max(m, s.completed || 0); }); return m; })();
 
-  function timeline(c, th, rows, caption, emptyText) {
+  function timeline(c, th, rows, g, emptyText) {
     if (!rows.length) { waitText(c, emptyText); return; }
     var capRows = rows.slice(0, 600);
-    var plot = frame(c, caption + (rows.length > capRows.length ? " Showing the first " + num(capRows.length) + " of " + num(rows.length) + "." : ""));
+    var plot = frame(c, { t: g.t, read: g.read, shows: g.shows + (rows.length > capRows.length ? " Showing the first " + num(capRows.length) + " of " + num(rows.length) + "." : "") });
     c.el.classList.add("scrolly");
     var dt = new google.visualization.DataTable();
     dt.addColumn({ type: "string", id: "Row" });
@@ -1149,7 +1160,7 @@
   }
   // hbarChart draws horizontal bars, stacked from series, one row each;
   // rows link to a page when link returns one.
-  function hbarChart(c, th, rows, series, caption, format, link) {
+  function hbarChart(c, th, rows, series, g, format, link) {
     if (!rows.length) { waitText(c, "Nothing to chart for this run."); return; }
     // a series with nothing in it only clutters the legend
     series = series.filter(function (sr) { return rows.some(function (r) { return sr.value(r) > 0; }); });
@@ -1161,7 +1172,7 @@
       series.forEach(function (sr) { var v = sr.value(r); row.push(v, r.label + "\n" + sr.label + ": " + format(v)); });
       dt.addRow(row);
     });
-    var plot = frame(c, caption);
+    var plot = frame(c, g);
     var ch = new google.visualization.BarChart(plot);
     ch.draw(dt, baseOpts(th, { isStacked: true, height: Math.max(160, rows.length * 26 + 70), colors: series.map(function (sr) { return sr.color; }),
       chartArea: { left: 170, right: 20, top: series.length > 3 ? 48 : 30, bottom: 36, width: "100%", height: "100%" }, bar: { groupWidth: "72%" }, legend: series.length > 1 ? { position: "top", alignment: "start", maxLines: 3, textStyle: { color: th.ink } } : { position: "none" },
@@ -1178,7 +1189,8 @@
       hbarChart(c, th, rows.map(function (st) { return { label: stageName(st), st: st }; }), [
         { label: "Succeeded", color: th.viz[0], value: function (r) { return r.st.status === "failed" ? 0 : span(r.st.submitted, r.st.completed) / 1000; } },
         { label: "Failed", color: th.fail, value: function (r) { return r.st.status === "failed" ? span(r.st.submitted, r.st.completed) / 1000 : 0; } }
-      ], "The longest stages, in seconds from submission to completion. Click a bar to open the stage.", function (v) { return dur(v * 1000); }, function (r) { return "#stage/" + r.st.key; });
+      ], { t: "The longest stages", shows: "The longest stages, in seconds from submission to completion. Click a bar to open the stage.",
+        read: "Shorter is better. The top few bars are where speeding things up helps most; red bars failed." }, function (v) { return dur(v * 1000); }, function (r) { return "#stage/" + r.st.key; });
     },
     stageData: function (c, th) {
       var moved = function (st) { return st.input + st.shRead + st.shWrite + st.output + st.diskSpill; };
@@ -1188,14 +1200,16 @@
         { label: "Read", color: th.viz[0], value: mib("input") }, { label: "Shuffle read", color: th.viz[1], value: mib("shRead") },
         { label: "Shuffle write", color: th.viz[2], value: mib("shWrite") }, { label: "Written", color: th.viz[3], value: mib("output") },
         { label: "Spilled to disk", color: th.viz[4], value: mib("diskSpill") }
-      ], "The stages that moved the most data, in MiB: read, shuffled between executors, written out and spilled to disk.", function (v) { return bytes(v * 1048576); }, function (r) { return "#stage/" + r.st.key; });
+      ], { t: "Data each stage moved", shows: "The stages that moved the most data, in MiB: read, shuffled between executors, written out and spilled to disk.",
+        read: "Longer bars moved more data. Shuffle (orange and green) is the costly part, since it crosses disk and network; spill (pink) should be absent." }, function (v) { return bytes(v * 1048576); }, function (r) { return "#stage/" + r.st.key; });
     },
     stageSpill: function (c, th) {
       var rows = topBy(stages, 20, function (st) { return st.memSpill + st.diskSpill; }).map(function (st) { return { label: stageName(st), st: st }; });
       hbarChart(c, th, rows, [
         { label: "Spilled (size in memory)", color: th.viz[1], value: function (r) { return r.st.memSpill / 1048576; } },
         { label: "Written to disk", color: th.viz[4], value: function (r) { return r.st.diskSpill / 1048576; } }
-      ], "Spill by stage, in MiB: data that did not fit in memory while the stage ran, and what it came to on disk.", function (v) { return bytes(v * 1048576); }, function (r) { return "#stage/" + r.st.key; });
+      ], { t: "Spill by stage", shows: "Spill by stage, in MiB: data that did not fit in memory while the stage ran, and what it came to on disk.",
+        read: "Smaller is better, and none is ideal. Large spill means the stage's data did not fit in memory; more partitions or more memory per task help." }, function (v) { return bytes(v * 1048576); }, function (r) { return "#stage/" + r.st.key; });
     },
     dataOverTime: function (c, th) {
       var done = stages.filter(function (st) { return st.completed; }).sort(function (a2, b2) { return a2.completed - b2.completed; });
@@ -1206,7 +1220,8 @@
       var inB = 0, sh = 0, out = 0;
       dt.addRow([new Date(a.start || done[0].submitted), 0, 0, 0]);
       done.forEach(function (st) { inB += st.input; sh += st.shWrite; out += st.output; dt.addRow([new Date(st.completed), inB / 1048576, sh / 1048576, out / 1048576]); });
-      var plot = frame(c, "Data read, shuffled and written, in MiB, added up as each stage finished: a steep rise is where the work happened.");
+      var plot = frame(c, { t: "Data over time", shows: "Data read, shuffled and written, in MiB, added up as each stage finished.",
+        read: "Steep rises are where the work happened. Long flat stretches are time spent on something other than moving data, such as driver code or waiting for executors." });
       new google.visualization.SteppedAreaChart(plot).draw(dt, baseOpts(th, { colors: [th.viz[0], th.viz[2], th.viz[3]], areaOpacity: 0.08, connectSteps: true, isStacked: false,
         hAxis: withFormat(baseOpts(th).hAxis, "HH:mm:ss"), vAxis: axis(th, { minValue: 0, format: "short" }) }));
     },
@@ -1217,7 +1232,8 @@
         { label: "Computing", color: th.viz[0], value: sec(function (x) { return x.cpuNs / 1e6; }) },
         { label: "Garbage collection", color: th.viz[1], value: sec(function (x) { return x.gc; }) },
         { label: "Other or waiting", color: th.neutral, value: sec(function (x) { return x.run - x.cpuNs / 1e6 - x.gc; }) }
-      ], "Task run time on each executor, in seconds: computing on the JVM, collecting garbage, or neither (waiting for shuffle data, storage or Python workers).", function (v) { return dur(v * 1000); }, function (r) { return "#executor/" + encodeURIComponent(r.x.id); });
+      ], { t: "Where executor time went", shows: "Task run time on each executor, in seconds: computing on the JVM, collecting garbage, or neither (waiting for shuffle data, storage or Python workers).",
+        read: "More computing is better. Garbage collection above about 10% of the bar means memory pressure; a large grey part means tasks waited instead of computing." }, function (v) { return dur(v * 1000); }, function (r) { return "#executor/" + encodeURIComponent(r.x.id); });
     },
     execHeapAll: function (c, th) {
       if (!D.heapBytes) { waitText(c, "The executors' heap size is not known."); return; }
@@ -1225,7 +1241,8 @@
       hbarChart(c, th, rows, [
         { label: "Peak heap", color: th.viz[0], value: function (r) { return r.x.peakHeap / 1048576; } },
         { label: "Heap not used at peak", color: th.line, value: function (r) { return Math.max(D.heapBytes - r.x.peakHeap, 0) / 1048576; } }
-      ], "Each executor's peak Java heap against the " + bytes(D.heapBytes) + " it had, in MiB. Peaks are sampled, so short spikes can be missed.", function (v) { return bytes(v * 1048576); }, function (r) { return "#executor/" + encodeURIComponent(r.x.id); });
+      ], { t: "Peak heap per executor", shows: "Each executor's peak Java heap against the " + bytes(D.heapBytes) + " it had, in MiB. Peaks are sampled, so short spikes can be missed.",
+        read: "A bar that nearly fills its row (over 90%) risks running out of memory. Bars that stay well short mean executors had more heap than they used and could be smaller." }, function (v) { return bytes(v * 1048576); }, function (r) { return "#executor/" + encodeURIComponent(r.x.id); });
     },
     nodeMemory: function (c, th) {
       var rows = D.aws.nodes.filter(function (n) { return n.yarnMem; }).map(function (n) { return { label: n.host.split(".")[0], n: n }; });
@@ -1235,12 +1252,14 @@
         { label: "Driver container", color: th.viz[1], value: mib(function (n) { return n.driverMem || 0; }) },
         { label: "Executor containers (at once)", color: th.viz[0], value: mib(execBytes) },
         { label: "Free", color: th.line, value: mib(function (n) { return n.yarnMem - (n.driverMem || 0) - execBytes(n); }) }
-      ], "What YARN placed on each node, in MiB, against the memory the node offered. Free space smaller than one executor's container cannot hold another executor.", function (v) { return bytes(v * 1048576); });
+      ], { t: "What YARN placed on each node", shows: "What YARN placed on each node, in MiB, against the memory the node offered.",
+        read: "Free space helps only if it is at least one executor container wide: smaller gaps are memory paid for but unusable. A node that is mostly free did little work for this run." }, function (v) { return bytes(v * 1048576); });
     },
     clusterContainers: function (c, th) {
       var list = metric("ContainerAllocated").concat(metric("ContainerPending"));
       if (!list.length) { waitText(c, "CloudWatch had no container counts for this run."); return; }
-      var plot = frame(c, "Containers YARN had placed and containers waiting for room, across the whole cluster, every minute. This application ran from " + (a.start ? tfmt.format(new Date(a.start)) : "?") + " to " + (a.end ? tfmt.format(new Date(a.end)) : "?") + ". Waiting while memory is free means the containers were too big to fit.");
+      var plot = frame(c, { t: "Containers on the cluster", shows: "Containers YARN had placed and containers waiting for room, across the whole cluster, every minute. This application ran from " + (a.start ? tfmt.format(new Date(a.start)) : "?") + " to " + (a.end ? tfmt.format(new Date(a.end)) : "?") + ".",
+        read: "Waiting should stay at zero. Waiting while YARN memory is free means the containers were too big to fit on any node; waiting with memory full means the cluster was too small or busy." });
       new google.visualization.SteppedAreaChart(plot).draw(seriesTable(list, function (s) { return s.name === "ContainerPending" ? "Waiting" : "Allocated"; }), baseOpts(th, {
         colors: [th.series, th.fail], areaOpacity: 0.12, connectSteps: true, isStacked: false, hAxis: withFormat(baseOpts(th).hAxis, "HH:mm"), vAxis: axis(th, { title: "Containers", minValue: 0, format: "#,###" })
       }));
@@ -1250,7 +1269,8 @@
       if (!list.length) { waitText(c, "CloudWatch had no CPU figures for these nodes."); return; }
       var name = {};
       D.aws.nodes.forEach(function (n) { if (n.instance) name[n.instance.id] = n.instance.id + (n.driver ? " (driver)" : n.executors.length ? " (" + n.executors.length + " executors)" : n.instance.role === "MASTER" ? " (primary)" : " (idle)"); });
-      var plot = frame(c, "Each node's CPU, averaged over EC2's 5-minute periods: the whole machine, so daemons and other applications count too.");
+      var plot = frame(c, { t: "Node CPU", shows: "Each node's CPU, averaged over EC2's 5-minute periods: the whole machine, so daemons and other applications count too.",
+        read: "Higher means busier. Staying above about 85% means tasks queued for CPU. Low CPU on a node that ran executors suggests its tasks waited on disk, network or Python." });
       new google.visualization.LineChart(plot).draw(seriesTable(list, function (s) { return name[s.scope] || s.scope; }), baseOpts(th, {
         lineWidth: 2, pointSize: 5, hAxis: withFormat(baseOpts(th).hAxis, "HH:mm"), vAxis: axis(th, { title: "CPU %", minValue: 0, maxValue: 100 })
       }));
@@ -1265,7 +1285,8 @@
       dt.addColumn("number", "Tasks running (average)");
       dt.addColumn("number", "Task slots (executor cores)");
       R.busy.forEach(function (b, i) { var t = R.start + i * R.bucketMs; dt.addRow([new Date(t), Math.round(b / R.bucketMs * 10) / 10, slotsAt(t + R.bucketMs / 2)]); });
-      var plot = frame(c, "Average tasks running in each " + dur(R.bucketMs) + " bucket, against the cores of the executors alive then. Task times are stamped by the driver, so running tasks can briefly exceed the slots.");
+      var plot = frame(c, { t: "Tasks running against task slots", shows: "Average tasks running in each " + dur(R.bucketMs) + " bucket, against the cores of the executors alive then. Task times are stamped by the driver, so running tasks can briefly exceed the slots.",
+        read: "The filled area should reach the dashed line: every core busy. Gaps below it are idle cores, often from the driver working alone, one slow task holding a stage, or too few partitions." });
       new google.visualization.ComboChart(plot).draw(dt, baseOpts(th, {
         seriesType: "area", colors: [th.series, th.neutral],
         series: { 0: { areaOpacity: 0.25, lineWidth: 2 }, 1: { type: "steppedArea", areaOpacity: 0, lineWidth: 2, lineDashStyle: [4, 4] } },
@@ -1278,7 +1299,8 @@
         var end = j.completed || appEnd;
         return { id: j.id, row: "Job " + j.id, bar: (j.desc || j.name || "").slice(0, 80), color: statusColor(th, j.status), start: j.submitted, end: end,
           tip: "Job " + j.id + ": " + (j.desc || j.name) + "\n" + (STATUS[j.status] || j.status) + ", " + dur(end - j.submitted) };
-      }), "When each job ran. Click a bar to open the job." + STATUS_NOTE, "No job has a start time.");
+      }), { t: "Jobs over time", shows: "When each job ran. Click a bar to open the job." + STATUS_NOTE,
+        read: "Longer bars took longer. Gaps between bars are time the driver spent outside Spark jobs (planning, Python code or waiting); bars that overlap ran at the same time." }, "No job has a start time.");
     },
     executorsTimeline: function (c, th) {
       c.link = function (r) { return "#executor/" + encodeURIComponent(r.id); };
@@ -1291,7 +1313,8 @@
         var end = x.lifted || appEnd;
         return { id: x.kind === "executor" ? x.target : "", row: (x.kind === "executor" ? "Executor " : "Node ") + x.target + " excluded", bar: num(x.failures) + " failures", color: th.fail, start: x.time, end: end,
           tip: (x.kind === "executor" ? "Executor " : "Node ") + x.target + " excluded after " + num(x.failures) + " failures" + (x.lifted ? ", lifted after " + dur(x.lifted - x.time) : "") };
-      })), "How long each executor lived. Blue: ran to the end. Red: killed or lost, or a period it was excluded. Grey: removed for another reason, such as being idle. Click one to open it.", "No executor was logged.");
+      })), { t: "Executor lifetimes", shows: "How long each executor lived. Blue: ran to the end. Red: killed or lost, or a period it was excluded. Grey: removed for another reason, such as being idle. Click one to open it.",
+        read: "Long blue bars are healthy. Any red deserves a look. Many short grey bars mean dynamic allocation added and removed executors often, which costs start-up time." }, "No executor was logged.");
     },
     sqlTimeline: function (c, th) {
       c.link = function (r) { return "#query/" + r.id; };
@@ -1299,7 +1322,8 @@
         var st = queryStatus(q), end = q.end || appEnd;
         return { id: q.id, row: "Query " + q.id, bar: (q.desc || "").slice(0, 80), color: statusColor(th, st), start: q.start, end: end,
           tip: "Query " + q.id + ": " + q.desc + "\n" + (STATUS[st] || st) + ", " + dur(end - q.start) };
-      }), "When each query ran. Click a bar to open its plan." + STATUS_NOTE, "No query was logged.");
+      }), { t: "Queries over time", shows: "When each query ran. Click a bar to open its plan." + STATUS_NOTE,
+        read: "Longer bars took longer, so they are where tuning pays off; bars that overlap ran at the same time." }, "No query was logged.");
     },
     durationHistogram: function (c, th, key) {
       var det = D.detail[key];
@@ -1309,7 +1333,8 @@
       dt.addColumn("number", "Tasks");
       dt.addColumn({ type: "string", role: "tooltip" });
       det.h.forEach(function (b) { var range = b[0] === b[1] ? dur(b[0]) : dur(b[0]) + " to " + dur(b[1]); dt.addRow([dur(b[0]), b[2], range + ": " + num(b[2]) + " tasks"]); });
-      var plot = frame(c, "Successful tasks by how long they took (every task, not a sample). A long tail on the right means a few tasks held the stage up.");
+      var plot = frame(c, { t: "Task durations", shows: "Successful tasks by how long they took (every task, not a sample).",
+        read: "One tall group on the left is ideal: tasks took similar, short times. A long tail to the right means a few tasks held the stage up, usually because of skewed data." });
       new google.visualization.ColumnChart(plot).draw(dt, baseOpts(th, { colors: [th.series], legend: { position: "none" }, bar: { groupWidth: "88%" },
         hAxis: axis(th, { textStyle: { color: th.muted, fontSize: 10 }, slantedText: true, slantedTextAngle: 40 }), vAxis: axis(th, { title: "Tasks", format: "#,###", minValue: 0 }) }));
     },
@@ -1332,8 +1357,9 @@
         var tip = "Task " + r[T.task] + " (partition " + r[T.index] + ") on executor " + execName(r[T.exec]) + "\n" + dur(r[T.dur]) + ", " + num(r[T.rows]) + " rows read";
         dt.addRow(bad ? [at, null, null, secs, tip] : [at, secs, tip, null, null]);
       });
-      var plot = frame(c, "Each dot is a task: when it started, counted from the start of the stage, and how long it took. Dots high above the rest are stragglers; check whether they read more rows. " +
-        (det.sample.length < det.from ? "From a sample of " + num(det.sample.length) + " of " + num(det.from) + " tasks plus the slowest " + num(det.slow.length) + "." : "Every task of this stage."));
+      var plot = frame(c, { t: "When tasks started and how long they took", shows: "Each dot is a task: when it started, counted from the start of the stage, and how long it took. " +
+        (det.sample.length < det.from ? "From a sample of " + num(det.sample.length) + " of " + num(det.from) + " tasks plus the slowest " + num(det.slow.length) + "." : "Every task of this stage."),
+        read: "Dots should form a low, even band. Dots far above the rest are stragglers (check whether they read more rows); triangles failed. Vertical stripes are waves: one per round of task slots." });
       new google.visualization.ScatterChart(plot).draw(dt, baseOpts(th, { colors: [th.series, th.fail], pointSize: 5, dataOpacity: 0.75,
         series: { 0: { pointShape: "circle" }, 1: { pointShape: "triangle", pointSize: 8 } },
         hAxis: axis(th, { title: "Started, seconds after the stage began", minValue: 0 }),
@@ -1352,7 +1378,8 @@
       dt.addColumn({ type: "string", role: "tooltip" });
       dt.addColumn("number", "Configured heap (MiB)");
       pts.forEach(function (p) { dt.addRow(["Stage " + p[0].key, Math.round(p[1] / 1048576), "Stage " + p[0].key + " (" + p[0].name + "): peak heap " + bytes(p[1]), D.heapBytes ? Math.round(D.heapBytes / 1048576) : null]); });
-      var plot = frame(c, "The highest Java heap use sampled while each stage ran on this executor, against the heap it was given. Samples are peaks, so short spikes can be missed.");
+      var plot = frame(c, { t: "Peak heap by stage", shows: "The highest Java heap use sampled while each stage ran on this executor, against the heap it was given (dashed). Samples are peaks, so short spikes can be missed.",
+        read: "Bars close to the dashed line risk running out of memory; bars well below it for every stage mean the heap is bigger than this work needs." });
       new google.visualization.ComboChart(plot).draw(dt, baseOpts(th, { seriesType: "bars", colors: [th.series, th.neutral],
         series: { 1: { type: "line", lineWidth: 2, lineDashStyle: [4, 4], pointSize: 0 } }, bar: { groupWidth: "80%" },
         hAxis: axis(th, { textStyle: { color: th.muted, fontSize: 10 }, slantedText: true }),

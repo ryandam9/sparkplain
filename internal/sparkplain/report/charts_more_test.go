@@ -2,6 +2,7 @@ package report
 
 import (
 	"bytes"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -105,5 +106,34 @@ func TestFindingBandsAndSummaryBullets(t *testing.T) {
 		if !strings.Contains(explorerJS, want) {
 			t.Errorf("explorer lacks %s", want)
 		}
+	}
+}
+
+// Every chart, in both pages, has a title, says what it shows and says how
+// to read it.
+func TestEveryChartExplainsItself(t *testing.T) {
+	r, _ := buildWithExplorer(t, "application_1790380000000_0042")
+	page := html(t, r, Options{ExplorerHref: "x.html"})
+	charts := strings.Split(page, `<div class="chart">`)[1:]
+	if len(charts) < 6 {
+		t.Fatalf("only %d charts on the fixture's report", len(charts))
+	}
+	for _, c := range charts {
+		head := strings.TrimSpace(c)[:min(len(strings.TrimSpace(c)), 80)]
+		if !strings.HasPrefix(strings.TrimSpace(c), "<h4>") || !strings.Contains(c, `<p class="read"><b>How to read it</b>`) {
+			t.Errorf("report chart lacks a title or reading guide: %q", head)
+		}
+	}
+	guides := regexp.MustCompile(`\{ t: [^}]*?\}`).FindAllString(explorerJS, -1)
+	if len(guides) < 20 {
+		t.Fatalf("found %d chart guides in explorer.js", len(guides))
+	}
+	for _, g := range guides {
+		if !strings.Contains(g, "shows: ") || !strings.Contains(g, "read: ") {
+			t.Errorf("explorer chart guide lacks shows or read: %.90s", g)
+		}
+	}
+	if n := regexp.MustCompile(`frame\(c, "|drawGraph\([^;]*\}, "|hbarChart\([^;]*\], "`).FindAllString(explorerJS, -1); len(n) > 0 {
+		t.Errorf("charts still passed a bare caption: %v", n)
 	}
 }
