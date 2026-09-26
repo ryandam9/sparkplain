@@ -15,6 +15,17 @@ type EventLog struct {
 	RDDs             []*CachedRDD      `json:"cachedRdds,omitempty"`
 	Config           []ConfigEntry     `json:"config"`
 	CatalogEvents    []DataRef         `json:"catalogEvents,omitempty"`
+	Components       []Component       `json:"components,omitempty"`
+}
+
+// Component is a library version read from a jar name on the driver's
+// classpath, such as hadoop-client-api-3.3.4.jar.
+type Component struct {
+	Name     string `json:"name"`
+	Artifact string `json:"artifact"`
+	Version  string `json:"version"`
+	Path     string `json:"path"`
+	Source   Source `json:"source"`
 }
 
 // EventLogStats describes how the event log was read.
@@ -53,6 +64,7 @@ type Application struct {
 	Name         string    `json:"name"`
 	User         string    `json:"user"`
 	SparkVersion string    `json:"sparkVersion"`
+	VersionSrc   Source    `json:"sparkVersionSource,omitzero"`
 	Master       string    `json:"master,omitempty"`
 	DeployMode   string    `json:"deployMode,omitempty"`
 	Queue        string    `json:"queue,omitempty"`

@@ -202,7 +202,9 @@ func (p *parser) line(line []byte, src model.Source) error {
 		})
 	case evLogStart:
 		var e logStartEvent
-		return p.decode(line, &e, func() { p.log.Application.SparkVersion = redact.Text(e.Version) })
+		return p.decode(line, &e, func() {
+			p.log.Application.SparkVersion, p.log.Application.VersionSrc = redact.Text(e.Version), src
+		})
 	case evBlockUpdated:
 		var e blockUpdatedEvent
 		return p.decode(line, &e, func() {
@@ -606,8 +608,9 @@ func (p *parser) environment(e *envEvent, src model.Source) {
 	add("Hadoop Properties", e.Hadoop)
 	add("System Properties", e.System)
 	add("Metrics Properties", e.Metrics)
+	p.log.Components = components(e.Classpath, src)
 	if n := len(e.Classpath); n > 0 {
-		p.log.Stats.Notes = append(p.log.Stats.Notes, fmt.Sprintf("The environment lists %d classpath entries; they are not shown.", n))
+		p.log.Stats.Notes = append(p.log.Stats.Notes, fmt.Sprintf("The environment lists %d classpath entries; only the library versions named in the runtime table are shown.", n))
 	}
 	a := &p.log.Application
 	get := func(k string) string {
