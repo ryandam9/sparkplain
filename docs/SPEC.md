@@ -105,7 +105,7 @@ flowchart LR
 | `internal/sparkplain/awsmeta` | EMR, CloudWatch and CloudTrail clients on AWS SDK for Go v2 |
 | `internal/sparkplain/model` | Canonical types: `Application`, `Node`, `Executor`, `Job`, `Stage`, `TaskStats`, `MemorySample`, `ConfigEntry`, `Identity`, `AccessEvent`, `Finding` |
 | `internal/sparkplain/analyze` | One `Analyzer` per report section, each returning section data plus findings |
-| `internal/sparkplain/report` | `html/template` with embedded CSS and script (`go:embed`); charts are inline SVG built in Go, so no chart library; JSON writer |
+| `internal/sparkplain/report` | `html/template` with embedded CSS and script (`go:embed`); report charts are inline SVG built in Go, so `report.html` needs no chart library; the explorer page uses Google Charts (see §6); JSON writer |
 | `internal/sparkplain/redact` | Secret redaction and text sanitising, applied by parsers before values enter the model |
 
 **Key design rules**
@@ -186,7 +186,7 @@ sparkplain -from ./logs/application_1700000000000_0042 \
 | `-eventlog` | Optional. S3 prefix or object, local file, rolling folder, or History Server zip; falls back to `eventlog-prefix` in the config file |
 | `-from` | Offline input directory |
 | `-out` | Output directory override |
-| `-format` | `html`, `json` or both (default both) |
+| `-format` | Comma-separated outputs: `html`, `json`, `explorer` (default all three; `both` still means `html,json`) |
 | `-workers`, `-max-size`, `-overall-timeout` | Fetch budgets: concurrency, per-object size cap, run deadline |
 | `-no-cloudwatch`, `-no-cloudtrail` | Skip enrichment (fewer permissions needed) |
 | `-window-pad` | Padding on the AWS query window (default 5m) |
@@ -204,6 +204,33 @@ sparkplain -from ./logs/application_1700000000000_0042 \
 9. Identity and access.
 10. Findings: ranked, each with evidence links.
 11. Sources: every file and API read, what was missing, and why.
+
+**Explorer page** (`explorer.html`, phase 1b): a per-application take on the Spark History Server's tabs, with interactive charts. It is built from the same `-app-id` and `-eventlog` inputs in the same run, written next to `report.html`, and the two pages link to each other (findings link to the stage, executor or query they concern). It is one file with its data embedded as JSON; it loads Google Charts from `www.gstatic.com`, pinned to a frozen release rather than `current`, so it needs internet access when opened. Rules:
+
+- Only chart types that render in the browser (`corechart`, `timeline`); never GeoChart or Map. No report data leaves the machine.
+- Tables, text and navigation are drawn by the page's own embedded script, so if Google Charts can't load, a banner says so and everything except the charts still works.
+- Stage DAGs and SQL plan graphs are SVG laid out in Go, as in `report.html`, because Google Charts has no directed-graph chart.
+- Same redaction, time-zone labelling and light and dark themes as the report. Embedded JSON is escaped so no log value can close the script tag.
+
+| Tab | Shows |
+| --- | --- |
+| Overview | Status, duration, headline numbers, findings with links into the other tabs, link to `report.html` |
+| Jobs | Zoomable timeline of jobs (lanes by job group), executor count overlaid, failures marked; sortable table; job detail lists its stages |
+| Stages | Sortable, filterable table; stage DAG. Stage detail: summary metrics (min, p25, median, p75, max) for duration, GC, rows and bytes read, shuffle read and write, spill; task-duration histogram; task scatter (launch time against duration, one colour per executor); the slowest tasks; totals per executor |
+| Executors | Lifetimes on a timeline with removal reasons; running tasks against available task slots over time; table of tasks, failures, time, GC, input, shuffle and peak memory; peak memory per executor per stage (only when `spark.eventLog.logStageExecutorMetrics` was on) |
+| SQL / DataFrame | Queries on a timeline with duration and status; query detail: plan graph with each operator's metrics (rows, time, size, spill; totals across tasks), the plan text, the jobs it ran, tables read and written. The final AQE plan is shown |
+| Storage | Cached RDDs and DataFrames (sizes only when `spark.eventLog.logBlockUpdates.enabled` was on) |
+| Environment | The runtime table and all settings, as in the report |
+
+**Explorer data, collected while streaming** (the no-whole-log rule and the 1 GB budget still hold):
+
+- Per stage: exact quartiles and a log-scale histogram per metric, from the existing `distAcc`.
+- Task sample per stage: the 100 slowest tasks (a bounded heap) plus a uniform reservoir of 1,000 (fixed seed, so reruns give the same page). An app-wide budget of 200,000 sampled tasks halves every reservoir by random subsampling when it is exceeded, which keeps each sample uniform. The page labels charts drawn from the sample.
+- Totals per stage and executor, capped at 1,000,000 cells app-wide; past the cap, the per-executor table says it is partial.
+- Running tasks over time: task start and end folded into time buckets that double in width when they run out, capped at 2,000 buckets.
+- SQL operator metrics: the plan tree's metric IDs, resolved from `StageCompleted` accumulables and `SparkListenerDriverAccumUpdates` (checked against a real EMR 7.3.0 log: operator row counts, time, spill and peak memory all resolve this way).
+- Limits live in the config file under `explorer:` (`slowest-per-stage`, `sample-per-stage`, `max-sampled-tasks`, `max-stage-executor-cells`). At the defaults, `explorer.html` stays under 25 MB.
+- The explorer data lives only in `explorer.html`; `report.json` keeps its current shape, so the sample and buckets don't bloat it.
 
 **JSON export** mirrors the model package, versioned with a `schemaVersion` field, so other tools or dashboards can consume it.
 
@@ -260,6 +287,7 @@ Four phases, each shippable on its own. Phase 1 delivers most of the value from 
 | 1. Event log core | `eventlog` decoder, model, modules 1–8 from the event log, offline `-eventlog` input, HTML and JSON output | A real EMR event log renders a full report; a 1 GB log parses in under 60 s using under 1 GB RAM |
 | 2. S3 fetching and online mode | S3 fetch layer and online mode; optional event log fetch from an S3 prefix; container and step log classifiers; memory OOM evidence; identity from logs; first failure analysis | `-cluster-id` + `-app-id` produces the report with no manual downloads |
 | 3. AWS enrichment | EMR instance mapping, CloudWatch host metrics, CloudTrail access events, security configuration | Nodes table shows instance type and market; Identity section lists roles and `AccessDenied` events |
+| 1b. Explorer | Explorer data collection in the parser (task sample, per-stage quartiles and histograms, stage × executor totals, running-task buckets, SQL operator metrics); `explorer.html` with the tabs in §6; `-format explorer` | The fixtures and a real EMR event log render every tab; with Google Charts blocked, the tables still work; a 1 GB log still parses in under 60 s using under 1 GB RAM; planted secrets never appear in `explorer.html` |
 | 4. Findings and polish | Full rules engine with tunable thresholds, Sources panel, redaction tests, fixture logs from EMR 7.3.0 onward | All findings rules covered by tests; CI benchmark and `govulncheck` pass |
 
 Testing: stub S3 and AWS clients, race detector on, fuzz targets for the event decoder and log classifiers.
@@ -272,6 +300,7 @@ Testing: stub S3 and AWS clients, race detector on, fuzz targets for the event d
 - The runtime environment table is the driver's view only: the event log records no executor JVM or OS details. Library versions (Hadoop, Hive, EMRFS, AWS SDKs, Iceberg, Hudi, Delta, HBase, Py4J) come from jar names on the driver's classpath, since the log does not state them; Spark home is the folder holding `jars/spark-core_*.jar`. The EMR release and the Python version are not in the event log and show as "not recorded".
 - Key settings are compared with Spark 3.5 defaults. Comparing with EMR's own defaults needs the EMR API (phase 3).
 - The report uses system fonts. The sample's Google Fonts link would break the no-network rule.
+- Decision (2026-09-26): a per-application explorer page, a richer take on the History Server's tabs, will use Google Charts. Google Charts cannot be self-hosted, so `explorer.html` loads it from `www.gstatic.com` and needs internet access when opened; `report.html` stays fully offline. Only browser-rendered chart types are used, so report data never leaves the machine. Its design is in §6 (Explorer page) and it is built as phase 1b, before phases 2 and 3, in four steps, each tested and shippable: (1) data collection and its tests and benchmark; (2) the page shell: embedded data, tabs, tables, offline banner, themes, links with `report.html`; (3) the charts; (4) the stage DAG and SQL plan graphs.
 - Performance, measured with `scripts/benchlog` on 4 cores: a 1 GB log (245K tasks, real task-event layout) in 5.6 s at 30 MB peak RSS for the whole CLI; 1M tasks (2.4 GB) in 14.7 s at 68 MB.
 - Still open for the "done when" check: a real EMR 7.3.0+ event log, which cannot be generated here.
 
