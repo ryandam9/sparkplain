@@ -329,6 +329,23 @@ func TestRetriedAttemptOnLostSpotNode(t *testing.T) {
 			t.Errorf("attempt 1's driver log = %+v", lf)
 		}
 	}
+	// The spot node ran none of attempt 2's executors, but it took attempt
+	// 1's driver, and EMR said it was a spot reclaim.
+	spot := rules(r)["spot-interrupted"]
+	if spot.Severity != model.Warning || !strings.Contains(spot.Explanation, "It took the driver of attempt 1 with it. Attempt 1 failed without its driver") ||
+		!strings.Contains(spot.Explanation, "EMR says why: Spot Instance was terminated due to not enough capacity in the Spot Instance pool.") ||
+		strings.Contains(spot.Explanation, "inferred") || len(spot.Evidence) != 3 || !strings.Contains(spot.Evidence[1].Text, "YARN reported the node DECOMMISSIONING at 14:12:09 UTC") {
+		t.Errorf("spot = %+v", spot)
+	}
+	if _, ok := rules(r)["idle-nodes"]; ok {
+		t.Error("a node that went away mid-run is not idle")
+	}
+	// Without the logs, a spot node that ran nothing of this application
+	// is only a note.
+	quiet := rules(runWithLogs(l, cl))["spot-interrupted"]
+	if quiet.Severity != model.Info || !strings.Contains(quiet.Explanation, "lost no work on it") {
+		t.Errorf("quiet spot = %+v", quiet)
+	}
 }
 
 // An event log from attempt 2 with no earlier attempt's logs still says

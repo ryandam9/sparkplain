@@ -54,7 +54,8 @@ func TestNodesJoinInstances(t *testing.T) {
 		t.Errorf("idle = %+v", idle)
 	}
 	spot := got["spot-interrupted"]
-	if spot.Title != "Spot node i-4 went away while the application ran" || len(spot.Evidence) != 2 || spot.Evidence[1].Ref != "executor:2" {
+	if spot.Title != "Spot node i-4 went away while the application ran" || len(spot.Evidence) != 2 || spot.Evidence[1].Ref != "executor:2" ||
+		!strings.Contains(spot.Explanation, "It took 1 executor and the shuffle data on it") || !strings.Contains(spot.Explanation, "a spot reclaim is inferred") {
 		t.Errorf("spot = %+v", spot)
 	}
 	facts := map[string]string{}

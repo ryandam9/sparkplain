@@ -423,24 +423,76 @@ func nodeFindings(c *ctx, r *model.Report, idle []*model.Host) {
 			Title: fmt.Sprintf("%s of %s ran no executors", model.Plural(len(idle), "worker node", "worker nodes"), fmt.Sprint(workers)), Explanation: expl, Evidence: ev,
 			Fix: "Size executors so more than one fits on a node beside the driver (smaller spark.executor.memory and cores), let dynamic allocation ask for more, or run fewer nodes. If other applications shared the cluster, they may have used these nodes."})
 	}
+}
+
+// spotFindings reports spot nodes that went away while the application
+// ran, including while an earlier attempt ran, and what each took with
+// it: executors, or an earlier attempt's driver. It runs after the logs
+// are read, since only they say where an earlier attempt ran.
+func spotFindings(c *ctx, r *model.Report) {
 	if !c.has() {
 		return
 	}
 	start, end := c.log.Application.Start, c.end
+	drivers := map[string][]hit{} // host key → earlier attempts' driver-host lines
+	notices := map[string]hit{}   // host key → YARN's first notice for it
+	if c.logs != nil {
+		for _, h := range c.logs.hits {
+			if h.f.EarlierAttempt > 0 && !h.l.Time.IsZero() && h.l.Time.Before(start) {
+				start = h.l.Time
+			}
+			switch h.l.Kind {
+			case model.LogDriverHost:
+				if h.f.EarlierAttempt > 0 {
+					k := hostKey(h.l.Fields["host"])
+					drivers[k] = append(drivers[k], h)
+				}
+			case model.LogNodeState:
+				if k := hostKey(h.l.Fields["host"]); notices[k].l == nil {
+					notices[k] = h
+				}
+			}
+		}
+	}
 	for _, h := range r.Nodes.Hosts {
 		in := h.Instance
 		if in == nil || in.Market != "SPOT" || in.Ended.IsZero() || in.Ended.Before(start) || (!end.IsZero() && in.Ended.After(end)) {
 			continue
 		}
+		k := hostKey(h.Name)
 		ev := []model.Evidence{{Text: fmt.Sprintf("EMR ListInstances: spot instance %s (%s) ended at %s: %s", in.ID, h.Name, in.Ended.UTC().Format("15:04:05 UTC"), orNone(in.StateReason))}}
+		if n := notices[k]; n.l != nil {
+			ev = append(ev, n.evidence(fmt.Sprintf("%s: YARN reported the node %s at %s", n.who(), n.l.Fields["state"], c.clock(n.l.Time))))
+		}
 		for _, x := range c.log.Executors {
-			if hostKey(x.Host) == hostKey(h.Name) && x.RemovalKind != model.RemovalNone {
+			if hostKey(x.Host) == k && x.RemovalKind != model.RemovalNone {
 				ev = append(ev, model.Evidence{Source: x.RemovedSource, Ref: model.ExecutorRef(x.ID), Text: fmt.Sprintf("executor %s removed: %s", x.ID, x.RemovedReason)})
 			}
 		}
-		c.add(model.Finding{Rule: "spot-interrupted", Severity: model.Warning, Section: "nodes",
+		var took []string
+		sev := model.Warning
+		if n := len(h.Executors); n > 0 {
+			took = append(took, fmt.Sprintf("%s and the shuffle data on it, so Spark had to redo that work", model.Plural(n, "executor", "executors")))
+		}
+		var lost []string
+		for _, d := range drivers[k] {
+			took = append(took, fmt.Sprintf("the driver of attempt %d", d.f.EarlierAttempt))
+			lost = append(lost, fmt.Sprintf(" Attempt %d failed without its driver, and YARN restarted the application.", d.f.EarlierAttempt))
+			ev = append(ev, d.evidence(fmt.Sprintf("%s: the driver ran on %s", d.who(), h.Name)))
+		}
+		what := "It ran none of this application's executors, so the application lost no work on it."
+		if len(took) == 0 {
+			sev = model.Info
+		} else {
+			what = "It took " + joinAnd(took) + " with it." + strings.Join(lost, "")
+		}
+		why := "EMR reports every ended instance the same way, so a spot reclaim is inferred from the market and the timing."
+		if strings.Contains(strings.ToLower(in.StateReason), "spot") {
+			why = "EMR says why: " + strings.TrimSuffix(in.StateReason, ".") + "."
+		}
+		c.add(model.Finding{Rule: "spot-interrupted", Severity: sev, Section: "nodes",
 			Title:       fmt.Sprintf("Spot node %s went away while the application ran", in.ID),
-			Explanation: fmt.Sprintf("The node was a spot instance and ended before the application did, taking %s and the shuffle data on it with it; Spark had to redo that work. EMR reports every ended instance the same way, so a spot reclaim is inferred from the market and the timing.", model.Plural(len(h.Executors), "executor", "executors")),
+			Explanation: fmt.Sprintf("The node was a spot instance and ended at %s, before the application did. %s %s", c.clock(in.Ended), what, why),
 			Evidence:    ev,
 			Fix:         "Run core work and shuffle-heavy stages on on-demand nodes, keep spot for task nodes, or enable spark.decommission.enabled so Spark moves shuffle data off a node given notice."})
 	}
