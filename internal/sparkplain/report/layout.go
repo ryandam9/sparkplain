@@ -3,8 +3,7 @@ package report
 import "sort"
 
 // Graph layout for the explorer's stage DAGs and SQL plan graphs (SPEC §6:
-// Google Charts has no directed-graph chart, so the layout is done here and
-// the page's script draws it). It is a small layered layout: each node goes
+// the layout is done here, in Go, and the page's script draws it). It is a small layered layout: each node goes
 // in the layer after its deepest predecessor, nodes within a layer are
 // ordered by the average position of their neighbours to cut crossings, and
 // every edge points down.

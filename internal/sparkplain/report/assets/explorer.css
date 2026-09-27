@@ -14,15 +14,14 @@ a.themebtn{text-decoration:none}
 .bar-tools{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
 .bar-tools select{font:inherit;font-size:14px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
 .bar-tools .count{font-size:13px;color:var(--muted)}
-.banner{border:1px solid var(--warn);background:var(--warn-soft);color:var(--ink);border-radius:8px;padding:10px 14px;font-size:14px;margin-bottom:14px}
 .more{font:inherit;font-size:13px;color:var(--accent);background:none;border:1px dashed var(--line);border-radius:6px;padding:6px 12px;cursor:pointer;justify-self:start}
 td a,.ev a{text-decoration:none}
 td a:hover,.ev a:hover{text-decoration:underline}
 .sampled{display:inline-block;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);background:var(--accent-soft);padding:1px 7px;border-radius:4px;margin-left:8px;vertical-align:middle}
-.gchart{min-height:260px}
-.gchart.tall{min-height:420px}
-.gchart.tall.scrolly{min-height:0} /* a drawn timeline is as tall as its rows */
-.gchart .wait{color:var(--faint);font-size:13px;padding:16px}
+.xchart{min-height:260px}
+.xchart.tall{min-height:420px}
+.xchart.tall.scrolly{min-height:0} /* a drawn timeline is as tall as its rows */
+.xchart .wait{color:var(--faint);font-size:13px;padding:16px}
 .tree td.op{white-space:nowrap}
 .tree .ind{display:inline-block}
 .metricv{font-family:var(--mono);font-size:12px;color:var(--muted)}
@@ -45,12 +44,12 @@ svg.dag a .node:hover rect{fill:var(--accent-soft)}
 :root{--viz-series:#2a78d6;--viz-fail:#B83227;--viz-neutral:#6F7C88}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--viz-series:#3987e5;--viz-fail:#e66767;--viz-neutral:#8C99A5}}
 :root[data-theme="dark"]{--viz-series:#3987e5;--viz-fail:#e66767;--viz-neutral:#8C99A5}
-.gchart .cap{font-size:12.5px;color:var(--muted);padding:4px 6px 2px;max-width:80ch}
-.gchart .read{padding:0 6px 2px;margin:2px 0}
+.xchart .cap{font-size:12.5px;color:var(--muted);padding:4px 6px 2px;max-width:80ch}
+.xchart .read{padding:0 6px 2px;margin:2px 0}
 .dagwrap h4{margin:0 4px 8px;font-size:14px;font-weight:600}
 .dagwrap .read{margin:4px 4px 0}
-.gchart .plot{width:100%}
-.gchart.scrolly .plot{max-height:520px;overflow-y:auto}
+.xchart .plot{width:100%}
+.xchart.scrolly .plot{max-height:520px;overflow-y:auto}
 .dagwrap .cap{font-size:12.5px;color:var(--muted);padding:6px 4px 0;max-width:80ch}
 svg.dag .node.skipped rect{stroke-dasharray:4 3}
 svg.dag a{cursor:pointer}
@@ -100,9 +99,9 @@ details.logline pre{white-space:pre-wrap;word-break:break-word;margin:0;font-siz
 .d3c .go .rl{fill:var(--accent)}
 .d3c .go:hover .hit,.d3c .go:focus-visible .hit{fill:var(--accent-soft)}
 .d3c .go:focus-visible .rl{text-decoration:underline}
-.gchart .legend{padding:2px 6px 4px}
+.xchart .legend{padding:2px 6px 4px}
 .sp-tip{position:fixed;z-index:50;pointer-events:none;max-width:min(360px,90vw);white-space:pre-line;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;line-height:1.4;box-shadow:0 2px 10px rgba(0,0,0,.2)}
-.gchart:has(svg.d3c){min-height:0}
+.xchart:has(svg.d3c){min-height:0}
 .d3c .ln{fill:none;stroke-width:2}
 .d3c .xax .domain{stroke:var(--line)}
 .d3c .cursor{stroke:var(--muted);stroke-width:1;stroke-dasharray:2 2;pointer-events:none}
@@ -110,3 +109,5 @@ details.logline pre{white-space:pre-wrap;word-break:break-word;margin:0;font-siz
 .d3c .axt{fill:var(--muted)}
 .d3c .pt{fill-opacity:.75}
 .d3c rect.go:hover,.d3c rect.go:focus-visible{fill-opacity:.75}
+.d3c .bl{fill:#fff;pointer-events:none}
+.d3c.tlaxis{display:block}
