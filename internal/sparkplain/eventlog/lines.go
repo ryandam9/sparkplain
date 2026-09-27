@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
+	"github.com/ryandam9/sparkplain/internal/sparkplain/source"
 )
 
 // lineFunc receives one line (without the newline; the slice is reused after
@@ -52,7 +53,9 @@ func (in *Input) eachLine(ctx context.Context, fn lineFunc, onLong func(model.So
 				return err
 			}
 			defer done()
-			cr := &countingReader{r: dr}
+			// Codecs bound their own block and window sizes, not the total:
+			// stop a log that unpacks past the limit and mark it partial.
+			cr := &countingReader{r: source.Bounded(dr, in.limits.MaxUnpackedBytes, p.name, "-max-unpacked")}
 			err = readLines(ctx, cr, p.name, in.limits.MaxLineBytes, &fr.Lines, fn, onLong)
 			fr.Decompressed = cr.n
 			return err

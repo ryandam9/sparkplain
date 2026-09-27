@@ -397,3 +397,20 @@ func outPath(dir, kind string) string {
 	}
 	return filepath.Join(dir, "missing-"+kind)
 }
+
+// SP-003: a compressed event log that unpacks past -max-unpacked gives a
+// partial report (exit 3) that names the limit, not a complete-looking one.
+func TestMaxUnpackedMarksPartial(t *testing.T) {
+	dir := t.TempDir()
+	code, _, errs := runCLI(t, "-app-id", "application_1790380000000_0042", "-eventlog", filepath.Join(fx, "application_1790380000000_0042.zstd"), "-max-unpacked", "200KiB", "-out", dir)
+	if code != exitPartial {
+		t.Fatalf("exit %d, want %d: %s", code, exitPartial, errs)
+	}
+	js, err := os.ReadFile(filepath.Join(dir, "application_1790380000000_0042-report.json"))
+	if err != nil || !bytes.Contains(js, []byte("-max-unpacked")) {
+		t.Fatalf("report should say which limit cut the log: %v", err)
+	}
+	if code, _, errs := runCLI(t, "-app-id", "application_1790380000000_0042", "-eventlog", fx, "-max-unpacked", "lots"); code != exitFatal || !strings.Contains(errs, "-max-unpacked") {
+		t.Errorf("bad -max-unpacked: exit %d %s", code, errs)
+	}
+}

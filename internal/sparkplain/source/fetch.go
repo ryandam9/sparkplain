@@ -16,12 +16,17 @@ import (
 )
 
 // Limits bound one fetch (SPEC §2).
+// Each limit bounds one thing; a read that runs into one fails with
+// ClassTooLarge rather than stopping quietly.
 type Limits struct {
-	Workers    int           // objects read at once; default 16
-	MaxObject  int64         // largest object read, compressed; default 10 GiB
-	MaxZip     int64         // largest zip read into memory; default 256 MiB
-	PerObject  time.Duration // timeout per object; default 5 minutes
-	MaxEntries int           // zip entries read per archive; default 1000
+	Workers      int           // objects read at once; default 16
+	MaxObject    int64         // largest object read, as stored (compressed); default 10 GiB
+	MaxUnpacked  int64         // most bytes one .gz or .bz2 object unpacks to; default 50 GiB
+	MaxZip       int64         // largest zip read into memory; default 256 MiB
+	MaxZipEntry  int64         // most bytes one zip entry unpacks to; default 1 GiB
+	MaxZipMemory int64         // zip bytes held in memory across all workers; default 1 GiB
+	PerObject    time.Duration // timeout per object; default 5 minutes
+	MaxEntries   int           // zip entries read per archive; default 1000
 }
 
 func (l Limits) withDefaults() Limits {
@@ -31,9 +36,19 @@ func (l Limits) withDefaults() Limits {
 	if l.MaxObject <= 0 {
 		l.MaxObject = 10 << 30
 	}
+	if l.MaxUnpacked <= 0 {
+		l.MaxUnpacked = 50 << 30
+	}
 	if l.MaxZip <= 0 {
 		l.MaxZip = 256 << 20
 	}
+	if l.MaxZipEntry <= 0 {
+		l.MaxZipEntry = 1 << 30
+	}
+	if l.MaxZipMemory <= 0 {
+		l.MaxZipMemory = 1 << 30
+	}
+	l.MaxZipMemory = max(l.MaxZipMemory, l.MaxZip) // one zip at the limit must fit
 	if l.PerObject <= 0 {
 		l.PerObject = 5 * time.Minute
 	}
@@ -58,6 +73,7 @@ func Fetch(ctx context.Context, st Store, objs []Object, lim Limits, fn func(obj
 	lim = lim.withDefaults()
 	out := make([]Read, len(objs))
 	sem := make(chan struct{}, lim.Workers)
+	zipMem := newBudget(lim.MaxZipMemory)
 	var wg sync.WaitGroup
 	for i, o := range objs {
 		out[i] = Read{Object: o, Where: st.Location(o.Key)}
@@ -76,21 +92,22 @@ func Fetch(ctx context.Context, st Store, objs []Object, lim Limits, fn func(obj
 			defer func() { <-sem }()
 			octx, cancel := context.WithTimeout(ctx, lim.PerObject)
 			defer cancel()
-			out[i].Err = readOne(octx, st, o, lim, fn)
+			out[i].Err = readOne(octx, st, o, lim, zipMem, fn)
 		}(i, o)
 	}
 	wg.Wait()
 	return out
 }
 
-func readOne(ctx context.Context, st Store, o Object, lim Limits, fn func(Object, string, io.Reader) error) error {
+func readOne(ctx context.Context, st Store, o Object, lim Limits, zipMem *budget, fn func(Object, string, io.Reader) error) error {
 	rc, err := st.Open(ctx, o)
 	if err != nil {
 		return err
 	}
 	defer rc.Close()
 	where := st.Location(o.Key)
-	body := io.LimitReader(rc, lim.MaxObject+1)
+	// The object may have grown since it was listed; never read past the cap.
+	body := Bounded(rc, lim.MaxObject, where, "-max-size")
 	switch strings.ToLower(path.Ext(o.Key)) {
 	case ".gz":
 		zr, err := gzip.NewReader(body)
@@ -98,14 +115,16 @@ func readOne(ctx context.Context, st Store, o Object, lim Limits, fn func(Object
 			return &Error{Class: ClassCorrupt, Key: where, Err: err}
 		}
 		defer zr.Close()
-		return wrapRead(where, fn(o, o.Key, zr))
+		return wrapRead(where, fn(o, o.Key, Bounded(zr, lim.MaxUnpacked, where, "-max-unpacked")))
 	case ".bz2":
-		return wrapRead(where, fn(o, o.Key, bzip2.NewReader(body)))
+		return wrapRead(where, fn(o, o.Key, Bounded(bzip2.NewReader(body), lim.MaxUnpacked, where, "-max-unpacked")))
 	case ".zip":
 		if o.Size > lim.MaxZip {
 			return &Error{Class: ClassTooLarge, Key: where, Err: fmt.Errorf("zip of %d bytes is over the %d-byte limit", o.Size, lim.MaxZip)}
 		}
-		data, err := io.ReadAll(io.LimitReader(body, lim.MaxZip+1))
+		zipMem.acquire(o.Size)
+		defer zipMem.release(o.Size)
+		data, err := io.ReadAll(Bounded(body, lim.MaxZip, where, "zip size limit"))
 		if err != nil {
 			return wrapRead(where, err)
 		}
@@ -113,6 +132,7 @@ func readOne(ctx context.Context, st Store, o Object, lim Limits, fn func(Object
 		if err != nil {
 			return &Error{Class: ClassCorrupt, Key: where, Err: err}
 		}
+		var tooBig []string
 		for n, f := range zr.File {
 			if n == lim.MaxEntries {
 				break
@@ -120,15 +140,24 @@ func readOne(ctx context.Context, st Store, o Object, lim Limits, fn func(Object
 			if f.FileInfo().IsDir() {
 				continue
 			}
+			ewhere := where + "!" + f.Name
+			if f.UncompressedSize64 > uint64(lim.MaxZipEntry) {
+				tooBig = append(tooBig, f.Name)
+				continue
+			}
 			er, err := f.Open()
 			if err != nil {
-				return &Error{Class: ClassCorrupt, Key: where + "!" + f.Name, Err: err}
+				return &Error{Class: ClassCorrupt, Key: ewhere, Err: err}
 			}
-			err = fn(o, o.Key+"!"+f.Name, io.LimitReader(er, lim.MaxZip))
+			// The header's size may understate the entry; the reader still stops at the cap.
+			err = fn(o, o.Key+"!"+f.Name, Bounded(er, lim.MaxZipEntry, ewhere, "zip entry size limit"))
 			er.Close()
 			if err != nil {
-				return wrapRead(where, err)
+				return wrapRead(ewhere, err)
 			}
+		}
+		if len(tooBig) > 0 {
+			return &Error{Class: ClassTooLarge, Key: where, Err: fmt.Errorf("skipped %d entries that unpack past the %d-byte entry limit: %s", len(tooBig), lim.MaxZipEntry, strings.Join(tooBig, ", "))}
 		}
 		return nil
 	}

@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/ryandam9/sparkplain/internal/sparkplain/source"
 )
 
 // Error classes shown in the report's Sources panel (SPEC §2).
@@ -57,13 +59,17 @@ func ErrorClass(err error) string {
 
 // Limits bound what is read.
 type Limits struct {
-	MaxObjectBytes int64 // largest file or zip entry accepted (stored size); 0 means 10 GiB
-	MaxLineBytes   int   // longer lines are skipped and counted; 0 means 256 MiB
+	MaxObjectBytes   int64 // largest file or zip entry accepted (stored size); 0 means 10 GiB
+	MaxUnpackedBytes int64 // most bytes one file or entry unpacks to; 0 means 50 GiB
+	MaxLineBytes     int   // longer lines are skipped and counted; 0 means 256 MiB
 }
 
 func (l Limits) withDefaults() Limits {
 	if l.MaxObjectBytes <= 0 {
 		l.MaxObjectBytes = 10 << 30
+	}
+	if l.MaxUnpackedBytes <= 0 {
+		l.MaxUnpackedBytes = 50 << 30
 	}
 	if l.MaxLineBytes <= 0 {
 		l.MaxLineBytes = 256 << 20
@@ -247,7 +253,7 @@ func (in *Input) resolveZip(p string, size int64, appID string) error {
 			return struct {
 				io.Reader
 				io.Closer
-			}{&capReader{r: rc, left: limit, name: name}, rc}, nil
+			}{source.Bounded(rc, limit, name, "-max-size"), rc}, nil
 		}, nil
 	}
 	if len(dirs) > 0 {
@@ -304,24 +310,6 @@ func baseNames(ps []string) []string {
 		out[i] = path.Base(p)
 	}
 	return out
-}
-
-type capReader struct {
-	r    io.Reader
-	left int64
-	name string
-}
-
-func (c *capReader) Read(p []byte) (int, error) {
-	if c.left <= 0 {
-		return 0, &SourceError{ClassTooLarge, fmt.Errorf("zip entry %s unpacks past the size limit (-max-size)", c.name)}
-	}
-	if int64(len(p)) > c.left {
-		p = p[:c.left]
-	}
-	n, err := c.r.Read(p)
-	c.left -= int64(n)
-	return n, err
 }
 
 func hasRollingParts(names []string) bool {

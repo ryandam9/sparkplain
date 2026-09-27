@@ -36,6 +36,7 @@ sparkplain fetches logs itself, scoped tightly to one application, with bounded 
 | Server-side scoping by prefix | List only `containers/<app-id>/`, the app's `steps/<step-id>/`, and `node/<instance-id>/` for nodes that hosted executors; never the whole cluster |
 | Streaming decompression | `.gz`, `.bz2`, plain and size-bounded `.zip` for YARN logs; adds `.zstd`, `.lz4` and `.snappy` for event logs |
 | Bounded concurrency | Worker pool (default 16), per-object size cap, per-object and overall timeouts |
+| Size limits | Separate caps, each failing the object as `tooLarge` (so its source is partial) instead of stopping quietly: stored size per object (`-max-size`, 10 GiB); unpacked size per compressed object, event log part or zip entry (`-max-unpacked`, 50 GiB); zips read into memory (256 MiB each, 1 GiB across all workers at once); unpacked size per zip entry (1 GiB, checked against the header and again while reading, since headers can understate); event log lines (256 MiB, longer lines skipped and counted) |
 | LIST/GET consistency | `GetObject` with `If-Match` on the listed ETag; changed objects counted and skipped |
 | Error classes | `accessDenied`, `notFound`, `throttled`, `timeout`, `archivedUnavailable`, `corrupt`, shown in the report's Sources panel |
 | Archive awareness | Unrestored Glacier objects skipped at listing time and reported |
@@ -187,7 +188,7 @@ sparkplain -from ./logs/application_1700000000000_0042 \
 | `-from` | Offline copy of the cluster's logs (see §2); not with `-cluster-id` |
 | `-out` | Output directory override |
 | `-format` | Comma-separated outputs: `html`, `json`, `explorer` (default all three; `both` still means `html,json`) |
-| `-workers`, `-max-size`, `-overall-timeout` | Fetch budgets: concurrency, per-object size cap, run deadline |
+| `-workers`, `-max-size`, `-max-unpacked`, `-overall-timeout` | Fetch budgets: concurrency, stored size per object, unpacked size per compressed object or entry, run deadline |
 | `-no-cloudwatch`, `-no-cloudtrail` | Skip enrichment (fewer permissions needed) |
 | `-window-pad` | Padding on the AWS query window (default 5m) |
 | `-show` | Print the event at a `file:line` the pages cite, redacted, and exit |
@@ -246,6 +247,7 @@ timezone: Australia/Sydney
 out: ~/reports
 format: both
 max-size: 10GiB
+max-unpacked: 50GiB
 overall-timeout: 30m
 thresholds:
   skew-ratio: 5

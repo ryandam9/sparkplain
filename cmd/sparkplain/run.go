@@ -41,7 +41,7 @@ var appIDRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.\-]{0,127}$`)
 
 type options struct {
 	profile, region, configPath, clusterID, clusterName, appID string
-	eventLog, from, out, format, maxSize, show                 string
+	eventLog, from, out, format, maxSize, maxUnpacked, show    string
 	workers                                                    int
 	timeout, windowPad                                         time.Duration
 	noCloudWatch, noCloudTrail, showVersion                    bool
@@ -63,7 +63,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&o.out, "out", "", "output folder (default ~/sparkplain/<yyyy-mm-dd>/<app-id>/)")
 	fs.StringVar(&o.format, "format", "", "outputs, comma-separated: html, json, explorer (default all three; both = html,json)")
 	fs.IntVar(&o.workers, "workers", 16, "how many log files to read at once")
-	fs.StringVar(&o.maxSize, "max-size", "", "largest file or zip entry to read, e.g. 10GiB (default 10GiB)")
+	fs.StringVar(&o.maxSize, "max-size", "", "largest file to read, as stored (compressed), e.g. 10GiB (default 10GiB)")
+	fs.StringVar(&o.maxUnpacked, "max-unpacked", "", "most bytes one compressed file may unpack to, e.g. 50GiB (default 50GiB)")
 	fs.DurationVar(&o.timeout, "overall-timeout", 0, "deadline for the whole run (default 30m)")
 	fs.BoolVar(&o.noCloudWatch, "no-cloudwatch", false, "skip CloudWatch metrics (fewer permissions needed)")
 	fs.BoolVar(&o.noCloudTrail, "no-cloudtrail", false, "skip CloudTrail lookups (fewer permissions needed)")
@@ -130,6 +131,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return fail("-max-size %q is not a size (try 10GiB or 500MiB)", s)
 		}
 	}
+	maxUnpacked := int64(50 << 30)
+	if s := firstNonEmpty(o.maxUnpacked, cfg.MaxUnpacked); s != "" {
+		if maxUnpacked = parseSize(s); maxUnpacked <= 0 {
+			return fail("-max-unpacked %q is not a size (try 50GiB)", s)
+		}
+	}
 	timeout := 30 * time.Minute
 	if cfg.OverallTimeout > 0 {
 		timeout = cfg.OverallTimeout
@@ -188,7 +195,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		if evPath == "" {
 			return fail("-show needs the event log: pass -eventlog")
 		}
-		in, err := cloud.resolve(ctx, evPath, o.appID, eventlog.Limits{MaxObjectBytes: maxSize})
+		in, err := cloud.resolve(ctx, evPath, o.appID, eventlog.Limits{MaxObjectBytes: maxSize, MaxUnpackedBytes: maxUnpacked})
 		if err != nil {
 			return fail("%v", err)
 		}
@@ -215,14 +222,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 	var stepDirs []string
 	switch {
 	case evPath != "":
-		in, err = cloud.resolve(ctx, evPath, o.appID, eventlog.Limits{MaxObjectBytes: maxSize})
+		in, err = cloud.resolve(ctx, evPath, o.appID, eventlog.Limits{MaxObjectBytes: maxSize, MaxUnpackedBytes: maxUnpacked})
 	case online:
 		// Jobs often set spark.eventLog.dir in their own spark-submit
 		// arguments rather than in the cluster's configuration.
 		err = errNoEventLog
 		stepDirs = stepEventLogDirs(logs.steps)
 		for _, dir := range stepDirs {
-			in, err = cloud.resolve(ctx, dir, o.appID, eventlog.Limits{MaxObjectBytes: maxSize})
+			in, err = cloud.resolve(ctx, dir, o.appID, eventlog.Limits{MaxObjectBytes: maxSize, MaxUnpackedBytes: maxUnpacked})
 			if err == nil || eventlog.ErrorClass(err) != eventlog.ClassNotFound {
 				evPath, src.Location = dir, dir
 				fmt.Fprintf(stderr, "sparkplain: using the spark.eventLog.dir a step set, %s\n", dir)
@@ -285,7 +292,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
-	lim := source.Limits{Workers: o.workers, MaxObject: maxSize}
+	lim := source.Limits{Workers: o.workers, MaxObject: maxSize, MaxUnpacked: maxUnpacked}
 	var fetched []report.FetchedSource // the application's scripts, from S3
 	mode := "offline-eventlog"
 	switch {
