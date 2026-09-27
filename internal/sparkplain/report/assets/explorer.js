@@ -227,10 +227,10 @@
   }
   function numCol(h, key, fmt, title) { return { h: h, num: true, title: title, v: function (r) { return r[key]; }, f: function (r) { return (fmt || num)(r[key]); } }; }
 
-  // ---------- charts (drawn by the D3 kit, or by Google Charts once it loads, for those not moved yet) ----------
+  // ---------- charts (drawn by the D3 kit in the chart layer) ----------
   var charts = [];
   function chartSlot(cls, draw) {
-    var d = el("div", { cls: "chart gchart " + (cls || "") }, el("div", { cls: "wait", text: "Loading chart…" }));
+    var d = el("div", { cls: "chart xchart " + (cls || "") }, el("div", { cls: "wait", text: "Drawing chart…" }));
     charts.push({ el: d, draw: draw });
     return d;
   }
@@ -1039,70 +1039,10 @@
     return true;
   }
 
-  // ---------- chart layer: Google Charts, loaded on demand ----------
-  // Google Charts cannot be self-hosted, so this is the page's only network
-  // request. Release 52 is pinned (a frozen version) rather than "current".
-  var LOADER = "https://www.gstatic.com/charts/loader.js", GC_VERSION = "52";
-  var gc = { state: "idle", queue: [] };
-  var banner = document.getElementById("sp-banner");
-  function showBanner(text) { banner.textContent = text; banner.hidden = false; }
-  function loadCharts(cb) {
-    if (gc.state === "ready") { cb(); return; }
-    if (gc.state === "failed") { charts.forEach(function (c) { if (!isD3(c)) waitText(c, "Chart unavailable: Google Charts could not be loaded."); }); return; }
-    gc.queue.push(cb);
-    if (gc.state === "loading") return;
-    gc.state = "loading";
-    var fail = function () {
-      if (gc.state === "ready") return;
-      gc.state = "failed";
-      showBanner("Charts could not load. They are drawn with Google Charts, which this page loads from www.gstatic.com, so they need internet access. Everything else on the page works without it.");
-      charts.forEach(function (c) { if (!isD3(c)) waitText(c, "Chart unavailable: Google Charts could not be loaded."); });
-    };
-    var slow = setTimeout(function () { if (gc.state === "loading") showBanner("Charts are still loading from www.gstatic.com. Tables and details work in the meantime."); }, 10000);
-    var s = document.createElement("script");
-    s.src = LOADER;
-    s.async = true;
-    s.onerror = function () { clearTimeout(slow); fail(); };
-    s.onload = function () {
-      try {
-        google.charts.load(GC_VERSION, { packages: ["corechart", "timeline"] });
-        google.charts.setOnLoadCallback(function () {
-          clearTimeout(slow);
-          gc.state = "ready";
-          banner.hidden = true;
-          var q = gc.queue; gc.queue = [];
-          q.forEach(function (f) { f(); });
-        });
-      } catch (e) { clearTimeout(slow); fail(); }
-    };
-    document.head.appendChild(s);
-  }
+  // ---------- chart layer ----------
+  // Every chart is drawn by the D3 kit below from the page's own data, so
+  // the explorer makes no network requests.
   function waitText(c, text) { var w = c.el.querySelector(".wait"); if (w) w.textContent = text; }
-
-  function css(name) { return getComputedStyle(root).getPropertyValue(name).trim(); }
-  function theme() {
-    return { ink: css("--ink"), muted: css("--muted"), line: css("--line"), font: css("--sans").replace(/"/g, "'") || "sans-serif",
-      series: css("--viz-series"), fail: css("--viz-fail"), neutral: css("--viz-neutral"),
-      // categorical slots, validated for colour-blind separation (report.css)
-      viz: [css("--viz-1"), css("--viz-2"), css("--viz-3"), css("--viz-4"), css("--viz-5")] };
-  }
-  function baseOpts(th, extra) {
-    var o = {
-      backgroundColor: "transparent", fontName: th.font, fontSize: 12, height: 280,
-      chartArea: { left: 72, right: 20, top: 30, bottom: 48, width: "100%", height: "100%" },
-      legend: { position: "top", alignment: "start", textStyle: { color: th.ink } },
-      hAxis: axis(th), vAxis: axis(th),
-      tooltip: { textStyle: { color: "#15212B" } }
-    };
-    Object.keys(extra || {}).forEach(function (k) { o[k] = extra[k]; });
-    return o;
-  }
-  // axis is the recessive default axis, with extra settings merged in.
-  function axis(th, extra) {
-    var o = { textStyle: { color: th.muted }, gridlines: { color: th.line }, minorGridlines: { color: "transparent" }, baselineColor: th.line, titleTextStyle: { color: th.muted, italic: false } };
-    Object.keys(extra || {}).forEach(function (k) { o[k] = extra[k]; });
-    return o;
-  }
   // guideNodes explains a chart: what it shows, and how to read it (which
   // way is good, and what pattern to look for).
   function guideNodes(g) {
@@ -1119,28 +1059,42 @@
     add(c.el, guideNodes(g));
     return plot;
   }
-  function statusColor(th, s) { return s === "succeeded" ? th.series : s === "failed" ? th.fail : th.neutral; }
+  function statusColor(s) { return s === "succeeded" ? V.series : s === "failed" ? V.fail : V.neutral; }
   var appEnd = a.end || (function () { var m = a.start || 0; stages.forEach(function (s) { m = Math.max(m, s.completed || 0); }); return m; })();
 
-  function timeline(c, th, rows, g, emptyText) {
+  // timeline draws one lane per row (row, bar, color, start, end, tip): a
+  // bar from start to end, labelled inside when it fits. The time axis sits
+  // above the rows and stays in view while a long list scrolls. Rows past
+  // 600 are left out, and the guide says so.
+  function timeline(c, rows, g, emptyText) {
     if (!rows.length) { waitText(c, emptyText); return; }
     var capRows = rows.slice(0, 600);
     var plot = frame(c, { t: g.t, read: g.read, shows: g.shows + (rows.length > capRows.length ? " Showing the first " + num(capRows.length) + " of " + num(rows.length) + "." : "") });
     c.el.classList.add("scrolly");
-    var dt = new google.visualization.DataTable();
-    dt.addColumn({ type: "string", id: "Row" });
-    dt.addColumn({ type: "string", id: "Bar" });
-    dt.addColumn({ type: "string", role: "style" });
-    dt.addColumn({ type: "string", role: "tooltip" });
-    dt.addColumn({ type: "date", id: "Start" });
-    dt.addColumn({ type: "date", id: "End" });
-    capRows.forEach(function (r) { dt.addRow([r.row, r.bar, r.color, r.tip, new Date(r.start), new Date(Math.max(r.end, r.start + 1))]); });
-    var ch = new google.visualization.Timeline(plot);
-    ch.draw(dt, { height: Math.min(capRows.length, 600) * 28 + 60, backgroundColor: css("--surface"), fontName: th.font,
-      alternatingRowStyle: false,
-      timeline: { showBarLabels: true, rowLabelStyle: { color: th.ink, fontName: th.font, fontSize: 12 }, barLabelStyle: { fontName: th.font, fontSize: 11 } },
-      hAxis: { format: "HH:mm:ss" }, avoidOverlappingGridLines: false, tooltip: { isHtml: false } });
-    if (c.link) google.visualization.events.addListener(ch, "select", function () { var sel = ch.getSelection()[0]; if (sel && sel.row != null) location.hash = c.link(capRows[sel.row]); });
+    var rowH = 28, axH = 26, w = Math.max(plot.clientWidth || 0, 280);
+    var labelW = Math.min(170, Math.round(w * 0.3)), right = w - 18;
+    var t0 = d3.min(capRows, function (r) { return r.start; }), t1 = d3.max(capRows, function (r) { return Math.max(r.end, r.start + 1); });
+    var x = d3.scaleTime().domain([t0, t1]).range([labelW, right]);
+    var tf = t1 - t0 < 10 * 60000 ? tfmt : hmfmt, ticks = x.ticks(Math.max(2, Math.floor((right - labelW) / 90)));
+    d3.select(plot.parentNode).insert("svg", function () { return plot; }).attr("class", "d3c tlaxis").attr("width", w).attr("height", axH).attr("aria-hidden", "true")
+      .append("g").attr("class", "ax xax").attr("transform", "translate(0," + (axH - 1) + ")")
+      .call(d3.axisTop(x).tickValues(ticks).tickFormat(function (d) { return tf.format(d); }).tickSizeOuter(0).tickPadding(4))
+      .call(leanEnds, x, labelW, right);
+    var P = plotSvg(plot, capRows.length * rowH, g.t);
+    P.svg.append("g").attr("class", "ax").selectAll("line").data(ticks).join("line")
+      .attr("x1", x).attr("x2", x).attr("y1", 0).attr("y2", P.h);
+    var row = P.svg.append("g").selectAll("g").data(capRows).join("g").attr("class", "row")
+      .attr("transform", function (r, i) { return "translate(0," + i * rowH + ")"; });
+    row.append("rect").attr("class", "hit").attr("x", 0).attr("width", P.w).attr("height", rowH);
+    row.append("text").attr("class", "rl").attr("x", labelW - 8).attr("y", rowH / 2).attr("dy", "0.35em").attr("text-anchor", "end")
+      .text(function (r) { return fitChars(r.row, labelW - 12); });
+    row.each(function (r) {
+      var x0 = x(r.start), bw = Math.max(x(Math.max(r.end, r.start + 1)) - x0, 2), gr = d3.select(this);
+      gr.append("rect").attr("class", "tlbar").attr("x", x0).attr("y", 5).attr("width", bw).attr("height", rowH - 10).attr("rx", 3).style("fill", r.color);
+      if (bw > 44 && r.bar) gr.append("text").attr("class", "bl").attr("x", x0 + 6).attr("y", rowH / 2).attr("dy", "0.35em").text(fitChars(r.bar, bw - 12));
+    });
+    hover(row, function (r) { return r.tip; });
+    if (c.link) linkify(row, c.link, function (r) { return r.tip; });
   }
   var STATUS_NOTE = " Blue: succeeded. Red: failed. Grey: running, incomplete or skipped.";
 
@@ -1467,34 +1421,34 @@
       ], { t: "Tasks running against task slots", shows: "Average tasks running in each " + dur(R.bucketMs) + " bucket, against the cores of the executors alive then. Task times are stamped by the driver, so running tasks can briefly exceed the slots.",
         read: "The filled area should reach the dashed line: every core busy. Gaps below it are idle cores, often from the driver working alone, one slow task holding a stage, or too few partitions." }, "count");
     },
-    jobsTimeline: function (c, th) {
+    jobsTimeline: function (c) {
       c.link = function (r) { return "#job/" + r.id; };
-      timeline(c, th, jobs.filter(function (j) { return j.submitted; }).map(function (j) {
+      timeline(c, jobs.filter(function (j) { return j.submitted; }).map(function (j) {
         var end = j.completed || appEnd;
-        return { id: j.id, row: "Job " + j.id, bar: (j.desc || j.name || "").slice(0, 80), color: statusColor(th, j.status), start: j.submitted, end: end,
+        return { id: j.id, row: "Job " + j.id, bar: (j.desc || j.name || "").slice(0, 80), color: statusColor(j.status), start: j.submitted, end: end,
           tip: "Job " + j.id + ": " + (j.desc || j.name) + "\n" + (STATUS[j.status] || j.status) + ", " + dur(end - j.submitted) };
       }), { t: "Jobs over time", shows: "When each job ran. Click a bar to open the job." + STATUS_NOTE,
         read: "Longer bars took longer. Gaps between bars are time the driver spent outside Spark jobs (planning, Python code or waiting); bars that overlap ran at the same time." }, "No job has a start time.");
     },
-    executorsTimeline: function (c, th) {
+    executorsTimeline: function (c) {
       c.link = function (r) { return "#executor/" + encodeURIComponent(r.id); };
-      timeline(c, th, execs.filter(function (x) { return x.id !== "driver" && x.added; }).map(function (x) {
+      timeline(c, execs.filter(function (x) { return x.id !== "driver" && x.added; }).map(function (x) {
         var bad = x.kind === "memory-kill" || x.kind === "lost";
         var end = x.removed || appEnd;
-        return { id: x.id, row: "Executor " + x.id, bar: x.host || "", color: bad ? th.fail : x.removed ? th.neutral : th.series, start: x.added, end: end,
+        return { id: x.id, row: "Executor " + x.id, bar: x.host || "", color: bad ? V.fail : x.removed ? V.neutral : V.series, start: x.added, end: end,
           tip: "Executor " + x.id + " on " + x.host + "\n" + (x.removed ? "Removed: " + (x.reason || "no reason logged") : "Ran to the end") + ", " + dur(end - x.added) };
       }).concat(exclusions.filter(function (x) { return x.scope === "application"; }).map(function (x) {
         var end = x.lifted || appEnd;
-        return { id: x.kind === "executor" ? x.target : "", row: (x.kind === "executor" ? "Executor " : "Node ") + x.target + " excluded", bar: num(x.failures) + " failures", color: th.fail, start: x.time, end: end,
+        return { id: x.kind === "executor" ? x.target : "", row: (x.kind === "executor" ? "Executor " : "Node ") + x.target + " excluded", bar: num(x.failures) + " failures", color: V.fail, start: x.time, end: end,
           tip: (x.kind === "executor" ? "Executor " : "Node ") + x.target + " excluded after " + num(x.failures) + " failures" + (x.lifted ? ", lifted after " + dur(x.lifted - x.time) : "") };
       })), { t: "Executor lifetimes", shows: "How long each executor lived. Blue: ran to the end. Red: killed or lost, or a period it was excluded. Grey: removed for another reason, such as being idle. Click one to open it.",
         read: "Long blue bars are healthy. Any red deserves a look. Many short grey bars mean dynamic allocation added and removed executors often, which costs start-up time." }, "No executor was logged.");
     },
-    sqlTimeline: function (c, th) {
+    sqlTimeline: function (c) {
       c.link = function (r) { return "#query/" + r.id; };
-      timeline(c, th, queries.filter(function (q) { return q.start; }).map(function (q) {
+      timeline(c, queries.filter(function (q) { return q.start; }).map(function (q) {
         var st = queryStatus(q), end = q.end || appEnd;
-        return { id: q.id, row: "Query " + q.id, bar: (q.desc || "").slice(0, 80), color: statusColor(th, st), start: q.start, end: end,
+        return { id: q.id, row: "Query " + q.id, bar: (q.desc || "").slice(0, 80), color: statusColor(st), start: q.start, end: end,
           tip: "Query " + q.id + ": " + q.desc + "\n" + (STATUS[st] || st) + ", " + dur(end - q.start) };
       }), { t: "Queries over time", shows: "When each query ran. Click a bar to open its plan." + STATUS_NOTE,
         read: "Longer bars took longer, so they are where tuning pays off; bars that overlap ran at the same time." }, "No query was logged.");
@@ -1538,14 +1492,10 @@
         { series: "Peak heap", ref: D.heapBytes ? { value: D.heapBytes, label: "Configured heap (" + bytes(D.heapBytes) + ")" } : null });
     }
   };
-  // D3_DRAW are the charts already moved to the embedded D3 kit; the rest
-  // still wait for Google Charts.
-  var D3_DRAW = { stageTimes: 1, stageData: 1, stageSpill: 1, execTime: 1, execHeapAll: 1, nodeMemory: 1, dataOverTime: 1, clusterContainers: 1, nodeCPU: 1, running: 1, durationHistogram: 1, taskScatter: 1, execHeap: 1 };
-  function isD3(c) { return D3_DRAW[c.draw.split(":")[0]] === 1; }
   function drawSlot(c) {
     var name = c.draw.split(":")[0], arg = c.draw.slice(name.length + 1);
     if (!DRAW[name] || !document.body.contains(c.el)) return;
-    try { if (isD3(c)) DRAW[name](c, arg); else DRAW[name](c, theme(), arg); } catch (e) { waitText(c, "This chart could not be drawn: " + e.message); }
+    try { DRAW[name](c, arg); } catch (e) { waitText(c, "This chart could not be drawn: " + e.message); }
   }
   var resizeTimer;
   window.addEventListener("resize", function () { clearTimeout(resizeTimer); resizeTimer = setTimeout(redrawCharts, 250); });
@@ -1873,12 +1823,8 @@
     drawCharts();
     window.scrollTo(0, 0);
   }
-  function drawCharts() {
-    charts.filter(isD3).forEach(drawSlot);
-    var mine = charts.filter(function (c) { return !isD3(c); });
-    if (mine.length) loadCharts(function () { mine.forEach(drawSlot); });
-  }
-  function redrawCharts() { charts.forEach(function (c) { if (isD3(c) || gc.state === "ready") drawSlot(c); }); }
+  function drawCharts() { charts.forEach(drawSlot); }
+  function redrawCharts() { drawCharts(); }
   window.addEventListener("hashchange", route);
   route();
 })();

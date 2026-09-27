@@ -110,10 +110,11 @@ func TestExplorerDataMatchesReport(t *testing.T) {
 	}
 }
 
-// The page's only network request is the Google Charts loader, pinned to a
-// frozen release, asking only for chart packages that render in the browser
-// (CLAUDE.md: never GeoChart or Map, which send data to Google).
-func TestExplorerOnlyLoadsGoogleCharts(t *testing.T) {
+// The explorer makes no network requests: its charts are drawn by the
+// embedded D3, so it works on machines without internet access (SPEC §8,
+// phase 1d). Only the SVG namespace, an identifier browsers never fetch,
+// may appear as a URL in the page's own markup and script.
+func TestExplorerLoadsNothingExternal(t *testing.T) {
 	r, x := buildWithExplorer(t, "application_1790380000000_0042")
 	page := dataRE.ReplaceAllString(renderExplorer(t, r, x), "") // log values may contain URLs; they are data, not loads
 	// The vendored D3 holds XML namespace names and its licence URL, never
@@ -122,32 +123,20 @@ func TestExplorerOnlyLoadsGoogleCharts(t *testing.T) {
 		t.Fatal("D3 is not embedded")
 	}
 	page = strings.Replace(page, d3JS, "", 1)
-	for _, re := range []string{`<link\b`, `<script[^>]+src=`, `@import`, `url\(\s*['"]?https?:`, `<iframe`, `<img\b`} {
+	for _, re := range []string{`<link\b`, `<script[^>]+src=`, `@import`, `url\(\s*['"]?https?:`, `<iframe`, `<img\b`, `fonts\.googleapis`} {
 		if m := regexp.MustCompile(re).FindString(page); m != "" {
-			t.Errorf("explorer loads something outside its script: %q", m)
+			t.Errorf("explorer loads something outside itself: %q", m)
 		}
 	}
-	// The SVG namespace is an identifier browsers never fetch.
-	allowed := map[string]bool{"https://www.gstatic.com/charts/loader.js": true, "http://www.w3.org/2000/svg": true}
-	loader := false
 	for _, u := range regexp.MustCompile(`https?://[^\s"'<>)]+`).FindAllString(page, -1) {
-		if !allowed[u] {
-			t.Errorf("explorer references %s; only the Google Charts loader is allowed", u)
+		if u != "http://www.w3.org/2000/svg" {
+			t.Errorf("explorer references %s; it must load nothing", u)
 		}
-		loader = loader || u == "https://www.gstatic.com/charts/loader.js"
 	}
-	if !loader {
-		t.Error("the Google Charts loader is missing")
-	}
-	if !strings.Contains(explorerJS, `GC_VERSION = "52"`) || strings.Contains(explorerJS, `load("current"`) {
-		t.Error("Google Charts must be pinned to a frozen release")
-	}
-	pk := regexp.MustCompile(`packages:\s*\[([^\]]*)\]`).FindAllStringSubmatch(explorerJS, -1)
-	if len(pk) != 1 || strings.TrimSpace(pk[0][1]) != `"corechart", "timeline"` {
-		t.Errorf("chart packages %v; only corechart and timeline are allowed", pk)
-	}
-	if regexp.MustCompile(`(?i)geochart|visualization\.map\b|"map"`).MatchString(explorerJS) {
-		t.Error("GeoChart and Map send data to Google and must not be used")
+	for _, bad := range []string{"gstatic", "google.", "createElement(\"script\")", "fetch(", "XMLHttpRequest", "sendBeacon", "WebSocket"} {
+		if strings.Contains(explorerJS, bad) {
+			t.Errorf("explorer.js mentions %q; the page must not load or send anything", bad)
+		}
 	}
 }
 
@@ -302,19 +291,8 @@ func TestExplorerChartsHaveDrawers(t *testing.T) {
 		t.Fatalf("found %d chart slots; the pattern no longer matches explorer.js", len(slots))
 	}
 	for _, s := range slots {
-		if !regexp.MustCompile(`\n    ` + s[1] + `: function \(c[,)]`).MatchString(explorerJS) {
+		if !regexp.MustCompile(`\n    ` + s[1] + `: function \(c(, [a-z]+)?\)`).MatchString(explorerJS) {
 			t.Errorf("chart %q has no DRAW entry", s[1])
-		}
-	}
-	// charts moved to the D3 kit must exist, and no longer take Google
-	// Charts' theme
-	m := regexp.MustCompile(`var D3_DRAW = \{([^}]*)\}`).FindStringSubmatch(explorerJS)
-	if m == nil {
-		t.Fatal("D3_DRAW not found in explorer.js")
-	}
-	for _, n := range regexp.MustCompile(`([A-Za-z]+): 1`).FindAllStringSubmatch(m[1], -1) {
-		if !regexp.MustCompile(`\n    ` + n[1] + `: function \(c(, [a-z]+)?\)`).MatchString(explorerJS) {
-			t.Errorf("D3 chart %q has no DRAW entry taking its slot (and argument) without a theme", n[1])
 		}
 	}
 }

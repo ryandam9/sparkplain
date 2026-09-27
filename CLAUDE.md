@@ -25,7 +25,7 @@ A Go CLI that turns one Spark application's logs into a single plain-language HT
 
   Ask before adding anything else.
 - The HTML report (`<app-id>-report.html`, with `<app-id>-report.json` beside it) is one self-contained file. Templates and any chart JS are embedded with `go:embed`, and the report makes no network calls when opened.
-- The explorer page (`<app-id>-explorer.html`, one per application, like a richer History Server) is also a single file with its data embedded, but it loads Google Charts from `www.gstatic.com` when opened, so it needs internet access. Use only chart types that render in the browser (no GeoChart or Map, which send data to Google), never send report data anywhere, and keep the page readable (tables and text) when the charts can't load.
+- The explorer page (`<app-id>-explorer.html`, one per application, like a richer History Server) is also a single self-contained file with its data embedded. Its charts are drawn by the embedded D3 (a small chart kit in `explorer.js`), so it makes no network calls when opened and works offline. Never send report data anywhere, and keep the page readable (tables and text) if a chart can't be drawn.
 
 ## Commands
 

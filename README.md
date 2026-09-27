@@ -38,7 +38,7 @@ It writes three files to `~/sparkplain/<yyyy-mm-dd>/<app-id>/` (or `-out`), each
 
 - `<app-id>-report.html`: the plain-language report. One self-contained file that makes no network calls when opened.
 - `<app-id>-report.json`: the same content for other tools.
-- `<app-id>-explorer.html`: an interactive, History Server–style view of the run (jobs, stages with task summaries and samples, executors, SQL plans, storage, environment). It loads Google Charts from `www.gstatic.com`, so its charts need internet access; its tables work without it.
+- `<app-id>-explorer.html`: an interactive, History Server–style view of the run (jobs, stages with task summaries and samples, executors, SQL plans, storage, environment). Like the report, it is one self-contained file that works offline: its charts are drawn with an embedded copy of D3.
 
 `-format` picks which to write, e.g. `-format html,json` (or `both`) to skip the explorer.
 
