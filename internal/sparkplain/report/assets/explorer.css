@@ -111,3 +111,15 @@ details.logline pre{white-space:pre-wrap;word-break:break-word;margin:0;font-siz
 .d3c rect.go:hover,.d3c rect.go:focus-visible{fill-opacity:.75}
 .d3c .bl{fill:#fff;pointer-events:none}
 .d3c.tlaxis{display:block}
+/* stage × executor heatmap */
+.heatwrap{overflow-x:auto}
+.d3c.heat{max-width:none}
+.d3c.heat .lane{fill:var(--surface-2)}
+.d3c.heat .sq{cursor:pointer}
+.d3c.heat .sq:hover{stroke:var(--ink);stroke-width:1.5}
+.d3c.heat .cl{font-size:10px;fill:var(--muted)}
+.d3c .rl.go,.d3c .cl.go{fill:var(--accent)}
+.d3c .rl.go:focus-visible,.d3c .cl.go:focus-visible{text-decoration:underline}
+.heatkey{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
+.heatkey i{display:inline-block;width:90px;height:10px;border:1px solid var(--line);border-radius:2px}
+tr.hl td{background:var(--accent-soft)}

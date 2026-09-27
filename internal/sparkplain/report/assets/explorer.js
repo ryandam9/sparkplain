@@ -605,12 +605,17 @@
     s.appendChild(taskTable(det.sample, { sort: 0 }));
     if (det.cells.length) {
       s.appendChild(el("h3", { text: "By executor" }));
-      s.appendChild(cellTable(det.cells, "stage"));
+      var mark = focusExec;
+      focusExec = null; // a mark lasts one visit
+      s.appendChild(cellTable(det.cells, "stage", mark));
+      if (mark != null) setTimeout(function () { var tr = main.querySelector("tr.hl"); if (tr) tr.scrollIntoView({ block: "center" }); }, 0);
     } else if (D.cellsCapped) s.appendChild(explain("Per-executor totals stopped before this stage (the app-wide cap was reached)."));
     return s;
   };
 
-  function cellTable(cells, by) {
+  // cellTable lists per-executor totals; mark is an executor ID whose row
+  // is highlighted.
+  function cellTable(cells, by, mark) {
     var rows = cells.map(function (r) {
       var o = {};
       D.cellCols.forEach(function (c, i) { o[c] = r[i]; });
@@ -627,7 +632,8 @@
       numCol("Task time", "dur", dur), numCol("GC", "gc", dur), numCol("Input", "input", bytes), numCol("Shuffle read", "shRead", bytes),
       numCol("Shuffle write", "shWrite", bytes), numCol("Disk spill", "diskSpill", bytes),
       { h: "Peak heap", num: true, title: "Highest JVM heap sampled while this stage ran", v: function (c) { return c.peakHeap; }, f: function (c) { return c.peakHeap ? bytes(c.peakHeap) : "—"; } });
-    return table({ rows: rows, sort: by === "stage" ? 3 : 0, dir: by === "stage" ? "desc" : "asc", page: 100, cols: cols });
+    return table({ rows: rows, sort: by === "stage" ? 3 : 0, dir: by === "stage" ? "desc" : "asc", page: mark != null ? Math.max(100, rows.length) : 100, cols: cols,
+      rowCls: mark != null ? function (c) { return c.execID === mark ? "hl" : null; } : null });
   }
 
   views.executors = function () {
@@ -635,6 +641,7 @@
     s.appendChild(chartSlot("tall", "executorsTimeline"));
     s.appendChild(chartSlot("", "execTime"));
     s.appendChild(chartSlot("", "execHeapAll"));
+    s.appendChild(chartSlot("", "heatmap"));
     if (exclusions.length) {
       s.appendChild(el("h3", { text: "Exclusions" }));
       s.appendChild(explain(EXCL_EXPLAIN));
@@ -1320,6 +1327,106 @@
       .style("fill", function (p) { return p.bad ? V.fail : V.series; });
     hover(mk, function (p) { return p.tip; });
   }
+  // ---------- stage × executor heatmap ----------
+  // One square per executor (row) and stage (column), coloured by the
+  // chosen metric, either as is or as a multiple of the stage's median
+  // executor, so an executor that did far more (or took far longer) than
+  // its peers in a stage stands out.
+  var HEAT = { metric: "dur", mode: "abs", all: false };
+  var HEAT_METRICS = [["dur", "Task time", "ms"], ["gcShare", "GC share of task time", "share"], ["input", "Input", "bytes"], ["shRead", "Shuffle read", "bytes"],
+    ["shWrite", "Shuffle write", "bytes"], ["diskSpill", "Spilled to disk", "bytes"], ["peakHeap", "Peak heap", "bytes"], ["failed", "Failed tasks", "count"], ["tasks", "Tasks", "count"]];
+  var HEAT_MAX_CELLS = 5000, HEAT_STAGES = 30, HEAT_EXECS = 50;
+  var focusExec = null; // the executor row to highlight when a square opens its stage
+  function heatValue(cell, metric) {
+    if (metric === "gcShare") return cell[C.dur] > 0 ? cell[C.gc] / cell[C.dur] : null;
+    return cell[C[metric]];
+  }
+  function heatFormat(kind, v) { return v == null ? "—" : kind === "share" ? pct(v) : kind === "count" ? num(v) : FMT[kind](v); }
+  // heatCells are a stage's per-executor totals where tasks ran (the
+  // driver has heap samples for every stage but usually runs none).
+  function heatCells(st) { var d = D.detail[st.key]; return d ? d.cells.filter(function (r) { return r[C.tasks] > 0; }) : []; }
+  function heatmap(c) {
+    var withCells = stages.filter(function (st) { return heatCells(st).length; });
+    if (!withCells.length) { waitText(c, D.collected ? "No per-executor totals were collected for any stage." : "Per-task detail was not collected for this run."); return; }
+    var m = HEAT_METRICS.filter(function (x) { return x[0] === HEAT.metric; })[0], kind = m[2], rel = HEAT.mode === "rel";
+    // every executor that ran tasks in these stages, with its task time
+    var execTime = {};
+    withCells.forEach(function (st) { heatCells(st).forEach(function (r) { execTime[r[C.exec]] = (execTime[r[C.exec]] || 0) + r[C.dur]; }); });
+    var execIdx = Object.keys(execTime).map(Number);
+    var canAll = withCells.length * execIdx.length <= HEAT_MAX_CELLS;
+    var all = HEAT.all && canAll;
+    var cols = all ? withCells : withCells.slice().sort(function (p, q) { return q.dur - p.dur; }).slice(0, HEAT_STAGES);
+    cols.sort(function (p, q) { return p.id - q.id || p.attempt - q.attempt; });
+    var rows = all ? execIdx : execIdx.slice().sort(function (p, q) { return execTime[q] - execTime[p]; }).slice(0, HEAT_EXECS);
+    rows.sort(function (p, q) { return String(D.execs[p]).localeCompare(String(D.execs[q]), undefined, { numeric: true }); });
+    var inRows = {}; rows.forEach(function (x) { inRows[x] = 1; });
+    // squares, and each stage's median executor for the relative view
+    var cells = [], median = {};
+    cols.forEach(function (st, ci) {
+      var vals = [];
+      heatCells(st).forEach(function (r) {
+        var v = heatValue(r, m[0]);
+        if (v != null) vals.push(v);
+        if (inRows[r[C.exec]]) cells.push({ st: st, ci: ci, ri: rows.indexOf(r[C.exec]), r: r, v: v });
+      });
+      median[st.key] = d3.median(vals) || 0;
+    });
+    cells.forEach(function (d) { d.shown = d.v == null ? null : rel ? (median[d.st.key] > 0 ? d.v / median[d.st.key] : null) : d.v; });
+    var top = d3.max(cells, function (d) { return d.shown; }) || 0;
+    var trimmed = cols.length < withCells.length || rows.length < execIdx.length;
+    var plot = frame(c, { t: "Which executor behaved differently?",
+      shows: "Each square is one executor's part of one stage: rows are executors, columns are stages. " +
+        (trimmed ? "Showing the " + num(cols.length) + " of " + num(withCells.length) + " stages with the most task time and the " + num(rows.length) + " of " + num(execIdx.length) + " executors with the most task time. " : "Every stage and executor. ") +
+        (D.cellsCapped ? "Collection stopped per-executor totals partway (the app-wide cap), so later stages have none. " : "") +
+        "Click a square to open the stage with that executor's row marked.",
+      read: rel ? "Each square is a multiple of the stage's median executor: pale is typical, dark is 3× or more. A dark square in an otherwise pale column is one executor that got more data or ran slower in that stage (skew); a row dark across many columns points at that executor or its node."
+        : "Darker is more. A row darker than the rest across many stages is an executor, or its node, that was slower or got more data; one dark square in an even column is skew in that stage. Empty squares ran no tasks there." });
+    // controls
+    var pick = el("select", { "aria-label": "What to compare" });
+    HEAT_METRICS.forEach(function (x) { pick.appendChild(el("option", { value: x[0], text: x[1], selected: x[0] === HEAT.metric })); });
+    pick.addEventListener("change", function () { HEAT.metric = pick.value; drawSlot(c); });
+    var mode = el("select", { "aria-label": "Absolute or relative" },
+      el("option", { value: "abs", text: "As measured", selected: !rel }), el("option", { value: "rel", text: "Against the stage's median executor", selected: rel }));
+    mode.addEventListener("change", function () { HEAT.mode = mode.value; drawSlot(c); });
+    var tools = el("div", { cls: "bar-tools" }, pick, mode);
+    if (canAll && (trimmed || HEAT.all)) {
+      var btn = el("button", { type: "button", cls: "more", text: HEAT.all ? "Show the busiest only" : "Show all " + num(withCells.length) + " stages and " + num(execIdx.length) + " executors" });
+      btn.addEventListener("click", function () { HEAT.all = !HEAT.all; drawSlot(c); });
+      tools.appendChild(btn);
+    }
+    var fill = m[0] === "failed" ? V.fail : V.viz[0];
+    tools.appendChild(el("span", { cls: "heatkey" }, el("span", { text: rel ? "typical" : "0" }), el("i", { style: "background:linear-gradient(90deg,transparent," + fill + ")" }),
+      el("span", { text: rel ? "3× or more" : heatFormat(kind, top) })));
+    plot.parentNode.insertBefore(tools, plot);
+    // layout: squares shrink to fit, down to 12 px, then the chart scrolls sideways
+    var labelW = 96, headH = 56, rowH = 18, avail = Math.max(plot.clientWidth || 0, 280) - labelW - 8;
+    var cw = Math.max(12, Math.min(36, Math.floor(avail / cols.length)));
+    var W = labelW + cols.length * cw + 8, H = headH + rows.length * rowH;
+    plot.classList.add("heatwrap");
+    var svg = d3.select(plot).append("svg").attr("class", "d3c heat").attr("width", W).attr("height", H).attr("role", "group").attr("aria-label", "Which executor behaved differently?");
+    var shade = rel ? function (v) { return Math.min(v / 3, 1); } : function (v) { return top > 0 ? Math.sqrt(v / top) : 0; };
+    svg.append("g").selectAll("rect").data(rows).join("rect").attr("class", "lane").attr("x", labelW).attr("y", function (x, i) { return headH + i * rowH; })
+      .attr("width", cols.length * cw).attr("height", rowH - 2);
+    var sq = svg.append("g").selectAll("rect").data(cells.filter(function (d) { return d.shown != null; })).join("rect").attr("class", "sq")
+      .attr("x", function (d) { return labelW + d.ci * cw + 1; }).attr("y", function (d) { return headH + d.ri * rowH; })
+      .attr("width", cw - 2).attr("height", rowH - 2).style("fill", fill).style("fill-opacity", function (d) { return 0.06 + 0.94 * shade(d.shown); });
+    var execLabel = function (i) { var id = D.execs[i], x = execByID[id]; return "Executor " + id + (x && x.host ? " on " + x.host.split(".")[0] : ""); };
+    hover(sq, function (d) {
+      var r = d.r, med = median[d.st.key];
+      return execLabel(r[C.exec]) + " · Stage " + d.st.key + "\n" + m[1] + ": " + heatFormat(kind, d.v) +
+        (med > 0 ? " (" + (d.v / med).toFixed(1) + "× the stage's median executor, " + heatFormat(kind, med) + ")" : "") +
+        "\n" + num(r[C.tasks]) + (r[C.tasks] === 1 ? " task" : " tasks") + (r[C.failed] ? ", " + num(r[C.failed]) + " failed" : "") + ", task time " + dur(r[C.dur]);
+    });
+    sq.on("click", function (ev, d) { tipHide(); focusExec = D.execs[d.r[C.exec]]; location.hash = "#stage/" + d.st.key; });
+    var rl = svg.append("g").selectAll("text").data(rows).join("text").attr("class", "rl").attr("x", labelW - 6)
+      .attr("y", function (x, i) { return headH + i * rowH + rowH / 2 - 1; }).attr("dy", "0.35em").attr("text-anchor", "end")
+      .text(function (x) { return fitChars("Executor " + D.execs[x], labelW - 10); });
+    linkify(rl, function (x) { return "#executor/" + encodeURIComponent(D.execs[x]); }, execLabel);
+    var cl = svg.append("g").selectAll("text").data(cols).join("text").attr("class", "cl")
+      .attr("transform", function (st, i) { return "translate(" + (labelW + i * cw + cw / 2 + 3) + "," + (headH - 6) + ") rotate(-60)"; })
+      .text(function (st) { return st.key; });
+    linkify(cl, function (st) { return "#stage/" + st.key; }, function (st) { return stageName(st); });
+  }
   // stageName is one short line, so the axis labels every bar: the call
   // site ("count at Foo.java:0") is cut to its operation.
   function stageName(st) { return "Stage " + st.id + (st.attempt ? "." + st.attempt : "") + " · " + (st.name || "").split(" at ")[0].slice(0, 16); }
@@ -1374,6 +1481,7 @@
           " Starting is scheduler delay and unpacking the task; shuffle is waiting for data from other executors and writing it out; other is the rest of run time, such as reading files or waiting on Python." },
         "ms", key ? null : function (r) { return "#stage/" + r.st.key; });
     },
+    heatmap: function (c) { heatmap(c); },
     dataOverTime: function (c) {
       var done = stages.filter(function (st) { return st.completed; }).sort(function (a2, b2) { return a2.completed - b2.completed; });
       if (done.length < 2) { waitText(c, "Too few finished stages to chart."); return; }
