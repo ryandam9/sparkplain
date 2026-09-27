@@ -68,8 +68,8 @@ No single source answers every question, so sparkplain joins seven sources on cl
 
 | Input | Example | Handling |
 | --- | --- | --- |
-| S3 prefix | `s3://bucket/sparklogs/` | Lists `<prefix>/<app-id>*` and fetches the matching file or rolling folder |
-| S3 object | `s3://bucket/sparklogs/application_…_0042.lz4` | Reads that one object |
+| S3 prefix | `s3://bucket/sparklogs/` | Lists only `<prefix>/<app-id>*` and `<prefix>/eventlog_v2_<app-id>*`, never the whole prefix, and fetches the matching file or rolling folder |
+| S3 object | `s3://bucket/sparklogs/application_…_0042.lz4` | Reads that one object. A location without a trailing `/` is first checked as an exact key (a one-key listing); if there is none it is treated as a prefix |
 | Local file | `./application_…_0042.zstd` | Plain, `.lz4`, `.zstd` or `.snappy` |
 | Local folder | `./eventlog_v2_application_…_0042/` | Rolling event log; parts read in sequence order |
 | History Server zip | `./application_…_0042.zip` | The zip from the History Server's Download button; unpacked in memory within size limits |

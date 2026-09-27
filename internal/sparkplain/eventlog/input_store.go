@@ -19,13 +19,15 @@ import (
 func ResolveStore(ctx context.Context, st source.Store, loc, appID string, lim Limits) (*Input, error) {
 	lim = lim.withDefaults()
 	in := &Input{Location: st.Location(loc), limits: lim}
-	objs, err := st.List(ctx, loc)
-	if err != nil {
-		return nil, storeErr(err)
-	}
-	// One object named exactly: read it.
-	for _, o := range objs {
-		if o.Key == loc && !strings.HasSuffix(loc, "/") {
+	// One object named exactly: read it. A location ending in / is a
+	// prefix, and a prefix is never listed whole (it may hold every
+	// application's logs): only the application's own names are listed.
+	if loc != "" && !strings.HasSuffix(loc, "/") {
+		o, ok, err := st.Head(ctx, loc)
+		if err != nil {
+			return nil, storeErr(err)
+		}
+		if ok {
 			if strings.HasSuffix(strings.ToLower(o.Key), ".zip") {
 				return nil, &SourceError{ClassUnsupported, fmt.Errorf("%s: download History Server zips and pass the local file", in.Location)}
 			}

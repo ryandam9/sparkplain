@@ -74,18 +74,41 @@ func (s *S3Store) List(ctx context.Context, prefix string) ([]Object, error) {
 			return out, classify(s.Location(prefix), err)
 		}
 		for _, o := range page.Contents {
-			obj := Object{Key: aws.ToString(o.Key), Size: aws.ToInt64(o.Size), ETag: aws.ToString(o.ETag),
-				Modified: aws.ToTime(o.LastModified), StorageClass: string(o.StorageClass)}
-			switch o.StorageClass {
-			case types.ObjectStorageClassGlacier, types.ObjectStorageClassDeepArchive:
-				restored := o.RestoreStatus != nil && !aws.ToBool(o.RestoreStatus.IsRestoreInProgress) && o.RestoreStatus.RestoreExpiryDate != nil
-				obj.Archived = !restored
-			}
-			out = append(out, obj)
+			out = append(out, s3Object(o))
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 	return out, nil
+}
+
+// Head finds the one object named key without listing what lies below it.
+// It lists at most one key starting with key: S3 lists keys in order and a
+// key sorts before every longer key that starts with it, so the first
+// result is key itself when it exists. This gives the same fields as List
+// (ETag, archive state) and needs only s3:ListBucket, which List needs too.
+func (s *S3Store) Head(ctx context.Context, key string) (Object, bool, error) {
+	page, err := s.api.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+		Bucket: aws.String(s.bucket), Prefix: aws.String(key), MaxKeys: aws.Int32(1),
+		OptionalObjectAttributes: []types.OptionalObjectAttributes{types.OptionalObjectAttributesRestoreStatus},
+	})
+	if err != nil {
+		return Object{}, false, classify(s.Location(key), err)
+	}
+	if len(page.Contents) == 0 || aws.ToString(page.Contents[0].Key) != key {
+		return Object{}, false, nil
+	}
+	return s3Object(page.Contents[0]), true, nil
+}
+
+func s3Object(o types.Object) Object {
+	obj := Object{Key: aws.ToString(o.Key), Size: aws.ToInt64(o.Size), ETag: aws.ToString(o.ETag),
+		Modified: aws.ToTime(o.LastModified), StorageClass: string(o.StorageClass)}
+	switch o.StorageClass {
+	case types.ObjectStorageClassGlacier, types.ObjectStorageClassDeepArchive:
+		restored := o.RestoreStatus != nil && !aws.ToBool(o.RestoreStatus.IsRestoreInProgress) && o.RestoreStatus.RestoreExpiryDate != nil
+		obj.Archived = !restored
+	}
+	return obj
 }
 
 func (s *S3Store) Open(ctx context.Context, obj Object) (io.ReadCloser, error) {

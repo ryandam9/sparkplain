@@ -358,3 +358,20 @@ func TestFetchZipEntryLimitIsPartial(t *testing.T) {
 		t.Fatalf("a zip at the limit must read cleanly: %v", reads[0].Err)
 	}
 }
+
+func TestS3HeadFindsOnlyTheExactKey(t *testing.T) {
+	st := &stubS3{pageLen: 1000, etag: map[string]string{"logs/app.lz4": `"e1"`}, objects: map[string][]byte{
+		"logs/app.lz4": []byte("abc"), "logs/app.lz4.inprogress": []byte("x"), "logs/other": nil,
+	}}
+	store := NewS3Store(st, "b")
+	o, ok, err := store.Head(context.Background(), "logs/app.lz4")
+	if err != nil || !ok || o.Size != 3 || o.ETag != `"e1"` {
+		t.Fatalf("exact key: %+v %v %v", o, ok, err)
+	}
+	if _, ok, err := store.Head(context.Background(), "logs/ap"); ok || err != nil {
+		t.Fatalf("a prefix of a key is not an object: %v %v", ok, err)
+	}
+	if _, ok, _ := store.Head(context.Background(), "logs/missing"); ok {
+		t.Fatal("missing key found")
+	}
+}

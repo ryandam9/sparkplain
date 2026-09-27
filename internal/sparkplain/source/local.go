@@ -60,6 +60,23 @@ func (l *LocalStore) List(ctx context.Context, prefix string) ([]Object, error) 
 	return out, nil
 }
 
+func (l *LocalStore) Head(ctx context.Context, key string) (Object, bool, error) {
+	info, err := os.Stat(l.Location(key))
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return Object{}, false, nil
+	case err != nil:
+		class := ClassOther
+		if errors.Is(err, fs.ErrPermission) {
+			class = ClassAccessDenied
+		}
+		return Object{}, false, &Error{Class: class, Key: l.Location(key), Err: err}
+	case info.IsDir():
+		return Object{}, false, nil
+	}
+	return Object{Key: key, Size: info.Size(), Modified: info.ModTime()}, true, nil
+}
+
 func (l *LocalStore) Open(ctx context.Context, obj Object) (io.ReadCloser, error) {
 	f, err := os.Open(l.Location(obj.Key))
 	if err != nil {
