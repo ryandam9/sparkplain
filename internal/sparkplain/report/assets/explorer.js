@@ -266,7 +266,7 @@
   });
 
   // ---------- views ----------
-  var TABS = [["overview", "Overview"]].concat(D.anatomy ? [["anatomy", "At a glance"]] : [], [["jobs", "Jobs", jobs.length], ["stages", "Stages", stages.length], ["executors", "Executors", execs.length],
+  var TABS = [["overview", "Overview"]].concat(D.anatomy ? [["anatomy", "At a glance"]] : [], [["timeline", "Timeline"], ["jobs", "Jobs", jobs.length], ["stages", "Stages", stages.length], ["executors", "Executors", execs.length],
     ["sql", "SQL / DataFrame", queries.length], ["storage", "Storage", rdds.length], ["code", "Code"], ["environment", "Environment"], ["log", "Event log"]]);
   if (D.aws) TABS.push(["cluster", "Cluster", D.aws.nodes.length]);
   if (logFiles.length || (D.logSources || []).length) TABS.push(["logs", "Logs", logFiles.length]);
@@ -379,6 +379,12 @@
       ]
     });
   }
+  views.timeline = function () {
+    var s = section("Timeline", "The whole run on one time axis: what Spark was running, on how many executors, and when the cluster waited on the driver.");
+    s.appendChild(chartSlot("", "runTimeline"));
+    return s;
+  };
+
   views.jobs = function () {
     var s = section("Jobs", "A job is one action in the code, such as count, collect or a write. Each runs as one or more stages.");
     s.appendChild(chartSlot("tall", "jobsTimeline"));
@@ -1084,7 +1090,7 @@
     var labelW = Math.min(170, Math.round(w * 0.3)), right = w - 18;
     var t0 = d3.min(capRows, function (r) { return r.start; }), t1 = d3.max(capRows, function (r) { return Math.max(r.end, r.start + 1); });
     var x = d3.scaleTime().domain([t0, t1]).range([labelW, right]);
-    var tf = t1 - t0 < 10 * 60000 ? tfmt : hmfmt, ticks = x.ticks(Math.max(2, Math.floor((right - labelW) / 90)));
+    var tf = t1 - t0 < 10 * 60000 ? tfmt : hmfmt, ticks = x.ticks(timeTicks(right - labelW, tf));
     d3.select(plot.parentNode).insert("svg", function () { return plot; }).attr("class", "d3c tlaxis").attr("width", w).attr("height", axH).attr("aria-hidden", "true")
       .append("g").attr("class", "ax xax").attr("transform", "translate(0," + (axH - 1) + ")")
       .call(d3.axisTop(x).tickValues(ticks).tickFormat(function (d) { return tf.format(d); }).tickSizeOuter(0).tickPadding(4))
@@ -1171,6 +1177,9 @@
     return { x: d3.scaleLinear().domain([0, max]).range(range), ticks: ticks.map(function (t) { return t * u[0]; }),
       label: function (v) { return v === 0 ? "0" : f(v / u[0]) + (u[1] === "%" ? "%" : u[1] ? " " + u[1] : ""); } };
   }
+  // timeTicks is how many time ticks fit in px: labels with seconds need
+  // more room than hours and minutes.
+  function timeTicks(px, tf) { return Math.max(2, Math.floor(px / (tf === tfmt ? 110 : 80))); }
   // leanEnds turns the labels of a bottom axis that sit near either end
   // of [lo, hi] inward, so none runs off the chart.
   function leanEnds(ax, x, lo, hi) {
@@ -1245,7 +1254,7 @@
       .call(d3.axisLeft(y).tickValues(U.ticks).tickFormat(U.label).tickSize(-(P.w - m.l - m.r)).tickPadding(6))
       .select(".domain").remove();
     P.svg.append("g").attr("class", "ax xax").attr("transform", "translate(0," + (H - m.b) + ")")
-      .call(d3.axisBottom(x).ticks(Math.max(2, Math.floor((P.w - m.l - m.r) / 90))).tickFormat(function (d) { return tf.format(d); }).tickSizeOuter(0).tickPadding(6))
+      .call(d3.axisBottom(x).ticks(timeTicks(P.w - m.l - m.r, tf)).tickFormat(function (d) { return tf.format(d); }).tickSizeOuter(0).tickPadding(6))
       .call(leanEnds, x, m.l, P.w - m.r);
     var X = function (p) { return x(p[0]); }, Y = function (p) { return y(Math.min(p[1], U.x.domain()[1])); };
     series.forEach(function (s) {
@@ -1429,6 +1438,198 @@
       .text(function (st) { return st.key; });
     linkify(cl, function (st) { return "#stage/" + st.key; }, function (st) { return stageName(st); });
   }
+  // ---------- run timeline ----------
+  // Everything that ran, on one time axis: queries, jobs and stages as
+  // lanes of bars, executors alive, tasks running against task slots, and
+  // node CPU and waiting containers when CloudWatch was read. Driver gaps
+  // (no job running) are shaded behind every track. One overlay handles
+  // the pointer: hovering moves a cursor across every track and lists what
+  // was happening then, and dims what is unrelated to the bar under it;
+  // dragging zooms every track; a click opens the bar under it.
+  var TL = { zoom: null };
+  var TL_LANES = { query: 4, job: 6, stage: 10 };
+  // pack puts overlapping bars in separate lanes, up to max; bars that
+  // find no lane are counted, not drawn.
+  function pack(items, max) {
+    var ends = [], dropped = 0;
+    items.slice().sort(function (p, q) { return p.start - q.start; }).forEach(function (it) {
+      for (var i = 0; i < ends.length; i++) if (ends[i] <= it.start) break;
+      if (i === ends.length && ends.length >= max) { dropped++; it.lane = -1; return; }
+      ends[i] = it.end;
+      it.lane = i;
+    });
+    return { lanes: Math.max(1, ends.length), dropped: dropped };
+  }
+  // stepAt is a step series' value at t ([ms, value] points in time order).
+  function stepAt(pts, t) { var i = d3.bisectRight(pts.map(function (p) { return p[0]; }), t) - 1; return i < 0 ? null : pts[i][1]; }
+  function runTimeline(c) {
+    // the span covers the application and everything in it, in case a
+    // clock or a cut-off log puts a job outside the application's times
+    var starts = [a.start], ends = [appEnd];
+    jobs.concat(stages).forEach(function (x) { starts.push(x.submitted); ends.push(x.completed); });
+    queries.forEach(function (q) { starts.push(q.start); ends.push(q.end); });
+    var t0 = d3.min(starts.filter(Boolean)), t1 = d3.max(ends.filter(Boolean));
+    if (!t0 || !t1 || t1 <= t0) { waitText(c, "The log has no start and end times to draw."); return; }
+    var dom = TL.zoom || [t0, t1];
+    var clip = function (s, e) { return e > dom[0] && s < dom[1]; };
+    // bars
+    var qBars = queries.filter(function (q) { return q.start; }).map(function (q) { return { kind: "query", id: q.id, start: q.start, end: q.end || t1, status: queryStatus(q), q: q, label: "Query " + q.id + (q.desc ? ": " + q.desc : "") }; });
+    var jBars = jobs.filter(function (j) { return j.submitted; }).map(function (j) { return { kind: "job", id: j.id, start: j.submitted, end: j.completed || t1, status: j.status, j: j, label: "Job " + j.id + ": " + (j.desc || j.name || "") }; });
+    var sBars = stages.filter(function (s) { return s.submitted; }).map(function (s) { return { kind: "stage", id: s.key, start: s.submitted, end: s.completed || t1, status: s.status, s: s, label: stageName(s) }; });
+    var packs = { query: pack(qBars, TL_LANES.query), job: pack(jBars, TL_LANES.job), stage: pack(sBars, TL_LANES.stage) };
+    // links between bars, for dimming what is unrelated to the hovered one
+    var jobOfStage = {}, queryOfJob = {};
+    jobs.forEach(function (j) { (j.stages || []).forEach(function (sid) { (jobOfStage[sid] = jobOfStage[sid] || []).push(j.id); }); if (j.sql != null) queryOfJob[j.id] = j.sql; });
+    function related(b) {
+      var r = { query: {}, job: {}, stage: {} };
+      var addJob = function (jid) { r.job[jid] = 1; if (queryOfJob[jid] != null) r.query[queryOfJob[jid]] = 1; var j = jobByID[jid]; if (j) (j.stages || []).forEach(function (sid) { (stagesByID[sid] || []).forEach(function (s) { r.stage[s.key] = 1; }); }); };
+      if (b.kind === "query") { r.query[b.id] = 1; (b.q.jobs || []).forEach(addJob); }
+      if (b.kind === "job") addJob(b.id);
+      if (b.kind === "stage") { r.stage[b.id] = 1; (jobOfStage[b.s.id] || []).forEach(function (jid) { r.job[jid] = 1; if (queryOfJob[jid] != null) r.query[queryOfJob[jid]] = 1; }); }
+      return r;
+    }
+    // series
+    var workers = execs.filter(function (x) { return x.id !== "driver" && x.added; });
+    var evs = [];
+    workers.forEach(function (x) { evs.push([x.added, 1, x.cores]); if (x.removed) evs.push([x.removed, -1, -x.cores]); });
+    evs.sort(function (p, q) { return p[0] - q[0]; });
+    var alive = [[t0, 0]], slots = [[t0, 0]], n = 0, k = 0;
+    evs.forEach(function (e) { n += e[1]; k += e[2]; alive.push([e[0], n]); slots.push([e[0], k]); });
+    alive.push([t1, n]); slots.push([t1, k]);
+    var R = D.running, busy = [];
+    if (R && R.busy.length) R.busy.forEach(function (b, i) { busy.push([R.start + i * R.bucketMs, b / R.bucketMs]); });
+    var cpu = metric("CPUUtilization", "Average"), waiting = metric("ContainerPending");
+    // tracks, top to bottom
+    var laneH = { query: 14, job: 14, stage: 9 };
+    var tracks = [];
+    if (qBars.length) tracks.push({ kind: "query", title: "Queries", h: packs.query.lanes * laneH.query + 4 });
+    tracks.push({ kind: "job", title: "Jobs", h: packs.job.lanes * laneH.job + 4 });
+    if (sBars.length) tracks.push({ kind: "stage", title: "Stages", h: packs.stage.lanes * laneH.stage + 4 });
+    tracks.push({ kind: "execs", title: "Executors alive", short: "Executors", h: 54 });
+    if (busy.length) tracks.push({ kind: "tasks", title: "Tasks running", short: "Tasks", h: 70 });
+    if (cpu.length) tracks.push({ kind: "cpu", title: "Node CPU", short: "CPU", h: 60 });
+    if (waiting.length) tracks.push({ kind: "wait", title: "Containers waiting", short: "Waiting", h: 44 });
+    var gap = 10, axisH = 24, y = axisH;
+    tracks.forEach(function (tr) { tr.y = y; y += tr.h + gap; });
+    var H = y;
+    var dropped = packs.query.dropped + packs.job.dropped + packs.stage.dropped;
+    var plot = frame(c, { t: "What happened when",
+      shows: "Every query, job and stage on one time axis, above the executors alive, the tasks running against the task slots (executor cores)" + (cpu.length ? ", node CPU" : "") + (waiting.length ? ", containers waiting for room" : "") +
+        ". Shaded stretches are driver gaps: no job was running. Red marks are failed stages and executors lost or killed." +
+        (dropped ? " " + num(dropped) + " bars that overlapped too many others are left out; zoom in or use the Jobs and Stages tabs." : "") +
+        " The event log has garbage collection per task, not over time, so it is on the stage pages instead.",
+      read: "Drag across any track to zoom all of them; hover to see everything at that moment and to fade what is unrelated to the bar under the pointer; click a bar to open it. Look for shaded stretches (the cluster waited on the driver), tasks running well under the slots (idle cores), and executors dropping while work still ran." });
+    var tools = el("div", { cls: "bar-tools" });
+    if (TL.zoom) {
+      var reset = el("button", { type: "button", cls: "more", text: "Show the whole run" });
+      reset.addEventListener("click", function () { TL.zoom = null; drawSlot(c); });
+      tools.appendChild(reset);
+      tools.appendChild(el("span", { cls: "count", text: "Zoomed to " + tfmt.format(new Date(dom[0])) + " – " + tfmt.format(new Date(dom[1])) + " (" + dur(dom[1] - dom[0]) + ")" }));
+    } else tools.appendChild(el("span", { cls: "count", text: "Drag across the chart to zoom in." }));
+    plot.parentNode.insertBefore(tools, plot);
+    var P = plotSvg(plot, H, "What happened when");
+    // track titles are bold 11 px, about 7 px a character; short names
+    // when the full ones do not fit
+    var lw = Math.min(130, Math.round(P.w * 0.24)), right = P.w - 12;
+    tracks.forEach(function (tr) { tr.name = tr.title.length * 7 + 10 > lw && tr.short ? tr.short : tr.title; });
+    var x = d3.scaleTime().domain(dom).range([lw, right]);
+    var X = function (t) { return x(Math.max(dom[0], Math.min(dom[1], t))); };
+    var tf = dom[1] - dom[0] < 10 * 60000 ? tfmt : hmfmt;
+    P.svg.append("defs").append("clipPath").attr("id", "tlclip").append("rect").attr("x", lw).attr("y", 0).attr("width", right - lw).attr("height", H);
+    // driver gaps behind everything
+    P.svg.append("g").attr("clip-path", "url(#tlclip)").selectAll("rect").data((D.gaps || []).filter(function (g) { return clip(g[0], g[1]); })).join("rect").attr("class", "tlgap")
+      .attr("x", function (g) { return X(g[0]); }).attr("width", function (g) { return Math.max(X(g[1]) - X(g[0]), 1); }).attr("y", axisH).attr("height", H - axisH);
+    P.svg.append("g").attr("class", "ax xax").attr("transform", "translate(0," + (axisH - 2) + ")")
+      .call(d3.axisTop(x).ticks(timeTicks(right - lw, tf)).tickFormat(function (d) { return tf.format(d); }).tickSize(-(H - axisH)).tickSizeOuter(0).tickPadding(4))
+      .call(leanEnds, x, lw, right).select(".domain").remove();
+    var body = P.svg.append("g").attr("clip-path", "url(#tlclip)");
+    var barsByKind = { query: qBars, job: jBars, stage: sBars }, drawn = [];
+    tracks.forEach(function (tr) {
+      P.svg.append("text").attr("class", "tlt").attr("x", lw - 8).attr("y", tr.y + Math.min(tr.h, 28) / 2).attr("dy", "0.35em").attr("text-anchor", "end").text(tr.name).append("title").text(tr.title);
+      if (barsByKind[tr.kind]) {
+        var lh = laneH[tr.kind], list = barsByKind[tr.kind].filter(function (b) { return b.lane >= 0 && clip(b.start, b.end); });
+        list.forEach(function (b) { b.y = tr.y + 2 + b.lane * lh; b.h = lh - 2; drawn.push(b); });
+        body.append("g").selectAll("rect").data(list).join("rect").attr("class", function (b) { return "tlbar k-" + b.kind; })
+          .attr("x", function (b) { return X(b.start); }).attr("width", function (b) { return Math.max(X(b.end) - X(b.start), 1.5); })
+          .attr("y", function (b) { return b.y; }).attr("height", function (b) { return b.h; }).attr("rx", 2).style("fill", function (b) { return statusColor(b.status); });
+        if (tr.kind === "stage") body.append("g").selectAll("path").data(list.filter(function (b) { return b.status === "failed" && b.s.completed; })).join("path").attr("class", "tlmark")
+          .attr("d", d3.symbol(d3.symbolDiamond, 40)()).attr("transform", function (b) { return "translate(" + X(b.end) + "," + (b.y + b.h / 2) + ")"; });
+        return;
+      }
+      var series = tr.kind === "execs" ? [{ pts: alive, step: true, cls: "s1", area: true }] :
+        tr.kind === "tasks" ? [{ pts: busy, cls: "s1", area: true }, { pts: slots, step: true, cls: "ref" }] :
+        tr.kind === "cpu" ? cpu.map(function (sr, i) { return { pts: sr.points, cls: "c" + (i % 5) }; }) :
+        waiting.map(function (sr) { return { pts: sr.points, step: true, cls: "sf", area: true }; });
+      var ymax = tr.kind === "cpu" ? 100 : Math.max(1, d3.max(series, function (sr) { return d3.max(sr.pts, function (p) { return p[1]; }); }));
+      var yy = d3.scaleLinear().domain([0, ymax]).range([tr.y + tr.h, tr.y + 2]);
+      P.svg.append("text").attr("class", "tlv").attr("x", lw - 8).attr("y", tr.y + tr.h - 2).attr("text-anchor", "end").text(tr.kind === "cpu" ? "0–100%" : "0–" + num(Math.round(ymax)));
+      P.svg.append("line").attr("class", "tlbase").attr("x1", lw).attr("x2", right).attr("y1", tr.y + tr.h).attr("y2", tr.y + tr.h);
+      series.forEach(function (sr) {
+        var curve = sr.step ? d3.curveStepAfter : d3.curveLinear;
+        if (sr.area) body.append("path").attr("class", "tla " + sr.cls).attr("d", d3.area().curve(curve).x(function (p) { return x(p[0]); }).y0(tr.y + tr.h).y1(function (p) { return yy(p[1]); })(sr.pts));
+        body.append("path").attr("class", "tll " + sr.cls).attr("d", d3.line().curve(curve).x(function (p) { return x(p[0]); }).y(function (p) { return yy(p[1]); })(sr.pts));
+      });
+      if (tr.kind === "execs") body.append("g").selectAll("path").data(workers.filter(function (w) { return (w.kind === "memory-kill" || w.kind === "lost") && w.removed && clip(w.removed, w.removed); })).join("path").attr("class", "tlmark")
+        .attr("d", d3.symbol(d3.symbolTriangle, 44)()).attr("transform", function (w) { return "translate(" + X(w.removed) + "," + (tr.y + 6) + ")"; });
+      tr.yy = yy;
+    });
+    // one overlay: cursor, hover, drag to zoom, click to open
+    var cur = P.svg.append("line").attr("class", "cursor").attr("y1", axisH).attr("y2", H).style("display", "none");
+    var sel = P.svg.append("rect").attr("class", "tlsel").attr("y", axisH).attr("height", H - axisH).style("display", "none");
+    var hit = P.svg.append("rect").attr("class", "hit").attr("x", lw).attr("y", axisH).attr("width", right - lw).attr("height", H - axisH);
+    var barAt = function (px, py) { var t = +x.invert(px); for (var i = drawn.length - 1; i >= 0; i--) { var b = drawn[i]; if (py >= b.y && py <= b.y + b.h && t >= b.start && t <= Math.max(b.end, +x.invert(X(b.start) + 2))) return b; } return null; };
+    var down = null, lit = null;
+    function light(b) {
+      if (b === lit) return;
+      lit = b;
+      var r = b ? related(b) : null;
+      body.selectAll(".tlbar").classed("dim", function (d) { return r ? !r[d.kind][d.id] : false; });
+    }
+    // ids says which are running: "Job 4 running", "Jobs 4, 5 and 6 running"
+    function ids(what, list) {
+      if (!list.length) return "";
+      var shown = list.slice(0, 8), more = list.length - shown.length;
+      var names = shown.length === 1 && !more ? shown[0] : more ? shown.join(", ") + " and " + more + " more" : shown.slice(0, -1).join(", ") + " and " + shown[shown.length - 1];
+      return what + (list.length > 1 ? "s " : " ") + names + " running";
+    }
+    function describe(t, b) {
+      var lines = [dfmt.format(new Date(t))];
+      if (b) lines.push(b.label + " · " + (STATUS[b.status] || b.status) + ", " + dur(b.end - b.start));
+      var g = (D.gaps || []).filter(function (g) { return g[0] <= t && t < g[1]; })[0];
+      var js = jBars.filter(function (j) { return j.start <= t && t < j.end; }).map(function (j) { return j.id; });
+      var ss = sBars.filter(function (s) { return s.start <= t && t < s.end; }).map(function (s) { return s.id; });
+      if (g) lines.push("No job running: driver gap of " + dur(g[1] - g[0]));
+      else lines.push(ids("Job", js) || "No job running");
+      if (ss.length) lines.push(ids("Stage", ss));
+      lines.push("Executors alive: " + num(stepAt(alive, t) || 0) + " (" + num(stepAt(slots, t) || 0) + " task slots)");
+      if (busy.length) { var bi = Math.floor((t - R.start) / R.bucketMs); if (bi >= 0 && bi < busy.length) lines.push("Tasks running: " + num(Math.round(busy[bi][1] * 10) / 10) + " on average"); }
+      cpu.forEach(function (sr) { var v = stepAt(sr.points, t); if (v != null) lines.push("CPU " + sr.scope + ": " + Math.round(v) + "%"); });
+      waiting.forEach(function (sr) { var v = stepAt(sr.points, t); if (v != null) lines.push("Containers waiting: " + num(v)); });
+      return lines.join("\n");
+    }
+    hit.on("pointerdown", function (ev) { down = d3.pointer(ev)[0]; hit.node().setPointerCapture && hit.node().setPointerCapture(ev.pointerId); })
+      .on("pointermove", function (ev) {
+        var p = d3.pointer(ev), px = Math.max(lw, Math.min(right, p[0]));
+        cur.attr("x1", px).attr("x2", px).style("display", null);
+        if (down != null && Math.abs(px - down) > 4) { sel.attr("x", Math.min(px, down)).attr("width", Math.abs(px - down)).style("display", null); tipHide(); return; }
+        var b = barAt(px, p[1]);
+        light(b);
+        hit.style("cursor", b ? "pointer" : "crosshair");
+        tipShow(ev, describe(+x.invert(px), b));
+      })
+      .on("pointerup", function (ev) {
+        var p = d3.pointer(ev), px = Math.max(lw, Math.min(right, p[0])), from = down;
+        down = null; sel.style("display", "none");
+        if (from != null && Math.abs(px - from) > 4) {
+          var z = [+x.invert(Math.min(px, from)), +x.invert(Math.max(px, from))];
+          if (z[1] - z[0] >= 50) { TL.zoom = z; tipHide(); drawSlot(c); }
+          return;
+        }
+        var b = barAt(px, p[1]);
+        if (b) { tipHide(); location.hash = b.kind === "query" ? "#query/" + b.id : b.kind === "job" ? "#job/" + b.id : "#stage/" + b.id; }
+      })
+      .on("pointerleave", function () { if (down == null) { cur.style("display", "none"); light(null); tipHide(); } });
+  }
   // stageName is one short line, so the axis labels every bar: the call
   // site ("count at Foo.java:0") is cut to its operation.
   function stageName(st) { return "Stage " + st.id + (st.attempt ? "." + st.attempt : "") + " · " + (st.name || "").split(" at ")[0].slice(0, 16); }
@@ -1484,6 +1685,7 @@
         "ms", key ? null : function (r) { return "#stage/" + r.st.key; });
     },
     heatmap: function (c) { heatmap(c); },
+    runTimeline: function (c) { runTimeline(c); },
     dataOverTime: function (c) {
       var done = stages.filter(function (st) { return st.completed; }).sort(function (a2, b2) { return a2.completed - b2.completed; });
       if (done.length < 2) { waitText(c, "Too few finished stages to chart."); return; }
