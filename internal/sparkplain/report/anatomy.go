@@ -37,6 +37,7 @@ type anatomy struct {
 	// and NoNodeCapacity in short on each node.
 	NoCapacity     []string
 	NoNodeCapacity string
+	NoCPU          string // why a node's CPU is missing
 
 	detailBadges []int // findings for the executor drawn in full
 }
@@ -173,6 +174,10 @@ func buildAnatomy(r *model.Report) *anatomy {
 		a.ClusterNote = "Instance types and YARN's capacity need the EMR API: pass -cluster-id with -profile."
 	}
 	a.NoCapacity, a.NoNodeCapacity = noCapacity(r)
+	a.NoCPU = "CPU not known (needs CloudWatch)"
+	if r.Metrics != nil && r.Metrics.Coverage != model.NoData {
+		a.NoCPU = "CPU not recorded while the application ran"
+	}
 
 	// Executors, with their memory and CPU.
 	mem := map[string]model.ExecMemory{}
@@ -844,7 +849,7 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 			b.f(`<line class="spark0" x1="%.1f" x2="%.1f" y1="%.1f" y2="%.1f"/><polyline class="spark" points="%s"><title>CloudWatch CPU while it ran: %.0f%% average</title></polyline>`, sx, sx+sw, cy, cy, strings.Join(pts, " "), n.CPUAvg)
 		}
 	} else {
-		b.text(x+12, cy, "m", "", "CPU not known (needs CloudWatch)")
+		b.text(x+12, cy, "m", "", a.NoCPU)
 	}
 
 	// What the NodeManager offered YARN, and what this application placed.

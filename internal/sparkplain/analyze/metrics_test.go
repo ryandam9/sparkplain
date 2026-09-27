@@ -81,3 +81,45 @@ func TestMetricFindings(t *testing.T) {
 		t.Error("a brief wait raised waited-for-capacity")
 	}
 }
+
+// EC2 publishes a node's CPU every 5 minutes, each point stamped with the
+// start of its period. On the phase 4 test cluster a run from 08:02:19 to
+// 08:06:36 fell mostly in the 08:00 point, which was left out, and a node
+// reclaimed at 08:03 had no CPU at all.
+func TestHostCPUCountsPeriodsTheRunOverlaps(t *testing.T) {
+	l := synthetic(nil, &model.Executor{ID: "1", Host: "ip-10-0-0-2.ec2.internal", Cores: 4})
+	start := l.Application.Start
+	l.Application.End = start.Add(4 * time.Minute)
+	l.Application.DurationMs = 240_000
+	cl := &model.Cluster{ID: "j-1", Instances: []model.Instance{{ID: "i-2", PrivateDNS: "ip-10-0-0-2.ec2.internal", Role: "CORE", Created: start.Add(-time.Hour)}}}
+	cpu := func(stat string, vs ...float64) model.Series {
+		// Asked for every minute, answered every 5 minutes.
+		s := model.Series{Namespace: "AWS/EC2", Name: "CPUUtilization", Stat: stat, Scope: "i-2", PeriodS: 60, Source: "CloudWatch CPUUtilization"}
+		for i, v := range vs {
+			s.Points = append(s.Points, model.Point{T: start.Add(-2*time.Minute + time.Duration(i)*5*time.Minute), V: v})
+		}
+		return s
+	}
+	// i-4 was reclaimed within minutes: one point, spaced like i-2's.
+	cl.Instances = append(cl.Instances, model.Instance{ID: "i-4", PrivateDNS: "ip-10-0-0-4.ec2.internal", Role: "TASK", Market: "SPOT", Created: start.Add(-time.Hour), Ended: start.Add(time.Minute)})
+	lone := cpu("Average", 14)
+	lone.Scope = "i-4"
+	m := &model.MetricsSection{Coverage: model.Complete, From: start.Add(-5 * time.Minute), To: start.Add(10 * time.Minute),
+		Hosts: []model.Series{cpu("Average", 40, 20), cpu("Maximum", 90, 60), lone}}
+	r := Run(Input{Tool: "t", EventLog: l, EventSource: model.SourceStatus{Name: "Spark event log", Status: "read"}, Cluster: cl, Metrics: m})
+	for _, h := range r.Nodes.Hosts {
+		switch h.Instance.ID {
+		case "i-2":
+			if c := h.HostCPU; c == nil || c.Average != 30 || c.Peak != 90 {
+				t.Errorf("i-2 cpu = %+v, want both periods: 30%% average, 90%% peak", c)
+			}
+		case "i-4":
+			if c := h.HostCPU; c == nil || c.Average != 14 {
+				t.Errorf("i-4 cpu = %+v, want its one point", c)
+			}
+		}
+	}
+	if k := r.Summary.KPIs[1]; k.Label != "Hosts" || k.Explain != "Machines that ran executors, of 2 nodes up during the run; the Nodes section describes each one." {
+		t.Errorf("hosts card = %+v", k)
+	}
+}

@@ -18,6 +18,18 @@ const (
 	hotMemory         = 95.0 // a node's highest memory use (%), from the agent
 )
 
+// spacing is the smallest gap between a series' points, or 0 when it has
+// fewer than two.
+func spacing(s *model.Series) time.Duration {
+	var gap time.Duration
+	for i := 1; i < len(s.Points); i++ {
+		if g := s.Points[i].T.Sub(s.Points[i-1].T); g > 0 && (gap == 0 || g < gap) {
+			gap = g
+		}
+	}
+	return gap
+}
+
 // analyzeMetrics reads the CloudWatch metrics for the run: each node's CPU
 // for the Nodes table, and findings for containers that waited, other
 // applications sharing the cluster, and busy nodes.
@@ -46,7 +58,29 @@ func analyzeMetrics(c *ctx, r *model.Report) {
 	if end.IsZero() || end.Before(start) {
 		end = m.To
 	}
-	in := func(p model.Point) bool { return !p.T.Before(start.Truncate(time.Minute)) && !p.T.After(end) }
+	// A point stands for the period that starts at its time: a 5-minute EC2
+	// point at 08:00 covers a run that started at 08:02. That period is the
+	// one asked for, or the spacing of the points when wider: EC2 without
+	// detailed monitoring has only 5-minute CPU points, and CloudWatch
+	// returns those when asked for 60-second ones (as on the phase 4 test
+	// cluster). A series of one point, from a node that lived minutes,
+	// takes the spacing of the same metric on the other nodes.
+	metricGap := map[string]time.Duration{}
+	for _, list := range [][]model.Series{m.Cluster, m.Hosts} {
+		for i := range list {
+			k := list[i].Namespace + "/" + list[i].Name
+			if g := spacing(&list[i]); g > 0 && (metricGap[k] == 0 || g < metricGap[k]) {
+				metricGap[k] = g
+			}
+		}
+	}
+	in := func(s *model.Series, p model.Point) bool {
+		gap := spacing(s)
+		if gap == 0 {
+			gap = metricGap[s.Namespace+"/"+s.Name]
+		}
+		return p.T.Add(max(time.Duration(max(s.PeriodS, 60))*time.Second, gap)).After(start) && !p.T.After(end)
+	}
 	find := func(list []model.Series, name, stat, scope string) *model.Series {
 		for i := range list {
 			s := &list[i]
@@ -70,14 +104,14 @@ func analyzeMetrics(c *ctx, r *model.Report) {
 		var sum, peak float64
 		n := 0
 		for _, p := range avg.Points {
-			if in(p) {
+			if in(avg, p) {
 				sum += p.V
 				n++
 			}
 		}
 		if mx != nil {
 			for _, p := range mx.Points {
-				if in(p) {
+				if in(mx, p) {
 					peak = max(peak, p.V)
 				}
 			}
@@ -92,7 +126,7 @@ func analyzeMetrics(c *ctx, r *model.Report) {
 	maxApps := 0.0
 	if apps != nil {
 		for _, p := range apps.Points {
-			if in(p) {
+			if in(apps, p) {
 				maxApps = max(maxApps, p.V)
 			}
 		}
@@ -107,7 +141,7 @@ func analyzeMetrics(c *ctx, r *model.Report) {
 			}
 		}
 		for _, p := range pending.Points {
-			if !in(p) || p.V <= 0 {
+			if !in(pending, p) || p.V <= 0 {
 				continue
 			}
 			waitMin += float64(pending.PeriodS) / 60
@@ -154,7 +188,7 @@ func analyzeMetrics(c *ctx, r *model.Report) {
 	if free != nil {
 		low := 100.0
 		for _, p := range free.Points {
-			if in(p) {
+			if in(free, p) {
 				low = min(low, p.V)
 			}
 		}

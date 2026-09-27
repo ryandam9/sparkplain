@@ -209,3 +209,17 @@ func TestAnatomySaysWhyCapacityIsMissing(t *testing.T) {
 		}
 	}
 }
+
+// A node with no CPU points says CloudWatch recorded none, not that it
+// needs CloudWatch, when CloudWatch was read.
+func TestAnatomySaysWhyCPUIsMissing(t *testing.T) {
+	links := anatLinks{Finding: func(int) string { return "" }, Ref: func(string) string { return "" }}
+	r := anatReport()
+	if svg := anatomySVG(buildAnatomy(r), links); !strings.Contains(svg, "CPU not known (needs CloudWatch)") {
+		t.Error("without CloudWatch the diagram should say it needs it")
+	}
+	r.Metrics = &model.MetricsSection{Coverage: model.Partial}
+	if svg := anatomySVG(buildAnatomy(r), links); !strings.Contains(svg, "CPU not recorded while the application ran") || strings.Contains(svg, "needs CloudWatch") {
+		t.Error("with CloudWatch read, a node without points should say none were recorded")
+	}
+}

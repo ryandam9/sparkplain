@@ -431,7 +431,7 @@ func analyzeSummary(c *ctx, r *model.Report) {
 	}
 	s.KPIs = []model.KPI{
 		{Label: "Ran for", Value: model.Duration(a.DurationMs), Explain: "From application start to end" + map[bool]string{true: " (or to the last event, as it had not ended).", false: "."}[a.End.IsZero()]},
-		{Label: "Hosts", Value: fmt.Sprint(hosts), Unit: "ran executors", Explain: "Machines that ran executors. Instance details need the EMR API."},
+		{Label: "Hosts", Value: fmt.Sprint(hosts), Unit: "ran executors", Explain: hostsExplain(r)},
 		{Label: "Executors", Value: fmt.Sprint(len(c.log.Executors)), Unit: fmt.Sprintf("started · %d peak", r.Executors.Peak), Explain: fmt.Sprintf("Worker processes Spark launched, and the most at once. %d ended early.", killed), Tone: execTone},
 		{Label: "Executor size", Value: fmt.Sprint(mem.Cores), Unit: "cores · " + model.Bytes(mem.ContainerBytes), Explain: fmt.Sprintf("%s heap plus %s overhead, per executor.", model.Bytes(mem.HeapBytes), model.Bytes(mem.OverheadBytes))},
 		cpuKPI(r.CPU),
@@ -514,6 +514,21 @@ func joinAnd(items []string) string {
 		return items[0]
 	}
 	return strings.Join(items[:len(items)-1], "; ") + "; and " + items[len(items)-1]
+}
+
+// hostsExplain says what the Hosts card counts, and where each host's
+// instance is described when the EMR API was read.
+func hostsExplain(r *model.Report) string {
+	if r.Cluster == nil {
+		return "Machines that ran executors. Instance details need the EMR API."
+	}
+	n := 0
+	for _, h := range r.Nodes.Hosts {
+		if h.Instance != nil {
+			n++
+		}
+	}
+	return fmt.Sprintf("Machines that ran executors, of %s up during the run; the Nodes section describes each one.", model.Plural(n, "node", "nodes"))
 }
 
 func cpuKPI(c model.CPUSection) model.KPI {
