@@ -1314,7 +1314,8 @@
   }
   // scatterChart draws one mark per point (x, y, tip, bad): circles, and
   // triangles in the failure colour for bad points, with both axes in
-  // round units from zero.
+  // round units from zero. labels are the two legend entries, the x axis
+  // title and, optionally, the y axis title; it returns the plot area.
   function scatterChart(c, pts, g, xKind, yKind, labels) {
     var plot = frame(c, g);
     plot.parentNode.insertBefore(legendNode([{ label: labels[0], color: V.series }].concat(pts.some(function (p) { return p.bad; }) ? [{ label: labels[1], color: V.fail }] : [])), plot);
@@ -1327,6 +1328,7 @@
     P.svg.append("g").attr("class", "ax").attr("transform", "translate(0," + (H - m.b) + ")")
       .call(d3.axisBottom(XU.x).tickValues(XU.ticks).tickFormat(XU.label).tickSize(-(H - m.t - m.b)).tickPadding(6)).call(leanEnds, XU.x, m.l, P.w - m.r).select(".domain").remove();
     P.svg.append("text").attr("class", "axt").attr("x", (m.l + P.w - m.r) / 2).attr("y", H - 6).attr("text-anchor", "middle").text(labels[2]);
+    if (labels[3]) P.svg.append("text").attr("class", "axt").attr("transform", "translate(12," + ((m.t + H - m.b) / 2) + ") rotate(-90)").attr("text-anchor", "middle").text(labels[3]);
     // good points first, so failures draw on top
     var order = pts.filter(function (p) { return !p.bad; }).concat(pts.filter(function (p) { return p.bad; }));
     var tri = d3.symbol(d3.symbolTriangle, 60)();
@@ -1335,7 +1337,25 @@
       .attr("transform", function (p) { return "translate(" + XU.x(p.x) + "," + YU.x(p.y) + ")"; })
       .style("fill", function (p) { return p.bad ? V.fail : V.series; });
     hover(mk, function (p) { return p.tip; });
+    return plot;
   }
+  // Task scatter axes: what goes across and what goes up, remembered while
+  // the page is open.
+  var SCATTER = { x: "start", y: "dur" };
+  var SCATTER_X = {
+    start: { label: "Started", kind: "ms", v: function (r, started) { return started(r); } },
+    input: { label: "Input read", kind: "bytes", v: function (r) { return r[T.input]; } },
+    rows: { label: "Rows read", kind: "count", v: function (r) { return r[T.rows]; } },
+    shRead: { label: "Shuffle read", kind: "bytes", v: function (r) { return r[T.shRead]; } }
+  };
+  var SCATTER_Y = {
+    dur: { label: "Duration", kind: "ms", v: function (r) { return r[T.dur]; }, read: "Higher marks took longer." },
+    gc: { label: "Garbage collection", kind: "ms", v: function (r) { return r[T.gc]; }, read: "High marks spent long in garbage collection: too little memory per task, or large objects." },
+    fetch: { label: "Waiting for shuffle data", kind: "ms", v: function (r) { return r[T.fetch]; }, read: "High marks waited long for data from other executors: a busy network, a slow or lost executor, or skewed shuffle blocks." },
+    sched: { label: "Scheduler delay", kind: "ms", v: function (r) { return r[T.sched]; }, read: "High marks waited long to start or to report back: a busy driver or large task closures." },
+    spill: { label: "Spilled", kind: "bytes", v: function (r) { return r[T.spill]; }, read: "High marks ran out of execution memory and wrote to disk." }
+  };
+
   // ---------- stage × executor heatmap ----------
   // One square per executor (row) and stage (column), coloured by the
   // chosen metric, either as is or as a multiple of the stage's median
@@ -1806,13 +1826,33 @@
       var st0 = null;
       stages.forEach(function (s) { if (s.key === key) st0 = s.submitted; });
       rows.forEach(function (r) { var at = (D.t0 || 0) + r[T.launch]; if (st0 == null || at < st0) st0 = at; });
-      scatterChart(c, rows.map(function (r) {
-        return { x: (D.t0 || 0) + r[T.launch] - st0, y: r[T.dur], bad: r[T.status] !== 0,
-          tip: "Task " + r[T.task] + " (partition " + r[T.index] + ") on executor " + execName(r[T.exec]) + "\nStarted " + dur((D.t0 || 0) + r[T.launch] - st0) + " into the stage, took " + dur(r[T.dur]) + "\n" + num(r[T.rows]) + " rows read" };
-      }), { t: "When tasks started and how long they took", shows: "Each mark is a task: when it started, counted from the start of the stage, and how long it took. " +
-        (det.sample.length < det.from ? "From a sample of " + num(det.sample.length) + " of " + num(det.from) + " tasks plus the slowest " + num(det.slow.length) + "." : "Every task of this stage."),
-        read: "Dots should form a low, even band. Dots far above the rest are stragglers (check whether they read more rows); triangles failed. Vertical stripes are waves: one per round of task slots." },
-        "ms", "ms", ["Succeeded", "Failed or killed", "Started, after the stage began"]);
+      var started = function (r) { return (D.t0 || 0) + r[T.launch] - st0; };
+      var xa = SCATTER_X[SCATTER.x], ya = SCATTER_Y[SCATTER.y];
+      var fmtOf = function (kind, v) { return kind === "count" ? num(v) : FMT[kind](v); };
+      var isDefault = SCATTER.x === "start" && SCATTER.y === "dur";
+      var plot = scatterChart(c, rows.map(function (r) {
+        var xv = xa.v(r, started), yv = ya.v(r);
+        return { x: xv, y: yv, bad: r[T.status] !== 0,
+          tip: "Task " + r[T.task] + " (partition " + r[T.index] + ") on executor " + execName(r[T.exec]) + "\nStarted " + dur(started(r)) + " into the stage, took " + dur(r[T.dur]) +
+            (isDefault ? "\n" + num(r[T.rows]) + " rows read" : "\n" + xa.label + ": " + fmtOf(xa.kind, xv) + "\n" + ya.label + ": " + fmtOf(ya.kind, yv)) };
+      }), { t: isDefault ? "When tasks started and how long they took" : SCATTER.x === "start" ? ya.label + ", by when each task started" : ya.label + " against " + xa.label.toLowerCase(),
+        shows: "Each mark is a task" + (isDefault ? ": when it started, counted from the start of the stage, and how long it took. " : ": " + xa.label.toLowerCase() + " across, " + ya.label.toLowerCase() + " up. ") +
+          (det.sample.length < det.from ? "From a sample of " + num(det.sample.length) + " of " + num(det.from) + " tasks plus the slowest " + num(det.slow.length) + "." : "Every task of this stage."),
+        read: isDefault ? "Dots should form a low, even band. Dots far above the rest are stragglers (check whether they read more rows); triangles failed. Vertical stripes are waves: one per round of task slots."
+          : SCATTER.x === "start" ? ya.read + " Vertical stripes are waves, one per round of task slots; triangles failed."
+          : "Marks that climb from left to right mean " + xa.label.toLowerCase() + " explains the " + ya.label.toLowerCase() + ": a few far to the right are skew in the data. Marks high up at the left are slow for another reason, such as a busy node, garbage collection or waiting. " + ya.read + " Triangles failed." },
+        xa.kind, ya.kind, ["Succeeded", "Failed or killed", xa.label + (SCATTER.x === "start" ? ", after the stage began" : ""), ya.label]);
+      if (!plot) return;
+      // axis choices, above the chart
+      var pick = function (label, opts, cur, set) {
+        var s = el("select", { "aria-label": label });
+        Object.keys(opts).forEach(function (k) { s.appendChild(el("option", { value: k, text: opts[k].label, selected: k === cur })); });
+        s.addEventListener("change", function () { set(s.value); drawSlot(c); });
+        return s;
+      };
+      plot.parentNode.insertBefore(el("div", { cls: "bar-tools" },
+        el("span", { cls: "count", text: "Up:" }), pick("Up the chart", SCATTER_Y, SCATTER.y, function (v) { SCATTER.y = v; }),
+        el("span", { cls: "count", text: "Across:" }), pick("Across the chart", SCATTER_X, SCATTER.x, function (v) { SCATTER.x = v; })), plot.previousSibling);
     },
     execHeap: function (c, id) {
       var idx = D.execs.indexOf(id), pts = [];
