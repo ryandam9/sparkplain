@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
@@ -18,6 +20,11 @@ var (
 	explorerCSS string
 	//go:embed assets/explorer.js
 	explorerJS string
+	// D3 7.9.0 from npm (integrity checked; ISC licence in
+	// assets/vendor/d3-LICENSE), for the anatomy diagram's zoom and hover.
+	// Its data loaders (d3.json and the like) are never called.
+	//go:embed assets/vendor/d3-7.9.0.min.js
+	d3JS string
 	//go:embed templates/explorer.html.tmpl
 	explorerTmpl string
 )
@@ -60,8 +67,9 @@ func WriteExplorer(w io.Writer, r *model.Report, x *model.Explorer, opt Explorer
 		Title string
 		CSS   template.CSS
 		JS    template.JS
+		D3    template.JS
 		Data  template.HTML
-	}{title, template.CSS(css + "\n" + explorerCSS), template.JS(explorerJS),
+	}{title, template.CSS(css + "\n" + explorerCSS), template.JS(explorerJS), template.JS(d3JS),
 		template.HTML(`<script type="application/json" id="sp-data">` + string(data) + `</script>`)})
 	if err != nil {
 		return err
@@ -107,6 +115,7 @@ type xData struct {
 	Summary    []string             `json:"summary"`
 	KPIs       []model.KPI          `json:"kpis"`
 	Findings   []xFinding           `json:"findings"`
+	Anatomy    string               `json:"anatomy,omitempty"` // the diagram's SVG, drawn in Go
 	Files      []string             `json:"files"`
 	Execs      []string             `json:"execs"` // executor IDs; task and cell rows use their index
 	Executors  table                `json:"executors"`
@@ -245,6 +254,22 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		Findings: []xFinding{}, Files: []string{}, Execs: []string{}, Notes: []string{},
 		PlanLays: map[string]xLayout{}, JobDags: map[string]xJobDag{}, StageOps: map[string]xStageOps{}, Adaptive: map[string][][]any{},
 	}
+	d.Anatomy = anatomySVG(buildAnatomy(r), anatLinks{
+		Finding: func(n int) string { return fmt.Sprintf("#finding/%d", n) },
+		Ref: func(ref string) string {
+			kind, id, _ := strings.Cut(ref, ":")
+			switch kind {
+			case "executor":
+				return "#executor/" + url.PathEscape(id)
+			case "node":
+				if r.Cluster != nil {
+					return "#cluster"
+				}
+				return "#executors"
+			}
+			return ""
+		},
+	})
 	files := map[string]int{}
 	fileIdx := func(s model.Source) int64 {
 		if s.File == "" {

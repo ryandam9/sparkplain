@@ -80,3 +80,11 @@ details.logline pre{white-space:pre-wrap;word-break:break-word;margin:0;font-siz
 
 /* access gaps */
 .missing.access{border-color:var(--warn);margin-bottom:16px}
+/* At a glance: the anatomy diagram, zoomed and panned with D3 */
+.anatwrap{background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden;cursor:grab;touch-action:none}
+.anatwrap:active{cursor:grabbing}
+.anatwrap .anat{min-width:0}
+.anattools{margin:0 0 8px}
+.anat .badge.hl circle{stroke:var(--ink);stroke-width:3}
+.finding.flash{animation:flash 1.6s ease-out}
+@keyframes flash{from{box-shadow:0 0 0 4px var(--accent)}to{box-shadow:0 0 0 0 transparent}}

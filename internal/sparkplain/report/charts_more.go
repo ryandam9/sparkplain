@@ -540,6 +540,7 @@ func chartFuncs(loc *time.Location, explorer string) template.FuncMap {
 		"dataOverTime":    func(r *model.Report) template.HTML { return dataOverTime(r, loc) },
 		"spillChart":      spillChart,
 		"guide":           guide,
+		"anatomy":         func(r *model.Report) template.HTML { return anatomyHTML(r, explorer) },
 		"timeChart":       timeChart,
 		"nodeMemoryChart": nodeMemoryChart,
 		"nodeCPUChart":    func(r *model.Report) template.HTML { return nodeCPUChart(r, loc) },

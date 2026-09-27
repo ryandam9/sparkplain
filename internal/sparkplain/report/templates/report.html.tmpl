@@ -40,6 +40,7 @@
   <div class="layout">
     <nav class="toc" aria-label="Sections">
       <a href="#summary">What happened <span class="dot full"></span></a>
+      <a href="#anatomy">The run at a glance <span class="dot full"></span></a>
       <a href="#coverage">What this report covers <span class="dot full"></span></a>
       <a href="#findings">Findings <span class="dot full"></span></a>
       <a href="#timeline">Timeline <span class="dot {{cov $r.Timeline.Coverage}}"></span></a>
@@ -68,6 +69,11 @@
         </div>{{end}}
       </section>
 
+      {{with anatomy $r}}<section id="anatomy">
+        <div class="sechead"><h2>The run at a glance</h2><span class="note">The whole run in one picture: where it ran, how much it was given, and what it used.</span></div>
+        {{.}}
+      </section>{{end}}
+
       <section id="coverage">
         <div class="sechead"><h2>What this report covers</h2></div>
         <p class="lede">Every section appears, even when its data is missing. Each one says where its data came from and what it can't show yet.</p>
@@ -81,8 +87,8 @@
       <section id="findings">
         <div class="sechead"><h2>Findings</h2><span class="note">{{.Crit}} critical · {{.Warn}} warning · {{.Info}} info. Ranked by severity; each points to the log line it came from.</span></div>
         {{if $r.Findings}}<div class="findings">
-          {{range $r.Findings}}<article class="finding {{sev .Severity}}"><div class="stripe"></div><div class="body">
-            <div class="t"><span class="pill {{sevPill .Severity}}">{{sevLabel .Severity}}</span><h3>{{.Title}}</h3></div>
+          {{range $i, $f := $r.Findings}}<article class="finding {{sev .Severity}}" id="finding-{{add $i 1}}"><div class="stripe"></div><div class="body">
+            <div class="t"><span class="fnum {{sev .Severity}}">{{add $i 1}}</span><span class="pill {{sevPill .Severity}}">{{sevLabel .Severity}}</span><h3>{{.Title}}</h3></div>
             <div class="fpart what"><span class="k">{{if eq (sev .Severity) "crit"}}Error{{else if eq (sev .Severity) "warn"}}Problem{{else}}Note{{end}}</span><div><p>{{.Explanation}}</p></div></div>
             {{if .Evidence}}<div class="fpart evid"><span class="k">Evidence</span><div>{{range .Evidence}}<p class="ev">{{if .Source.File}}{{src .Source}} {{end}}{{if and $.Explorer .Ref}}<a href="{{explorerURL $.Explorer .Ref}}">{{.Text}}</a>{{else}}{{.Text}}{{end}}</p>{{end}}</div></div>{{end}}
             {{if .Fix}}<div class="fpart try"><span class="k">Try</span><div><p class="fix">{{.Fix}}</p></div></div>{{end}}

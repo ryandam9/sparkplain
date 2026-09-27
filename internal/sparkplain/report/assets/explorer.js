@@ -265,8 +265,8 @@
   });
 
   // ---------- views ----------
-  var TABS = [["overview", "Overview"], ["jobs", "Jobs", jobs.length], ["stages", "Stages", stages.length], ["executors", "Executors", execs.length],
-    ["sql", "SQL / DataFrame", queries.length], ["storage", "Storage", rdds.length], ["code", "Code"], ["environment", "Environment"], ["log", "Event log"]];
+  var TABS = [["overview", "Overview"]].concat(D.anatomy ? [["anatomy", "At a glance"]] : [], [["jobs", "Jobs", jobs.length], ["stages", "Stages", stages.length], ["executors", "Executors", execs.length],
+    ["sql", "SQL / DataFrame", queries.length], ["storage", "Storage", rdds.length], ["code", "Code"], ["environment", "Environment"], ["log", "Event log"]]);
   if (D.aws) TABS.push(["cluster", "Cluster", D.aws.nodes.length]);
   if (logFiles.length || (D.logSources || []).length) TABS.push(["logs", "Logs", logFiles.length]);
   var tabs = document.getElementById("sp-tabs");
@@ -295,10 +295,10 @@
     out.push(ov);
     var fs = section("Findings", D.findings.length ? "Problems and notes found in this run. Evidence links open the stage, job or executor it concerns." : "No findings for this run.");
     var list = el("div", { cls: "findings" });
-    D.findings.forEach(function (f) {
+    D.findings.forEach(function (f, i) {
       var sev = { critical: "crit", warning: "warn", info: "info" }[f.sev] || "info";
-      list.appendChild(el("article", { cls: "finding " + sev }, el("div", { cls: "stripe" }), el("div", { cls: "body" },
-        el("div", { cls: "t" }, el("span", { cls: "pill " + ({ crit: "crit", warn: "part", info: "info" }[sev]), text: { crit: "Critical", warn: "Warning", info: "Info" }[sev] }), el("h3", { text: f.title })),
+      list.appendChild(el("article", { cls: "finding " + sev, id: "finding-" + (i + 1) }, el("div", { cls: "stripe" }), el("div", { cls: "body" },
+        el("div", { cls: "t" }, el("span", { cls: "fnum " + sev, text: String(i + 1) }), el("span", { cls: "pill " + ({ crit: "crit", warn: "part", info: "info" }[sev]), text: { crit: "Critical", warn: "Warning", info: "Info" }[sev] }), el("h3", { text: f.title })),
         el("div", { cls: "fpart what" }, el("span", { cls: "k", text: { crit: "Error", warn: "Problem", info: "Note" }[sev] }), el("div", null, el("p", { text: f.expl }))),
         (f.ev || []).length ? el("div", { cls: "fpart evid" }, el("span", { cls: "k", text: "Evidence" }), el("div", null, f.ev.map(function (e) {
           var h = refHref(e[1]), lh = logHref(e[2]);
@@ -1649,13 +1649,66 @@
   function notFound(what) { return section(what + " is not in this log", "It may have been cut off, or the link is from another run."); }
 
   // ---------- routing ----------
+  // ---------- at a glance ----------
+  // The anatomy diagram is drawn in Go (the same picture as the report's);
+  // D3 adds zoom and pan, double-click to zoom to a part, and hover that
+  // lights up every badge of the same finding.
+  views.anatomy = function () {
+    var s = section("The run at a glance", "The whole run in one picture: the cluster, what each node offered YARN, the containers placed there (to scale), and inside an executor the heap's regions with how far each peaked.");
+    var wrap = el("div", { cls: "anatwrap" });
+    wrap.innerHTML = D.anatomy; // drawn and escaped in Go
+    var tools = el("div", { cls: "bar-tools anattools" });
+    s.appendChild(tools);
+    s.appendChild(wrap);
+    add(s, guideNodes({ shows: "Numbered badges are findings, pinned to the part they are about; click one to read it. Hover anything for exact values.",
+      read: "Hatched space on a node is memory nobody used: narrower than an executor, it could not hold one. Red outlines are executors killed or lost. Inside the executor, a peak line near the end of the heap means it nearly ran out." }));
+    anatomyZoom(wrap, tools);
+    return s;
+  };
+  function anatomyZoom(wrap, tools) {
+    var d3 = window.d3, node = wrap.querySelector("svg.anat");
+    if (!d3 || !node) return;
+    var layer = document.createElementNS(SVG, "g");
+    Array.prototype.slice.call(node.childNodes).forEach(function (c) { if (c.nodeName !== "defs") layer.appendChild(c); });
+    node.appendChild(layer);
+    var svg = d3.select(node), zl = d3.select(layer);
+    // Drag pans and ctrl+wheel zooms; a plain wheel still scrolls the page.
+    var zoom = d3.zoom().scaleExtent([0.5, 8])
+      .filter(function (ev) { return !ev.button && (ev.type !== "wheel" || ev.ctrlKey || ev.metaKey); })
+      .on("zoom", function (ev) { zl.attr("transform", ev.transform); });
+    svg.call(zoom).on("dblclick.zoom", null);
+    // Animate unless the viewer asked for reduced motion.
+    var still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    function go(ms, f, arg) { if (still) svg.call(f, arg); else svg.transition().duration(ms).call(f, arg); }
+    function btn(label, f) { var b = el("button", { type: "button", cls: "more", text: label }); b.addEventListener("click", f); tools.appendChild(b); }
+    btn("Zoom in", function () { go(250, zoom.scaleBy, 1.5); });
+    btn("Zoom out", function () { go(250, zoom.scaleBy, 1 / 1.5); });
+    btn("Fit", function () { go(300, zoom.transform, d3.zoomIdentity); });
+    tools.appendChild(el("span", { cls: "count", text: "Drag to move · Ctrl + wheel to zoom · double-click a node or panel to zoom to it" }));
+    var vb = node.viewBox.baseVal;
+    svg.selectAll("g.node, g.jvm, g.rmpanel").on("dblclick", function (ev) {
+      ev.preventDefault();
+      var b = this.getBBox(), k = Math.min(8, 0.9 * Math.min(vb.width / b.width, vb.height / b.height));
+      go(450, zoom.transform, d3.zoomIdentity.translate(vb.width / 2 - k * (b.x + b.width / 2), vb.height / 2 - k * (b.y + b.height / 2)).scale(k));
+    });
+    svg.selectAll("[data-finding]")
+      .on("mouseenter", function () { svg.selectAll('[data-finding="' + this.getAttribute("data-finding") + '"]').classed("hl", true); })
+      .on("mouseleave", function () { svg.selectAll(".hl").classed("hl", false); });
+  }
+  // #finding/3 opens the overview at that finding.
+  views.finding = function (n) {
+    var out = views.overview();
+    setTimeout(function () { var f = document.getElementById("finding-" + n); if (f) { f.scrollIntoView({ block: "start" }); f.classList.add("flash"); } }, 0);
+    return out;
+  };
+
   function route() {
     var h = (location.hash || "#overview").slice(1);
     var slash = h.indexOf("/");
     var name = slash < 0 ? h : h.slice(0, slash), arg = null;
     try { arg = slash < 0 ? null : decodeURIComponent(h.slice(slash + 1)); } catch (e) { arg = h.slice(slash + 1); }
     if (!views[name]) { name = "overview"; arg = null; }
-    var tab = { job: "jobs", stage: "stages", executor: "executors", query: "sql" }[name] || name;
+    var tab = { job: "jobs", stage: "stages", executor: "executors", query: "sql", finding: "overview" }[name] || name;
     tabs.querySelectorAll("a").forEach(function (a) { if (a.getAttribute("data-tab") === tab) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
     charts.length = 0;
     main.textContent = "";

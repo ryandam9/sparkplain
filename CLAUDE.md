@@ -21,6 +21,7 @@ A Go CLI that turns one Spark application's logs into a single plain-language HT
   - `github.com/klauspost/compress` (zstd, snappy)
   - `github.com/pierrec/lz4/v4`
   - `gopkg.in/yaml.v3`
+  - D3 v7 (JavaScript), embedded in the explorer page only, pinned by hash (`internal/sparkplain/report/assets/vendor`)
 
   Ask before adding anything else.
 - The HTML report (`<app-id>-report.html`, with `<app-id>-report.json` beside it) is one self-contained file. Templates and any chart JS are embedded with `go:embed`, and the report makes no network calls when opened.

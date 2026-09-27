@@ -3,6 +3,8 @@ package report
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -113,6 +115,12 @@ func TestExplorerDataMatchesReport(t *testing.T) {
 func TestExplorerOnlyLoadsGoogleCharts(t *testing.T) {
 	r, x := buildWithExplorer(t, "application_1790380000000_0042")
 	page := dataRE.ReplaceAllString(renderExplorer(t, r, x), "") // log values may contain URLs; they are data, not loads
+	// The vendored D3 holds XML namespace names and its licence URL, never
+	// loaded; TestVendoredD3 pins its content.
+	if !strings.Contains(page, d3JS) {
+		t.Fatal("D3 is not embedded")
+	}
+	page = strings.Replace(page, d3JS, "", 1)
 	for _, re := range []string{`<link\b`, `<script[^>]+src=`, `@import`, `url\(\s*['"]?https?:`, `<iframe`, `<img\b`} {
 		if m := regexp.MustCompile(re).FindString(page); m != "" {
 			t.Errorf("explorer loads something outside its script: %q", m)
@@ -296,5 +304,18 @@ func TestExplorerChartsHaveDrawers(t *testing.T) {
 		if !regexp.MustCompile(`\n    ` + s[1] + `: function \(c, th`).MatchString(explorerJS) {
 			t.Errorf("chart %q has no DRAW entry", s[1])
 		}
+	}
+}
+
+// D3 is embedded exactly as released (7.9.0, checked against npm's
+// integrity hash when vendored), and the page never calls the parts of it
+// that fetch data.
+func TestVendoredD3(t *testing.T) {
+	sum := sha256.Sum256([]byte(d3JS))
+	if got := hex.EncodeToString(sum[:]); got != "f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539" {
+		t.Errorf("assets/vendor/d3-7.9.0.min.js changed: sha256 %s", got)
+	}
+	if m := regexp.MustCompile(`d3\.(json|csv|tsv|dsv|text|xml|html|svg|image|blob|buffer)\(`).FindString(explorerJS); m != "" {
+		t.Errorf("explorer.js calls D3's data loader %q", m)
 	}
 }
