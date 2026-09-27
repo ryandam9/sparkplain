@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -411,5 +412,24 @@ func TestFetchTimeoutIsADeadline(t *testing.T) {
 	}
 	if c := ClassOf(reads[0].Err); c != ClassTimeout {
 		t.Fatalf("class %q, want timeout (%v)", c, reads[0].Err)
+	}
+}
+
+// badEntry is a directory entry whose metadata cannot be read.
+type badEntry struct{ err error }
+
+func (b badEntry) Name() string               { return "stderr.gz" }
+func (b badEntry) IsDir() bool                { return false }
+func (b badEntry) Type() fs.FileMode          { return 0 }
+func (b badEntry) Info() (fs.FileInfo, error) { return nil, b.err }
+
+// SP-012: a file whose metadata cannot be read stays in the listing so its
+// read fails visibly; one that vanished is left out.
+func TestLocalObjectKeepsUnreadableMetadata(t *testing.T) {
+	if o, ok := localObject("c/stderr.gz", badEntry{fs.ErrPermission}); !ok || o.Key != "c/stderr.gz" {
+		t.Errorf("permission error: %+v %v, want kept", o, ok)
+	}
+	if _, ok := localObject("c/stderr.gz", badEntry{fs.ErrNotExist}); ok {
+		t.Error("a vanished file should be left out")
 	}
 }

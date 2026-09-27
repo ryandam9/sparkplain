@@ -42,11 +42,9 @@ func (l *LocalStore) List(ctx context.Context, prefix string) ([]Object, error) 
 		if !strings.HasPrefix(key, prefix) {
 			return nil
 		}
-		info, err := d.Info()
-		if err != nil {
-			return nil
+		if o, ok := localObject(key, d); ok {
+			out = append(out, o)
 		}
-		out = append(out, Object{Key: key, Size: info.Size(), Modified: info.ModTime()})
 		return nil
 	})
 	if err != nil {
@@ -58,6 +56,22 @@ func (l *LocalStore) List(ctx context.Context, prefix string) ([]Object, error) 
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 	return out, nil
+}
+
+// localObject describes a walked file. A file that vanished since the walk
+// saw it is left out. One whose metadata cannot be read for another reason
+// (permissions, I/O) is kept with unknown size and time rather than
+// dropped: reading it then fails and the failure shows in the Sources
+// panel, so the listing never looks complete when it is not (SP-012).
+func localObject(key string, d fs.DirEntry) (Object, bool) {
+	info, err := d.Info()
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return Object{}, false
+	case err != nil:
+		return Object{Key: key}, true
+	}
+	return Object{Key: key, Size: info.Size(), Modified: info.ModTime()}, true
 }
 
 func (l *LocalStore) Head(ctx context.Context, key string) (Object, bool, error) {
