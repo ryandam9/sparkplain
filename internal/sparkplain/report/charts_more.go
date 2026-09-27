@@ -432,6 +432,28 @@ func timeChart(r *model.Report) template.HTML {
 		shown(rows, []legendItem{{cInput, "Computing"}, {cShRead, "Garbage collection"}, {cNeutral, "Other or waiting"}}))
 }
 
+// splitChart shows where task time went in the stages with the most of
+// it: starting, computing, garbage collection, shuffle, result handling
+// and the rest (model.TimeSplit).
+func splitChart(r *model.Report, explorer string) template.HTML {
+	var rows []hbar
+	for _, s := range top(r.Jobs.Stages, 10, func(s *model.Stage) float64 { return float64(s.Totals.TimeSplit().Total()) }) {
+		p := s.Totals.TimeSplit()
+		d := func(ms int64) string { return model.Duration(ms) }
+		rows = append(rows, hbar{label: stageLabel(s), href: explorerStage(explorer, s), note: d(p.Total()), segs: []seg{
+			{float64(p.SchedulerDelayMs + p.DeserializeMs), cSpill, "starting: " + d(p.SchedulerDelayMs+p.DeserializeMs) + " (scheduler delay " + d(p.SchedulerDelayMs) + ", deserializing " + d(p.DeserializeMs) + ")"},
+			{float64(p.ComputeMs), cInput, "computing: " + d(p.ComputeMs)},
+			{float64(p.GCMs), cShRead, "garbage collection: " + d(p.GCMs)},
+			{float64(p.ShuffleFetchMs + p.ShuffleWriteMs), cShWrite, "shuffle: " + d(p.ShuffleFetchMs+p.ShuffleWriteMs) + " (waiting for data " + d(p.ShuffleFetchMs) + ", writing " + d(p.ShuffleWriteMs) + ")"},
+			{float64(p.ResultMs), cOutput, "sending the result: " + d(p.ResultMs)},
+			{float64(p.OtherMs), cNeutral, "other (file I/O, Python workers, waiting): " + d(p.OtherMs)},
+		}})
+	}
+	return chartBox("Where stage time went", "For the stages with the most task time (every task's time added up): how the tasks spent it. Starting is scheduler delay and unpacking the task; shuffle is waiting for data from other executors and writing it out; other is the rest of run time, such as reading files or waiting on Python.",
+		"More computing is better. A large starting share means tasks were too small or the driver was busy; shuffle means data moving between executors; garbage collection above about 10% means memory pressure; a large grey part means waiting on files, S3 or Python. Spark measures these separately and they can overlap a little, so the split is approximate.",
+		hbars(rows, msF), shown(rows, []legendItem{{cSpill, "Starting"}, {cInput, "Computing"}, {cShRead, "Garbage collection"}, {cShWrite, "Shuffle"}, {cOutput, "Sending the result"}, {cNeutral, "Other"}}))
+}
+
 // nodeMemoryChart shows what YARN placed on each node against what the
 // node offered: the executor-fit problem in one picture.
 func nodeMemoryChart(r *model.Report) template.HTML {
@@ -542,6 +564,7 @@ func chartFuncs(loc *time.Location, explorer string) template.FuncMap {
 		"guide":           guide,
 		"anatomy":         func(r *model.Report) template.HTML { return anatomyHTML(r, explorer) },
 		"timeChart":       timeChart,
+		"splitChart":      func(r *model.Report) template.HTML { return splitChart(r, explorer) },
 		"nodeMemoryChart": nodeMemoryChart,
 		"nodeCPUChart":    func(r *model.Report) template.HTML { return nodeCPUChart(r, loc) },
 		"queriesChart":    func(r *model.Report) template.HTML { return queriesChart(r, explorer) },

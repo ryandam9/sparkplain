@@ -449,6 +449,7 @@
     s.appendChild(chartSlot("", "stageTimes"));
     s.appendChild(chartSlot("", "stageData"));
     if (stages.some(function (st) { return st.diskSpill > 0 || st.memSpill > 0; })) s.appendChild(chartSlot("", "stageSpill"));
+    s.appendChild(chartSlot("", "stageSplit"));
     s.appendChild(stageTable(stages));
     return s;
   };
@@ -594,6 +595,7 @@
         { h: "Total", num: true, f: function (m) { return m[2](det.m[m[0]][1]); } }
       ]
     }));
+    s.appendChild(chartSlot("", "stageSplit:" + st.key));
     s.appendChild(chartSlot("", "durationHistogram:" + st.key));
     s.appendChild(chartSlot("", "taskScatter:" + st.key));
     s.appendChild(el("h3", null, "Slowest tasks", el("span", { cls: "sampled", text: "top " + num(det.slow.length) })));
@@ -1173,8 +1175,8 @@
 
   // hbarChart draws horizontal bars, stacked from series, one row each,
   // with the row's total at its end (series marked rest, such as unused
-  // space, are drawn but not counted); rows link to a page when link
-  // returns one.
+  // space, are drawn but not counted; a series' detail(row), when given,
+  // adds to its tooltip); rows link to a page when link returns one.
   function hbarChart(c, rows, series, g, kind, link) {
     var format = FMT[kind];
     if (!rows.length) { waitText(c, "Nothing to chart for this run."); return; }
@@ -1201,7 +1203,7 @@
       series.forEach(function (sr) {
         var v = val(sr, r);
         if (!v) return;
-        gr.append("rect").datum({ tip: r.label + "\n" + sr.label + ": " + format(v) })
+        gr.append("rect").datum({ tip: r.label + "\n" + sr.label + ": " + format(v) + (sr.detail ? " (" + sr.detail(r) + ")" : "") })
           .attr("x", x(at)).attr("y", rowH * 0.14).attr("width", Math.max(x(at + v) - x(at), 1)).attr("height", rowH * 0.72).style("fill", sr.color);
         at += v;
       });
@@ -1321,6 +1323,20 @@
   // stageName is one short line, so the axis labels every bar: the call
   // site ("count at Foo.java:0") is cut to its operation.
   function stageName(st) { return "Stage " + st.id + (st.attempt ? "." + st.attempt : "") + " · " + (st.name || "").split(" at ")[0].slice(0, 16); }
+  // SPLIT are the parts of a stage's task time (its "split" column, the
+  // model's TimeSplit: scheduler delay, deserializing, computing, GC,
+  // shuffle fetch wait, shuffle write, result, other), grouped as the
+  // report groups them; tooltips of grouped series name their parts.
+  var SPLIT = [
+    { label: "Starting", color: V.viz[4], value: function (r) { return r.st.split[0] + r.st.split[1]; }, detail: function (r) { return "scheduler delay " + dur(r.st.split[0]) + ", deserializing " + dur(r.st.split[1]); } },
+    { label: "Computing", color: V.viz[0], value: function (r) { return r.st.split[2]; } },
+    { label: "Garbage collection", color: V.viz[1], value: function (r) { return r.st.split[3]; } },
+    { label: "Shuffle", color: V.viz[2], value: function (r) { return r.st.split[4] + r.st.split[5]; }, detail: function (r) { return "waiting for data " + dur(r.st.split[4]) + ", writing " + dur(r.st.split[5]); } },
+    { label: "Sending the result", color: V.viz[3], value: function (r) { return r.st.split[6]; } },
+    { label: "Other", color: V.neutral, value: function (r) { return r.st.split[7]; } }
+  ];
+  var SPLIT_READ = "More computing is better. A large starting share means tasks were too small or the driver was busy; shuffle means data moving between executors; garbage collection above about 10% means memory pressure; a large grey part means waiting on files, S3 or Python. Spark measures these separately and they can overlap a little, so the split is approximate.";
+  function splitTotal(st) { return st.split ? st.split.reduce(function (x, y) { return x + y; }, 0) : 0; }
   function topBy(list, n, key) { return list.filter(function (x) { return key(x) > 0; }).sort(function (a2, b2) { return key(b2) - key(a2); }).slice(0, n); }
   var DRAW = {
     stageTimes: function (c) {
@@ -1349,6 +1365,14 @@
         { label: "Written to disk", color: V.viz[4], value: function (r) { return r.st.diskSpill; } }
       ], { t: "Spill by stage", shows: "Spill by stage: data that did not fit in memory while the stage ran, and what it came to on disk.",
         read: "Smaller is better, and none is ideal. Large spill means the stage's data did not fit in memory; more partitions or more memory per task help." }, "bytes", function (r) { return "#stage/" + r.st.key; });
+    },
+    stageSplit: function (c, key) {
+      var list = key ? stages.filter(function (st) { return st.key === key; }) : topBy(stages, 20, splitTotal);
+      var rows = list.filter(function (st) { return splitTotal(st) > 0; }).map(function (st) { return { label: stageName(st), st: st }; });
+      hbarChart(c, rows, SPLIT, { t: "Where stage time went", read: SPLIT_READ,
+        shows: (key ? "How this stage's tasks spent their time, added up over every task." : "For the stages with the most task time (every task's time added up): how the tasks spent it. Click a bar to open the stage.") +
+          " Starting is scheduler delay and unpacking the task; shuffle is waiting for data from other executors and writing it out; other is the rest of run time, such as reading files or waiting on Python." },
+        "ms", key ? null : function (r) { return "#stage/" + r.st.key; });
     },
     dataOverTime: function (c) {
       var done = stages.filter(function (st) { return st.completed; }).sort(function (a2, b2) { return a2.completed - b2.completed; });

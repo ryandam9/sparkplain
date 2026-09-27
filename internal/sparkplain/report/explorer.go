@@ -376,7 +376,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		"tasks", "ok", "failed", "killed", "dur", "run", "gc", "input", "inputRows", "output", "outputRows",
 		"shRead", "shReadRows", "shWrite", "shWriteRows", "memSpill", "diskSpill", "p50", "max", "failure", "cached", "src",
 		"taskType", "loc", "sched", "resultSize", "gettingMs", "shWriteMs", "shRemote", "shRemoteDisk", "shLocalBlocks", "shRemoteBlocks",
-		"push", "cacheWrites", "failures", "details", "rp", "pushOn", "pushMergers", "barrier", "props", "cpuNs", "code")
+		"push", "cacheWrites", "failures", "details", "rp", "pushOn", "pushMergers", "barrier", "props", "cpuNs", "code", "split")
 	for _, st := range r.Jobs.Stages {
 		t := st.Totals
 		d.Stages.add(st.ID, st.Attempt, st.Name, st.Status, unixMs(st.Submitted), unixMs(st.Completed), st.NumTasks,
@@ -389,7 +389,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 			t.ShuffleRemoteToDiskBytes, t.ShuffleLocalBlocks, t.ShuffleRemoteBlocks,
 			[]int64{t.PushMergedLocalBlocks, t.PushMergedLocalBytes, t.PushMergedRemoteBlocks, t.PushMergedRemoteBytes, t.PushFallbacks, t.PushCorruptChunks, t.PushMergedRemoteReqsMs},
 			[]int64{t.UpdatedBlocks, t.UpdatedBlockBytes}, stageFailures(st),
-			st.Details, st.ResourceProfile, st.ShufflePush, st.PushMergers, isBarrier(st), orMap(st.Properties), t.CPUTimeNs, codeRows(st.Code))
+			st.Details, st.ResourceProfile, st.ShufflePush, st.PushMergers, isBarrier(st), orMap(st.Properties), t.CPUTimeNs, codeRows(st.Code), splitRow(t.TimeSplit()))
 		if len(st.RDDs) > 0 && len(st.RDDs) <= maxStageOpNodes && len(d.StageOps) < maxStageOpStages {
 			d.StageOps[strconv.Itoa(st.ID)+"."+strconv.Itoa(st.Attempt)] = stageOps(st)
 		}
@@ -676,4 +676,11 @@ func codeRows(cs []model.CodeLocation) [][]any {
 		out = append(out, []any{c.File, c.Line, c.Function, c.Action})
 	}
 	return out
+}
+
+// splitRow is a stage's model.TimeSplit in the order the page reads it:
+// scheduler delay, deserializing, computing, GC, shuffle fetch wait,
+// shuffle write, result, other.
+func splitRow(p model.TimeSplit) []int64 {
+	return []int64{p.SchedulerDelayMs, p.DeserializeMs, p.ComputeMs, p.GCMs, p.ShuffleFetchMs, p.ShuffleWriteMs, p.ResultMs, p.OtherMs}
 }

@@ -137,3 +137,19 @@ func TestEveryChartExplainsItself(t *testing.T) {
 		t.Errorf("charts still passed a bare caption: %v", n)
 	}
 }
+
+// The stage time split explains every task's time: each bar's parts add up
+// to the stage's task time, which its note shows.
+func TestSplitChart(t *testing.T) {
+	r, _ := buildWithExplorer(t, "application_1790380000000_0042")
+	out := string(splitChart(r, "x.html"))
+	if !strings.Contains(out, "Where stage time went") || !strings.Contains(out, `href="x.html#stage/`) {
+		t.Fatal("split chart missing, or its bars do not link to the explorer")
+	}
+	for _, s := range r.Jobs.Stages {
+		p := s.Totals.TimeSplit()
+		if want := s.Totals.SchedulerDelayMs + s.Totals.DeserializeMs + s.Totals.RunTimeMs + s.Totals.ResultSerializationMs + s.Totals.GettingResultMs; p.Total() != want {
+			t.Errorf("stage %d: split adds up to %d ms, task time is %d ms", s.ID, p.Total(), want)
+		}
+	}
+}
