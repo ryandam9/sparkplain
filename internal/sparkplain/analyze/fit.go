@@ -100,8 +100,12 @@ func fitFindings(c *ctx, r *model.Report) {
 		if n := nodes[hostKey(h.Name)]; n != nil {
 			h.YARNMemoryBytes, h.YARNVCores = n.memMB<<20, n.vcores
 		}
-		if len(h.Executors) > 0 && execMB > 0 {
+		// The executor size is recorded on every node, so one that ran none
+		// can still say whether one would have fitted.
+		if execMB > 0 {
 			h.ExecutorContainerBytes = execMB << 20
+		}
+		if len(h.Executors) > 0 && execMB > 0 {
 			h.PeakExecutors = peakAlive(c, h.Name)
 		}
 		if amHost != "" && hostKey(h.Name) == hostKey(amHost) {

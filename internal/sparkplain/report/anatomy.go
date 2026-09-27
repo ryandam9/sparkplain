@@ -32,6 +32,7 @@ type anatomy struct {
 	Badges      []anatBadge
 	Unpinned    []int // findings not about placement (1-based)
 	PeakNote    string
+	Shared      bool // other applications ran on the cluster too
 
 	detailBadges []int // findings for the executor drawn in full
 }
@@ -239,6 +240,7 @@ func buildAnatomy(r *model.Report) *anatomy {
 				a.RM.Waiting = f.Value
 			case "Applications at once":
 				a.RM.Apps = f.Value
+				a.Shared = !strings.HasPrefix(f.Value, "1 ")
 			}
 		}
 	}
@@ -417,13 +419,34 @@ func pinFindings(a *anatomy, r *model.Report) {
 	a.detailBadges = detail
 }
 
+// pinDetail puts the executor-level findings on the executor drawn in
+// full, or, with none drawn, lists those no other part shows.
 func (a *anatomy) pinDetail() {
 	if a.Detail != nil {
 		a.Detail.Badges = a.detailBadges
-	} else if len(a.detailBadges) > 0 {
-		a.Unpinned = append(a.Unpinned, a.detailBadges...)
-		sort.Ints(a.Unpinned)
+		return
 	}
+	shown := map[int]bool{}
+	for _, n := range append(append([]*anatNode{}, a.Nodes...), a.Primary) {
+		if n == nil {
+			continue
+		}
+		for _, b := range n.Badges {
+			shown[b] = true
+		}
+		for _, x := range n.Execs {
+			for _, b := range x.Badges {
+				shown[b] = true
+			}
+		}
+	}
+	for _, b := range a.detailBadges {
+		if !shown[b] && !hasInt(a.Unpinned, b) {
+			a.Unpinned = append(a.Unpinned, b)
+		}
+	}
+	a.detailBadges = nil
+	sort.Ints(a.Unpinned)
 }
 
 // mentions reports whether a finding's evidence names the node.
@@ -819,12 +842,19 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 			fw := float64(free) * scale
 			b.f(`<rect class="freeh" x="%.1f" y="%.1f" width="%.1f" height="22" rx="3"><title>Free: %s</title></rect>`, cx, by, fw, model.Bytes(free))
 		}
+		// With other applications on the cluster, their containers are not
+		// drawn, so unused space here is not necessarily free.
 		note := fmt.Sprintf("%s free", model.Bytes(free))
+		if a.Shared {
+			note = fmt.Sprintf("%s not used by this application", model.Bytes(free))
+		}
 		cls := "m"
 		switch {
 		case n.ExecBytes > 0 && free > 0 && !fits:
 			note += fmt.Sprintf(": too small for another %s executor", model.Bytes(n.ExecBytes))
 			cls = "warnt"
+		case fits && free > 0 && a.Shared:
+			note += " (other applications' containers are not shown)"
 		case fits && free > 0:
 			note += fmt.Sprintf(": room for %d more executor(s)", free/max(n.ExecBytes, 1))
 		}

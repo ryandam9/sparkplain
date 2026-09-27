@@ -132,3 +132,15 @@ func TestExplorerCarriesAnatomy(t *testing.T) {
 		t.Error("finding badges should open the explorer's finding")
 	}
 }
+
+// On a shared cluster the diagram cannot see other applications'
+// containers, so it must not claim room for more executors.
+func TestAnatomySharedClusterMakesNoRoomClaim(t *testing.T) {
+	r := anatReport()
+	r.Nodes.Hosts[1].DriverContainerBytes = 0 // a node with 12 GiB unused
+	r.Metrics = &model.MetricsSection{Summary: []model.Fact{{Label: "Applications at once", Value: "2 at most"}}}
+	svg := anatomySVG(buildAnatomy(r), anatLinks{Finding: func(int) string { return "" }, Ref: func(string) string { return "" }})
+	if strings.Contains(svg, "room for") || !strings.Contains(svg, "not used by this application") {
+		t.Errorf("shared cluster diagram claims free room: %v", strings.Contains(svg, "room for"))
+	}
+}
