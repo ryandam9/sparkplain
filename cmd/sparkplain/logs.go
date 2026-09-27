@@ -135,6 +135,7 @@ func (out *clusterLogs) readLogs(ctx context.Context, cloud *awsSession, log *mo
 	}
 	plan := yarnlog.Plan{Root: root, AppID: appID, Limits: lim}
 	plan.Steps, plan.Instances, plan.Since = narrow(out.steps, out.instances, log)
+	plan.Others = otherNodes(out.instances, plan.Instances)
 	col := yarnlog.Collect(ctx, st, plan)
 	out.files, out.sources = col.Files, col.Sources
 	api := awsDeps.emr(cfg)
@@ -233,6 +234,28 @@ func narrow(steps []model.Step, instances []model.Instance, log *model.EventLog)
 		}
 	}
 	return stepIDs, nodeIDs, start
+}
+
+// otherNodes maps the short host name of each instance not already
+// chosen to its ID, so the logs can add a node an earlier attempt's driver
+// ran on.
+func otherNodes(instances []model.Instance, chosen []string) map[string]string {
+	skip := map[string]bool{}
+	for _, id := range chosen {
+		skip[id] = true
+	}
+	m := map[string]string{}
+	for _, in := range instances {
+		if skip[in.ID] {
+			continue
+		}
+		for _, h := range []string{in.PrivateDNS, in.PrivateIP} {
+			if h != "" {
+				m[shortHost(h)] = in.ID
+			}
+		}
+	}
+	return m
 }
 
 // shortHost is the host name without its domain ("ip-10-0-2-10"), or an

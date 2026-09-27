@@ -189,3 +189,23 @@ func TestAnatomyPeakLabel(t *testing.T) {
 		}
 	}
 }
+
+// With the cluster read, missing YARN capacity is not for want of
+// -cluster-id: on a running cluster its node logs may not be in S3 yet.
+func TestAnatomySaysWhyCapacityIsMissing(t *testing.T) {
+	links := anatLinks{Finding: func(int) string { return "" }, Ref: func(string) string { return "" }}
+	for state, want := range map[string]string{
+		"WAITING":    "YARN capacity not in S3 yet (the cluster is still running)",
+		"TERMINATED": "YARN capacity not in its logs",
+	} {
+		r := anatReport()
+		r.Cluster.State = state
+		for i := range r.Nodes.Hosts {
+			r.Nodes.Hosts[i].YARNMemoryBytes, r.Nodes.Hosts[i].YARNVCores = 0, 0
+		}
+		svg := anatomySVG(buildAnatomy(r), links)
+		if !strings.Contains(svg, want) || strings.Contains(svg, "-cluster-id") {
+			t.Errorf("%s: diagram lacks %q or still asks for -cluster-id", state, want)
+		}
+	}
+}

@@ -33,6 +33,10 @@ type anatomy struct {
 	Unpinned    []int // findings not about placement (1-based)
 	PeakNote    string
 	Shared      bool // other applications ran on the cluster too
+	// NoCapacity says why YARN's capacity is missing, on up to two lines,
+	// and NoNodeCapacity in short on each node.
+	NoCapacity     []string
+	NoNodeCapacity string
 
 	detailBadges []int // findings for the executor drawn in full
 }
@@ -133,6 +137,22 @@ const (
 	anatReservedMiB = 300 // Spark's reserved heap
 )
 
+// noCapacity says why the logs did not give a node's YARN capacity: no
+// cluster to read them from, or a running cluster whose NodeManager and
+// ResourceManager logs had not reached S3 (EMR copies them from time to
+// time while it runs; on the phase 4 test cluster a node's current
+// NodeManager log was still missing half an hour after it started).
+func noCapacity(r *model.Report) (full []string, node string) {
+	if r.Cluster == nil {
+		return []string{"YARN's capacity is not known: it needs the EMR API and the node logs (-cluster-id)."}, "YARN capacity not known (needs -cluster-id)"
+	}
+	if st := r.Cluster.State; st != "" && !strings.HasPrefix(st, "TERMINAT") {
+		return []string{"YARN's capacity is not in the node logs yet: EMR copies them to S3 from time to",
+			"time while the cluster runs. Run sparkplain again later, or once the cluster has ended."}, "YARN capacity not in S3 yet (the cluster is still running)"
+	}
+	return []string{"YARN's capacity is not known: the node logs read did not record it."}, "YARN capacity not in its logs"
+}
+
 func buildAnatomy(r *model.Report) *anatomy {
 	a := &anatomy{}
 	if len(r.Nodes.Hosts) == 0 && r.Cluster == nil {
@@ -152,6 +172,7 @@ func buildAnatomy(r *model.Report) *anatomy {
 	} else {
 		a.ClusterNote = "Instance types and YARN's capacity need the EMR API: pass -cluster-id with -profile."
 	}
+	a.NoCapacity, a.NoNodeCapacity = noCapacity(r)
 
 	// Executors, with their memory and CPU.
 	mem := map[string]model.ExecMemory{}
@@ -669,7 +690,9 @@ func anatomySVG(a *anatomy, l anatLinks) string {
 			rx+14, y+52, bw, rx+14, y+52, held, model.Bytes(a.RM.HeldBytes), model.Bytes(a.RM.OfferedBytes))
 		body.text(rx+14, y+82, "m", "", fmt.Sprintf("%s held (%.0f%%) · %s left for anything else", model.Bytes(a.RM.HeldBytes), 100*float64(a.RM.HeldBytes)/float64(a.RM.OfferedBytes), model.Bytes(max(a.RM.OfferedBytes-a.RM.HeldBytes, 0))))
 	} else {
-		body.text(rx+14, y+44, "m", "", "YARN's capacity is not known: it needs the EMR API and the node logs (-cluster-id).")
+		for i, line := range a.NoCapacity {
+			body.text(rx+14, y+44+float64(i)*16, "m", "", line)
+		}
 	}
 	var extra []string
 	if a.RM.Waiting != "" {
@@ -873,7 +896,7 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 		b.text(x+12, by+38, cls, "", note)
 	} else {
 		b.f(`<rect class="yarn unknown" x="%.1f" y="%.1f" width="%.1f" height="22" rx="4"/>`, x+12, by+8, bw)
-		b.text(x+20, by+23, "m", "", "YARN capacity not known (needs -cluster-id)")
+		b.text(x+20, by+23, "m", "", a.NoNodeCapacity)
 		if n.DriverBytes > 0 || n.ClientDriver {
 			b.text(x+12, by+46, "", "", "Runs the driver")
 		}

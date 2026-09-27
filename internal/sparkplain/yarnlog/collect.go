@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -32,6 +33,11 @@ type Plan struct {
 	// Instances are the node folders to read (the nodes that ran the
 	// application and the primary node); nil reads every one.
 	Instances []string
+	// Others maps the short host names of the cluster's other nodes to
+	// their instance IDs. A node the application's own container logs name
+	// as a driver's host (an earlier attempt's, which the event log does
+	// not describe) is read too.
+	Others map[string]string
 	// Since skips NodeManager and ResourceManager logs last written before
 	// it, which end before the application started. Zero keeps all.
 	Since  time.Time
@@ -66,8 +72,48 @@ func Collect(ctx context.Context, st source.Store, p Plan) Collection {
 		return c
 	}
 	c.steps(ctx, st, p)
-	c.nodes(ctx, st, p)
+	c.nodes(ctx, st, p.withDriverNodes(c.Files))
 	return c
+}
+
+// withDriverNodes adds the nodes the containers name as a driver's host
+// to the node folders read, and reads their logs from that driver's start.
+func (p Plan) withDriverNodes(files []model.LogFile) Plan {
+	if p.Instances == nil || len(p.Others) == 0 {
+		return p
+	}
+	have := map[string]bool{}
+	for _, id := range p.Instances {
+		have[id] = true
+	}
+	for _, f := range files {
+		for _, l := range f.Found {
+			id := p.Others[shortHost(l.Fields["host"])]
+			if l.Kind != model.LogDriverHost || id == "" || have[id] {
+				continue
+			}
+			have[id] = true
+			p.Instances = append(slices.Clip(p.Instances), id)
+			if !l.Time.IsZero() && (p.Since.IsZero() || l.Time.Before(p.Since)) {
+				p.Since = l.Time
+			}
+		}
+	}
+	return p
+}
+
+// shortHost is a host name without its domain, or an IP address as the
+// name EMR gives it, so ip-10-0-2-10.ec2.internal, 10.0.2.10 and
+// ip-10-0-2-10.us-east-1.compute.internal match.
+func shortHost(h string) string {
+	h = strings.ToLower(strings.TrimSpace(h))
+	if strings.Count(h, ".") == 3 && strings.Trim(h, "0123456789.") == "" {
+		return "ip-" + strings.ReplaceAll(h, ".", "-")
+	}
+	if i := strings.IndexByte(h, '.'); i > 0 {
+		return h[:i]
+	}
+	return h
 }
 
 func (c *Collection) containers(ctx context.Context, st source.Store, p Plan) {

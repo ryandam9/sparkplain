@@ -243,3 +243,38 @@ func TestCollectZipKeepsEveryEntry(t *testing.T) {
 		t.Errorf("identical entries read differently: %d/%d lines, %d/%d found", nm[0].Lines, nm[1].Lines, len(nm[0].Found), len(nm[1].Found))
 	}
 }
+
+// A node that ran an earlier attempt's driver is read too, though the
+// event log (the last attempt's) never names it: the phase 4 test
+// cluster's first attempt ran its driver on a spot node that went away.
+func TestCollectReadsEarlierAttemptsDriverNode(t *testing.T) {
+	dir := t.TempDir()
+	write := func(key, text string) {
+		p := filepath.Join(dir, filepath.FromSlash(key))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const app = "application_1700000000000_0001"
+	write("containers/"+app+"/container_1700000000000_0001_01_000001/stderr",
+		"26/09/27 08:02:00 INFO BlockManagerMaster: Registered BlockManager BlockManagerId(driver, ip-10-0-0-4.ec2.internal, 34591, None)\n")
+	nm := func(host string) string {
+		return "2026-09-27 08:00:30,504 INFO org.apache.hadoop.yarn.server.nodemanager.NodeStatusUpdaterImpl (main): Registered with ResourceManager as " + host + ":8041 with total resource of <memory:12288, vCores:4>\n"
+	}
+	write("node/i-4/applications/hadoop-yarn/hadoop-yarn-nodemanager-ip-10-0-0-4.log", nm("ip-10-0-0-4.ec2.internal"))
+	write("node/i-9/applications/hadoop-yarn/hadoop-yarn-nodemanager-ip-10-0-0-9.log", nm("ip-10-0-0-9.ec2.internal"))
+	c := Collect(context.Background(), source.NewLocalStore(dir), Plan{AppID: app, Instances: []string{"i-2"},
+		Others: map[string]string{"ip-10-0-0-4": "i-4", "ip-10-0-0-9": "i-9"}, Since: time.Date(2026, 9, 27, 8, 5, 0, 0, time.UTC)})
+	var read []string
+	for _, f := range c.Files {
+		if f.Kind == "nodemanager" {
+			read = append(read, f.Instance)
+		}
+	}
+	if strings.Join(read, " ") != "i-4" {
+		t.Errorf("NodeManager logs read from %v, want the driver's node i-4 only", read)
+	}
+}
