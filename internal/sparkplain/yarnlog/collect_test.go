@@ -1,6 +1,8 @@
 package yarnlog
 
 import (
+	"archive/zip"
+	"compress/gzip"
 	"context"
 	"errors"
 	"io"
@@ -185,4 +187,59 @@ func TestMain(m *testing.M) {
 		panic("fixtures missing: " + err.Error())
 	}
 	os.Exit(m.Run())
+}
+
+// A zip holding several logs gives one log file per entry, each citing its
+// own entry: results used to overwrite each other, keeping only the last
+// entry's, and every line cited the zip rather than the entry.
+func TestCollectZipKeepsEveryEntry(t *testing.T) {
+	gzPath := filepath.Join(emrlogs, "j-FIXTURE0049CLUSTER/node/i-0fee0000000000001/applications/hadoop-yarn/hadoop-yarn-nodemanager-ip-10-0-2-10.us-east-1.compute.internal.log.gz")
+	f, err := os.Open(gzPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := gzip.NewReader(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logText, _ := io.ReadAll(zr)
+	f.Close()
+
+	dir := filepath.Join(t.TempDir(), "node/i-0fee0000000000001/applications/hadoop-yarn")
+	os.MkdirAll(dir, 0o755)
+	out, _ := os.Create(filepath.Join(dir, "hadoop-yarn-nodemanager-ip-10-0-2-10.log.zip"))
+	zw := zip.NewWriter(out)
+	for _, name := range []string{"part-1.log", "part-2.log"} {
+		w, _ := zw.Create(name)
+		w.Write(logText)
+	}
+	zw.Close()
+	out.Close()
+
+	root := filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(dir))))
+	c := Collect(context.Background(), source.NewLocalStore(root), Plan{AppID: "application_1790380000000_0049"})
+	var nm []model.LogFile
+	for _, lf := range c.Files {
+		if lf.Kind == "nodemanager" {
+			nm = append(nm, lf)
+		}
+	}
+	if len(nm) != 2 {
+		t.Fatalf("%d nodemanager files from a two-entry zip, want 2: %+v", len(nm), nm)
+	}
+	for i, lf := range nm {
+		entry := []string{"!part-1.log", "!part-2.log"}[i]
+		if !strings.HasSuffix(lf.Location, entry) || lf.Lines == 0 || lf.Bytes != int64(len(logText)) {
+			t.Errorf("entry %d: location %q lines %d bytes %d", i, lf.Location, lf.Lines, lf.Bytes)
+		}
+		for _, l := range lf.Found {
+			if l.Source.File != lf.Location {
+				t.Errorf("line cites %q, want its entry %q", l.Source.File, lf.Location)
+				break
+			}
+		}
+	}
+	if nm[0].Lines != nm[1].Lines || len(nm[0].Found) != len(nm[1].Found) {
+		t.Errorf("identical entries read differently: %d/%d lines, %d/%d found", nm[0].Lines, nm[1].Lines, len(nm[0].Found), len(nm[1].Found))
+	}
 }
