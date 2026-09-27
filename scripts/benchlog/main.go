@@ -60,10 +60,16 @@ func main() {
 		log.Fatal(err)
 	}
 	w := bufio.NewWriterSize(f, 4<<20)
+	const t0 = int64(1790386000000)
+	appStart := regexp.MustCompile(`"Timestamp":\d+`)
 	for _, h := range header {
+		// The run below starts at t0, so the application must start just
+		// before it, not when the fixture's application did.
+		if eventOf(h) == "SparkListenerApplicationStart" {
+			h = appStart.ReplaceAllString(h, fmt.Sprintf(`"Timestamp":%d`, t0-5000))
+		}
 		fmt.Fprintln(w, h)
 	}
-	const t0 = int64(1790386000000)
 	for e := 0; e < *executors; e++ {
 		host := fmt.Sprintf("ip-10-0-%d-%d.ec2.internal", e%*hosts/250, 10+e%*hosts)
 		fmt.Fprintf(w, `{"Event":"SparkListenerExecutorAdded","Timestamp":%d,"Executor ID":"%d","Executor Info":{"Host":"%s","Total Cores":4,"Log Urls":{},"Attributes":{},"Resources":{},"Resource Profile Id":0,"Registration Time":%d}}`+"\n", t0+int64(e), e, host, t0+int64(e))

@@ -471,6 +471,7 @@ Fixtures (added, not regenerated, so existing expectations hold): `0046` exercis
 3. Real EMR 7.3.0+ fixture logs: waiting on scrubbed logs from a real cluster; they cannot be generated here.
 
 - Step 1 (built): `TestEveryRuleHasATest` collects every `Rule: "…"` in the analyze package and fails when one is not named in any test file in the module; checked by adding a throwaway rule, which it reported. All 38 rules are covered: `poor-locality` (fires over `locality-any-share` of input tasks away from their data; ignores shuffle-only and tiny stages) and `stage-retried` (names the previous attempt's error; one finding per retried attempt) gained their own tests.
+- Step 2 (built): `make bench`, run in CI after the build, generates a 150,000-task log (about 0.6 GB, past the explorer's 100,000-task sample) and runs the whole CLI on it with every output on under `scripts/benchcheck`, which fails over 60 s or 1 GB of peak memory (the child's maximum resident set size) per GB of log. Measured here: 5.7 s against 34 s, 319 MB against 584 MB; most of the memory is the explorer's sample (JSON alone peaks at 46 MB), which does not shrink with the log, so small logs sit nearer their scaled budget. `scripts/benchlog` now stamps the application start just before its synthetic run instead of copying the fixture's, so the generated log's running-task data is no longer empty.
 
 ## 9. Open questions
 
