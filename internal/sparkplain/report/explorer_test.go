@@ -313,8 +313,8 @@ func TestExplorerChartsHaveDrawers(t *testing.T) {
 		t.Fatal("D3_DRAW not found in explorer.js")
 	}
 	for _, n := range regexp.MustCompile(`([A-Za-z]+): 1`).FindAllStringSubmatch(m[1], -1) {
-		if !regexp.MustCompile(`\n    ` + n[1] + `: function \(c\)`).MatchString(explorerJS) {
-			t.Errorf("D3 chart %q has no DRAW entry taking only its slot", n[1])
+		if !regexp.MustCompile(`\n    ` + n[1] + `: function \(c(, [a-z]+)?\)`).MatchString(explorerJS) {
+			t.Errorf("D3 chart %q has no DRAW entry taking its slot (and argument) without a theme", n[1])
 		}
 	}
 }
