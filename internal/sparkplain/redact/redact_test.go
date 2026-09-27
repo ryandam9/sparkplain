@@ -97,3 +97,62 @@ func TestCodeRedaction(t *testing.T) {
 		}
 	}
 }
+
+// SP-004: an option's value in the next argument must be hidden when the
+// option name is sensitive, and kept when it is not.
+func TestArgsHidesSplitSecretValues(t *testing.T) {
+	cases := []struct{ in, want []string }{
+		{[]string{"--password", "FAKE-PW-1"}, []string{"--password", Mask}},
+		{[]string{"--db-password", "FAKE-PW-2", "--name", "nightly"}, []string{"--db-password", Mask, "--name", "nightly"}},
+		{[]string{"--token", "FAKE-TOK-3"}, []string{"--token", Mask}},
+		{[]string{"--secret-key", "FAKE-SK-4"}, []string{"--secret-key", Mask}},
+		{[]string{"-token", "FAKE-TOK-5"}, []string{"-token", Mask}},
+		{[]string{"--password=FAKE-PW-6"}, []string{"--password=" + Mask}},
+		{[]string{"--conf", "spark.db.password=FAKE-PW-7", "--class", "com.example.Main"}, []string{"--conf", "spark.db.password=" + Mask, "--class", "com.example.Main"}},
+		{[]string{"--token", "--verbose"}, []string{"--token", "--verbose"}}, // a flag with no value
+		{[]string{"spark-submit", "--deploy-mode", "cluster", "s3://code/etl.py", "2026-09-26"}, []string{"spark-submit", "--deploy-mode", "cluster", "s3://code/etl.py", "2026-09-26"}},
+	}
+	for _, c := range cases {
+		if got := Args(c.in); strings.Join(got, "|") != strings.Join(c.want, "|") {
+			t.Errorf("Args(%q)\n got %q\nwant %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestCommandIsQuoteAware(t *testing.T) {
+	cases := map[string]string{
+		`spark-submit --password FAKE-PW-1 --name nightly s3://b/job.py`:                  `spark-submit --password [redacted] --name nightly s3://b/job.py`,
+		`spark-submit --password 'FAKE secret with spaces' --name "daily load" job.py`:    `spark-submit --password '[redacted]' --name "daily load" job.py`,
+		`spark-submit --driver-java-options "-Dapi.token=FAKE-TOK-2 -Xmx2g" job.py`:       `spark-submit --driver-java-options "-Dapi.token=[redacted] -Xmx2g" job.py`,
+		`spark-submit --conf spark.hadoop.fs.s3a.secret.key=FAKE-SK-3 --class com.x.Main`: `spark-submit --conf spark.hadoop.fs.s3a.secret.key=[redacted] --class com.x.Main`,
+		`run.sh --token=FAKE-TOK-4   --verbose`:                                           `run.sh --token=[redacted] --verbose`,
+	}
+	for in, want := range cases {
+		if got := Command(in); got != want {
+			t.Errorf("Command(%q)\n got %q\nwant %q", in, got, want)
+		}
+		if strings.Contains(Command(in), "FAKE") {
+			t.Errorf("secret left in %q", Command(in))
+		}
+	}
+}
+
+func FuzzCommand(f *testing.F) {
+	f.Add(`spark-submit --password 'a b' --name "x y" job.py`)
+	f.Add(`a\ b "c\"d" 'e'`)
+	f.Add(`--token`)
+	f.Fuzz(func(t *testing.T, s string) {
+		out := Command(s)
+		if Command(out) != out {
+			t.Fatalf("Command not idempotent for %q: %q -> %q", s, out, Command(out))
+		}
+		words, _ := splitCommand(s)
+		for i, w := range words {
+			if sensitiveOption(w) && i+1 < len(words) && words[i+1] != "" && !strings.HasPrefix(words[i+1], "--") && strings.Contains(out, " "+words[i+1]+" ") && words[i+1] != Mask && len(words[i+1]) > 3 {
+				if !strings.Contains(strings.Join(Args(words), " "), Mask) {
+					t.Fatalf("value after %q kept in %q", w, out)
+				}
+			}
+		}
+	})
+}
