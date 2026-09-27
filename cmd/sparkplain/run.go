@@ -107,8 +107,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if fs.NArg() > 0 {
 		return fail("unexpected argument %q (flags go before values, e.g. -eventlog <path>)", fs.Arg(0))
 	}
-	set := map[string]bool{}
-	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
 
 	if o.appID == "" {
 		fs.Usage()
