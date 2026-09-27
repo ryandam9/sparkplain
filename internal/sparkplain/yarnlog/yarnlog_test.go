@@ -593,3 +593,24 @@ kill -9 14396"...
 		t.Errorf("time = %v", res.Lines[0].Time)
 	}
 }
+
+// Where an attempt's driver ran, and YARN's notice that a node is leaving,
+// as the phase 4 test cluster's first attempt logged them when its spot
+// node was reclaimed.
+func TestDriverHostAndNodeState(t *testing.T) {
+	res := classifyText(t, "containers/application_1700000000000_0001/container_1700000000000_0001_01_000001/stderr", `26/09/27 08:02:00 INFO BlockManagerMaster: Registering BlockManager BlockManagerId(driver, ip-10-0-0-4.ec2.internal, 34591, None)
+26/09/27 08:02:00 INFO BlockManagerMaster: Registered BlockManager BlockManagerId(driver, ip-10-0-0-4.ec2.internal, 34591, None)
+26/09/27 08:02:01 INFO BlockManagerMaster: Registered BlockManager BlockManagerId(1, ip-10-0-0-2.ec2.internal, 40001, None)
+26/09/27 08:02:09 INFO YarnAllocator: Yarn node state updated for host ip-10-0-0-4.ec2.internal to DECOMMISSIONING
+26/09/27 08:02:30 INFO YarnAllocator: Yarn node state updated for host ip-10-0-0-5.ec2.internal to RUNNING
+`, Options{})
+	if got := kinds(res); got != "driver-host/info node-state/warning" {
+		t.Fatalf("kinds = %s", got)
+	}
+	if h := res.Lines[0].Fields["host"]; h != "ip-10-0-0-4.ec2.internal" || res.Lines[0].Source.Line != 2 {
+		t.Errorf("driver host = %q at line %d", h, res.Lines[0].Source.Line)
+	}
+	if f := res.Lines[1].Fields; f["host"] != "ip-10-0-0-4.ec2.internal" || f["state"] != "DECOMMISSIONING" {
+		t.Errorf("node state = %+v", f)
+	}
+}

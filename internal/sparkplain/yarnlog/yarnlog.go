@@ -390,6 +390,16 @@ func (c *classifier) header(h header, line string) {
 	case shutdownCmdRE.MatchString(msg):
 		c.shutdown = true
 		return
+	case driverHostRE.MatchString(msg):
+		l = c.entry(model.LogDriverHost, model.Info, h.time, msg)
+		l.Fields["host"] = driverHostRE.FindStringSubmatch(msg)[1]
+	case nodeStateRE.MatchString(msg):
+		m := nodeStateRE.FindStringSubmatch(msg)
+		if m[2] == "RUNNING" || m[2] == "NEW" {
+			return
+		}
+		l = c.entry(model.LogNodeState, model.Warning, h.time, msg)
+		l.Fields["host"], l.Fields["state"] = m[1], m[2]
 	case selfExitRE.MatchString(msg):
 		m := selfExitRE.FindStringSubmatch(msg)
 		l = c.entry(model.LogLostExecutor, model.Warning, h.time, msg)

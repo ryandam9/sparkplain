@@ -96,9 +96,14 @@ var (
 	yarnMemKilledRE = regexp.MustCompile(`(?i)Container killed by YARN for exceeding (physical |virtual )?memory limits`)
 
 	// Executor (Executor, CoarseGrainedExecutorBackend, SignalUtils).
-	taskExcRE      = regexp.MustCompile(`^Exception in task (\S+) in stage (\S+) \(TID (\d+)\)`)
-	signalRE       = regexp.MustCompile(`^RECEIVED SIGNAL (\w+)`)
-	selfExitRE     = regexp.MustCompile(`^Executor self-exiting due to : (.*)$`)
+	taskExcRE  = regexp.MustCompile(`^Exception in task (\S+) in stage (\S+) \(TID (\d+)\)`)
+	signalRE   = regexp.MustCompile(`^RECEIVED SIGNAL (\w+)`)
+	selfExitRE = regexp.MustCompile(`^Executor self-exiting due to : (.*)$`)
+	// The driver's own block manager names its host; YarnAllocator passes
+	// on YARN's node updates, such as a spot node given notice
+	// (DECOMMISSIONING), checked on the phase 4 test cluster.
+	driverHostRE   = regexp.MustCompile(`^Registered BlockManager BlockManagerId\(driver, ([^,\s]+), \d+`)
+	nodeStateRE    = regexp.MustCompile(`^Yarn node state updated for host (\S+) to (\w+)`)
 	shutdownCmdRE  = regexp.MustCompile(`^Driver commanded a shutdown`)
 	submittedAppRE = regexp.MustCompile(`^Submitted application (application_\d+_\d+)`)
 
