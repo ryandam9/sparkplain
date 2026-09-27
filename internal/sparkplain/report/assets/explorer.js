@@ -1203,8 +1203,15 @@
     max = max || 1;
     UNITS[kind].forEach(function (x) { if (max >= 2 * x[0]) u = x; });
     var f = d3.format("~g");
-    return { x: d3.scaleLinear().domain([0, max]).range(range), ticks: d3.ticks(0, max / u[0], n).map(function (t) { return t * u[0]; }),
+    var ticks = d3.ticks(0, max / u[0], n);
+    if (kind === "count") ticks = ticks.filter(Number.isInteger); // no half tasks
+    return { x: d3.scaleLinear().domain([0, max]).range(range), ticks: ticks.map(function (t) { return t * u[0]; }),
       label: function (v) { return v === 0 ? "0" : f(v / u[0]) + (u[1] === "%" ? "%" : u[1] ? " " + u[1] : ""); } };
+  }
+  // leanEnds turns the labels of a bottom axis that sit near either end
+  // of [lo, hi] inward, so none runs off the chart.
+  function leanEnds(ax, x, lo, hi) {
+    ax.selectAll(".tick text").attr("text-anchor", function (d) { var px = x(d); return px > hi - 28 ? "end" : px < lo + 28 ? "start" : "middle"; });
   }
   // fitChars cuts s to about px pixels of 11px text, keeping the full text
   // for the tooltip.
@@ -1276,8 +1283,7 @@
       .select(".domain").remove();
     P.svg.append("g").attr("class", "ax xax").attr("transform", "translate(0," + (H - m.b) + ")")
       .call(d3.axisBottom(x).ticks(Math.max(2, Math.floor((P.w - m.l - m.r) / 90))).tickFormat(function (d) { return tf.format(d); }).tickSizeOuter(0).tickPadding(6))
-      // labels at the ends lean inward rather than off the chart
-      .selectAll(".tick text").attr("text-anchor", function (d) { var px = x(d); return px > P.w - m.r - 28 ? "end" : px < m.l + 28 ? "start" : "middle"; });
+      .call(leanEnds, x, m.l, P.w - m.r);
     var X = function (p) { return x(p[0]); }, Y = function (p) { return y(Math.min(p[1], U.x.domain()[1])); };
     series.forEach(function (s) {
       var curve = s.step ? d3.curveStepAfter : d3.curveLinear, pts = s.points.filter(function (p) { return p[1] != null; });
@@ -1302,6 +1308,61 @@
         tipShow(ev, dfmt.format(new Date(t)) + series.map(function (s) { var v = valueAt(s, t); return v == null ? "" : "\n" + s.label + ": " + format(v); }).join(""));
       })
       .on("pointerleave", function () { cur.style("display", "none"); tipHide(); });
+  }
+  // colChart draws one vertical column per entry of cols (label, value,
+  // tip, and optionally href), with a y axis in round units and, when
+  // opts.ref is set ({value, label}), a dashed line across at that value.
+  // Axis labels are thinned so they never overlap.
+  function colChart(c, cols, g, kind, opts) {
+    opts = opts || {};
+    var plot = frame(c, g);
+    var legend = [{ label: opts.series || "", color: opts.color || V.series }];
+    if (opts.ref) legend.push({ label: opts.ref.label, color: V.neutral });
+    if (opts.series) plot.parentNode.insertBefore(legendNode(legend), plot);
+    var H = 280, m = { l: 64, r: 18, t: 10, b: 30 };
+    var P = plotSvg(plot, H, g.t);
+    // a few columns stay column-width rather than filling the chart
+    var x = d3.scaleBand().domain(d3.range(cols.length)).range([m.l, Math.min(P.w - m.r, m.l + cols.length * 90)]).paddingInner(0.12);
+    var top = Math.max(d3.max(cols, function (d) { return d.value; }) || 0, opts.ref ? opts.ref.value : 0);
+    var U = unitAxis(kind, top, [H - m.b, m.t], Math.max(2, Math.floor((H - m.t - m.b) / 45))), y = U.x;
+    P.svg.append("g").attr("class", "ax").attr("transform", "translate(" + m.l + ",0)")
+      .call(d3.axisLeft(y).tickValues(U.ticks).tickFormat(U.label).tickSize(-(P.w - m.l - m.r)).tickPadding(6))
+      .select(".domain").remove();
+    var widest = d3.max(cols, function (d) { return d.label.length; }) * 6.3 + 10;
+    var every = Math.max(1, Math.ceil(widest / Math.max(x.step(), 1)));
+    P.svg.append("g").attr("class", "ax xax").attr("transform", "translate(0," + (H - m.b) + ")")
+      .call(d3.axisBottom(x).tickValues(d3.range(0, cols.length, every)).tickFormat(function (i) { return cols[i].label; }).tickSizeOuter(0).tickPadding(6));
+    var bar = P.svg.append("g").selectAll("rect").data(cols).join("rect")
+      .attr("x", function (d, i) { return x(i); }).attr("width", Math.max(x.bandwidth(), 1))
+      .attr("y", function (d) { return y(d.value); }).attr("height", function (d) { return Math.max(H - m.b - y(d.value), d.value > 0 ? 1 : 0); })
+      .style("fill", opts.color || V.series);
+    hover(bar, function (d) { return d.tip; });
+    linkify(bar, function (d) { return d.href; }, function (d) { return d.tip; });
+    if (opts.ref) P.svg.append("line").attr("class", "ref").attr("x1", m.l).attr("x2", P.w - m.r).attr("y1", y(opts.ref.value)).attr("y2", y(opts.ref.value)).style("stroke", V.neutral);
+  }
+  // scatterChart draws one mark per point (x, y, tip, bad): circles, and
+  // triangles in the failure colour for bad points, with both axes in
+  // round units from zero.
+  function scatterChart(c, pts, g, xKind, yKind, labels) {
+    var plot = frame(c, g);
+    plot.parentNode.insertBefore(legendNode([{ label: labels[0], color: V.series }].concat(pts.some(function (p) { return p.bad; }) ? [{ label: labels[1], color: V.fail }] : [])), plot);
+    var H = 300, m = { l: 64, r: 18, t: 10, b: 44 };
+    var P = plotSvg(plot, H, g.t);
+    var XU = unitAxis(xKind, d3.max(pts, function (p) { return p.x; }), [m.l, P.w - m.r], Math.max(2, Math.floor((P.w - m.l - m.r) / 80)));
+    var YU = unitAxis(yKind, d3.max(pts, function (p) { return p.y; }), [H - m.b, m.t], Math.max(2, Math.floor((H - m.t - m.b) / 45)));
+    P.svg.append("g").attr("class", "ax").attr("transform", "translate(" + m.l + ",0)")
+      .call(d3.axisLeft(YU.x).tickValues(YU.ticks).tickFormat(YU.label).tickSize(-(P.w - m.l - m.r)).tickPadding(6)).select(".domain").remove();
+    P.svg.append("g").attr("class", "ax").attr("transform", "translate(0," + (H - m.b) + ")")
+      .call(d3.axisBottom(XU.x).tickValues(XU.ticks).tickFormat(XU.label).tickSize(-(H - m.t - m.b)).tickPadding(6)).call(leanEnds, XU.x, m.l, P.w - m.r).select(".domain").remove();
+    P.svg.append("text").attr("class", "axt").attr("x", (m.l + P.w - m.r) / 2).attr("y", H - 6).attr("text-anchor", "middle").text(labels[2]);
+    // good points first, so failures draw on top
+    var order = pts.filter(function (p) { return !p.bad; }).concat(pts.filter(function (p) { return p.bad; }));
+    var tri = d3.symbol(d3.symbolTriangle, 60)();
+    var mk = P.svg.append("g").selectAll("path").data(order).join("path").attr("class", "pt")
+      .attr("d", function (p) { return p.bad ? tri : d3.symbol(d3.symbolCircle, 30)(); })
+      .attr("transform", function (p) { return "translate(" + XU.x(p.x) + "," + YU.x(p.y) + ")"; })
+      .style("fill", function (p) { return p.bad ? V.fail : V.series; });
+    hover(mk, function (p) { return p.tip; });
   }
   // stageName is one short line, so the axis labels every bar: the call
   // site ("count at Foo.java:0") is cut to its operation.
@@ -1438,75 +1499,53 @@
       }), { t: "Queries over time", shows: "When each query ran. Click a bar to open its plan." + STATUS_NOTE,
         read: "Longer bars took longer, so they are where tuning pays off; bars that overlap ran at the same time." }, "No query was logged.");
     },
-    durationHistogram: function (c, th, key) {
+    durationHistogram: function (c, key) {
       var det = D.detail[key];
       if (!det || !det.h.length) { waitText(c, "No successful task to chart."); return; }
-      var dt = new google.visualization.DataTable();
-      dt.addColumn("string", "Duration");
-      dt.addColumn("number", "Tasks");
-      dt.addColumn({ type: "string", role: "tooltip" });
-      det.h.forEach(function (b) { var range = b[0] === b[1] ? dur(b[0]) : dur(b[0]) + " to " + dur(b[1]); dt.addRow([dur(b[0]), b[2], range + ": " + num(b[2]) + " tasks"]); });
-      var plot = frame(c, { t: "Task durations", shows: "Successful tasks by how long they took (every task, not a sample).",
-        read: "One tall group on the left is ideal: tasks took similar, short times. A long tail to the right means a few tasks held the stage up, usually because of skewed data." });
-      new google.visualization.ColumnChart(plot).draw(dt, baseOpts(th, { colors: [th.series], legend: { position: "none" }, bar: { groupWidth: "88%" },
-        hAxis: axis(th, { textStyle: { color: th.muted, fontSize: 10 }, slantedText: true, slantedTextAngle: 40 }), vAxis: axis(th, { title: "Tasks", format: "#,###", minValue: 0 }) }));
+      colChart(c, det.h.map(function (b) {
+        var range = b[0] === b[1] ? dur(b[0]) : dur(b[0]) + " to " + dur(b[1]);
+        return { label: dur(b[0]), value: b[2], tip: range + ": " + num(b[2]) + " tasks" };
+      }), { t: "Task durations", shows: "Successful tasks by how long they took (every task, not a sample). Each column is a range of durations, labelled by where it starts.",
+        read: "One tall group on the left is ideal: tasks took similar, short times. A long tail to the right means a few tasks held the stage up, usually because of skewed data." }, "count", { color: V.series });
     },
-    taskScatter: function (c, th, key) {
+    taskScatter: function (c, key) {
       var det = D.detail[key];
       if (!det || !det.sample.length) { waitText(c, "No task to chart."); return; }
-      var seen = {}, pts = [];
-      det.slow.concat(det.sample).forEach(function (r) { if (!seen[r[T.task]]) { seen[r[T.task]] = 1; pts.push(r); } });
+      var seen = {}, rows = [];
+      det.slow.concat(det.sample).forEach(function (r) { if (!seen[r[T.task]]) { seen[r[T.task]] = 1; rows.push(r); } });
       var st0 = null;
       stages.forEach(function (s) { if (s.key === key) st0 = s.submitted; });
-      pts.forEach(function (r) { var at = (D.t0 || 0) + r[T.launch]; if (st0 == null || at < st0) st0 = at; });
-      var dt = new google.visualization.DataTable();
-      dt.addColumn("number", "Started (s after the stage)");
-      dt.addColumn("number", "Succeeded");
-      dt.addColumn({ type: "string", role: "tooltip" });
-      dt.addColumn("number", "Failed or killed");
-      dt.addColumn({ type: "string", role: "tooltip" });
-      pts.forEach(function (r) {
-        var at = ((D.t0 || 0) + r[T.launch] - st0) / 1000, secs = r[T.dur] / 1000, bad = r[T.status] !== 0;
-        var tip = "Task " + r[T.task] + " (partition " + r[T.index] + ") on executor " + execName(r[T.exec]) + "\n" + dur(r[T.dur]) + ", " + num(r[T.rows]) + " rows read";
-        dt.addRow(bad ? [at, null, null, secs, tip] : [at, secs, tip, null, null]);
-      });
-      var plot = frame(c, { t: "When tasks started and how long they took", shows: "Each dot is a task: when it started, counted from the start of the stage, and how long it took. " +
+      rows.forEach(function (r) { var at = (D.t0 || 0) + r[T.launch]; if (st0 == null || at < st0) st0 = at; });
+      scatterChart(c, rows.map(function (r) {
+        return { x: (D.t0 || 0) + r[T.launch] - st0, y: r[T.dur], bad: r[T.status] !== 0,
+          tip: "Task " + r[T.task] + " (partition " + r[T.index] + ") on executor " + execName(r[T.exec]) + "\nStarted " + dur((D.t0 || 0) + r[T.launch] - st0) + " into the stage, took " + dur(r[T.dur]) + "\n" + num(r[T.rows]) + " rows read" };
+      }), { t: "When tasks started and how long they took", shows: "Each mark is a task: when it started, counted from the start of the stage, and how long it took. " +
         (det.sample.length < det.from ? "From a sample of " + num(det.sample.length) + " of " + num(det.from) + " tasks plus the slowest " + num(det.slow.length) + "." : "Every task of this stage."),
-        read: "Dots should form a low, even band. Dots far above the rest are stragglers (check whether they read more rows); triangles failed. Vertical stripes are waves: one per round of task slots." });
-      new google.visualization.ScatterChart(plot).draw(dt, baseOpts(th, { colors: [th.series, th.fail], pointSize: 5, dataOpacity: 0.75,
-        series: { 0: { pointShape: "circle" }, 1: { pointShape: "triangle", pointSize: 8 } },
-        hAxis: axis(th, { title: "Started, seconds after the stage began", minValue: 0 }),
-        vAxis: axis(th, { title: "Duration (s)", minValue: 0 }) }));
+        read: "Dots should form a low, even band. Dots far above the rest are stragglers (check whether they read more rows); triangles failed. Vertical stripes are waves: one per round of task slots." },
+        "ms", "ms", ["Succeeded", "Failed or killed", "Started, after the stage began"]);
     },
-    execHeap: function (c, th, id) {
+    execHeap: function (c, id) {
       var idx = D.execs.indexOf(id), pts = [];
       if (idx >= 0) stages.forEach(function (st) {
         var det = D.detail[st.key];
         if (det) det.cells.forEach(function (r) { if (r[C.exec] === idx && r[C.peakHeap] > 0) pts.push([st, r[C.peakHeap]]); });
       });
       if (!pts.length) { waitText(c, "No heap samples were logged for this executor (spark.eventLog.logStageExecutorMetrics turns them on)."); return; }
-      var dt = new google.visualization.DataTable();
-      dt.addColumn("string", "Stage");
-      dt.addColumn("number", "Peak heap (MiB)");
-      dt.addColumn({ type: "string", role: "tooltip" });
-      dt.addColumn("number", "Configured heap (MiB)");
-      pts.forEach(function (p) { dt.addRow(["Stage " + p[0].key, Math.round(p[1] / 1048576), "Stage " + p[0].key + " (" + p[0].name + "): peak heap " + bytes(p[1]), D.heapBytes ? Math.round(D.heapBytes / 1048576) : null]); });
-      var plot = frame(c, { t: "Peak heap by stage", shows: "The highest Java heap use sampled while each stage ran on this executor, against the heap it was given (dashed). Samples are peaks, so short spikes can be missed.",
-        read: "Bars close to the dashed line risk running out of memory; bars well below it for every stage mean the heap is bigger than this work needs." });
-      new google.visualization.ComboChart(plot).draw(dt, baseOpts(th, { seriesType: "bars", colors: [th.series, th.neutral],
-        series: { 1: { type: "line", lineWidth: 2, lineDashStyle: [4, 4], pointSize: 0 } }, bar: { groupWidth: "80%" },
-        hAxis: axis(th, { textStyle: { color: th.muted, fontSize: 10 }, slantedText: true }),
-        vAxis: axis(th, { title: "MiB", format: "#,###", minValue: 0 }) }));
+      colChart(c, pts.map(function (p) {
+        return { label: "Stage " + p[0].key, value: p[1], href: "#stage/" + p[0].key, tip: "Stage " + p[0].key + " (" + p[0].name + "): peak heap " + bytes(p[1]) + (D.heapBytes ? " of " + bytes(D.heapBytes) : "") };
+      }), { t: "Peak heap by stage", shows: "The highest Java heap use sampled while each stage ran on this executor, against the heap it was given (dashed). Samples are peaks, so short spikes can be missed. Click a column to open the stage.",
+        read: "Bars close to the dashed line risk running out of memory; bars well below it for every stage mean the heap is bigger than this work needs." }, "bytes",
+        { series: "Peak heap", ref: D.heapBytes ? { value: D.heapBytes, label: "Configured heap (" + bytes(D.heapBytes) + ")" } : null });
     }
   };
   // D3_DRAW are the charts already moved to the embedded D3 kit; the rest
   // still wait for Google Charts.
-  var D3_DRAW = { stageTimes: 1, stageData: 1, stageSpill: 1, execTime: 1, execHeapAll: 1, nodeMemory: 1, dataOverTime: 1, clusterContainers: 1, nodeCPU: 1, running: 1 };
+  var D3_DRAW = { stageTimes: 1, stageData: 1, stageSpill: 1, execTime: 1, execHeapAll: 1, nodeMemory: 1, dataOverTime: 1, clusterContainers: 1, nodeCPU: 1, running: 1, durationHistogram: 1, taskScatter: 1, execHeap: 1 };
   function isD3(c) { return D3_DRAW[c.draw.split(":")[0]] === 1; }
   function drawSlot(c) {
     var name = c.draw.split(":")[0], arg = c.draw.slice(name.length + 1);
     if (!DRAW[name] || !document.body.contains(c.el)) return;
-    try { DRAW[name](c, isD3(c) ? null : theme(), arg); } catch (e) { waitText(c, "This chart could not be drawn: " + e.message); }
+    try { if (isD3(c)) DRAW[name](c, arg); else DRAW[name](c, theme(), arg); } catch (e) { waitText(c, "This chart could not be drawn: " + e.message); }
   }
   var resizeTimer;
   window.addEventListener("resize", function () { clearTimeout(resizeTimer); resizeTimer = setTimeout(redrawCharts, 250); });

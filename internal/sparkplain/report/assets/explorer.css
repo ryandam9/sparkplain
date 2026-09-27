@@ -106,3 +106,7 @@ details.logline pre{white-space:pre-wrap;word-break:break-word;margin:0;font-siz
 .d3c .ln{fill:none;stroke-width:2}
 .d3c .xax .domain{stroke:var(--line)}
 .d3c .cursor{stroke:var(--muted);stroke-width:1;stroke-dasharray:2 2;pointer-events:none}
+.d3c .ref{stroke-width:2;stroke-dasharray:4 4;pointer-events:none}
+.d3c .axt{fill:var(--muted)}
+.d3c .pt{fill-opacity:.75}
+.d3c rect.go:hover,.d3c rect.go:focus-visible{fill-opacity:.75}
