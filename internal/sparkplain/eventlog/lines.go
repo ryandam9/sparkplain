@@ -43,7 +43,7 @@ func (in *Input) eachLine(ctx context.Context, fn lineFunc, onLong func(model.So
 				return classify(err)
 			}
 			defer rc.Close()
-			raw := &countingReader{r: rc}
+			raw := &countingReader{r: source.ContextReader(ctx, rc)}
 			dr, codec, note, done, err := decompressor(raw, p.name)
 			fr.Codec = codec
 			if note != "" {

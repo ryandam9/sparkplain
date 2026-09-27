@@ -375,3 +375,41 @@ func TestS3HeadFindsOnlyTheExactKey(t *testing.T) {
 		t.Fatal("missing key found")
 	}
 }
+
+// slowStore serves one object whose reads each take a while and which, like
+// LocalStore, ignores the context in Open.
+type slowStore struct{}
+
+func (slowStore) List(context.Context, string) ([]Object, error) { return nil, nil }
+func (slowStore) Head(context.Context, string) (Object, bool, error) {
+	return Object{}, false, nil
+}
+func (slowStore) Location(k string) string { return k }
+func (slowStore) Open(context.Context, Object) (io.ReadCloser, error) {
+	return io.NopCloser(slowReader{}), nil
+}
+
+type slowReader struct{}
+
+func (slowReader) Read(p []byte) (int, error) {
+	time.Sleep(5 * time.Millisecond)
+	p[0] = 'x'
+	return 1, nil // endless, one byte at a time
+}
+
+// SP-007: the per-object timeout ends the read even when the store ignores
+// the context, rather than letting the callback run on.
+func TestFetchTimeoutIsADeadline(t *testing.T) {
+	start := time.Now()
+	reads := Fetch(context.Background(), slowStore{}, []Object{{Key: "slow.log", Size: 1}}, Limits{PerObject: 100 * time.Millisecond},
+		func(o Object, name string, r io.Reader) error {
+			_, err := io.Copy(io.Discard, r)
+			return err
+		})
+	if took := time.Since(start); took > 2*time.Second {
+		t.Fatalf("Fetch took %v with a 100ms per-object timeout", took)
+	}
+	if c := ClassOf(reads[0].Err); c != ClassTimeout {
+		t.Fatalf("class %q, want timeout (%v)", c, reads[0].Err)
+	}
+}

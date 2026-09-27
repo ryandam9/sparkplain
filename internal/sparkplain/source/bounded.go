@@ -1,6 +1,7 @@
 package source
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"sync"
@@ -77,4 +78,26 @@ func (b *budget) release(n int64) {
 	b.free += n
 	b.mu.Unlock()
 	b.cond.Broadcast()
+}
+
+// ContextReader returns a reader that fails with ctx's error once ctx ends,
+// checked before every read. Stores whose Open ignores ctx (local files)
+// and the decompressors and parsers that pull from them otherwise keep
+// going past a timeout; this makes the timeout a deadline for everything
+// downstream of the read. A single Read that blocks forever is not
+// interrupted, which is why S3 reads also pass ctx to the SDK.
+func ContextReader(ctx context.Context, r io.Reader) io.Reader {
+	return &ctxReader{ctx: ctx, r: r}
+}
+
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c *ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
 }

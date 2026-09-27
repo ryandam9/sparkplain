@@ -107,7 +107,7 @@ func readOne(ctx context.Context, st Store, o Object, lim Limits, zipMem *budget
 	defer rc.Close()
 	where := st.Location(o.Key)
 	// The object may have grown since it was listed; never read past the cap.
-	body := Bounded(rc, lim.MaxObject, where, "-max-size")
+	body := Bounded(ContextReader(ctx, rc), lim.MaxObject, where, "-max-size")
 	switch strings.ToLower(path.Ext(o.Key)) {
 	case ".gz":
 		zr, err := gzip.NewReader(body)
