@@ -1401,9 +1401,11 @@
     // layout: squares shrink to fit, down to 12 px, then the chart scrolls sideways
     var labelW = 96, headH = 56, rowH = 18, avail = Math.max(plot.clientWidth || 0, 280) - labelW - 8;
     var cw = Math.max(12, Math.min(36, Math.floor(avail / cols.length)));
-    var W = labelW + cols.length * cw + 8, H = headH + rows.length * rowH;
+    var W = labelW + cols.length * cw + 28, H = headH + rows.length * rowH; // room for the last slanted label
     plot.classList.add("heatwrap");
-    var svg = d3.select(plot).append("svg").attr("class", "d3c heat").attr("width", W).attr("height", H).attr("role", "group").attr("aria-label", "Which executor behaved differently?");
+    // sized in CSS too, since the shared .chart svg rule would squeeze it to
+    // the card; wider than the card, it scrolls sideways instead
+    var svg = d3.select(plot).append("svg").attr("class", "d3c heat").attr("width", W).attr("height", H).style("width", W + "px").style("height", H + "px").attr("role", "group").attr("aria-label", "Which executor behaved differently?");
     var shade = rel ? function (v) { return Math.min(v / 3, 1); } : function (v) { return top > 0 ? Math.sqrt(v / top) : 0; };
     svg.append("g").selectAll("rect").data(rows).join("rect").attr("class", "lane").attr("x", labelW).attr("y", function (x, i) { return headH + i * rowH; })
       .attr("width", cols.length * cw).attr("height", rowH - 2);
