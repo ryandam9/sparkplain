@@ -333,3 +333,25 @@ func TestLoadSourcesLongLineMarkedCut(t *testing.T) {
 		t.Fatalf("cut=%v lines=%d notes=%v", srcs[0].Cut, len(srcs[0].Lines), notes)
 	}
 }
+
+// The run timeline shades the same driver gaps the report lists.
+func TestExplorerCarriesDriverGaps(t *testing.T) {
+	r, x := buildWithExplorer(t, "application_1790380000000_0046")
+	if len(r.Jobs.DriverGaps) == 0 {
+		t.Fatal("fixture has no driver gaps")
+	}
+	d := embedded(t, renderExplorer(t, r, x))
+	gaps, _ := d["gaps"].([]any)
+	if len(gaps) != len(r.Jobs.DriverGaps) {
+		t.Fatalf("explorer has %d gaps, report %d", len(gaps), len(r.Jobs.DriverGaps))
+	}
+	for i, g := range r.Jobs.DriverGaps {
+		row := gaps[i].([]any)
+		if int64(row[0].(float64)) != g.Start.UnixMilli() || int64(row[1].(float64)) != g.End.UnixMilli() {
+			t.Errorf("gap %d: explorer %v, report %v–%v", i, row, g.Start, g.End)
+		}
+	}
+	if !strings.Contains(explorerJS, `["timeline", "Timeline"]`) {
+		t.Error("no Timeline tab")
+	}
+}

@@ -123,3 +123,18 @@ details.logline pre{white-space:pre-wrap;word-break:break-word;margin:0;font-siz
 .heatkey{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
 .heatkey i{display:inline-block;width:90px;height:10px;border:1px solid var(--line);border-radius:2px}
 tr.hl td{background:var(--accent-soft)}
+/* run timeline */
+.d3c .tlgap{fill:var(--warn-soft)}
+.d3c .tlt{font-weight:600}
+.d3c .tlv{fill:var(--muted);font-size:10px}
+.d3c .tlbase{stroke:var(--line)}
+.d3c .tlbar.dim{fill-opacity:.18}
+.d3c .tlmark{fill:var(--viz-fail);stroke:var(--surface);stroke-width:1;pointer-events:none}
+.d3c path.tla{stroke:none;fill-opacity:.22}
+.d3c path.tll{fill:none;stroke-width:1.5}
+.d3c .s1{fill:var(--viz-series);stroke:var(--viz-series)}
+.d3c .sf{fill:var(--viz-fail);stroke:var(--viz-fail)}
+.d3c .tll.ref{stroke:var(--viz-neutral);stroke-dasharray:4 3}
+.d3c .tll.c0{stroke:var(--viz-1)} .d3c .tll.c1{stroke:var(--viz-2)} .d3c .tll.c2{stroke:var(--viz-3)} .d3c .tll.c3{stroke:var(--viz-4)} .d3c .tll.c4{stroke:var(--viz-5)}
+.d3c .tlsel{fill:var(--accent);fill-opacity:.15;stroke:var(--accent);pointer-events:none}
+.d3c .hit{touch-action:pan-y}

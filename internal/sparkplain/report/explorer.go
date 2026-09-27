@@ -138,6 +138,7 @@ type xData struct {
 	Exclusions table                `json:"exclusions"`
 	RunTasks   table                `json:"runningTasks"`
 	RunCapped  bool                 `json:"runningCapped"`
+	Gaps       [][4]any             `json:"gaps"` // driver gaps: start and end (Unix ms), the jobs before and after (null at either end)
 	BlockKinds table                `json:"blockKinds"`
 	Data       table                `json:"data"`
 	Profiles   table                `json:"profiles"`
@@ -447,6 +448,17 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		d.RunTasks.add(t.TaskID, t.StageID, t.StageAttempt, t.Index, t.Partition, t.Attempt, t.ExecutorID, t.Host, unixMs(t.Launched), t.Locality, t.Speculative, src(t.Source))
 	}
 	d.RunCapped = r.Jobs.RunningCapped
+	d.Gaps = [][4]any{}
+	for _, g := range r.Jobs.DriverGaps {
+		var before, after any
+		if g.Before != nil {
+			before = *g.Before
+		}
+		if g.After != nil {
+			after = *g.After
+		}
+		d.Gaps = append(d.Gaps, [4]any{unixMs(g.Start), unixMs(g.End), before, after})
+	}
 
 	d.Runtime = newTable("group", "label", "value", "from", "explain", "missing")
 	for _, row := range r.Config.Runtime {
