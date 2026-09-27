@@ -444,3 +444,28 @@ func TestUnconfirmedEventLogRefused(t *testing.T) {
 		t.Errorf("a log named after the application should be read: %s", errs)
 	}
 }
+
+// SP-005: reports and the folders sparkplain creates are private to the
+// user who ran it.
+func TestOutputIsPrivate(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "new", "reports")
+	code, _, errs := runCLI(t, "-app-id", "application_1790380000000_0042", "-eventlog", filepath.Join(fx, "application_1790380000000_0042"), "-out", dir)
+	if code != exitOK {
+		t.Fatalf("exit %d: %s", code, errs)
+	}
+	for _, d := range []string{dir, filepath.Dir(dir)} {
+		if st, err := os.Stat(d); err != nil || st.Mode().Perm() != 0o700 {
+			t.Errorf("%s: mode %v, want 0700 (%v)", d, st.Mode().Perm(), err)
+		}
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) == 0 {
+		t.Fatal("no outputs written")
+	}
+	for _, e := range entries {
+		st, _ := os.Stat(filepath.Join(dir, e.Name()))
+		if st.Mode().Perm() != 0o600 {
+			t.Errorf("%s: mode %v, want 0600", e.Name(), st.Mode().Perm())
+		}
+	}
+}

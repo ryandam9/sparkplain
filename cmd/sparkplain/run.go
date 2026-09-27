@@ -37,6 +37,12 @@ const (
 	exitInterrupted = 130
 )
 
+// Output permissions: private by default (review SP-005).
+const (
+	outDirMode  = 0o700
+	outFileMode = 0o600
+)
+
 var appIDRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.\-]{0,127}$`)
 
 type options struct {
@@ -367,7 +373,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if r.Application.ID == "" {
 		r.Application.ID = o.appID
 	}
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
+	// Reports hold user, host, cluster and log details: keep them private
+	// to the user who ran sparkplain (SPEC §6). Share them with chmod.
+	if err := os.MkdirAll(outDir, outDirMode); err != nil {
 		return fail("creating %s: %v", outDir, err)
 	}
 	var written []string
@@ -477,7 +485,7 @@ func writeFile(path string, fn func(io.Writer) error) error {
 		tmp.Close()
 		return err
 	}
-	if err := tmp.Chmod(0o644); err != nil {
+	if err := tmp.Chmod(outFileMode); err != nil {
 		tmp.Close()
 		return err
 	}
