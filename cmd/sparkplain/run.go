@@ -100,7 +100,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "sparkplain", version)
 		return exitOK
 	}
+	con := newConsole(stdout, stderr)
 	fail := func(format string, a ...any) int {
+		con.clear()
 		fmt.Fprintf(stderr, "sparkplain: "+format+"\n", a...)
 		return exitFatal
 	}
@@ -162,6 +164,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return fail("config timezone %q: %v", cfg.TimeZone, err)
 		}
 	}
+	con.begin(o.appID)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	ctx, cancel := context.WithTimeout(ctx, timeout)
@@ -170,6 +173,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	var cluster *model.Cluster
 	var logs clusterLogs
 	if online {
+		con.status("reading the cluster from the EMR API")
 		c, err := cloud.cluster(ctx, o.clusterID, o.clusterName)
 		switch {
 		case errors.Is(err, errNoProfile), errors.Is(err, awsmeta.ErrNotFound):
@@ -177,23 +181,29 @@ func run(args []string, stdout, stderr io.Writer) int {
 		case err != nil:
 			// No access to the EMR API (or no working credentials): carry
 			// on with what can be read without it.
-			fmt.Fprintf(stderr, "sparkplain: could not describe the cluster (%s): %v\n", awsmeta.ErrorClass(err), err)
+			con.note("could not describe the cluster (%s): %v", awsmeta.ErrorClass(err), err)
 			logs = noCluster(firstNonEmpty(o.clusterID, o.clusterName), err)
 		default:
 			cluster = &c
-			fmt.Fprintf(stderr, "sparkplain: cluster %s (%s, %s, %s)\n", c.ID, c.Name, c.Release, c.State)
+			con.clusterFound(c)
+			con.status("reading the cluster's steps and instances")
 			logs = emrMetadata(ctx, cloud, cluster)
+		}
+		for _, row := range []*model.SourceStatus{logs.emr, logs.ec2} {
+			if row != nil {
+				con.sources(*row)
+			}
 		}
 	}
 	evPath := o.eventLog
 	if evPath == "" && cfg.EventLogPrefix != "" {
 		evPath = cfg.EventLogPrefix
-		fmt.Fprintf(stderr, "sparkplain: using eventlog-prefix %s from %s\n", evPath, cfgPath)
+		con.note("using eventlog-prefix %s from %s", evPath, cfgPath)
 	}
 	if evPath == "" && cluster != nil {
 		if dir := cluster.Configurations["spark-defaults/spark.eventLog.dir"]; isS3(dir) {
 			evPath = dir
-			fmt.Fprintf(stderr, "sparkplain: using the cluster's spark.eventLog.dir %s\n", evPath)
+			con.note("using the cluster's spark.eventLog.dir %s", evPath)
 		}
 	}
 	if evPath == "" && !online && o.from == "" {
@@ -232,6 +242,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	var log *model.EventLog
 	var in *eventlog.Input
 	var stepDirs []string
+	con.status("reading the event log")
 	switch {
 	case evPath != "":
 		in, err = cloud.resolve(ctx, evPath, o.appID, eventlog.Limits{MaxObjectBytes: maxSize, MaxUnpackedBytes: maxUnpacked})
@@ -244,7 +255,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			in, err = cloud.resolve(ctx, dir, o.appID, eventlog.Limits{MaxObjectBytes: maxSize, MaxUnpackedBytes: maxUnpacked})
 			if err == nil || eventlog.ErrorClass(err) != eventlog.ClassNotFound {
 				evPath, src.Location = dir, dir
-				fmt.Fprintf(stderr, "sparkplain: using the spark.eventLog.dir a step set, %s\n", dir)
+				con.note("using the spark.eventLog.dir a step set, %s", dir)
 				break
 			}
 			err = errNoEventLog
@@ -272,7 +283,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		src.Detail = err.Error() + ". On S3 an event log appears only once Spark closes it, so an application that is still running, was killed with its cluster, or never started SparkContext has none."
 	case err != nil:
 		src.Status, src.Class, src.Detail = "error", eventlog.ErrorClass(err), err.Error()
-		fmt.Fprintf(stderr, "sparkplain: could not read the event log (%s): %v\n", src.Class, err)
+		con.note("could not read the event log (%s): %v", src.Class, err)
 	default:
 		start := time.Now()
 		opt := eventlog.Options{}
@@ -284,6 +295,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		in.Close()
 		if err != nil {
 			if ctx.Err() == context.Canceled {
+				con.clear()
 				fmt.Fprintln(stderr, "sparkplain: interrupted")
 				return exitInterrupted
 			}
@@ -306,10 +318,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 			// Nothing usable: say why, and let every section show that it
 			// needs the event log instead of an empty application.
 			src.Status, src.Class = "error", eventlog.ClassCorrupt
-			fmt.Fprintf(stderr, "sparkplain: no events could be read from %s\n", evPath)
+			con.note("no events could be read from %s", evPath)
 			log = nil
 		}
 	}
+	con.sources(src)
 
 	lim := source.Limits{Workers: o.workers, MaxObject: maxSize, MaxUnpacked: maxUnpacked}
 	var fetched []report.FetchedSource // the application's scripts, from S3
@@ -319,17 +332,26 @@ func run(args []string, stdout, stderr io.Writer) int {
 		mode = "online" // no cluster details: its logs and metrics cannot be found
 	case online:
 		mode = "online"
+		con.status("reading container, step and node logs")
 		logs.readLogs(ctx, cloud, log, o.appID, lim)
+		con.sources(logs.sources...)
+		con.status("reading CloudWatch metrics")
 		logs.readMetrics(ctx, cloud, log, o.noCloudWatch, o.windowPad)
+		con.sources(logs.sources...)
+		con.status("reading CloudTrail")
 		logs.readCalls(ctx, cloud, log, o.noCloudTrail, o.windowPad)
+		con.sources(logs.sources...)
 		if outputs["explorer"] {
 			var row *model.SourceStatus
+			con.status("reading the application's code")
 			if fetched, row = logs.fetchScripts(ctx, cloud, o.appID); row != nil {
 				logs.sources = append(logs.sources, *row)
 			}
+			con.sources(logs.sources...)
 		}
 	case o.from != "":
 		mode = "offline-logs"
+		con.status("reading the logs in " + o.from)
 		if logs, err = offlineLogs(ctx, o.from, o.appID, log, lim); err != nil {
 			if !errors.Is(err, iofs.ErrPermission) {
 				return fail("%v", err)
@@ -339,10 +361,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 			}
 		}
 	}
+	con.sources(logs.sources...)
 	if ctx.Err() == context.Canceled {
+		con.clear()
 		fmt.Fprintln(stderr, "sparkplain: interrupted")
 		return exitInterrupted
 	}
+	con.status("writing the report")
 	ain := analyze.Input{
 		AppID:       o.appID,
 		Tool:        "sparkplain " + version,
@@ -374,7 +399,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	ain.LogSources = append(ain.LogSources, logs.sources...)
 	r := analyze.Run(ain)
 	for _, g := range r.AccessGaps {
-		fmt.Fprintf(stderr, "sparkplain: no access to %s, so the report does not show %s (needs %s).\n", g.Source, g.Missing, g.Needs)
+		con.note("no access to %s, so the report does not show %s (needs %s).", g.Source, g.Missing, g.Needs)
 	}
 	if r.Application.ID == "" {
 		r.Application.ID = o.appID
@@ -384,7 +409,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err := os.MkdirAll(outDir, outDirMode); err != nil {
 		return fail("creating %s: %v", outDir, err)
 	}
-	var written []string
+	written := map[string]string{}
+	var order []string
+	wrote := func(kind, p string) {
+		written[kind] = p
+		order = append(order, kind)
+	}
 	ropt := report.Options{Location: loc}
 	if outputs["explorer"] {
 		ropt.ExplorerHref = outputName(r.Application.ID, "explorer.html")
@@ -394,7 +424,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		if err := writeFile(p, func(w io.Writer) error { return report.WriteHTML(w, r, ropt) }); err != nil {
 			return fail("writing %s: %v", p, err)
 		}
-		written = append(written, p)
+		wrote("Report", p)
 	}
 	if outputs["explorer"] {
 		p := filepath.Join(outDir, outputName(r.Application.ID, "explorer.html"))
@@ -415,31 +445,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 		if err := writeFile(p, func(w io.Writer) error { return report.WriteExplorer(w, r, x, xopt) }); err != nil {
 			return fail("writing %s: %v", p, err)
 		}
-		written = append(written, p)
+		wrote("Explorer", p)
 	}
 	if outputs["json"] {
 		p := filepath.Join(outDir, outputName(r.Application.ID, "report.json"))
 		if err := writeFile(p, func(w io.Writer) error { return report.WriteJSON(w, r) }); err != nil {
 			return fail("writing %s: %v", p, err)
 		}
-		written = append(written, p)
+		wrote("JSON", p)
 	}
-	crit, warn := 0, 0
-	for _, f := range r.Findings {
-		switch f.Severity {
-		case model.Critical:
-			crit++
-		case model.Warning:
-			warn++
-		}
-	}
-	fmt.Fprintf(stdout, "%s: %s, %d findings (%d critical, %d warning)\n", r.Application.ID, r.Application.Status, len(r.Findings), crit, warn)
-	for _, p := range written {
-		fmt.Fprintln(stdout, "wrote", p)
-	}
-	if r.ExitCode == exitPartial {
-		fmt.Fprintln(stderr, "sparkplain: partial report (exit 3): see the Sources panel for what is missing")
-	}
+	con.summary(r, written, order, r.ExitCode)
 	return r.ExitCode
 }
 

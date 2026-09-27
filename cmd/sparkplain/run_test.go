@@ -370,7 +370,7 @@ func TestOnlineEventLog(t *testing.T) {
 			t.Fatalf("%v: exit %d: %s", args, code, errs)
 		}
 		js, _ := os.ReadFile(outPath(dir, "report.json"))
-		if !bytes.Contains(js, []byte(`"id": "application_1790380000000_0042"`)) || !strings.Contains(out, "wrote") {
+		if !bytes.Contains(js, []byte(`"id": "application_1790380000000_0042"`)) || !strings.Contains(out, outPath(dir, "report.html")) {
 			t.Errorf("%v: no report for the S3 event log: %s", args, errs)
 		}
 	}
