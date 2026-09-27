@@ -188,7 +188,7 @@ sparkplain -from ./logs/application_1700000000000_0042 \
 | `-from` | Offline copy of the cluster's logs (see §2); not with `-cluster-id` |
 | `-out` | Output directory override |
 | `-format` | Comma-separated outputs: `html`, `json`, `explorer` (default all three; `both` still means `html,json`) |
-| `-workers`, `-max-size`, `-max-unpacked`, `-overall-timeout` | Fetch budgets: concurrency, stored size per object, unpacked size per compressed object or entry, run deadline |
+| `-workers`, `-max-size`, `-max-unpacked`, `-overall-timeout` | Fetch budgets: concurrency (1 to 256), stored size per object, unpacked size per compressed object or entry, run deadline |
 | `-no-cloudwatch`, `-no-cloudtrail` | Skip enrichment (fewer permissions needed) |
 | `-window-pad` | Padding on the AWS query window (default 5m) |
 | `-show` | Print the event at a `file:line` the pages cite, redacted, and exit |

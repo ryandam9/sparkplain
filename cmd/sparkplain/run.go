@@ -37,6 +37,9 @@ const (
 	exitInterrupted = 130
 )
 
+// maxWorkers bounds -workers.
+const maxWorkers = 256
+
 // Output permissions: private by default (review SP-005).
 const (
 	outDirMode  = 0o700
@@ -68,7 +71,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&o.from, "from", "", "local copy of the cluster's logs (containers/, steps/, node/) or of one application's container folders")
 	fs.StringVar(&o.out, "out", "", "output folder (default ~/sparkplain/<yyyy-mm-dd>/<app-id>/)")
 	fs.StringVar(&o.format, "format", "", "outputs, comma-separated: html, json, explorer (default all three; both = html,json)")
-	fs.IntVar(&o.workers, "workers", 16, "how many log files to read at once")
+	fs.IntVar(&o.workers, "workers", 16, "how many log files to read at once, 1 to 256")
 	fs.StringVar(&o.maxSize, "max-size", "", "largest file to read, as stored (compressed), e.g. 10GiB (default 10GiB)")
 	fs.StringVar(&o.maxUnpacked, "max-unpacked", "", "most bytes one compressed file may unpack to, e.g. 50GiB (default 50GiB)")
 	fs.DurationVar(&o.timeout, "overall-timeout", 0, "deadline for the whole run (default 30m)")
@@ -130,6 +133,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	outputs, err := parseFormats(firstNonEmpty(o.format, cfg.Format, "html,json,explorer"))
 	if err != nil {
 		return fail("%v", err)
+	}
+	// -workers is a safety limit, not a way to open thousands of streams
+	// (each holds a file descriptor and buffers, zips hold memory).
+	if o.workers < 1 || o.workers > maxWorkers {
+		return fail("-workers must be between 1 and %d, not %d", maxWorkers, o.workers)
 	}
 	maxSize := int64(10 << 30)
 	if s := firstNonEmpty(o.maxSize, cfg.MaxSize); s != "" {

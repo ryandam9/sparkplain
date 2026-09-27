@@ -469,3 +469,14 @@ func TestOutputIsPrivate(t *testing.T) {
 		}
 	}
 }
+
+func TestWorkersBounded(t *testing.T) {
+	for _, w := range []string{"0", "-3", "257", "100000"} {
+		if code, _, errs := runCLI(t, "-app-id", "application_1790380000000_0042", "-eventlog", fx, "-workers", w); code != exitFatal || !strings.Contains(errs, "-workers") {
+			t.Errorf("-workers %s: exit %d %s", w, code, errs)
+		}
+	}
+	if code, _, errs := runCLI(t, "-app-id", "application_1790380000000_0042", "-eventlog", fx, "-workers", "256", "-out", t.TempDir()); code == exitFatal {
+		t.Errorf("-workers 256 should be accepted: %s", errs)
+	}
+}
