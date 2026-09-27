@@ -1,10 +1,12 @@
 package eventlog
 
 import (
+	"archive/zip"
 	"context"
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -140,5 +142,78 @@ func TestReadLinesLongAndPartial(t *testing.T) {
 	}
 	if !reflect.DeepEqual(longAt, []int64{2}) || n != 4 {
 		t.Fatalf("long lines at %v, count %d", longAt, n)
+	}
+}
+
+// writeZip builds a zip at dir/name from entry name -> content.
+func writeZip(t *testing.T, dir, name string, entries map[string][]byte) string {
+	t.Helper()
+	p := filepath.Join(dir, name)
+	f, err := os.Create(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(f)
+	keys := make([]string, 0, len(entries))
+	for k := range entries {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		w, _ := zw.Create(k)
+		w.Write(entries[k])
+	}
+	zw.Close()
+	f.Close()
+	return p
+}
+
+// SP-008: a zip is never allowed to stand in another application's log.
+func TestResolveZipNeverGuesses(t *testing.T) {
+	dir := t.TempDir()
+	log := []byte(`{"Event":"SparkListenerLogStart","Spark Version":"3.5.1"}` + "\n")
+	two := writeZip(t, dir, "two.zip", map[string][]byte{"application_1_1": log, "application_1_2": log})
+
+	in, err := Resolve(two, "application_1_2", Limits{})
+	if err != nil || in.PartNames()[0] != "two.zip!application_1_2" || !in.NameMatches {
+		t.Fatalf("match in a multi-log zip: %v %v", err, in)
+	}
+	in.Close()
+	if _, err := Resolve(two, "application_9_9", Limits{}); ErrorClass(err) != ClassNotFound {
+		t.Fatalf("no match among several logs must be notFound, got %v", err)
+	}
+
+	one := writeZip(t, dir, "one.zip", map[string][]byte{"renamed-log": log})
+	in, err = Resolve(one, "application_1_2", Limits{})
+	if err != nil || in.NameMatches {
+		t.Fatalf("a zip's only log is read but flagged unconfirmed: %v %+v", err, in)
+	}
+	in.Close()
+
+	// Two attempts' rolling folders under different parents: the highest
+	// attempt is chosen and read from its own parent folder.
+	parts := map[string][]byte{
+		"a/eventlog_v2_application_1_2_2/events_1_application_1_2_2": log,
+		"a/eventlog_v2_application_1_2_2/events_2_application_1_2_2": log,
+		"b/eventlog_v2_application_1_2_1/events_1_application_1_2_1": log,
+		"b/eventlog_v2_application_1_3/events_1_application_1_3":     log,
+	}
+	nested := writeZip(t, dir, "nested.zip", parts)
+	in, err = Resolve(nested, "application_1_2", Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if names := in.PartNames(); len(names) != 2 || !strings.Contains(names[0], "application_1_2_2") {
+		t.Fatalf("parts %v, want attempt 2's two parts", names)
+	}
+	n, files, _ := countLines(t, in)
+	if n == 0 || len(files) != len(in.PartNames()) {
+		t.Fatalf("parts %v: read %d lines from %d files", in.PartNames(), n, len(files))
+	}
+	for _, f := range files {
+		if f.Error != "" {
+			t.Fatalf("part %s failed: %s", f.Name, f.Error)
+		}
 	}
 }

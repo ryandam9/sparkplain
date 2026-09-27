@@ -88,10 +88,14 @@ type Input struct {
 	Location   string
 	Layout     string // single, rolling, zip, zip-rolling
 	InProgress bool
-	Notes      []string
-	parts      []part
-	closer     io.Closer
-	limits     Limits
+	// NameMatches is true when the chosen file or folder is named after the
+	// application asked for. When it is false, only the application ID
+	// inside the log can confirm it is the right one (see SP-008).
+	NameMatches bool
+	Notes       []string
+	parts       []part
+	closer      io.Closer
+	limits      Limits
 }
 
 // Close releases the zip file, if any.
@@ -128,6 +132,7 @@ func Resolve(p, appID string, lim Limits) (*Input, error) {
 	} else {
 		err = in.addFile(p, filepath.Base(p), st.Size())
 		in.Layout = "single"
+		in.NameMatches = matchesApp(filepath.Base(p), appID)
 		in.InProgress = strings.HasSuffix(p, ".inprogress")
 	}
 	if err != nil {
@@ -166,6 +171,7 @@ func (in *Input) resolveDir(dir, appID string) error {
 		names = append(names, e.Name())
 	}
 	if hasRollingParts(names) {
+		in.NameMatches = matchesApp(filepath.Base(dir), appID) || rollingPartsMatch(names, appID)
 		return in.addRolling(filepath.Base(dir), names, func(n string) (int64, func() (io.ReadCloser, error), error) {
 			full := filepath.Join(dir, n)
 			st, err := os.Stat(full)
@@ -188,6 +194,7 @@ func (in *Input) resolveDir(dir, appID string) error {
 	if len(cands) > 1 {
 		in.Notes = append(in.Notes, fmt.Sprintf("Found %d logs for this application (%s); read %s (the highest attempt, preferring a finished log).", len(cands), strings.Join(cands, ", "), pick))
 	}
+	in.NameMatches = true
 	full := filepath.Join(dir, pick)
 	st, err := os.Stat(full)
 	if err != nil {
@@ -256,22 +263,38 @@ func (in *Input) resolveZip(p string, size int64, appID string) error {
 			}{source.Bounded(rc, limit, name, "-max-size"), rc}, nil
 		}, nil
 	}
+	// Prefer logs named after the application. Without one, read a zip's
+	// only log (its application ID is checked after parsing) but never guess
+	// between several: that could report on another application.
 	if len(dirs) > 0 {
 		var keys []string
 		for d := range dirs {
-			if matchesApp(path.Base(d), appID) {
+			if matchesApp(path.Base(d), appID) || rollingPartsMatch(dirs[d], appID) {
 				keys = append(keys, d)
 			}
 		}
+		in.NameMatches = len(keys) > 0
 		if len(keys) == 0 {
+			if len(dirs) > 1 || len(singles) > 0 {
+				return &SourceError{ClassNotFound, fmt.Errorf("zip %s holds %d event logs, none named after %s", p, len(dirs)+len(singles), appID)}
+			}
 			for d := range dirs {
 				keys = append(keys, d)
 			}
 		}
 		sort.Strings(keys)
-		d := keys[len(keys)-1]
+		d := keys[0]
 		if len(keys) > 1 {
-			d = path.Join(path.Dir(d), pickAttempt(baseNames(keys)))
+			// Pick by attempt, then take that folder's full path: folders
+			// with the same name may sit under different parents.
+			best := pickAttempt(baseNames(keys))
+			for _, k := range keys {
+				if path.Base(k) == best {
+					d = k
+					break
+				}
+			}
+			in.Notes = append(in.Notes, fmt.Sprintf("The zip holds %d rolling logs for this application; read %s.", len(keys), d))
 		}
 		return in.addRolling(d, dirs[d], func(n string) (int64, func() (io.ReadCloser, error), error) {
 			return open(path.Join(d, n))
@@ -283,16 +306,20 @@ func (in *Input) resolveZip(p string, size int64, appID string) error {
 			cands = append(cands, s)
 		}
 	}
-	if len(cands) == 0 {
+	in.NameMatches = len(cands) > 0
+	switch {
+	case len(cands) > 0:
+	case len(singles) == 1:
 		cands = singles
-	}
-	if len(cands) == 0 {
+	case len(singles) == 0:
 		return &SourceError{ClassNotFound, fmt.Errorf("zip %s holds no event log", p)}
+	default:
+		return &SourceError{ClassNotFound, fmt.Errorf("zip %s holds %d event logs, none named after %s", p, len(singles), appID)}
 	}
 	pick := cands[0]
 	if len(cands) > 1 {
 		pick = pickAttempt(cands)
-		in.Notes = append(in.Notes, fmt.Sprintf("The zip holds %d event logs; read %s.", len(cands), pick))
+		in.Notes = append(in.Notes, fmt.Sprintf("The zip holds %d event logs for this application; read %s.", len(cands), pick))
 	}
 	sz, opener, err := open(pick)
 	if err != nil {
@@ -310,6 +337,22 @@ func baseNames(ps []string) []string {
 		out[i] = path.Base(p)
 	}
 	return out
+}
+
+// rollingPartsMatch reports whether rolling parts (events_<n>_<appId>…)
+// are named after appID.
+func rollingPartsMatch(names []string, appID string) bool {
+	for _, n := range names {
+		if _, ok := rollingIndex(n); !ok {
+			continue
+		}
+		rest := strings.TrimSuffix(n, ".compact")
+		rest = rest[len("events_"):]
+		if i := strings.IndexByte(rest, '_'); i >= 0 && matchesApp(rest[i+1:], appID) {
+			return true
+		}
+	}
+	return false
 }
 
 func hasRollingParts(names []string) bool {

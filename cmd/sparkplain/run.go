@@ -279,8 +279,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 			log.Stats.Truncated = true
 			src.Class = eventlog.ClassTimeout
 		}
-		if id := log.Application.ID; id != "" && id != o.appID {
+		switch id := log.Application.ID; {
+		case id != "" && id != o.appID:
 			return fail("the event log at %s belongs to %s, not %s", evPath, id, o.appID)
+		case id == "" && !in.NameMatches && log.Stats.Events > 0:
+			// Neither the name nor the log itself says this is the
+			// application asked for: refuse rather than report on another.
+			return fail("cannot confirm the event log at %s is for %s: it has no application start event and its name does not match", evPath, o.appID)
+		case id == "":
+			log.Stats.Notes = append(log.Stats.Notes, "The log has no application start event; it was matched to "+o.appID+" by its file name.")
 		}
 		src.Status, src.Detail = eventSourceDetail(log, time.Since(start))
 		if log.Stats.Events == 0 {

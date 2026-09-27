@@ -414,3 +414,33 @@ func TestMaxUnpackedMarksPartial(t *testing.T) {
 		t.Errorf("bad -max-unpacked: exit %d %s", code, errs)
 	}
 }
+
+// SP-008: a log with no application start event is accepted only when its
+// name says it is the application asked for.
+func TestUnconfirmedEventLogRefused(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(fx, "application_1790380000000_0044"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kept []string
+	for _, l := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
+		if !strings.Contains(l, `"Event":"SparkListenerApplicationStart"`) {
+			kept = append(kept, l)
+		}
+	}
+	dir := t.TempDir()
+	body := []byte(strings.Join(kept, "\n") + "\n")
+	named := filepath.Join(dir, "application_1790380000000_0044")
+	renamed := filepath.Join(dir, "some-log.txt")
+	os.WriteFile(named, body, 0o600)
+	os.WriteFile(renamed, body, 0o600)
+
+	code, _, errs := runCLI(t, "-app-id", "application_1790380000000_0044", "-eventlog", renamed, "-out", filepath.Join(dir, "o1"))
+	if code != exitFatal || !strings.Contains(errs, "cannot confirm") {
+		t.Errorf("unconfirmed log: exit %d %s", code, errs)
+	}
+	code, _, errs = runCLI(t, "-app-id", "application_1790380000000_0044", "-eventlog", named, "-out", filepath.Join(dir, "o2"))
+	if code == exitFatal {
+		t.Errorf("a log named after the application should be read: %s", errs)
+	}
+}

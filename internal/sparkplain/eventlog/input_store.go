@@ -30,6 +30,7 @@ func ResolveStore(ctx context.Context, st source.Store, loc, appID string, lim L
 				return nil, &SourceError{ClassUnsupported, fmt.Errorf("%s: download History Server zips and pass the local file", in.Location)}
 			}
 			in.Layout, in.InProgress = "single", strings.HasSuffix(o.Key, ".inprogress")
+			in.NameMatches = matchesApp(path.Base(o.Key), appID)
 			return in, in.addObject(ctx, st, o, path.Base(o.Key))
 		}
 	}
@@ -66,6 +67,7 @@ func ResolveStore(ctx context.Context, st source.Store, loc, appID string, lim L
 		return nil, &SourceError{ClassNotFound, fmt.Errorf("no event log for %s under %s (looked for %s[.codec] and eventlog_v2_%s/)", appID, st.Location(prefix), appID, appID)}
 	}
 	pick := pickAttempt(cands)
+	in.NameMatches = true // every candidate was listed under the application's name
 	if len(cands) > 1 {
 		in.Notes = append(in.Notes, fmt.Sprintf("Found %d logs for this application (%s); read %s (the highest attempt, preferring a finished log).", len(cands), strings.Join(cands, ", "), pick))
 	}
