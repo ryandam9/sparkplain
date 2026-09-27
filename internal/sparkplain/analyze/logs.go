@@ -32,6 +32,9 @@ func (h hit) who() string {
 		stream := strings.TrimPrefix(f.Kind, "container-")
 		switch f.Executor {
 		case "driver":
+			if f.EarlierAttempt > 0 {
+				return fmt.Sprintf("the driver's %s in attempt %d", stream, f.EarlierAttempt)
+			}
 			return "the driver's " + stream
 		case "":
 			return "container " + f.Container + " " + stream
@@ -61,6 +64,9 @@ func nodeName(f *model.LogFile) string {
 // evidence cites the line, naming the executor it is about.
 func (h hit) evidence(text string) model.Evidence {
 	ev := model.Evidence{Source: h.l.Source, Text: text}
+	if h.f.EarlierAttempt > 0 {
+		return ev // the event log's executors are the last attempt's
+	}
 	if x := h.f.Executor; x != "" && x != "am" {
 		ev.Ref = model.ExecutorRef(x)
 	} else if x := h.l.Fields["executor"]; x != "" {
@@ -158,8 +164,17 @@ func joinContainers(c *ctx, r *model.Report) {
 			exec[id], host[id] = "driver", c.log.Application.DriverAttributes["NM_HOST"]
 		}
 	}
-	// Without the event log, the first container of each attempt is the
-	// application master, which is the driver in cluster mode.
+	// The attempt the event log describes; containers of other attempts
+	// are marked, since its executors are not theirs.
+	final := 0
+	if c.has() {
+		final = containerAttempt(c.log.Application.DriverAttributes["CONTAINER_ID"])
+		if final == 0 {
+			final, _ = strconv.Atoi(c.log.Application.AttemptID)
+		}
+	}
+	// The first container of each attempt the event log does not name is
+	// the application master, which is the driver in cluster mode.
 	cluster := c.has() && c.log.Application.DeployMode == "cluster"
 	for _, f := range r.Logs.Files {
 		for _, l := range f.Found {
@@ -179,15 +194,34 @@ func joinContainers(c *ctx, r *model.Report) {
 		switch {
 		case f.Container != "" && exec[f.Container] != "":
 			f.Executor, f.Host = exec[f.Container], host[f.Container]
-		case f.Container != "" && strings.HasSuffix(f.Container, "_000001") && !c.has():
+		case f.Container != "" && strings.HasSuffix(f.Container, "_000001"):
 			f.Executor = "am"
 			if cluster {
 				f.Executor = "driver"
 			}
+			for _, l := range f.Found {
+				if l.Kind == model.LogDriverHost {
+					f.Host = l.Fields["host"]
+				}
+			}
 		case f.Instance != "":
 			f.Host = instHost[f.Instance]
 		}
+		if a := containerAttempt(f.Container); a > 0 && final > 0 && a != final {
+			f.EarlierAttempt = a
+		}
 	}
+}
+
+// containerAttempt is the YARN attempt number in a container ID
+// (container_[e<epoch>_]<ts>_<app>_<attempt>_<n>), or 0.
+func containerAttempt(id string) int {
+	if !containerRE.MatchString(id) {
+		return 0
+	}
+	parts := strings.Split(id, "_")
+	n, _ := strconv.Atoi(parts[len(parts)-2])
+	return n
 }
 
 // applicationFromLogs fills in the application's name, user, queue,
@@ -706,26 +740,146 @@ func stepAndAttemptFindings(c *ctx, r *model.Report) {
 			}
 		}
 	}
-	var failedAttempts []hit
-	final := ""
+	retriedFinding(c, r)
+}
+
+// retriedFinding reports an application YARN had to restart: a failed
+// attempt in the ResourceManager's log or in an attempt's own driver log,
+// or an event log from a later attempt, when a later attempt finished.
+func retriedFinding(c *ctx, r *model.Report) {
+	failed := map[int]hit{} // attempt → its failed exit, the driver's own line preferred
+	succeeded := r.Application.Status == model.StatusSucceeded
 	for _, h := range c.logs.hits {
 		switch h.l.Kind {
 		case model.LogAppExit:
-			if h.l.Fields["attempt"] != "" && (h.l.Fields["status"] == "FAILED" || h.l.Fields["status"] == "KILLED") {
-				failedAttempts = append(failedAttempts, h)
+			n := containerAttempt(h.f.Container)
+			if a := h.l.Fields["attempt"]; a != "" {
+				n = attemptNumber(a)
+			}
+			switch h.l.Fields["status"] {
+			case "FAILED", "KILLED":
+				if old, ok := failed[n]; !ok || (old.f.Container == "" && h.f.Container != "") {
+					failed[n] = h
+				}
+			case "SUCCEEDED":
+				succeeded = true
 			}
 		case model.LogAppSummary:
-			final = h.l.Fields["finalStatus"]
+			if h.l.Fields["finalStatus"] == "SUCCEEDED" {
+				succeeded = true
+			}
 		}
 	}
-	if len(failedAttempts) > 0 && final == "SUCCEEDED" {
-		h := failedAttempts[0]
-		c.add(model.Finding{Rule: "app-retried", Severity: model.Warning, Section: "summary",
-			Title:       fmt.Sprintf("YARN restarted the application after %s", model.Plural(len(failedAttempts), "failed attempt", "failed attempts")),
-			Explanation: fmt.Sprintf("The first attempt's application master exited with code %s (%s). YARN started it again (spark.yarn.maxAppAttempts), and a later attempt finished. The event log describes the last attempt only.", h.l.Fields["exitCode"], h.l.Fields["meaning"]),
-			Evidence:    []model.Evidence{h.evidence(h.who() + ": " + h.l.Text)},
-			Fix:         "Find the first attempt's error in its driver log (container …_01_000001). Work the application repeats on retry can double writes that are not idempotent."})
+	last, _ := strconv.Atoi(r.Application.AttemptID)
+	if !succeeded || (len(failed) == 0 && last < 2) {
+		return
 	}
+	fix := "Find the first attempt's error in its driver log (container …_01_000001). Work the application repeats on retry can double writes that are not idempotent."
+	if len(failed) == 0 {
+		c.add(model.Finding{Rule: "app-retried", Severity: model.Warning, Section: "summary",
+			Title:       fmt.Sprintf("YARN restarted the application: the event log is from attempt %d", last),
+			Explanation: "An earlier attempt failed and YARN started the application again (spark.yarn.maxAppAttempts). The earlier attempts' logs were not found, so why they failed is not known. The event log describes the last attempt only.",
+			Evidence:    []model.Evidence{{Source: r.Application.Source, Text: fmt.Sprintf("Spark event log: application attempt %d", last)}},
+			Fix:         fix})
+		return
+	}
+	nums := make([]int, 0, len(failed))
+	for n := range failed {
+		nums = append(nums, n)
+	}
+	sort.Ints(nums)
+	n0 := nums[0]
+	h := failed[n0]
+	ev := []model.Evidence{h.evidence(h.who() + ": " + h.l.Text)}
+	which := "The first attempt"
+	if n0 > 1 {
+		which = fmt.Sprintf("Attempt %d", n0)
+	}
+	expl := fmt.Sprintf("%s's application master exited with code %s (%s).", which, h.l.Fields["exitCode"], h.l.Fields["meaning"])
+	// Where its driver ran, and whether that node went away.
+	var host string
+	for _, x := range c.logs.hits {
+		if x.l.Kind == model.LogDriverHost && containerAttempt(x.f.Container) == n0 {
+			host = x.l.Fields["host"]
+			ev = append(ev, x.evidence(fmt.Sprintf("%s: the driver ran on %s", x.who(), host)))
+			break
+		}
+	}
+	lostNode, spot := false, false
+	if host != "" {
+		expl += " Its driver ran on " + host + "."
+		var notes []string
+		for _, x := range c.logs.hits {
+			if x.l.Kind == model.LogNodeState && hostKey(x.l.Fields["host"]) == hostKey(host) && containerAttempt(x.f.Container) == n0 {
+				notes = append(notes, fmt.Sprintf("YARN reported that node %s at %s", x.l.Fields["state"], c.clock(x.l.Time)))
+				ev = append(ev, x.evidence(x.who()+": "+x.l.Text))
+				lostNode = true
+				break
+			}
+		}
+		if r.Cluster != nil {
+			for _, in := range r.Cluster.Instances {
+				if (hostKey(in.PrivateDNS) == hostKey(host) || hostKey(in.PrivateIP) == hostKey(host)) && !in.Ended.IsZero() && (c.end.IsZero() || !in.Ended.After(c.end.Add(time.Hour))) {
+					notes = append(notes, fmt.Sprintf("EMR reports instance %s ended at %s: %s", in.ID, c.clock(in.Ended), strings.TrimSuffix(orNone(in.StateReason), ".")))
+					ev = append(ev, model.Evidence{Text: fmt.Sprintf("EMR ListInstances: %s (%s, %s) ended at %s: %s", in.ID, host, strings.ToLower(strings.ReplaceAll(in.Market, "_", "-")), in.Ended.UTC().Format("15:04:05 UTC"), orNone(in.StateReason))})
+					lostNode, spot = true, in.Market == "SPOT"
+				}
+			}
+		}
+		if len(notes) > 0 {
+			expl += " " + strings.Join(notes, ", and ") + "."
+		}
+	}
+	if cause := attemptCause(c, n0); cause != nil {
+		expl += fmt.Sprintf(" Its first error, in %s: %s.", cause.who(), strings.TrimSuffix(cause.says(), "."))
+		ev = append(ev, cause.evidence(cause.who()+": "+cause.says()))
+	}
+	later := "a later attempt"
+	if last > n0 {
+		later = fmt.Sprintf("attempt %d", last)
+	}
+	expl += fmt.Sprintf(" YARN started the application again (spark.yarn.maxAppAttempts), and %s finished. The event log describes the last attempt only.", later)
+	switch {
+	case spot:
+		fix = "The driver ran on a spot node that was taken back. Keep the driver off spot capacity: run it in client mode on the primary node, or use YARN node labels so application masters go only to on-demand nodes. " + fix
+	case lostNode:
+		fix = "The driver's node left the cluster while it ran. Keep the driver on nodes that stay for the whole run, such as core nodes. " + fix
+	}
+	c.add(model.Finding{Rule: "app-retried", Severity: model.Warning, Section: "summary",
+		Title:       fmt.Sprintf("YARN restarted the application after %s", model.Plural(len(failed), "failed attempt", "failed attempts")),
+		Explanation: expl, Evidence: ev, Fix: fix})
+}
+
+// attemptNumber reads the attempt from appattempt_<ts>_<app>_<n>.
+func attemptNumber(id string) int {
+	i := strings.LastIndexByte(id, '_')
+	n, _ := strconv.Atoi(id[i+1:])
+	return n
+}
+
+// attemptCause is the earliest error in an attempt's own containers:
+// exceptions and failed tasks, which Spark logs as warnings when it
+// retries them, before the lines that only say it gave up.
+func attemptCause(c *ctx, n int) *hit {
+	var best *hit
+	for i, h := range c.logs.hits {
+		rank, ok := causeKinds[h.l.Kind]
+		if !ok || rank > 1 || h.l.Severity == model.Info || containerAttempt(h.f.Container) != n {
+			continue
+		}
+		if best == nil || earlier(h.l, best.l) {
+			best = &c.logs.hits[i]
+		}
+	}
+	return best
+}
+
+// earlier orders lines by time, lines without one (stdout) last.
+func earlier(a, b *model.LogLine) bool {
+	if a.Time.IsZero() != b.Time.IsZero() {
+		return !a.Time.IsZero()
+	}
+	return a.Time.Before(b.Time)
 }
 
 // bootstrapFinding reports a failed bootstrap action, but only when the

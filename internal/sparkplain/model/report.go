@@ -512,12 +512,16 @@ type LogFile struct {
 	Instance  string `json:"instance,omitempty"`
 	// Executor is the executor the container ran ("driver" for the
 	// application master in cluster mode), joined from the event log.
-	Executor string    `json:"executor,omitempty"`
-	Host     string    `json:"host,omitempty"`
-	Bytes    int64     `json:"bytes"`
-	Lines    int64     `json:"lines"`
-	Dropped  int       `json:"dropped,omitempty"` // distinct lines past the per-file cap
-	Found    []LogLine `json:"found,omitempty"`
+	Executor string `json:"executor,omitempty"`
+	Host     string `json:"host,omitempty"`
+	// EarlierAttempt is the YARN attempt a container belonged to when the
+	// event log describes a later one: an attempt that failed and that
+	// YARN restarted.
+	EarlierAttempt int       `json:"earlierAttempt,omitempty"`
+	Bytes          int64     `json:"bytes"`
+	Lines          int64     `json:"lines"`
+	Dropped        int       `json:"dropped,omitempty"` // distinct lines past the per-file cap
+	Found          []LogLine `json:"found,omitempty"`
 }
 
 // HostCPU is a node's CPU use over the run, as a percentage of all its

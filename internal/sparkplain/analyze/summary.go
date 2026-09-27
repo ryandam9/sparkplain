@@ -348,6 +348,12 @@ func analyzeSummary(c *ctx, r *model.Report) {
 	switch a.Status {
 	case model.StatusSucceeded:
 		verb = "and finished"
+		if c.finding("app-retried") != nil {
+			verb = "and finished after YARN restarted it"
+			if a.AttemptID != "" {
+				verb = fmt.Sprintf("and finished on attempt %s, after YARN restarted it", a.AttemptID)
+			}
+		}
 	case model.StatusFailed:
 		verb = "and failed"
 	case model.StatusIncomplete:

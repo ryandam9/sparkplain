@@ -277,3 +277,71 @@ func TestSelfKilledIsNotAMemoryKill(t *testing.T) {
 		t.Errorf("first = %q", got["log-first-failure"].Title)
 	}
 }
+
+// The phase 4 test cluster's first attempt: its driver ran on a spot node
+// that YARN gave notice for and EMR took back, the attempt failed on a
+// broadcast its executors could no longer fetch, and attempt 2 finished.
+// The ResourceManager's log had not reached S3, so only the driver's own
+// log and the event log say an attempt was retried.
+func TestRetriedAttemptOnLostSpotNode(t *testing.T) {
+	l := synthetic(nil, &model.Executor{ID: "1", Host: "ip-10-0-0-2.ec2.internal", Cores: 2})
+	l.Application.AttemptID, l.Application.DeployMode = "2", "cluster"
+	l.Application.DriverAttributes = map[string]string{"CONTAINER_ID": "container_1_1_02_000001", "NM_HOST": "ip-10-0-0-2.ec2.internal"}
+	start := l.Application.Start
+	cl := &model.Cluster{ID: "j-1", Instances: []model.Instance{
+		{ID: "i-2", PrivateDNS: "ip-10-0-0-2.ec2.internal", Role: "CORE", Market: "ON_DEMAND", Created: start.Add(-time.Hour)},
+		{ID: "i-4", PrivateDNS: "ip-10-0-0-4.ec2.internal", Role: "TASK", Market: "SPOT", Created: start.Add(-time.Hour), Ended: start.Add(time.Minute),
+			StateReason: "Spot Instance was terminated due to not enough capacity in the Spot Instance pool."},
+	}}
+	r := runWithLogs(l, cl,
+		logFile(t, driverErr, `26/09/22 14:12:00 INFO BlockManagerMaster: Registered BlockManager BlockManagerId(driver, ip-10-0-0-4.ec2.internal, 34591, None)
+26/09/22 14:12:09 INFO YarnAllocator: Yarn node state updated for host ip-10-0-0-4.ec2.internal to DECOMMISSIONING
+26/09/22 14:12:13 WARN TaskSetManager: Lost task 1.0 in stage 0.0 (TID 1) (ip-10-0-0-2.ec2.internal executor 2): java.io.IOException: org.apache.spark.SparkException: [INTERNAL_ERROR_BROADCAST] Failed to get broadcast_0_piece0 of broadcast_0
+26/09/22 14:12:14 ERROR TaskSetManager: Task 5 in stage 0.0 failed 4 times; aborting job
+26/09/22 14:12:14 INFO ApplicationMaster: Final app status: FAILED, exitCode: 1, (reason: User application exited with status 1)
+`),
+		logFile(t, "containers/application_1_1/container_1_1_02_000001/stderr", `26/09/22 14:30:00 INFO ApplicationMaster: Final app status: SUCCEEDED, exitCode: 0
+`))
+	f, ok := rules(r)["app-retried"]
+	if !ok {
+		t.Fatalf("no app-retried: %v", keys(rules(r)))
+	}
+	for _, want := range []string{"The first attempt's application master exited with code 1", "Its driver ran on ip-10-0-0-4.ec2.internal.",
+		"YARN reported that node DECOMMISSIONING at 14:12:09 UTC", "EMR reports instance i-4 ended at 14:14:20 UTC: Spot Instance was terminated",
+		"Its first error, in the driver's stderr in attempt 1: Lost task 1.0 in stage 0.0 (TID 1)", "INTERNAL_ERROR_BROADCAST", "and attempt 2 finished"} {
+		if !strings.Contains(f.Explanation, want) {
+			t.Errorf("explanation lacks %q: %s", want, f.Explanation)
+		}
+	}
+	if !strings.HasPrefix(f.Fix, "The driver ran on a spot node that was taken back.") {
+		t.Errorf("fix = %q", f.Fix)
+	}
+	for _, e := range f.Evidence {
+		if e.Ref != "" {
+			t.Errorf("attempt 1's lines must not link to the event log's executors: %+v", e)
+		}
+	}
+	if s := r.Summary.Sentences[0]; !strings.Contains(s, "and finished on attempt 2, after YARN restarted it.") {
+		t.Errorf("summary = %q", s)
+	}
+	for _, lf := range r.Logs.Files {
+		if lf.Container == "container_1_1_01_000001" && (lf.Executor != "driver" || lf.EarlierAttempt != 1 || lf.Host != "ip-10-0-0-4.ec2.internal") {
+			t.Errorf("attempt 1's driver log = %+v", lf)
+		}
+	}
+}
+
+// An event log from attempt 2 with no earlier attempt's logs still says
+// the application was restarted.
+func TestRetriedAttemptFromEventLogOnly(t *testing.T) {
+	l := synthetic(nil, &model.Executor{ID: "1", Host: "h", Cores: 2})
+	l.Application.AttemptID = "2"
+	f, ok := rules(runWithLogs(l, nil))["app-retried"]
+	if !ok || f.Title != "YARN restarted the application: the event log is from attempt 2" || !strings.Contains(f.Explanation, "why they failed is not known") {
+		t.Errorf("app-retried = %+v", f)
+	}
+	l.Application.AttemptID = "1"
+	if _, ok := rules(runWithLogs(l, nil))["app-retried"]; ok {
+		t.Error("attempt 1 was not retried")
+	}
+}
