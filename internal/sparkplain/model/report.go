@@ -308,6 +308,11 @@ type JobsSection struct {
 	SQL          []*SQLQuery `json:"sql"`
 	CriticalPath []int       `json:"criticalPath,omitempty"` // stage IDs of the longest job's slowest chain
 	CriticalJob  int         `json:"criticalJob"`
+	// DriverGaps are the stretches of the run, a second or longer, when no
+	// Spark job was running, longest first (capped at maxDriverGaps in
+	// analyze); DriverGapMs adds up all such time, however short.
+	DriverGaps  []DriverGap `json:"driverGaps,omitempty"`
+	DriverGapMs int64       `json:"driverGapMs"`
 	// RunningTasks started but had not ended when the log ended.
 	RunningTasks  []RunningTask `json:"runningTasks,omitempty"`
 	RunningCapped bool          `json:"runningCapped,omitempty"`
@@ -522,3 +527,17 @@ type HostCPU struct {
 	Peak    float64 `json:"peak"`
 	Source  string  `json:"source"`
 }
+
+// DriverGap is a stretch with no Spark job running: executors idle while
+// the driver works on its own (planning, listing files, Python or Scala
+// code outside Spark, handling collected results) or waits. Before and
+// After are the jobs either side; nil at the start or end of the run.
+type DriverGap struct {
+	Start  time.Time `json:"start"`
+	End    time.Time `json:"end"`
+	Before *int      `json:"before,omitempty"`
+	After  *int      `json:"after,omitempty"`
+}
+
+// DurationMs is the gap's length.
+func (g DriverGap) DurationMs() int64 { return g.End.Sub(g.Start).Milliseconds() }

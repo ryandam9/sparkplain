@@ -45,6 +45,8 @@ type thresholds struct {
 	LocalityAnyShare *float64       `yaml:"locality-any-share"`
 	ResultShare      *float64       `yaml:"result-share"`
 	SlowStartup      *time.Duration `yaml:"slow-startup"`
+	DriverGapShare   *float64       `yaml:"driver-gap-share"`
+	DriverGapMin     *time.Duration `yaml:"driver-gap-min"`
 }
 
 func (t thresholds) apply(d analyze.Thresholds) analyze.Thresholds {
@@ -72,6 +74,8 @@ func (t thresholds) apply(d analyze.Thresholds) analyze.Thresholds {
 	setF(&d.LocalityAnyShare, t.LocalityAnyShare)
 	setF(&d.ResultShare, t.ResultShare)
 	setD(&d.SlowStartup, t.SlowStartup)
+	setF(&d.DriverGapShare, t.DriverGapShare)
+	setD(&d.DriverGapMin, t.DriverGapMin)
 	return d
 }
 

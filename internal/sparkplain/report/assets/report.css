@@ -193,6 +193,7 @@ pre.plan{margin:0;padding:12px 14px;overflow:auto;max-height:420px;font:12px/1.5
 .mini{display:inline-flex;align-items:center;gap:6px}
 .mini .bar{width:70px;flex:none}
 .gantt .job{stroke:none}
+.gantt .gap{fill:var(--warn-soft)} .gapsw{background:var(--warn-soft);border:1px solid var(--warn)}
 .gantt .row:hover .lbl{fill:var(--ink)}
 .lbl{fill:var(--muted);font:11px var(--mono)}
 .mk-crit{fill:var(--crit)} .mk-warn{fill:var(--warn)} .st-ok{fill:var(--accent)} .st-failed{fill:var(--crit)} .st-other{fill:var(--na)}

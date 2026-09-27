@@ -118,8 +118,9 @@
             <span><i class="sw" style="background:var(--accent)"></i>Succeeded</span>
             <span><i class="sw" style="background:var(--crit)"></i>Failed</span>
             <span><i class="sw" style="background:var(--na)"></i>Running when the log ends</span>
+            {{if $r.Jobs.DriverGaps}}<span><i class="sw gapsw"></i>No job running ({{dur $r.Jobs.DriverGapMs}} in all)</span>{{end}}
           </div>
-          {{guide (printf "Each bar is a job, from submission to completion; the thin lines under it are its stages.%s" (or (and (gt (len $r.Timeline.Jobs) 80) (printf " Showing the 80 longest of %d jobs." (len $r.Timeline.Jobs))) "")) "Longer bars took longer. Gaps between bars are time the driver spent outside Spark jobs (planning, Python code or waiting); bars that overlap ran at the same time."}}
+          {{guide (printf "Each bar is a job, from submission to completion; the thin lines under it are its stages.%s" (or (and (gt (len $r.Timeline.Jobs) 80) (printf " Showing the 80 longest of %d jobs." (len $r.Timeline.Jobs))) "")) "Longer bars took longer. Shaded stretches are when no job ran: the executors waited while the driver worked alone (planning, listing files, Python code or handling collected results). Bars that overlap ran at the same time."}}
         </div>
         <div class="tbl"><table>
           <thead><tr><th>Time (<span class="tzlabel">{{.Zone}}</span>)</th><th>Event</th><th>Source</th></tr></thead>

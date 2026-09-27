@@ -25,6 +25,8 @@ type Thresholds struct {
 	LocalityAnyShare float64       `yaml:"locality-any-share"` // input tasks off their data's host over this share
 	ResultShare      float64       `yaml:"result-share"`       // a stage's results over this share of spark.driver.maxResultSize
 	SlowStartup      time.Duration `yaml:"slow-startup"`       // executors taking longer than this to register
+	DriverGapShare   float64       `yaml:"driver-gap-share"`   // time with no job running over this share of the run
+	DriverGapMin     time.Duration `yaml:"driver-gap-min"`     // and at least this long in all
 }
 
 // DefaultThresholds are the values in SPEC §5.
@@ -34,6 +36,7 @@ func DefaultThresholds() Thresholds {
 		SpillShare: 0.10, GCShare: 0.10, LowCPUShare: 0.30, MemoryUsedShare: 0.40,
 		MinRunTime:      time.Minute,
 		SchedDelayShare: 0.20, LocalityAnyShare: 0.30, ResultShare: 0.50, SlowStartup: time.Minute,
+		DriverGapShare: 0.25, DriverGapMin: time.Minute,
 	}
 }
 

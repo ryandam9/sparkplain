@@ -262,6 +262,8 @@ thresholds:
   locality-any-share: 0.30  # input tasks away from their data over this share
   result-share: 0.50        # a stage's results over this share of spark.driver.maxResultSize
   slow-startup: 1m          # executors taking longer than this to register
+  driver-gap-share: 0.25    # no job running for over this share of the run
+  driver-gap-min: 1m        # and at least this long in all
 explorer:
   slowest-per-stage: 100
   sample-per-stage: 1000
@@ -378,6 +380,7 @@ Fixtures (added, not regenerated, so existing expectations hold): `0046` exercis
 
 - Step 1 (built): Spark reports task duration as scheduler delay + deserializing + run time + result serialization + getting the result, and measures CPU, GC, shuffle fetch wait and shuffle write time inside run time. Those four can overlap a little, so when they exceed run time they are scaled to fit, and what they leave is "other" (file I/O, Python workers, locks). Charts group the parts into six colours (starting, computing, GC, shuffle, sending the result, other); tooltips name the parts. The explorer's stage rows carry the split computed in Go (`split`), so the page does no arithmetic of its own.
 - Step 2 (built): on the Executors tab, "Which executor behaved differently?": rows are executors, columns stages, squares only where tasks ran (the driver has heap samples for every stage but usually runs no tasks). Metrics: task time, GC share, input, shuffle read and write, disk spill, peak heap, failed tasks, tasks. The relative view divides each square by the stage's median executor, shaded up to 3×, instead of the planned "% of the stage": with 50 executors every share is about 2%, while "3× the median" stands out. Squares shade on a square-root scale in one colour (red for failures) and each names its value, multiple and tasks on hover; row and column labels open the executor or stage from the keyboard. Top 30 stages and 50 executors by task time unless the whole grid is at most 5,000 squares (then a button shows all). A square opens its stage with that executor's row marked in "By executor". Checked on a synthetic 120 × 120 app: 1,500 squares, redrawn in about 0.1 s.
+- Step 3 (built): `analyze.driverGaps` walks the union of every job's submit-to-finish span (a job still running when the log ends runs to the end) from application start to end; `JobsSection.DriverGaps` lists the gaps of a second or more, longest first (up to 200), with the jobs either side, and `DriverGapMs` totals all of them. The `driver-gaps` finding (warning) fires when that total exceeds `driver-gap-share` (0.25) of the run and `driver-gap-min` (1 minute); its evidence is the three longest gaps, each citing the job that ended it. The report shades the gaps behind the job timeline, with the total in its legend. No fixture reaches a minute of gaps (0062 idles 45 s of its 78 s), so the finding is pinned by a unit test.
 
 **Phase 2 plan (proposed).** Goal (from the table above): `-cluster-id` + `-app-id` produces the report with no manual downloads, and container, step and node logs join the event log as evidence. Every AWS call stays read-only (List, Get, Describe, Head), and tests use stubs behind interfaces, never real AWS. Each step is tested before the next.
 

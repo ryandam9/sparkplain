@@ -34,6 +34,8 @@ func analyzeJobs(c *ctx, r *model.Report) {
 		}
 	}
 	s.CriticalJob, s.CriticalPath = criticalPath(c)
+	s.DriverGaps, s.DriverGapMs = driverGaps(c)
+	driverGapFinding(c, s)
 	skewFindings(c)
 	failureFindings(c)
 }
