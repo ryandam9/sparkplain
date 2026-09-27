@@ -126,6 +126,15 @@ func gantt(r *model.Report, loc *time.Location) template.HTML {
 	x := func(v time.Time) float64 { return ml + math.Max(0, float64(v.Sub(t.Start)))/span*iw }
 	var b strings.Builder
 	fmt.Fprintf(&b, `<svg class="gantt" viewBox="0 0 %.0f %.0f" role="img" aria-label="Jobs over time: %d bars">`, W, H, len(bars))
+	// Driver gaps, behind the grid and the bars: nothing ran on the executors then.
+	for _, g := range r.Jobs.DriverGaps {
+		x0, x1 := x(g.Start), x(g.End)
+		if x1-x0 < 1 {
+			continue
+		}
+		fmt.Fprintf(&b, `<rect class="gap" x="%.1f" y="%.1f" width="%.1f" height="%.1f"><title>No job running for %s (%s to %s)</title></rect>`,
+			x0, mt, x1-x0, ih, model.Duration(g.DurationMs()), g.Start.In(loc).Format("15:04:05"), g.End.In(loc).Format("15:04:05"))
+	}
 	timeAxis(&b, t.Start, t.End, x, mt+ih, mt, loc)
 	for i, bar := range bars {
 		yy := mt + float64(i)*rowH
