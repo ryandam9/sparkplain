@@ -88,3 +88,18 @@ details.logline pre{white-space:pre-wrap;word-break:break-word;margin:0;font-siz
 .anat .badge.hl circle{stroke:var(--ink);stroke-width:3}
 .finding.flash{animation:flash 1.6s ease-out}
 @keyframes flash{from{box-shadow:0 0 0 4px var(--accent)}to{box-shadow:0 0 0 0 transparent}}
+/* D3 charts (the embedded chart kit): colours come from the variables
+   above, so they follow the theme without a redraw */
+.d3c{display:block;max-width:100%;overflow:visible}
+.d3c text{font-family:var(--sans);font-size:11px;fill:var(--ink)}
+.d3c .ax line{stroke:var(--line)}
+.d3c .ax text{fill:var(--muted)}
+.d3c .note{fill:var(--muted)}
+.d3c .hit{fill:transparent}
+.d3c .go{cursor:pointer;outline:none}
+.d3c .go .rl{fill:var(--accent)}
+.d3c .go:hover .hit,.d3c .go:focus-visible .hit{fill:var(--accent-soft)}
+.d3c .go:focus-visible .rl{text-decoration:underline}
+.gchart .legend{padding:2px 6px 4px}
+.sp-tip{position:fixed;z-index:50;pointer-events:none;max-width:min(360px,90vw);white-space:pre-line;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;line-height:1.4;box-shadow:0 2px 10px rgba(0,0,0,.2)}
+.gchart:has(svg.d3c){min-height:0}

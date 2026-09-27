@@ -226,7 +226,7 @@
   }
   function numCol(h, key, fmt, title) { return { h: h, num: true, title: title, v: function (r) { return r[key]; }, f: function (r) { return (fmt || num)(r[key]); } }; }
 
-  // ---------- charts (drawn by the chart layer once Google Charts loads) ----------
+  // ---------- charts (drawn by the D3 kit, or by Google Charts once it loads, for those not moved yet) ----------
   var charts = [];
   function chartSlot(cls, draw) {
     var d = el("div", { cls: "chart gchart " + (cls || "") }, el("div", { cls: "wait", text: "Loading chart…" }));
@@ -1047,7 +1047,7 @@
   function showBanner(text) { banner.textContent = text; banner.hidden = false; }
   function loadCharts(cb) {
     if (gc.state === "ready") { cb(); return; }
-    if (gc.state === "failed") return;
+    if (gc.state === "failed") { charts.forEach(function (c) { if (!isD3(c)) waitText(c, "Chart unavailable: Google Charts could not be loaded."); }); return; }
     gc.queue.push(cb);
     if (gc.state === "loading") return;
     gc.state = "loading";
@@ -1055,7 +1055,7 @@
       if (gc.state === "ready") return;
       gc.state = "failed";
       showBanner("Charts could not load. They are drawn with Google Charts, which this page loads from www.gstatic.com, so they need internet access. Everything else on the page works without it.");
-      charts.forEach(function (c) { waitText(c, "Chart unavailable: Google Charts could not be loaded."); });
+      charts.forEach(function (c) { if (!isD3(c)) waitText(c, "Chart unavailable: Google Charts could not be loaded."); });
     };
     var slow = setTimeout(function () { if (gc.state === "loading") showBanner("Charts are still loading from www.gstatic.com. Tables and details work in the meantime."); }, 10000);
     var s = document.createElement("script");
@@ -1158,58 +1158,141 @@
   function metric(name, stat, scope) {
     return ((D.aws || {}).metrics || []).filter(function (s) { return s.name === name && (!stat || s.stat === stat) && (!scope || s.scope === scope); });
   }
-  // hbarChart draws horizontal bars, stacked from series, one row each;
-  // rows link to a page when link returns one.
-  function hbarChart(c, th, rows, series, g, format, link) {
+  // ---------- chart kit: D3, embedded in the page ----------
+  // Charts drawn with D3 need no network. Their colours are CSS variables,
+  // so a theme switch restyles them without a redraw.
+  var V = { series: "var(--viz-series)", fail: "var(--viz-fail)", neutral: "var(--viz-neutral)", line: "var(--line)",
+    viz: ["var(--viz-1)", "var(--viz-2)", "var(--viz-3)", "var(--viz-4)", "var(--viz-5)"] };
+  var tipEl = null;
+  // tipShow puts text in the shared tooltip, beside the pointer, or above
+  // the focused mark when the keyboard moved there.
+  function tipShow(ev, text) {
+    if (!tipEl) { tipEl = el("div", { cls: "sp-tip", role: "tooltip" }); document.body.appendChild(tipEl); }
+    tipEl.textContent = text;
+    tipEl.hidden = false;
+    var x, y;
+    if (ev.clientX != null && ev.type !== "focus") { x = ev.clientX; y = ev.clientY; } else { var b = ev.target.getBoundingClientRect(); x = b.left + b.width / 2; y = b.top; }
+    var w = tipEl.offsetWidth, h = tipEl.offsetHeight;
+    tipEl.style.left = Math.max(8, Math.min(x + 12, window.innerWidth - w - 8)) + "px";
+    tipEl.style.top = (y - h - 12 < 8 ? y + 18 : y - h - 12) + "px";
+  }
+  function tipHide() { if (tipEl) tipEl.hidden = true; }
+  // hover gives each mark in sel a tooltip.
+  function hover(sel, tip) {
+    sel.on("pointerenter pointermove", function (ev, d) { tipShow(ev, tip(d)); }).on("pointerleave", tipHide);
+  }
+  // linkify makes each mark in sel with an href open it on click, and from
+  // the keyboard: focusable, Enter or Space opens, the tooltip shows on focus.
+  function linkify(sel, href, label) {
+    sel.filter(function (d) { return href(d); }).classed("go", true)
+      .attr("tabindex", 0).attr("role", "link").attr("aria-label", label)
+      .on("click", function (ev, d) { tipHide(); location.hash = href(d); })
+      .on("keydown", function (ev, d) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); tipHide(); location.hash = href(d); } })
+      .on("focus", function (ev, d) { tipShow(ev, label(d)); }).on("blur", tipHide);
+  }
+  // plotSvg adds an SVG as wide as the plot area; charts redraw on resize.
+  function plotSvg(plot, h, title) {
+    var w = Math.max(plot.clientWidth || 0, 280);
+    var svg = d3.select(plot).append("svg").attr("class", "d3c").attr("width", w).attr("height", h)
+      .attr("viewBox", "0 0 " + w + " " + h).attr("role", "group").attr("aria-label", title || "Chart");
+    return { svg: svg, w: w, h: h };
+  }
+  // legendNode names each series' colour, above the plot.
+  function legendNode(items) {
+    return el("div", { cls: "legend" }, items.map(function (it) { return el("span", null, el("i", { cls: "sw", style: "background:" + it.color }), it.label); }));
+  }
+  // Axis units: ticks fall on round numbers of the unit that suits the
+  // largest value (200 MiB, 5 min), not of the base unit (bytes, ms).
+  var UNITS = { bytes: [[1, "B"], [1024, "KiB"], [1048576, "MiB"], [1073741824, "GiB"], [1099511627776, "TiB"]],
+    ms: [[1, "ms"], [1000, "s"], [60000, "min"], [3600000, "h"]] };
+  var FMT = { bytes: bytes, ms: dur };
+  // unitAxis is a linear scale from 0 to max over range (so the largest
+  // bar, such as a full heap, fills it), with round ticks in the chosen
+  // unit and their labels.
+  function unitAxis(kind, max, range, n) {
+    var u = UNITS[kind][0];
+    max = max || 1;
+    UNITS[kind].forEach(function (x) { if (max >= 2 * x[0]) u = x; });
+    var f = d3.format("~g");
+    return { x: d3.scaleLinear().domain([0, max]).range(range), ticks: d3.ticks(0, max / u[0], n).map(function (t) { return t * u[0]; }),
+      label: function (v) { return v === 0 ? "0" : f(v / u[0]) + " " + u[1]; } };
+  }
+  // fitChars cuts s to about px pixels of 11px text, keeping the full text
+  // for the tooltip.
+  function fitChars(s, px) { var n = Math.max(4, Math.floor(px / 6.3)); return s.length <= n ? s : s.slice(0, n - 1) + "…"; }
+
+  // hbarChart draws horizontal bars, stacked from series, one row each,
+  // with the row's total at its end (series marked rest, such as unused
+  // space, are drawn but not counted); rows link to a page when link
+  // returns one.
+  function hbarChart(c, rows, series, g, kind, link) {
+    var format = FMT[kind];
     if (!rows.length) { waitText(c, "Nothing to chart for this run."); return; }
     // a series with nothing in it only clutters the legend
     series = series.filter(function (sr) { return rows.some(function (r) { return sr.value(r) > 0; }); });
-    var dt = new google.visualization.DataTable();
-    dt.addColumn("string", "Row");
-    series.forEach(function (sr) { dt.addColumn("number", sr.label); dt.addColumn({ type: "string", role: "tooltip" }); });
-    rows.forEach(function (r) {
-      var row = [r.label];
-      series.forEach(function (sr) { var v = sr.value(r); row.push(v, r.label + "\n" + sr.label + ": " + format(v)); });
-      dt.addRow(row);
-    });
     var plot = frame(c, g);
-    var ch = new google.visualization.BarChart(plot);
-    ch.draw(dt, baseOpts(th, { isStacked: true, height: Math.max(160, rows.length * 26 + 70), colors: series.map(function (sr) { return sr.color; }),
-      chartArea: { left: 170, right: 20, top: series.length > 3 ? 48 : 30, bottom: 36, width: "100%", height: "100%" }, bar: { groupWidth: "72%" }, legend: series.length > 1 ? { position: "top", alignment: "start", maxLines: 3, textStyle: { color: th.ink } } : { position: "none" },
-      vAxis: axis(th, { textStyle: { color: th.ink, fontSize: 11 } }), hAxis: axis(th, { minValue: 0, format: "short" }) }));
-    if (link) google.visualization.events.addListener(ch, "select", function () { var sel = ch.getSelection()[0]; if (sel && sel.row != null) location.hash = link(rows[sel.row]); });
+    if (series.length > 1) plot.parentNode.insertBefore(legendNode(series), plot);
+    var rowH = 26, top = 4, bandH = rows.length * rowH;
+    var P = plotSvg(plot, top + bandH + 26, g.t);
+    var labelW = Math.min(170, Math.round(P.w * 0.36)), noteW = 76;
+    var val = function (sr, r) { return Math.max(sr.value(r), 0) || 0; };
+    var sum = function (r, all) { return series.reduce(function (s, sr) { return s + (all || !sr.rest ? val(sr, r) : 0); }, 0); };
+    var U = unitAxis(kind, d3.max(rows, function (r) { return sum(r, true); }), [labelW, P.w - noteW], Math.max(2, Math.floor((P.w - labelW - noteW) / 80))), x = U.x;
+    var ax = P.svg.append("g").attr("class", "ax").attr("transform", "translate(0," + (top + bandH) + ")")
+      .call(d3.axisBottom(x).tickValues(U.ticks).tickFormat(U.label).tickSize(-bandH).tickPadding(6));
+    ax.select(".domain").remove();
+    var row = P.svg.append("g").selectAll("g").data(rows).join("g").attr("class", "row")
+      .attr("transform", function (r, i) { return "translate(0," + (top + i * rowH) + ")"; });
+    row.append("rect").attr("class", "hit").attr("x", 0).attr("width", P.w).attr("height", rowH);
+    row.append("text").attr("class", "rl").attr("x", labelW - 8).attr("y", rowH / 2).attr("dy", "0.35em").attr("text-anchor", "end")
+      .text(function (r) { return fitChars(r.label, labelW - 12); });
+    row.each(function (r) {
+      var at = 0, gr = d3.select(this);
+      series.forEach(function (sr) {
+        var v = val(sr, r);
+        if (!v) return;
+        gr.append("rect").datum({ tip: r.label + "\n" + sr.label + ": " + format(v) })
+          .attr("x", x(at)).attr("y", rowH * 0.14).attr("width", Math.max(x(at + v) - x(at), 1)).attr("height", rowH * 0.72).style("fill", sr.color);
+        at += v;
+      });
+      gr.append("text").attr("class", "note").attr("x", x(at) + 6).attr("y", rowH / 2).attr("dy", "0.35em").text(format(sum(r)));
+    });
+    hover(row.selectAll("rect:not(.hit)"), function (d) { return d.tip; });
+    var summary = function (r) { return r.label + ": " + series.map(function (sr) { return sr.label + " " + format(val(sr, r)); }).join(", "); };
+    hover(row.select(".rl"), summary);
+    if (link) linkify(row, link, summary);
   }
   // stageName is one short line, so the axis labels every bar: the call
   // site ("count at Foo.java:0") is cut to its operation.
   function stageName(st) { return "Stage " + st.id + (st.attempt ? "." + st.attempt : "") + " · " + (st.name || "").split(" at ")[0].slice(0, 16); }
   function topBy(list, n, key) { return list.filter(function (x) { return key(x) > 0; }).sort(function (a2, b2) { return key(b2) - key(a2); }).slice(0, n); }
   var DRAW = {
-    stageTimes: function (c, th) {
+    stageTimes: function (c) {
       var rows = topBy(stages, 20, function (st) { return span(st.submitted, st.completed) || 0; });
-      hbarChart(c, th, rows.map(function (st) { return { label: stageName(st), st: st }; }), [
-        { label: "Succeeded", color: th.viz[0], value: function (r) { return r.st.status === "failed" ? 0 : span(r.st.submitted, r.st.completed) / 1000; } },
-        { label: "Failed", color: th.fail, value: function (r) { return r.st.status === "failed" ? span(r.st.submitted, r.st.completed) / 1000 : 0; } }
-      ], { t: "The longest stages", shows: "The longest stages, in seconds from submission to completion. Click a bar to open the stage.",
-        read: "Shorter is better. The top few bars are where speeding things up helps most; red bars failed." }, function (v) { return dur(v * 1000); }, function (r) { return "#stage/" + r.st.key; });
+      hbarChart(c, rows.map(function (st) { return { label: stageName(st), st: st }; }), [
+        { label: "Succeeded", color: V.viz[0], value: function (r) { return r.st.status === "failed" ? 0 : span(r.st.submitted, r.st.completed); } },
+        { label: "Failed", color: V.fail, value: function (r) { return r.st.status === "failed" ? span(r.st.submitted, r.st.completed) : 0; } }
+      ], { t: "The longest stages", shows: "The longest stages, from submission to completion. Click a bar to open the stage.",
+        read: "Shorter is better. The top few bars are where speeding things up helps most; red bars failed." }, "ms", function (r) { return "#stage/" + r.st.key; });
     },
-    stageData: function (c, th) {
+    stageData: function (c) {
       var moved = function (st) { return st.input + st.shRead + st.shWrite + st.output + st.diskSpill; };
       var rows = topBy(stages, 20, moved).map(function (st) { return { label: stageName(st), st: st }; });
-      var mib = function (k) { return function (r) { return r.st[k] / 1048576; }; };
-      hbarChart(c, th, rows, [
-        { label: "Read", color: th.viz[0], value: mib("input") }, { label: "Shuffle read", color: th.viz[1], value: mib("shRead") },
-        { label: "Shuffle write", color: th.viz[2], value: mib("shWrite") }, { label: "Written", color: th.viz[3], value: mib("output") },
-        { label: "Spilled to disk", color: th.viz[4], value: mib("diskSpill") }
-      ], { t: "Data each stage moved", shows: "The stages that moved the most data, in MiB: read, shuffled between executors, written out and spilled to disk.",
-        read: "Longer bars moved more data. Shuffle (orange and green) is the costly part, since it crosses disk and network; spill (pink) should be absent." }, function (v) { return bytes(v * 1048576); }, function (r) { return "#stage/" + r.st.key; });
+      var field = function (k) { return function (r) { return r.st[k]; }; };
+      hbarChart(c, rows, [
+        { label: "Read", color: V.viz[0], value: field("input") }, { label: "Shuffle read", color: V.viz[1], value: field("shRead") },
+        { label: "Shuffle write", color: V.viz[2], value: field("shWrite") }, { label: "Written", color: V.viz[3], value: field("output") },
+        { label: "Spilled to disk", color: V.viz[4], value: field("diskSpill") }
+      ], { t: "Data each stage moved", shows: "The stages that moved the most data: read, shuffled between executors, written out and spilled to disk.",
+        read: "Longer bars moved more data. Shuffle (orange and green) is the costly part, since it crosses disk and network; spill (pink) should be absent." }, "bytes", function (r) { return "#stage/" + r.st.key; });
     },
-    stageSpill: function (c, th) {
+    stageSpill: function (c) {
       var rows = topBy(stages, 20, function (st) { return st.memSpill + st.diskSpill; }).map(function (st) { return { label: stageName(st), st: st }; });
-      hbarChart(c, th, rows, [
-        { label: "Spilled (size in memory)", color: th.viz[1], value: function (r) { return r.st.memSpill / 1048576; } },
-        { label: "Written to disk", color: th.viz[4], value: function (r) { return r.st.diskSpill / 1048576; } }
-      ], { t: "Spill by stage", shows: "Spill by stage, in MiB: data that did not fit in memory while the stage ran, and what it came to on disk.",
-        read: "Smaller is better, and none is ideal. Large spill means the stage's data did not fit in memory; more partitions or more memory per task help." }, function (v) { return bytes(v * 1048576); }, function (r) { return "#stage/" + r.st.key; });
+      hbarChart(c, rows, [
+        { label: "Spilled (size in memory)", color: V.viz[1], value: function (r) { return r.st.memSpill; } },
+        { label: "Written to disk", color: V.viz[4], value: function (r) { return r.st.diskSpill; } }
+      ], { t: "Spill by stage", shows: "Spill by stage: data that did not fit in memory while the stage ran, and what it came to on disk.",
+        read: "Smaller is better, and none is ideal. Large spill means the stage's data did not fit in memory; more partitions or more memory per task help." }, "bytes", function (r) { return "#stage/" + r.st.key; });
     },
     dataOverTime: function (c, th) {
       var done = stages.filter(function (st) { return st.completed; }).sort(function (a2, b2) { return a2.completed - b2.completed; });
@@ -1225,35 +1308,33 @@
       new google.visualization.SteppedAreaChart(plot).draw(dt, baseOpts(th, { colors: [th.viz[0], th.viz[2], th.viz[3]], areaOpacity: 0.08, connectSteps: true, isStacked: false,
         hAxis: withFormat(baseOpts(th).hAxis, "HH:mm:ss"), vAxis: axis(th, { minValue: 0, format: "short" }) }));
     },
-    execTime: function (c, th) {
+    execTime: function (c) {
       var rows = topBy(execs.filter(function (x) { return x.id !== "driver"; }), 30, function (x) { return x.run; }).map(function (x) { return { label: "Executor " + x.id, x: x }; });
-      var sec = function (f) { return function (r) { return Math.max(f(r.x), 0) / 1000; }; };
-      hbarChart(c, th, rows, [
-        { label: "Computing", color: th.viz[0], value: sec(function (x) { return x.cpuNs / 1e6; }) },
-        { label: "Garbage collection", color: th.viz[1], value: sec(function (x) { return x.gc; }) },
-        { label: "Other or waiting", color: th.neutral, value: sec(function (x) { return x.run - x.cpuNs / 1e6 - x.gc; }) }
-      ], { t: "Where executor time went", shows: "Task run time on each executor, in seconds: computing on the JVM, collecting garbage, or neither (waiting for shuffle data, storage or Python workers).",
-        read: "More computing is better. Garbage collection above about 10% of the bar means memory pressure; a large grey part means tasks waited instead of computing." }, function (v) { return dur(v * 1000); }, function (r) { return "#executor/" + encodeURIComponent(r.x.id); });
+      hbarChart(c, rows, [
+        { label: "Computing", color: V.viz[0], value: function (r) { return r.x.cpuNs / 1e6; } },
+        { label: "Garbage collection", color: V.viz[1], value: function (r) { return r.x.gc; } },
+        { label: "Other or waiting", color: V.neutral, value: function (r) { return r.x.run - r.x.cpuNs / 1e6 - r.x.gc; } }
+      ], { t: "Where executor time went", shows: "Task run time on each executor: computing on the JVM, collecting garbage, or neither (waiting for shuffle data, storage or Python workers).",
+        read: "More computing is better. Garbage collection above about 10% of the bar means memory pressure; a large grey part means tasks waited instead of computing." }, "ms", function (r) { return "#executor/" + encodeURIComponent(r.x.id); });
     },
-    execHeapAll: function (c, th) {
+    execHeapAll: function (c) {
       if (!D.heapBytes) { waitText(c, "The executors' heap size is not known."); return; }
       var rows = topBy(execs.filter(function (x) { return x.id !== "driver"; }), 30, function (x) { return x.peakHeap || 0; }).map(function (x) { return { label: "Executor " + x.id, x: x }; });
-      hbarChart(c, th, rows, [
-        { label: "Peak heap", color: th.viz[0], value: function (r) { return r.x.peakHeap / 1048576; } },
-        { label: "Heap not used at peak", color: th.line, value: function (r) { return Math.max(D.heapBytes - r.x.peakHeap, 0) / 1048576; } }
-      ], { t: "Peak heap per executor", shows: "Each executor's peak Java heap against the " + bytes(D.heapBytes) + " it had, in MiB. Peaks are sampled, so short spikes can be missed.",
-        read: "A bar that nearly fills its row (over 90%) risks running out of memory. Bars that stay well short mean executors had more heap than they used and could be smaller." }, function (v) { return bytes(v * 1048576); }, function (r) { return "#executor/" + encodeURIComponent(r.x.id); });
+      hbarChart(c, rows, [
+        { label: "Peak heap", color: V.viz[0], value: function (r) { return r.x.peakHeap; } },
+        { label: "Heap not used at peak", color: V.line, rest: true, value: function (r) { return D.heapBytes - r.x.peakHeap; } }
+      ], { t: "Peak heap per executor", shows: "Each executor's peak Java heap against the " + bytes(D.heapBytes) + " it had. Peaks are sampled, so short spikes can be missed.",
+        read: "A bar that nearly fills its row (over 90%) risks running out of memory. Bars that stay well short mean executors had more heap than they used and could be smaller." }, "bytes", function (r) { return "#executor/" + encodeURIComponent(r.x.id); });
     },
-    nodeMemory: function (c, th) {
+    nodeMemory: function (c) {
       var rows = D.aws.nodes.filter(function (n) { return n.yarnMem; }).map(function (n) { return { label: n.host.split(".")[0], n: n }; });
-      var mib = function (f) { return function (r) { return Math.max(f(r.n), 0) / 1048576; }; };
       var execBytes = function (n) { return (n.execMem || 0) * (n.peakExecs || n.executors.length); };
-      hbarChart(c, th, rows, [
-        { label: "Driver container", color: th.viz[1], value: mib(function (n) { return n.driverMem || 0; }) },
-        { label: "Executor containers (at once)", color: th.viz[0], value: mib(execBytes) },
-        { label: "Free", color: th.line, value: mib(function (n) { return n.yarnMem - (n.driverMem || 0) - execBytes(n); }) }
-      ], { t: "What YARN placed on each node", shows: "What YARN placed on each node, in MiB, against the memory the node offered.",
-        read: "Free space helps only if it is at least one executor container wide: smaller gaps are memory paid for but unusable. A node that is mostly free did little work for this run." }, function (v) { return bytes(v * 1048576); });
+      hbarChart(c, rows, [
+        { label: "Driver container", color: V.viz[1], value: function (r) { return r.n.driverMem || 0; } },
+        { label: "Executor containers (at once)", color: V.viz[0], value: function (r) { return execBytes(r.n); } },
+        { label: "Free", color: V.line, rest: true, value: function (r) { return r.n.yarnMem - (r.n.driverMem || 0) - execBytes(r.n); } }
+      ], { t: "What YARN placed on each node", shows: "What YARN placed on each node, against the memory the node offered.",
+        read: "Free space helps only if it is at least one executor container wide: smaller gaps are memory paid for but unusable. A node that is mostly free did little work for this run." }, "bytes");
     },
     clusterContainers: function (c, th) {
       var list = metric("ContainerAllocated").concat(metric("ContainerPending"));
@@ -1386,10 +1467,14 @@
         vAxis: axis(th, { title: "MiB", format: "#,###", minValue: 0 }) }));
     }
   };
+  // D3_DRAW are the charts already moved to the embedded D3 kit; the rest
+  // still wait for Google Charts.
+  var D3_DRAW = { stageTimes: 1, stageData: 1, stageSpill: 1, execTime: 1, execHeapAll: 1, nodeMemory: 1 };
+  function isD3(c) { return D3_DRAW[c.draw.split(":")[0]] === 1; }
   function drawSlot(c) {
     var name = c.draw.split(":")[0], arg = c.draw.slice(name.length + 1);
     if (!DRAW[name] || !document.body.contains(c.el)) return;
-    try { DRAW[name](c, theme(), arg); } catch (e) { waitText(c, "This chart could not be drawn: " + e.message); }
+    try { DRAW[name](c, isD3(c) ? null : theme(), arg); } catch (e) { waitText(c, "This chart could not be drawn: " + e.message); }
   }
   var resizeTimer;
   window.addEventListener("resize", function () { clearTimeout(resizeTimer); resizeTimer = setTimeout(redrawCharts, 250); });
@@ -1711,17 +1796,18 @@
     var tab = { job: "jobs", stage: "stages", executor: "executors", query: "sql", finding: "overview" }[name] || name;
     tabs.querySelectorAll("a").forEach(function (a) { if (a.getAttribute("data-tab") === tab) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
     charts.length = 0;
+    tipHide();
     main.textContent = "";
     add(main, views[name](arg));
     drawCharts();
     window.scrollTo(0, 0);
   }
   function drawCharts() {
-    if (!charts.length) return;
-    var mine = charts.slice();
-    loadCharts(function () { mine.forEach(drawSlot); });
+    charts.filter(isD3).forEach(drawSlot);
+    var mine = charts.filter(function (c) { return !isD3(c); });
+    if (mine.length) loadCharts(function () { mine.forEach(drawSlot); });
   }
-  function redrawCharts() { if (gc.state === "ready") charts.forEach(drawSlot); }
+  function redrawCharts() { charts.forEach(function (c) { if (isD3(c) || gc.state === "ready") drawSlot(c); }); }
   window.addEventListener("hashchange", route);
   route();
 })();

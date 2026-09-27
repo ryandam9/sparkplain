@@ -302,8 +302,19 @@ func TestExplorerChartsHaveDrawers(t *testing.T) {
 		t.Fatalf("found %d chart slots; the pattern no longer matches explorer.js", len(slots))
 	}
 	for _, s := range slots {
-		if !regexp.MustCompile(`\n    ` + s[1] + `: function \(c, th`).MatchString(explorerJS) {
+		if !regexp.MustCompile(`\n    ` + s[1] + `: function \(c[,)]`).MatchString(explorerJS) {
 			t.Errorf("chart %q has no DRAW entry", s[1])
+		}
+	}
+	// charts moved to the D3 kit must exist, and no longer take Google
+	// Charts' theme
+	m := regexp.MustCompile(`var D3_DRAW = \{([^}]*)\}`).FindStringSubmatch(explorerJS)
+	if m == nil {
+		t.Fatal("D3_DRAW not found in explorer.js")
+	}
+	for _, n := range regexp.MustCompile(`([A-Za-z]+): 1`).FindAllStringSubmatch(m[1], -1) {
+		if !regexp.MustCompile(`\n    ` + n[1] + `: function \(c\)`).MatchString(explorerJS) {
+			t.Errorf("D3 chart %q has no DRAW entry taking only its slot", n[1])
 		}
 	}
 }
