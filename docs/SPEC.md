@@ -362,6 +362,7 @@ Fixtures (added, not regenerated, so existing expectations hold): `0046` exercis
 4. Timelines (jobs, executors, queries); remove the Google Charts loader and banner; the explorer gets the report's "loads nothing external" test; CLAUDE.md, the README and §4 and §6 say the explorer works offline.
 
 - Step 1 (built): the kit draws charts as SVG sized to their box and redrawn on resize. Colours are CSS variables, so a theme switch needs no redraw. Axes tick on round numbers of the unit that suits the data (200 MiB, 5 min) and end at the largest value, so a full heap fills its row. Each bar shows its total at its end; linked rows are focusable and open with Enter. Charts not yet moved still load Google Charts; after a failed load, later views now say the chart is unavailable instead of waiting.
+- Step 2 (built): the four charts over time share one time chart: lines, areas or steps on a time axis in the viewer's zone (seconds shown only for spans under 10 minutes), a y axis in round units (count, %, bytes), and a cursor that snaps to the nearest sample and lists every series there. Tick labels at the ends lean inward so none leaves the chart.
 
 **Phase 2 plan (proposed).** Goal (from the table above): `-cluster-id` + `-app-id` produces the report with no manual downloads, and container, step and node logs join the event log as evidence. Every AWS call stays read-only (List, Get, Describe, Head), and tests use stubs behind interfaces, never real AWS. Each step is tested before the next.
 
