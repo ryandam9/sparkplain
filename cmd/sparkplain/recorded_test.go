@@ -80,8 +80,9 @@ func replayAWS(t *testing.T, name string) *awsfake.Recording {
 	if !ok {
 		t.Fatalf("recording's log URI %q is not on S3", aws.ToString(rec.Cluster.LogUri))
 	}
-	// The phase 3 jobs' scripts sat in the bucket under p3/.
-	store := routeStore{bucket: bucket, routes: map[string]string{"emr-logs": emrlogs, "spark-events": fx, "p3": "../../testdata/emrscripts/p3"}}
+	// The phase 3 and 4 jobs' scripts sat in the bucket under p3/ and p4/.
+	store := routeStore{bucket: bucket, routes: map[string]string{"emr-logs": emrlogs, "spark-events": fx,
+		"p3": "../../testdata/emrscripts/p3", "p4": "../../testdata/emrscripts/p4"}}
 	saved := awsDeps
 	t.Cleanup(func() { awsDeps = saved })
 	awsDeps.config = func(context.Context, string, string) (aws.Config, error) { return aws.Config{Region: "us-east-1"}, nil }
@@ -210,6 +211,92 @@ func TestRecordedPhase3(t *testing.T) {
 		}
 		if len(r.Cluster.Instances) != 5 || r.Cluster.Instances[0].VCPU != 4 || r.AWSCalls == nil || r.Metrics == nil {
 			t.Errorf("%s: cluster %+v, calls %v, metrics %v", n, r.Cluster, r.AWSCalls != nil, r.Metrics != nil)
+		}
+	}
+}
+
+// The phase 4 live check's cluster: a spot task node was reclaimed 80 s
+// into the first application, taking attempt 1's driver with it, and
+// attempt 2 finished on the core node; then NOAA and a second copy of the
+// findings job ran at once. Recorded after the cluster ended, so every
+// log, the daemons' included, had reached S3.
+func TestRecordedPhase4(t *testing.T) {
+	replayAWS(t, "j-FIXTURE0071CLUSTER")
+	type want struct {
+		has    map[string]string // rule → title prefix
+		hasNot []string
+		expl   map[string][]string // rule → phrases its explanation holds
+	}
+	for n, w := range map[string]want{
+		"0071": {map[string]string{
+			"spot-interrupted": "Spot node i-0fee0000000000003 went away while the application ran",
+			"app-retried":      "YARN restarted the application after 1 failed attempt",
+			"memory-spill":     "3 stages spilled 2.2 GiB to disk",
+			"driver-gaps":      "No Spark job ran for 2 min 20 s (54%) of the run",
+			"task-retries":     "1 task attempt failed and was retried successfully",
+		}, []string{"idle-nodes", "log-first-failure", "stage-skew"}, map[string][]string{
+			"app-retried": {"Its driver ran on ip-10-0-2-12.us-east-1.compute.internal.", "YARN reported that node DECOMMISSIONING",
+				"EMR reports instance i-0fee0000000000003 ended", "INTERNAL_ERROR_BROADCAST", "and attempt 2 finished"},
+			"spot-interrupted": {"It took the driver of attempt 1 with it.", "EMR says why: Spot Instance was terminated due to not enough capacity"},
+		}},
+		"0072": {map[string]string{
+			"waited-for-capacity": "Containers waited 2 min 53 s for room on the cluster",
+			"executor-fit":        "Spark wanted 39 executors; the cluster had room for 2",
+			"shared-cluster":      "2 applications shared the cluster",
+		}, []string{"idle-nodes", "app-retried", "spot-interrupted"}, map[string][]string{
+			"shared-cluster": {"1 worker node ran nothing for this application; the other application may have been using it."},
+		}},
+		"0073": {map[string]string{
+			"waited-for-capacity": "Containers waited 3 min 24 s for room on the cluster",
+			"memory-spill":        "3 stages spilled 2.3 GiB to disk",
+			"shared-cluster":      "2 applications shared the cluster",
+		}, []string{"idle-nodes", "app-retried", "spot-interrupted"}, map[string][]string{
+			"shared-cluster": {"the other application may have been using it."},
+		}},
+	} {
+		dir := t.TempDir()
+		code, out, errs := runCLI(t, "-app-id", "application_1790380000000_"+n, "-cluster-id", "j-FIXTURE0071CLUSTER", "-profile", "test", "-out", dir, "-format", "json,html,explorer")
+		if code != exitOK {
+			t.Errorf("%s: exit %d: %s", n, code, errs)
+		}
+		r := readReport(t, dir)
+		if r.Application.Status != "succeeded" {
+			t.Errorf("%s: status %q", n, r.Application.Status)
+		}
+		got := map[string]string{}
+		expl := map[string]string{}
+		for _, f := range r.Findings {
+			got[f.Rule], expl[f.Rule] = f.Title, f.Explanation
+		}
+		for rule, title := range w.has {
+			if !strings.HasPrefix(got[rule], title) {
+				t.Errorf("%s: %s = %q, want %q…", n, rule, got[rule], title)
+			}
+		}
+		for _, rule := range w.hasNot {
+			if _, ok := got[rule]; ok {
+				t.Errorf("%s: unexpected %s: %q", n, rule, got[rule])
+			}
+		}
+		for rule, phrases := range w.expl {
+			for _, p := range phrases {
+				if !strings.Contains(expl[rule], p) {
+					t.Errorf("%s: %s explanation lacks %q: %s", n, rule, p, expl[rule])
+				}
+			}
+		}
+		// With the cluster ended, every worker's YARN capacity and CPU is
+		// known, the reclaimed spot node's (one CloudWatch point) included.
+		for _, h := range r.Nodes.Hosts {
+			if h.Instance == nil || h.Instance.Role == "MASTER" {
+				continue
+			}
+			if h.YARNMemoryBytes == 0 || h.HostCPU == nil {
+				t.Errorf("%s: node %s: YARN memory %d, CPU %v", n, h.Name, h.YARNMemoryBytes, h.HostCPU)
+			}
+		}
+		if n == "0071" && (len(r.Summary.Sentences) == 0 || !strings.Contains(r.Summary.Sentences[0], "finished on attempt 2, after YARN restarted it.") || !strings.Contains(out, "What happened")) {
+			t.Errorf("0071: summary does not say which attempt finished: %q", r.Summary.Sentences)
 		}
 	}
 }
