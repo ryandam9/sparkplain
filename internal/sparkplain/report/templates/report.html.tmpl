@@ -239,6 +239,7 @@
           <div class="fact"><span class="l">Executor cores busy</span><span class="v num">{{pct $c.BusyShare}}</span><span class="x">Task run time ({{dur $c.RunMs}}) out of the core time executors held ({{dur $c.AllocatedCoreMs}}).</span></div>
         </div>
         {{timeChart $r}}
+        {{splitChart $r}}
         <h3>Stages with the most task time</h3>
         <div class="tbl"><table>
           <thead><tr><th data-sort="num">Stage</th><th>Name</th><th class="num" data-sort="num">Run time</th><th class="num" data-sort="num">CPU time</th><th data-sort="num">CPU share</th></tr></thead>
