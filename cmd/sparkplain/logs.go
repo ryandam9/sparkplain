@@ -163,11 +163,13 @@ func (out *clusterLogs) readLogs(ctx context.Context, cloud *awsSession, log *mo
 
 // stepEventLogDirs returns the S3 spark.eventLog.dir values the steps'
 // spark-submit arguments set, newest step first: jobs often set it per
-// job rather than in the cluster's configuration.
+// job rather than in the cluster's configuration. steps is oldest first
+// (awsmeta.Steps), so it is walked from the end.
 func stepEventLogDirs(steps []model.Step) []string {
 	var out []string
 	seen := map[string]bool{}
-	for _, st := range steps {
+	for i := len(steps) - 1; i >= 0; i-- {
+		st := steps[i]
 		for _, a := range st.Args {
 			a = strings.TrimPrefix(a, "--conf=")
 			v, ok := strings.CutPrefix(a, "spark.eventLog.dir=")
@@ -199,7 +201,11 @@ func narrow(steps []model.Step, instances []model.Instance, log *model.EventLog)
 		}
 	}
 	stepIDs = []string{}
-	for _, s := range steps { // newest first, as ListSteps returns them
+	// steps is oldest first (awsmeta.Steps); search from the newest, which
+	// is the likeliest to have submitted the application, so a cluster with
+	// many steps does not use up maxStepsSearched on old ones.
+	for i := len(steps) - 1; i >= 0; i-- {
+		s := steps[i]
 		if !start.IsZero() {
 			// The step started before the application and was still running
 			// when it started (a minute's slack for clock skew).

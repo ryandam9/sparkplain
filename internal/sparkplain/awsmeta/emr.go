@@ -129,7 +129,10 @@ func created(c types.ClusterSummary) time.Time {
 	return time.Time{}
 }
 
-// Steps lists a cluster's steps, oldest first, with arguments redacted.
+// Steps lists a cluster's steps with arguments redacted, sorted oldest
+// first by start time whatever order ListSteps pages them in. Reports show
+// them in this order; searches that want the newest step first (the one most
+// likely to have submitted a recent application) walk the slice from the end.
 func Steps(ctx context.Context, api EMRAPI, id string) ([]model.Step, error) {
 	var out []model.Step
 	p := emr.NewListStepsPaginator(api, &emr.ListStepsInput{ClusterId: aws.String(id)})

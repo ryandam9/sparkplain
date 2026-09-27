@@ -157,3 +157,24 @@ func TestInstancesMarkPrimary(t *testing.T) {
 		t.Errorf("instances = %+v", got)
 	}
 }
+
+// Steps' ordering contract: oldest first by start time, whatever order the
+// API returns them in (ListSteps pages newest first).
+func TestStepsOldestFirst(t *testing.T) {
+	t0 := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	step := func(id string, start time.Time) types.StepSummary {
+		return types.StepSummary{Id: aws.String(id), Status: &types.StepStatus{Timeline: &types.StepTimeline{StartDateTime: aws.Time(start)}}}
+	}
+	api := &stubEMR{steps: []types.StepSummary{step("s-3", t0.Add(2*time.Hour)), step("s-1", t0), step("s-2", t0.Add(time.Hour))}}
+	steps, err := Steps(context.Background(), api, "j-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, s := range steps {
+		ids = append(ids, s.ID)
+	}
+	if strings.Join(ids, ",") != "s-1,s-2,s-3" {
+		t.Fatalf("order %v, want oldest first", ids)
+	}
+}
