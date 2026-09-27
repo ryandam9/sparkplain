@@ -298,19 +298,28 @@ func (g *group) read(ctx context.Context) {
 		return
 	}
 	g.errs = map[string]int{}
-	results := make([]Result, len(g.picked))
+	// One result per file read: an object, or each entry of a zip. Fetch
+	// calls fn once per zip entry, all from the object's own goroutine, so
+	// each object's slice is appended to by one goroutine only.
+	results := make([][]entryResult, len(g.picked))
 	index := map[string]int{}
 	for i, o := range g.picked {
 		index[o.Key] = i
 	}
-	reads := source.Fetch(ctx, g.st, g.picked, g.plan.Limits, func(o source.Object, _ string, r io.Reader) error {
+	reads := source.Fetch(ctx, g.st, g.picked, g.plan.Limits, func(o source.Object, name string, r io.Reader) error {
 		i := index[o.Key]
-		res, err := Classify(r, g.st.Location(o.Key), g.pickedFiles[i], Options{AppID: g.plan.AppID})
-		results[i] = res
+		cr := &countReader{r: r}
+		// name is the key, or key!entry inside a zip: lines cite the entry.
+		res, err := Classify(cr, g.st.Location(name), g.pickedFiles[i], Options{AppID: g.plan.AppID})
+		bytes := o.Size // as stored, like every other log file
+		if name != o.Key {
+			bytes = cr.n // a zip entry's own size, unpacked
+		}
+		results[i] = append(results[i], entryResult{res: res, bytes: bytes})
 		return err
 	})
 	for i, rd := range reads {
-		f, res := g.pickedFiles[i], results[i]
+		f := g.pickedFiles[i]
 		row := model.SourceFile{Location: rd.Where, Bytes: rd.Object.Size, Status: "read"}
 		if rd.Err != nil {
 			row.Status, row.Class, row.Detail = "error", source.ClassOf(rd.Err), rd.Err.Error()
@@ -318,12 +327,33 @@ func (g *group) read(ctx context.Context) {
 		}
 		g.keys = append(g.keys, rd.Object.Key)
 		g.sourceFiles = append(g.sourceFiles, row)
-		if res.Read == 0 && rd.Err != nil {
-			continue
+		for _, er := range results[i] {
+			res := er.res
+			if res.Read == 0 && rd.Err != nil {
+				continue
+			}
+			g.files = append(g.files, model.LogFile{Location: res.Name, Kind: string(f.Kind), Container: f.Container, Step: f.Step,
+				Instance: f.Instance, Bytes: er.bytes, Lines: res.Read, Dropped: res.Dropped, Found: res.Lines})
 		}
-		g.files = append(g.files, model.LogFile{Location: rd.Where, Kind: string(f.Kind), Container: f.Container, Step: f.Step,
-			Instance: f.Instance, Bytes: rd.Object.Size, Lines: res.Read, Dropped: res.Dropped, Found: res.Lines})
 	}
+}
+
+// entryResult is what one file (or zip entry) gave, and its size.
+type entryResult struct {
+	res   Result
+	bytes int64
+}
+
+// countReader counts the bytes read through it.
+type countReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
 }
 
 func (g *group) failed() int {
