@@ -207,8 +207,12 @@ func analyzeMetrics(c *ctx, r *model.Report) {
 			// A node this application left alone may have been busy with
 			// the others, so it is not called idle.
 			if idle := c.drop("idle-nodes"); idle != nil {
-				f.Explanation += fmt.Sprintf(" %s ran nothing for this application; the other applications may have been using %s.",
-					model.Plural(len(idle.Evidence), "worker node", "worker nodes"), map[bool]string{true: "it", false: "them"}[len(idle.Evidence) == 1])
+				others := "the other applications"
+				if maxApps == 2 {
+					others = "the other application"
+				}
+				f.Explanation += fmt.Sprintf(" %s ran nothing for this application; %s may have been using %s.",
+					model.Plural(len(idle.Evidence), "worker node", "worker nodes"), others, map[bool]string{true: "it", false: "them"}[len(idle.Evidence) == 1])
 				f.Evidence = append(f.Evidence, idle.Evidence...)
 			}
 			c.add(f)

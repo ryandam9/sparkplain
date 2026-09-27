@@ -204,7 +204,7 @@ func TestIdleNodesUpForMostOfTheRun(t *testing.T) {
 		t.Error("a node may have been busy with another application")
 	}
 	sh := got["shared-cluster"]
-	if !strings.Contains(sh.Explanation, "1 worker node ran nothing for this application; the other applications may have been using it.") ||
+	if !strings.Contains(sh.Explanation, "1 worker node ran nothing for this application; the other application may have been using it.") ||
 		len(sh.Evidence) != 2 || !strings.Contains(sh.Evidence[1].Text, "i-3") {
 		t.Errorf("shared = %+v", sh)
 	}
