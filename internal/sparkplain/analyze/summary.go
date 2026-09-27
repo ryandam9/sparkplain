@@ -280,10 +280,11 @@ func analyzeSources(c *ctx, r *model.Report) {
 		r.Sources = append(r.Sources, model.SourceStatus{Name: "EMR API", Status: "not-requested", Detail: "Not called: pass -cluster-id with -profile."})
 	}
 	if c.in.Cluster == nil {
-		r.Sources = append(r.Sources, model.SourceStatus{Name: "CloudWatch", Status: "not-requested", Detail: "Not called: pass -cluster-id with -profile for the cluster's and its nodes' metrics."})
+		r.Sources = append(r.Sources, model.SourceStatus{Name: "CloudWatch", Status: "not-requested", Detail: "Not called: pass -cluster-id with -profile for the cluster's and its nodes' metrics."},
+			model.SourceStatus{Name: "CloudTrail", Status: "not-requested", Detail: "Not called: pass -cluster-id with -profile for the AWS calls the application's nodes made, and every refusal."})
 	}
 	notYet("CloudWatch", "Not called.")
-	notYet("CloudTrail", "Not called: planned for phase 3 (AWS calls and AccessDenied).")
+	notYet("CloudTrail", "Not called.")
 }
 
 func analyzeCoverage(c *ctx, r *model.Report) {
