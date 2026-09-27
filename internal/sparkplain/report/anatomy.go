@@ -553,6 +553,18 @@ func (b *svgw) text(x, y float64, cls, anchor, s string) {
 	b.f(`<text class="%s" x="%.1f" y="%.1f" text-anchor="%s">%s</text>`, cls, x, y, anchor, esc(s))
 }
 
+// textW estimates the width of s at the given font size; bold text runs
+// wider. It errs on the wide side (measured in Chromium with the widest
+// common fallback font: about 0.60 of the size per character, 0.63 bold) so
+// labels that pass it do not overlap.
+func textW(s string, size float64, bold bool) float64 {
+	f := 0.6
+	if bold {
+		f = 0.64
+	}
+	return float64(len([]rune(s))) * size * f
+}
+
 // fitText cuts s to roughly fit w units at the given font size.
 func fitText(s string, w, size float64) string {
 	n := int(w / (size * 0.56))
@@ -942,7 +954,7 @@ func drawChip(b *svgw, a *anatomy, e anatExec, x, y float64, l anatLinks) {
 	switch {
 	case e.bad():
 		cls += " bad"
-		status = map[string]string{model.RemovalMemoryKill: "killed: memory", model.RemovalLost: "lost", model.RemovalDecommissioned: "node decommissioned"}[e.Kind]
+		status = map[string]string{model.RemovalMemoryKill: "killed: memory", model.RemovalLost: "lost", model.RemovalDecommissioned: "node removed"}[e.Kind]
 	case e.Kind == model.RemovalIdle:
 		cls += " gone"
 		status = "released when idle"
@@ -950,10 +962,23 @@ func drawChip(b *svgw, a *anatomy, e anatExec, x, y float64, l anatLinks) {
 		cls += " gone"
 		status = "removed"
 	}
+	// The name and the status share the chip's top line: shorten them
+	// until they fit, so long IDs never run into the status. The tooltip
+	// keeps the full text.
+	name := "Executor " + clipLabel(e.ID, 8)
+	if status != "" {
+		room := anChipW - 16 - 8 // inside the chip, less a gap between the two
+		if textW(name, 11, true)+textW(status, 10, true) > room {
+			name = "Exec " + clipLabel(e.ID, 8)
+		}
+		if left := room - textW(name, 11, true); textW(status, 10, true) > left {
+			status = clipLabel(status, max(4, int(left/textW("m", 10, true))))
+		}
+	}
 	b.f(`<g class="%s" data-exec="%s"><title>%s</title>`, cls, esc(e.ID), esc(execTip(e)))
 	b.link(l.Ref("executor:"+e.ID), func() {
 		b.f(`<rect class="cbox" x="%.1f" y="%.1f" width="%.0f" height="%.0f" rx="6"/>`, x, y, anChipW, anChipH)
-		b.text(x+8, y+15, "b", "", "Executor "+clipLabel(e.ID, 8))
+		b.text(x+8, y+15, "b", "", name)
 	})
 	if status != "" {
 		b.text(x+anChipW-8, y+15, "m st", "end", status)
@@ -1071,7 +1096,23 @@ func drawJVM(b *svgw, a *anatomy, j *anatJVM, y float64, l anatLinks) float64 {
 			cls += " hot"
 		}
 		b.f(`<line class="%s" x1="%.1f" x2="%.1f" y1="%.1f" y2="%.1f"/>`, cls, px, px, ty-6, ty+bh+8)
-		b.text(px, ty+bh+22, cls+"t", "middle", fmt.Sprintf("peak heap %s (%.0f%%)", model.Bytes(j.PeakHeap), 100*float64(j.PeakHeap)/float64(j.Heap)))
+		// The label gets its own classes: sharing the line's "peak" class
+		// gave the text the line's 2px stroke, which drew it doubled.
+		tcls := "peakt"
+		if float64(j.PeakHeap) >= 0.9*float64(j.Heap) {
+			tcls += " hott"
+		}
+		label := fmt.Sprintf("peak heap %s (%.0f%%)", model.Bytes(j.PeakHeap), 100*float64(j.PeakHeap)/float64(j.Heap))
+		// Centred on the line, but kept inside the strip: a peak near
+		// either end would otherwise push the label off the picture.
+		anchor, tx, half := "middle", px, textW(label, 11, true)/2
+		switch {
+		case px-half < bx:
+			anchor, tx = "start", bx
+		case px+half > bx+bw:
+			anchor, tx = "end", bx+bw
+		}
+		b.text(tx, ty+bh+22, tcls, anchor, label)
 	}
 	if j.PeakPython > 0 && j.PySpark == 0 {
 		b.text(bx+bw, ty+bh+22, "m", "end", "Python workers peaked at "+model.Bytes(j.PeakPython)+", outside the heap")
