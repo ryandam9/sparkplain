@@ -78,6 +78,21 @@ func fitFindings(c *ctx, r *model.Report) {
 	if desired > 0 {
 		wanted, wantSrc = desired, desiredSrc
 	}
+	// What Spark asked YARN for settles the overhead: EMR raises Spark's
+	// overhead factor (0.1875 on EMR 7) without it reaching the event log,
+	// so the 10% default would understate it. Checked on EMR 7.3.0: a
+	// 9486 MB heap came with 11264 MB containers.
+	if m := &r.Memory.Config; m.HeapBytes > 0 {
+		others := m.HeapBytes + m.PySparkBytes + m.OffHeapBytes
+		switch {
+		case overheadMB > 0:
+			m.OverheadBytes, m.OverheadFrom = overheadMB<<20, "the executor launch command in the logs"
+		case execMB > 0 && execMB<<20 > others:
+			m.OverheadBytes = execMB<<20 - others
+			m.OverheadFrom = fmt.Sprintf("the %s container Spark asked YARN for, less the heap (%s:%d)", mb(execMB), reqSrc.File, reqSrc.Line)
+		}
+		m.ContainerBytes = others + m.OverheadBytes
+	}
 	// Show each host's YARN capacity, and what of this application YARN
 	// placed on it, in the Nodes table and chart.
 	for i := range r.Nodes.Hosts {

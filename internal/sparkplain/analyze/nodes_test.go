@@ -118,6 +118,27 @@ func TestExecutorFit(t *testing.T) {
 	}
 }
 
+// On EMR the event log does not carry the overhead factor EMR sets
+// (0.1875 on EMR 7), so the 10% default understates the overhead; the
+// driver's log says what Spark asked YARN for. Checked on the NOAA run: a
+// 9486 MB heap with 11264 MB containers.
+func TestOverheadFromTheContainerRequest(t *testing.T) {
+	l := synthetic(map[string]string{"spark.executor.memory": "9486m"}, &model.Executor{ID: "1", Host: "ip-10-0-0-2.ec2.internal", Cores: 4})
+	if r := runWithLogs(l, nil); r.Memory.Config.OverheadBytes>>20 != 948 {
+		t.Fatalf("without logs, overhead = %d MiB, want the 10%% default", r.Memory.Config.OverheadBytes>>20)
+	}
+	launch := logFile(t, driverErr, `24/01/01 10:01:11 INFO YarnAllocator: Launching executor with 9486m of heap (plus 1778m overhead/off heap) and 4 cores
+`)
+	if c := runWithLogs(l, nil, launch).Memory.Config; c.OverheadBytes != 1778<<20 || c.ContainerBytes != 11264<<20 || c.OverheadFrom != "the executor launch command in the logs" {
+		t.Errorf("from the launch line: %+v", c)
+	}
+	request := logFile(t, driverErr, `24/01/01 10:01:10 INFO YarnAllocator: Will request 1 executor container(s) for  ResourceProfile Id: 0, each with 4 core(s) and 11264 MB memory.
+`)
+	if c := runWithLogs(l, nil, request).Memory.Config; c.OverheadBytes != 1778<<20 || !strings.Contains(c.OverheadFrom, "11.0 GiB container Spark asked YARN for") {
+		t.Errorf("from the request: %+v", c)
+	}
+}
+
 // Settings the cluster's configuration or the step's spark-submit set are
 // marked; a job that overrode the cluster's value is credited to the job.
 func TestSettingOrigins(t *testing.T) {
