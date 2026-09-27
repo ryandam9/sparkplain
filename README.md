@@ -75,3 +75,7 @@ govulncheck ./...
 
 - Fixtures in `testdata/eventlog` come from real PySpark 3.5.1 runs, scrubbed. Regenerate them with `make fixtures` (runs `scripts/fixtures/generate.sh`; needs Java 17+, `pyspark==3.5.1` and `SP_SCRATCH`; see the script header).
 - `make bench-log` (`go run ./scripts/benchlog -out out/big.log -tasks 245000`) writes a synthetic 1 GB log for the performance budget in SPEC §8.
+
+## License
+
+MIT, see [LICENSE](LICENSE). The explorer page embeds [D3](https://d3js.org) 7.9.0, which is under the ISC licence ([its notice](internal/sparkplain/report/assets/vendor/d3-LICENSE)).
