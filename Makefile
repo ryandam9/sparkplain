@@ -9,7 +9,7 @@ LDFLAGS := -X main.version=$(VERSION)
 ARGS    ?= -app-id application_1790380000000_0042 \
            -eventlog testdata/eventlog/application_1790380000000_0042 -out out
 
-.PHONY: all check fmt fmt-check vet test build install clean run tidy lint vuln bench-log fixtures help
+.PHONY: all check fmt fmt-check vet test build install clean run tidy lint vuln bench-log bench fixtures help
 
 all: check install
 
@@ -78,6 +78,17 @@ vuln:
 bench-log:
 	$(GO) run ./scripts/benchlog -out out/big.log -tasks 245000
 
+# bench checks the SPEC §8 budget (60 s and 1 GB of RAM per GB of log) on a
+# synthetic 150,000-task log, about 0.6 GB, with every output on (past the
+# explorer's 100,000-task sample, so sampling runs too); CI runs it.
+BENCH_TASKS ?= 150000
+BENCH_APP = application_1790380000000_0042
+bench: build
+	mkdir -p out/bench
+	$(GO) run ./scripts/benchlog -out out/bench/$(BENCH_APP) -tasks $(BENCH_TASKS)
+	$(GO) run ./scripts/benchcheck -log out/bench/$(BENCH_APP) -- \
+		./$(BINARY) -app-id $(BENCH_APP) -eventlog out/bench/$(BENCH_APP) -format html,json,explorer -out out/bench/report
+
 # fixtures regenerates testdata/eventlog; needs Java 17+, pyspark==3.5.1 and SP_SCRATCH.
 fixtures:
 	scripts/fixtures/generate.sh
@@ -97,5 +108,6 @@ help:
 	@echo "  lint       - Run staticcheck (if installed)"
 	@echo "  vuln       - Run govulncheck"
 	@echo "  bench-log  - Write a synthetic 1 GB event log to out/big.log"
+	@echo "  bench      - Check the time and memory budget on a synthetic log (CI runs it)"
 	@echo "  fixtures   - Regenerate testdata/eventlog (needs PySpark; see the script)"
 	@echo "  all        - check + install"
