@@ -5,6 +5,30 @@
 **Reviewed commit:** `5e90f37a8a820fcffbb92495237e437e257c8f7c`  
 **Review scope:** CLI flow, event-log resolution/parsing, compression handling, EMR/AWS metadata, YARN log collection, redaction, report generation, source embedding, tests, build/release hygiene, performance and operational safety.
 
+## Resolution status
+
+All findings were checked against `master` (`ce546be`) and confirmed before fixing. Each fix is its own commit with the regression tests the review asked for; `make check` passes, and the 1 GB benchmark is unchanged (8.1–8.3 s and about 460 MB peak RSS before and after).
+
+| ID | Status | Commit | Resolution |
+|---|---|---|---|
+| SP-001 | Fixed | `c250fb1` | `awsmeta.Steps` stays oldest first (the report and charts rely on it) and says so; `narrow` and `stepEventLogDirs` walk it newest first. Tests: 75 chronological steps, per-step `spark.eventLog.dir` order, the ordering contract. |
+| SP-002 | Fixed | `3f35506` | New read-only `Store.Head`: `os.Stat` locally; on S3 a listing of at most one key starting with the name, which is the key itself when it exists. Same fields as `List`, no new permission or S3 API method. A trailing `/` skips it. Test: 100,000 unrelated keys, no broad listing. |
+| SP-003 | Fixed | `72f6d34` | `source.Bounded` fails with `tooLarge` past a limit instead of stopping quietly. Applied to gzip/bzip2 output and event log parts (`-max-unpacked`, default 50 GiB), plain objects (`-max-size`), zip entries (refused by header over 1 GiB, bounded while reading), with a shared 1 GiB budget for zips held in memory. |
+| SP-004 | Fixed | `0acb243` | `redact.Args` hides the argument after a sensitive option given on its own; `redact.Command` splits quote-aware and re-quotes. A fuzz target found a re-quoting bug, fixed and kept as a regression case. |
+| SP-005 | Fixed | `b05766c` | Reports 0600, folders sparkplain creates 0700; sharing is a deliberate `chmod`. |
+| SP-006 | Fixed | `df4bfd6` | `sc.Err()` checked; an over-long line or read error marks the file cut with a note saying why. |
+| SP-007 | Fixed | `3f24e6a` | `source.ContextReader` checks the context before every read, under every fetched object and event log part. Test: a slow store that ignores its context (hangs without the fix). |
+| SP-008 | Fixed | `87b983f` | Several logs with no name match is `notFound` (exit 2); a zip's only log is read but a name mismatch must be confirmed by the log's own application ID, else exit 2. Rolling folders are chosen by full path. |
+| SP-009 | Fixed | `b1934e7` | Past the entry limit the zip is marked `tooLarge` (partial) with "read the first N of M entries". |
+| SP-010 | Fixed | `3f4fe74` | `.github/workflows/ci.yml` runs gofmt, vet, race tests, build and govulncheck on pull requests and master; actions pinned by SHA; govulncheck pinned to v1.8.0 in `make vuln`. Requiring the check before merging is a branch-protection setting for the repository owner. |
+| SP-011 | Fixed | `e47cf2c` | README names `<app-id>-report.html` etc. and adds a Supported section. |
+| SP-012 | Fixed | `bb8efb3` | Files whose metadata cannot be read stay in the listing, so their read fails visibly; vanished files are still skipped. (Returning a List error would have failed whole sources.) |
+| SP-013 | Fixed | `f8ae644` | Unused map removed. |
+| SP-014 | Decided | `e47cf2c` | Linux and macOS are the supported platforms; Windows is out of scope (README, SPEC §6). |
+| Workers | Fixed | `c132381` | `-workers` must be 1 to 256. |
+
+Not taken up: structured JSON diagnostics, `staticcheck`, a scheduled benchmark job, and the extra fuzz targets beyond redaction. They remain good ideas.
+
 ## Executive summary
 
 `sparkplain` has a strong foundation for a young diagnostics tool. The implementation is deliberately streaming in many of the expensive paths, keeps provenance down to file/line, uses ETag preconditions for S3 consistency, has thoughtful caps around explorer/task detail, uses `html/template` plus escaped JSON for report safety, contains substantial fixture-based tests, and has a useful local `make check` gate with race detection and vulnerability scanning.

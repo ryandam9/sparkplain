@@ -29,6 +29,7 @@ type SourceFile struct {
 const (
 	maxSourceLines  = 5000
 	maxSourceBytes  = 4 << 20
+	maxSourceLine   = 1 << 20 // longest source line embedded; a longer one cuts the file there
 	maxSourceWalked = 20000
 )
 
@@ -173,7 +174,7 @@ func LoadSourcesFrom(r *model.Report, roots []string, fetched []FetchedSource) (
 			continue
 		}
 		sc := bufio.NewScanner(f)
-		sc.Buffer(make([]byte, 64<<10), 1<<20)
+		sc.Buffer(make([]byte, 64<<10), maxSourceLine)
 		for sc.Scan() {
 			if len(sf.Lines) == maxSourceLines || total+len(sc.Text()) > maxSourceBytes {
 				sf.Cut = true
@@ -184,7 +185,17 @@ func LoadSourcesFrom(r *model.Report, roots []string, fetched []FetchedSource) (
 			sf.Lines = append(sf.Lines, line)
 		}
 		f.Close()
-		if sf.Cut {
+		// A scanner that stops on an error ends its loop just as it does at
+		// the end of the file: without this check a file cut by an
+		// over-long line or a read error would look complete.
+		switch err := sc.Err(); {
+		case errors.Is(err, bufio.ErrTooLong):
+			sf.Cut = true
+			notes = append(notes, fmt.Sprintf("%s is shown only up to line %d: line %d is longer than %d bytes.", p, len(sf.Lines), len(sf.Lines)+1, maxSourceLine))
+		case err != nil:
+			sf.Cut = true
+			notes = append(notes, fmt.Sprintf("%s is shown only up to line %d: reading it failed (%v).", p, len(sf.Lines), err))
+		case sf.Cut:
 			notes = append(notes, fmt.Sprintf("%s is shown only up to line %d.", p, len(sf.Lines)))
 		}
 		out = append(out, *sf)

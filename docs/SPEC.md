@@ -36,6 +36,7 @@ sparkplain fetches logs itself, scoped tightly to one application, with bounded 
 | Server-side scoping by prefix | List only `containers/<app-id>/`, the app's `steps/<step-id>/`, and `node/<instance-id>/` for nodes that hosted executors; never the whole cluster |
 | Streaming decompression | `.gz`, `.bz2`, plain and size-bounded `.zip` for YARN logs; adds `.zstd`, `.lz4` and `.snappy` for event logs |
 | Bounded concurrency | Worker pool (default 16), per-object size cap, per-object and overall timeouts |
+| Size limits | Separate caps, each failing the object as `tooLarge` (so its source is partial) instead of stopping quietly: stored size per object (`-max-size`, 10 GiB); unpacked size per compressed object, event log part or zip entry (`-max-unpacked`, 50 GiB); zips read into memory (256 MiB each, 1 GiB across all workers at once); unpacked size per zip entry (1 GiB, checked against the header and again while reading, since headers can understate); entries per zip (1000; the rest are counted and the zip is marked partial); event log lines (256 MiB, longer lines skipped and counted) |
 | LIST/GET consistency | `GetObject` with `If-Match` on the listed ETag; changed objects counted and skipped |
 | Error classes | `accessDenied`, `notFound`, `throttled`, `timeout`, `archivedUnavailable`, `corrupt`, shown in the report's Sources panel |
 | Archive awareness | Unrestored Glacier objects skipped at listing time and reported |
@@ -67,8 +68,8 @@ No single source answers every question, so sparkplain joins seven sources on cl
 
 | Input | Example | Handling |
 | --- | --- | --- |
-| S3 prefix | `s3://bucket/sparklogs/` | Lists `<prefix>/<app-id>*` and fetches the matching file or rolling folder |
-| S3 object | `s3://bucket/sparklogs/application_…_0042.lz4` | Reads that one object |
+| S3 prefix | `s3://bucket/sparklogs/` | Lists only `<prefix>/<app-id>*` and `<prefix>/eventlog_v2_<app-id>*`, never the whole prefix, and fetches the matching file or rolling folder |
+| S3 object | `s3://bucket/sparklogs/application_…_0042.lz4` | Reads that one object. A location without a trailing `/` is first checked as an exact key (a one-key listing); if there is none it is treated as a prefix |
 | Local file | `./application_…_0042.zstd` | Plain, `.lz4`, `.zstd` or `.snappy` |
 | Local folder | `./eventlog_v2_application_…_0042/` | Rolling event log; parts read in sequence order |
 | History Server zip | `./application_…_0042.zip` | The zip from the History Server's Download button; unpacked in memory within size limits |
@@ -159,7 +160,7 @@ The CPU, GC and over-provisioning rules skip runs with less than 1 minute of tas
 
 ## 6. Report output and CLI
 
-Each run writes `<app-id>-report.html`, `<app-id>-report.json` and `<app-id>-explorer.html` (such as `application_1700000000000_0042-report.html`) to `~/sparkplain/<yyyy-mm-dd>/<app-id>/` unless `-out` is given; naming them after the application keeps reports of different applications apart when they share an output folder. Elsewhere this spec calls them `report.html`, `report.json` and `explorer.html` for short.
+Each run writes `<app-id>-report.html`, `<app-id>-report.json` and `<app-id>-explorer.html` (such as `application_1700000000000_0042-report.html`) to `~/sparkplain/<yyyy-mm-dd>/<app-id>/` unless `-out` is given; naming them after the application keeps reports of different applications apart when they share an output folder. sparkplain runs on Linux and macOS; Windows is not supported (outputs are replaced with a POSIX rename). The outputs are private to the user who ran sparkplain: files are written with mode 0600 and any folders sparkplain creates get 0700, because reports carry user names, hosts, cluster IDs and log lines. Share them deliberately with `chmod`. Elsewhere this spec calls them `report.html`, `report.json` and `explorer.html` for short.
 
 **Usage**
 
@@ -187,7 +188,7 @@ sparkplain -from ./logs/application_1700000000000_0042 \
 | `-from` | Offline copy of the cluster's logs (see §2); not with `-cluster-id` |
 | `-out` | Output directory override |
 | `-format` | Comma-separated outputs: `html`, `json`, `explorer` (default all three; `both` still means `html,json`) |
-| `-workers`, `-max-size`, `-overall-timeout` | Fetch budgets: concurrency, per-object size cap, run deadline |
+| `-workers`, `-max-size`, `-max-unpacked`, `-overall-timeout` | Fetch budgets: concurrency (1 to 256), stored size per object, unpacked size per compressed object or entry, run deadline |
 | `-no-cloudwatch`, `-no-cloudtrail` | Skip enrichment (fewer permissions needed) |
 | `-window-pad` | Padding on the AWS query window (default 5m) |
 | `-show` | Print the event at a `file:line` the pages cite, redacted, and exit |
@@ -246,6 +247,7 @@ timezone: Australia/Sydney
 out: ~/reports
 format: both
 max-size: 10GiB
+max-unpacked: 50GiB
 overall-timeout: 30m
 thresholds:
   skew-ratio: 5
@@ -271,7 +273,7 @@ explorer:
 
 **No access is not fatal.** When a permission is refused or the credentials are missing, expired or wrong (any AWS call, or a local `-from` folder or `-source` path), sparkplain carries on with every other source. Each source it could not read for lack of access is printed on stderr as it finishes ("no access to CloudWatch, so the report does not show each node's CPU, containers waiting and other applications on the cluster (needs cloudwatch:GetMetricData and cloudwatch:ListMetrics)"), listed at the top of `report.html` and the explorer's overview with the permission it needs, recorded in `report.json` (`accessGaps`), and marked `accessDenied` in the Sources panel; the run exits 3. Without `DescribeCluster` an online run still reads an event log given with `-eventlog` or `eventlog-prefix`, but cannot find the cluster's logs, nodes or metrics, and says so. A missing `-profile`, a malformed application ID and a cluster ID that does not exist still stop the run with exit 2: there is nothing to report on.
 
-`-app-id` is required and must match the application ID inside the event log; a mismatch exits 2. A path that does not exist exits 2. A log that exists but is corrupt, truncated or still `.inprogress` still produces a report that marks what is missing, and exits 3.
+`-app-id` is required and must match the application ID inside the event log; a mismatch exits 2. A zip holding several event logs, none named after `-app-id`, is "not found" (exit 2) rather than a guess; a zip's only log may have any name, but a log whose name does not match and that has no application start event to confirm its ID is refused (exit 2). Rolling folders in a zip are chosen by their full path. A path that does not exist exits 2. A log that exists but is corrupt, truncated or still `.inprogress` still produces a report that marks what is missing, and exits 3.
 
 **IAM permissions:** `s3:ListBucket` and `s3:GetObject` on the log and event-log prefixes, `kms:Decrypt` for SSE-KMS buckets, `elasticmapreduce:ListClusters`, `DescribeCluster`, `ListInstances`, `ListInstanceGroups`, `ListInstanceFleets`, `ListSteps`, plus optional `elasticmapreduce:DescribeStep`, `DescribeSecurityConfiguration`, `ec2:DescribeInstanceTypes`, `cloudwatch:ListMetrics`, `cloudwatch:GetMetricData` and `cloudtrail:LookupEvents`.
 

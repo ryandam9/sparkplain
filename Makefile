@@ -65,13 +65,14 @@ else
 	staticcheck $(PKG)
 endif
 
-# vuln uses an installed govulncheck, or fetches it for this run only.
+# vuln runs a pinned govulncheck (fetched into the module cache once), so a
+# commit gives the same result whatever is installed; CI uses this target.
+# GOVULNDB points it at another copy of the Go vulnerability database.
+# `go run pkg@version` would otherwise pick its toolchain from govulncheck's
+# own go.mod; it must be built with this module's Go to load its packages.
+GOVULNCHECK_VERSION ?= v1.8.0
 vuln:
-ifeq (, $(shell which govulncheck))
-	$(GO) run golang.org/x/vuln/cmd/govulncheck@latest $(PKG)
-else
-	govulncheck $(PKG)
-endif
+	GOTOOLCHAIN=$$($(GO) env GOVERSION) $(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) $(if $(GOVULNDB),-db $(GOVULNDB)) $(PKG)
 
 # bench-log writes a large synthetic event log for the SPEC §8 performance budget.
 bench-log:

@@ -327,3 +327,21 @@ func TestComponentsEMRNames(t *testing.T) {
 		}
 	}
 }
+
+// SP-003: a compressed log that unpacks past the limit is read up to it and
+// marked partial, never passed off as complete.
+func TestUnpackedLimitMarksPartial(t *testing.T) {
+	in, err := Resolve(filepath.Join(fixtures, mainApp+".zstd"), mainApp, Limits{MaxUnpackedBytes: 200 << 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	l, err := Parse(context.Background(), in, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := l.Stats.Files[0]
+	if !l.Stats.Truncated || !strings.Contains(f.Error, "-max-unpacked") || f.Decompressed > 200<<10 || l.Stats.Events == 0 {
+		t.Fatalf("truncated=%v file=%+v events=%d", l.Stats.Truncated, f, l.Stats.Events)
+	}
+}

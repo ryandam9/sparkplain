@@ -397,3 +397,86 @@ func outPath(dir, kind string) string {
 	}
 	return filepath.Join(dir, "missing-"+kind)
 }
+
+// SP-003: a compressed event log that unpacks past -max-unpacked gives a
+// partial report (exit 3) that names the limit, not a complete-looking one.
+func TestMaxUnpackedMarksPartial(t *testing.T) {
+	dir := t.TempDir()
+	code, _, errs := runCLI(t, "-app-id", "application_1790380000000_0042", "-eventlog", filepath.Join(fx, "application_1790380000000_0042.zstd"), "-max-unpacked", "200KiB", "-out", dir)
+	if code != exitPartial {
+		t.Fatalf("exit %d, want %d: %s", code, exitPartial, errs)
+	}
+	js, err := os.ReadFile(filepath.Join(dir, "application_1790380000000_0042-report.json"))
+	if err != nil || !bytes.Contains(js, []byte("-max-unpacked")) {
+		t.Fatalf("report should say which limit cut the log: %v", err)
+	}
+	if code, _, errs := runCLI(t, "-app-id", "application_1790380000000_0042", "-eventlog", fx, "-max-unpacked", "lots"); code != exitFatal || !strings.Contains(errs, "-max-unpacked") {
+		t.Errorf("bad -max-unpacked: exit %d %s", code, errs)
+	}
+}
+
+// SP-008: a log with no application start event is accepted only when its
+// name says it is the application asked for.
+func TestUnconfirmedEventLogRefused(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(fx, "application_1790380000000_0044"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kept []string
+	for _, l := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
+		if !strings.Contains(l, `"Event":"SparkListenerApplicationStart"`) {
+			kept = append(kept, l)
+		}
+	}
+	dir := t.TempDir()
+	body := []byte(strings.Join(kept, "\n") + "\n")
+	named := filepath.Join(dir, "application_1790380000000_0044")
+	renamed := filepath.Join(dir, "some-log.txt")
+	os.WriteFile(named, body, 0o600)
+	os.WriteFile(renamed, body, 0o600)
+
+	code, _, errs := runCLI(t, "-app-id", "application_1790380000000_0044", "-eventlog", renamed, "-out", filepath.Join(dir, "o1"))
+	if code != exitFatal || !strings.Contains(errs, "cannot confirm") {
+		t.Errorf("unconfirmed log: exit %d %s", code, errs)
+	}
+	code, _, errs = runCLI(t, "-app-id", "application_1790380000000_0044", "-eventlog", named, "-out", filepath.Join(dir, "o2"))
+	if code == exitFatal {
+		t.Errorf("a log named after the application should be read: %s", errs)
+	}
+}
+
+// SP-005: reports and the folders sparkplain creates are private to the
+// user who ran it.
+func TestOutputIsPrivate(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "new", "reports")
+	code, _, errs := runCLI(t, "-app-id", "application_1790380000000_0042", "-eventlog", filepath.Join(fx, "application_1790380000000_0042"), "-out", dir)
+	if code != exitOK {
+		t.Fatalf("exit %d: %s", code, errs)
+	}
+	for _, d := range []string{dir, filepath.Dir(dir)} {
+		if st, err := os.Stat(d); err != nil || st.Mode().Perm() != 0o700 {
+			t.Errorf("%s: mode %v, want 0700 (%v)", d, st.Mode().Perm(), err)
+		}
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) == 0 {
+		t.Fatal("no outputs written")
+	}
+	for _, e := range entries {
+		st, _ := os.Stat(filepath.Join(dir, e.Name()))
+		if st.Mode().Perm() != 0o600 {
+			t.Errorf("%s: mode %v, want 0600", e.Name(), st.Mode().Perm())
+		}
+	}
+}
+
+func TestWorkersBounded(t *testing.T) {
+	for _, w := range []string{"0", "-3", "257", "100000"} {
+		if code, _, errs := runCLI(t, "-app-id", "application_1790380000000_0042", "-eventlog", fx, "-workers", w); code != exitFatal || !strings.Contains(errs, "-workers") {
+			t.Errorf("-workers %s: exit %d %s", w, code, errs)
+		}
+	}
+	if code, _, errs := runCLI(t, "-app-id", "application_1790380000000_0042", "-eventlog", fx, "-workers", "256", "-out", t.TempDir()); code == exitFatal {
+		t.Errorf("-workers 256 should be accepted: %s", errs)
+	}
+}

@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -246,5 +248,41 @@ func TestOnlineMissingPermissionDegrades(t *testing.T) {
 	s := sourceOf(readReport(t, dir), "EMR API")
 	if s.Status != "partial" || s.Class != "accessDenied" || !strings.Contains(s.Detail, "DescribeSecurityConfiguration") {
 		t.Errorf("EMR API = %+v", s)
+	}
+}
+
+// steps builds n steps in chronological order, as awsmeta.Steps returns them.
+func chronologicalSteps(n int, t0 time.Time) []model.Step {
+	var out []model.Step
+	for i := 0; i < n; i++ {
+		start := t0.Add(time.Duration(i) * 10 * time.Minute)
+		out = append(out, model.Step{ID: fmt.Sprintf("s-%03d", i), Started: start, Ended: start.Add(5 * time.Minute)})
+	}
+	return out
+}
+
+// SP-001: with more steps than maxStepsSearched and no event log to narrow
+// by time, the search must keep the newest steps, not the oldest.
+func TestNarrowSearchesNewestStepsFirst(t *testing.T) {
+	steps := chronologicalSteps(75, time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC))
+	ids, _, _ := narrow(steps, nil, nil)
+	if len(ids) != maxStepsSearched || ids[0] != "s-074" || !slices.Contains(ids, "s-074") || slices.Contains(ids, "s-000") {
+		t.Fatalf("searched %d steps, first %v, want the newest %d starting at s-074", len(ids), ids[:3], maxStepsSearched)
+	}
+	// With an event log, the step running when the application started is kept.
+	log := &model.EventLog{Application: model.Application{Start: steps[74].Started.Add(time.Minute)}}
+	ids, _, _ = narrow(steps, nil, log)
+	if !slices.Contains(ids, "s-074") {
+		t.Fatalf("step 74 submitted the application but was not searched: %v", ids)
+	}
+}
+
+func TestStepEventLogDirsNewestFirst(t *testing.T) {
+	steps := chronologicalSteps(3, time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC))
+	steps[0].Args = []string{"spark-submit", "--conf", "spark.eventLog.dir=s3://old-bucket/sparklogs/"}
+	steps[2].Args = []string{"spark-submit", "--conf=spark.eventLog.dir=s3://new-bucket/sparklogs/"}
+	got := stepEventLogDirs(steps)
+	if len(got) != 2 || got[0] != "s3://new-bucket/sparklogs/" {
+		t.Fatalf("dirs %v, want the newest step's first", got)
 	}
 }

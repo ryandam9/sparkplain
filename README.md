@@ -2,7 +2,7 @@
 
 Turns one Spark application's logs into a single plain-language HTML report (plus JSON): what ran, on which nodes, with how much CPU, memory and storage, and what went wrong, with every finding pointing at the log line behind it. The first target is Amazon EMR on EC2 7.3.0+ (Spark 3.5.1+).
 
-The design is in [docs/SPEC.md](docs/SPEC.md). It reads a Spark event log you already have, or finds it on S3 from the EMR cluster (phase 2, in progress). Container, step and node logs follow in phase 2, and CloudWatch and CloudTrail in phase 3.
+The design is in [docs/SPEC.md](docs/SPEC.md). It reads a Spark event log you already have, or finds it on S3 from the EMR cluster, along with the cluster's container, step and node logs, the EMR and EC2 APIs, CloudWatch and CloudTrail (SPEC §8 records what each phase built).
 
 ## Build
 
@@ -34,11 +34,11 @@ sparkplain -profile default -cluster-id j-1ABCDEF -app-id application_1700000000
 sparkplain -profile default -cluster-id j-1ABCDEF -app-id application_1700000000000_0042 -eventlog s3://my-logs/spark-events/
 ```
 
-It writes three files to `~/sparkplain/<yyyy-mm-dd>/<app-id>/` (or `-out`):
+It writes three files to `~/sparkplain/<yyyy-mm-dd>/<app-id>/` (or `-out`), each named after the application so reports of different applications can share a folder, for example `application_1700000000000_0042-report.html`:
 
-- `report.html`: the plain-language report. One self-contained file that makes no network calls when opened.
-- `report.json`: the same content for other tools.
-- `explorer.html`: an interactive, History Server–style view of the run (jobs, stages with task summaries and samples, executors, SQL plans, storage, environment). It loads Google Charts from `www.gstatic.com`, so its charts need internet access; its tables work without it.
+- `<app-id>-report.html`: the plain-language report. One self-contained file that makes no network calls when opened.
+- `<app-id>-report.json`: the same content for other tools.
+- `<app-id>-explorer.html`: an interactive, History Server–style view of the run (jobs, stages with task summaries and samples, executors, SQL plans, storage, environment). It loads Google Charts from `www.gstatic.com`, so its charts need internet access; its tables work without it.
 
 `-format` picks which to write, e.g. `-format html,json` (or `both`) to skip the explorer.
 
@@ -52,9 +52,23 @@ Every value on the pages cites the event-log line it came from. To read that eve
 
 ```sh
 sparkplain -app-id application_1700000000000_0042 -eventlog ./application_1700000000000_0042.lz4 -show application_1700000000000_0042.lz4:1234
-``` Run `sparkplain -h` for all flags; SPEC §6 describes them and the config file.
+```
+
+Run `sparkplain -h` for all flags; SPEC §6 describes them and the config file.
+
+The files are private to you (mode 0600, in folders sparkplain creates with mode 0700): they are redacted, but still hold user names, hosts, cluster IDs and log lines. `chmod` them to share.
 
 Exit codes: 0 complete, 2 fatal, 3 partial (something missing or unreadable, which the report's Sources panel explains), 130 interrupted.
+
+## Supported
+
+- **Platforms:** Linux and macOS. Windows is not supported (output files are replaced with a rename that assumes POSIX semantics).
+- **Building:** the Go release in `go.mod` (currently 1.27.1).
+- **Spark and EMR:** Spark 3.5 event logs, tested on PySpark 3.5.1 fixtures and on EMR 7.3.0 cluster logs (`testdata/`); EMR on EC2 only.
+- **Event logs:** plain, `.lz4`, `.zstd`, `.snappy` and `.inprogress` single files; rolling `eventlog_v2_*` folders (including compacted ones); History Server zips (local only). `.lzf` is not supported.
+- **Running applications:** an `.inprogress` log gives a report up to its last event, marked incomplete, and the run exits 3.
+- **AWS permissions:** read-only calls only; SPEC §6 lists them, split into required and optional (each optional one only removes its section when missing).
+- **Limits:** `-max-size` (stored size per file, 10 GiB), `-max-unpacked` (unpacked size per compressed file, 50 GiB), `-workers` (1 to 256). A file cut by a limit is marked partial, never passed off as complete.
 
 ## Develop
 

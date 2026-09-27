@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -317,5 +318,29 @@ func TestVendoredD3(t *testing.T) {
 	}
 	if m := regexp.MustCompile(`d3\.(json|csv|tsv|dsv|text|xml|html|svg|image|blob|buffer)\(`).FindString(explorerJS); m != "" {
 		t.Errorf("explorer.js calls D3's data loader %q", m)
+	}
+}
+
+// SP-006: a source file cut short by an over-long line is marked cut and
+// noted, not embedded as if it were complete.
+func TestLoadSourcesLongLineMarkedCut(t *testing.T) {
+	r, _ := buildWithExplorer(t, "application_1790380000000_0046")
+	orig, err := os.ReadFile("../../../scripts/fixtures/workload.py")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.SplitAfter(string(orig), "\n")
+	long := strings.Repeat("x", maxSourceLine+10) + "\n"
+	body := strings.Join(lines[:10], "") + long + strings.Join(lines[10:], "")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "workload.py"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	srcs, notes, err := LoadSources(r, []string{dir})
+	if err != nil || len(srcs) != 1 {
+		t.Fatalf("%v %v", srcs, err)
+	}
+	if !srcs[0].Cut || len(srcs[0].Lines) != 10 || !strings.Contains(strings.Join(notes, " "), "longer than") {
+		t.Fatalf("cut=%v lines=%d notes=%v", srcs[0].Cut, len(srcs[0].Lines), notes)
 	}
 }

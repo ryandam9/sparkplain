@@ -19,17 +19,20 @@ import (
 func ResolveStore(ctx context.Context, st source.Store, loc, appID string, lim Limits) (*Input, error) {
 	lim = lim.withDefaults()
 	in := &Input{Location: st.Location(loc), limits: lim}
-	objs, err := st.List(ctx, loc)
-	if err != nil {
-		return nil, storeErr(err)
-	}
-	// One object named exactly: read it.
-	for _, o := range objs {
-		if o.Key == loc && !strings.HasSuffix(loc, "/") {
+	// One object named exactly: read it. A location ending in / is a
+	// prefix, and a prefix is never listed whole (it may hold every
+	// application's logs): only the application's own names are listed.
+	if loc != "" && !strings.HasSuffix(loc, "/") {
+		o, ok, err := st.Head(ctx, loc)
+		if err != nil {
+			return nil, storeErr(err)
+		}
+		if ok {
 			if strings.HasSuffix(strings.ToLower(o.Key), ".zip") {
 				return nil, &SourceError{ClassUnsupported, fmt.Errorf("%s: download History Server zips and pass the local file", in.Location)}
 			}
 			in.Layout, in.InProgress = "single", strings.HasSuffix(o.Key, ".inprogress")
+			in.NameMatches = matchesApp(path.Base(o.Key), appID)
 			return in, in.addObject(ctx, st, o, path.Base(o.Key))
 		}
 	}
@@ -66,6 +69,7 @@ func ResolveStore(ctx context.Context, st source.Store, loc, appID string, lim L
 		return nil, &SourceError{ClassNotFound, fmt.Errorf("no event log for %s under %s (looked for %s[.codec] and eventlog_v2_%s/)", appID, st.Location(prefix), appID, appID)}
 	}
 	pick := pickAttempt(cands)
+	in.NameMatches = true // every candidate was listed under the application's name
 	if len(cands) > 1 {
 		in.Notes = append(in.Notes, fmt.Sprintf("Found %d logs for this application (%s); read %s (the highest attempt, preferring a finished log).", len(cands), strings.Join(cands, ", "), pick))
 	}

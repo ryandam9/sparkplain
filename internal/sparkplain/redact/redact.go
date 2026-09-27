@@ -141,22 +141,113 @@ func Code(line string) string {
 
 // Args hides values in command-line arguments, such as spark-submit's:
 // key=value pairs by key (so --conf spark.db.password=… loses its value),
-// and anything else that looks like a secret.
+// --option=value by option name, the value after a sensitive option given
+// on its own (--db-password value, --token value), and anything else that
+// looks like a secret. Like the rest of this package it errs towards
+// hiding: an option such as --keytab also loses the path after it.
 func Args(args []string) []string {
 	out := make([]string, len(args))
+	hideNext := false
 	for i, a := range args {
+		switch {
+		case hideNext && a != "" && !strings.HasPrefix(a, "--"):
+			out[i] = Mask
+			hideNext = false
+			continue
+		case hideNext:
+			hideNext = false
+		}
 		if k, v, ok := strings.Cut(a, "="); ok && !strings.HasPrefix(a, "-") {
 			rv, _ := Value(k, v)
 			out[i] = k + "=" + rv
 			continue
 		}
 		out[i] = Text(a)
+		hideNext = sensitiveOption(a)
 	}
 	return out
 }
 
-// Command redacts a command line logged as one string, splitting it on
-// spaces as Args does for an argument list.
+// sensitiveOption reports whether a is an option such as --db-password or
+// -token whose value follows as the next argument.
+func sensitiveOption(a string) bool {
+	if !strings.HasPrefix(a, "-") || strings.Contains(a, "=") {
+		return false
+	}
+	name := strings.TrimLeft(a, "-")
+	return name != "" && sensitiveKey.MatchString(name)
+}
+
+// Command redacts a command line logged as one string. It splits the line
+// as a shell would for quotes and backslashes (without expanding anything),
+// redacts the words as Args does, and joins them again, re-quoting words
+// that hold spaces. Runs of spaces collapse to one.
 func Command(cmd string) string {
-	return strings.Join(Args(strings.Split(cmd, " ")), " ")
+	words, quoted := splitCommand(cmd)
+	red := Args(words)
+	for i, w := range red {
+		red[i] = quoteWord(w, quoted[i])
+	}
+	return strings.Join(red, " ")
+}
+
+// quoteWord writes w back so splitCommand reads it as one word again: as it
+// was when it needs no quoting, in its original single quotes when it holds
+// none, and otherwise in double quotes with " and \ escaped.
+func quoteWord(w string, orig rune) string {
+	plain := w != "" && !strings.ContainsAny(w, " \t\n'\"\\")
+	switch {
+	case orig == 0 && plain:
+		return w
+	case orig == '\'' && !strings.Contains(w, "'"):
+		return "'" + w + "'"
+	}
+	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`)
+	return `"` + r.Replace(w) + `"`
+}
+
+// splitCommand splits a command line into words, honouring single quotes,
+// double quotes and backslash escapes. quoted records the quote character a
+// word was written with (0 when unquoted), so Command can keep it.
+func splitCommand(cmd string) (words []string, quoted []rune) {
+	var (
+		b      strings.Builder
+		in     rune // open quote
+		first  rune // quote the current word started with
+		inWord bool
+		esc    bool
+	)
+	flush := func() {
+		if inWord {
+			words = append(words, b.String())
+			quoted = append(quoted, first)
+		}
+		b.Reset()
+		inWord, first = false, 0
+	}
+	for _, r := range cmd {
+		switch {
+		case esc:
+			b.WriteRune(r)
+			esc, inWord = false, true
+		case r == '\\' && in != '\'':
+			esc, inWord = true, true
+		case in != 0 && r == in:
+			in = 0
+		case in != 0:
+			b.WriteRune(r)
+		case r == '\'' || r == '"':
+			in, inWord = r, true
+			if b.Len() == 0 {
+				first = r
+			}
+		case r == ' ' || r == '\t' || r == '\n':
+			flush()
+		default:
+			b.WriteRune(r)
+			inWord = true
+		}
+	}
+	flush()
+	return words, quoted
 }

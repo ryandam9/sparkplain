@@ -30,6 +30,9 @@ type Object struct {
 type Store interface {
 	// List returns every object under prefix, in key order.
 	List(ctx context.Context, prefix string) ([]Object, error)
+	// Head returns the object named exactly key, and false when there is
+	// none, without listing anything under it.
+	Head(ctx context.Context, key string) (Object, bool, error)
 	// Open reads obj, failing with ClassChanged if it changed since it was
 	// listed.
 	Open(ctx context.Context, obj Object) (io.ReadCloser, error)

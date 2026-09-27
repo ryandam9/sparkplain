@@ -47,6 +47,16 @@ func (r routeStore) List(ctx context.Context, prefix string) ([]source.Object, e
 	return objs, err
 }
 
+func (r routeStore) Head(ctx context.Context, key string) (source.Object, bool, error) {
+	st, head, rest, ok := r.split(key)
+	if !ok {
+		return source.Object{}, false, nil
+	}
+	o, found, err := st.Head(ctx, rest)
+	o.Key = head + o.Key
+	return o, found, err
+}
+
 func (r routeStore) Open(ctx context.Context, o source.Object) (io.ReadCloser, error) {
 	st, _, rest, ok := r.split(o.Key)
 	if !ok {

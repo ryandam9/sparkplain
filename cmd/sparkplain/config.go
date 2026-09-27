@@ -24,6 +24,7 @@ type fileConfig struct {
 	Out            string               `yaml:"out"`
 	Format         string               `yaml:"format"`
 	MaxSize        string               `yaml:"max-size"`
+	MaxUnpacked    string               `yaml:"max-unpacked"`
 	OverallTimeout time.Duration        `yaml:"overall-timeout"`
 	Thresholds     thresholds           `yaml:"thresholds"`
 	Explorer       model.ExplorerLimits `yaml:"explorer"`
