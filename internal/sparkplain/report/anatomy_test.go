@@ -1,6 +1,7 @@
 package report
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -142,5 +143,49 @@ func TestAnatomySharedClusterMakesNoRoomClaim(t *testing.T) {
 	svg := anatomySVG(buildAnatomy(r), anatLinks{Finding: func(int) string { return "" }, Ref: func(string) string { return "" }})
 	if strings.Contains(svg, "room for") || !strings.Contains(svg, "not used by this application") {
 		t.Errorf("shared cluster diagram claims free room: %v", strings.Contains(svg, "room for"))
+	}
+}
+
+var noLinks = anatLinks{Finding: func(int) string { return "" }, Ref: func(string) string { return "" }}
+
+// An executor's name and status share the chip's top line: however long
+// the ID and whatever the status, the two must fit side by side.
+func TestAnatomyChipLabelsFit(t *testing.T) {
+	nameRE := regexp.MustCompile(`class="b"[^>]*>([^<]*)<`)
+	statusRE := regexp.MustCompile(`class="m st"[^>]*>([^<]*)<`)
+	for _, id := range []string{"5", "25", "1234", "12345678"} {
+		for _, kind := range []string{model.RemovalMemoryKill, model.RemovalLost, model.RemovalDecommissioned, model.RemovalIdle, model.RemovalKilledByDriver} {
+			var b svgw
+			drawChip(&b, &anatomy{}, anatExec{ID: id, Cores: 2, Heap: 10 * gib, PeakHeap: 6 * gib, Kind: kind}, 0, 0, noLinks)
+			name, status := nameRE.FindStringSubmatch(b.String()), statusRE.FindStringSubmatch(b.String())
+			if name == nil || status == nil {
+				t.Fatalf("%s %s: no name or status in %s", id, kind, b.String())
+			}
+			if w := textW(name[1], 11, true) + textW(status[1], 10, true); w > anChipW-24 {
+				t.Errorf("%s %s: %q + %q is %.0f units, room %.0f", id, kind, name[1], status[1], w, anChipW-24)
+			}
+		}
+	}
+}
+
+// The peak heap label is never drawn with the line's class (which stroked
+// it doubled), and stays inside the heap strip when the peak is at its edge.
+func TestAnatomyPeakLabel(t *testing.T) {
+	for _, c := range []struct {
+		peak   int64
+		anchor string
+	}{{1 << 20, "start"}, {500 << 20, "middle"}, {gib - 1<<20, "end"}} {
+		var b svgw
+		drawJVM(&b, &anatomy{}, &anatJVM{Title: "The driver", Container: gib, Heap: gib, PeakHeap: c.peak, MemoryFraction: 0.6, StorageFraction: 0.5}, 0, noLinks)
+		m := regexp.MustCompile(`<text class="([^"]*)"[^>]*text-anchor="([a-z]+)">peak heap`).FindStringSubmatch(b.String())
+		if m == nil {
+			t.Fatalf("peak %d: no peak label in %s", c.peak, b.String())
+		}
+		if strings.Contains(" "+m[1]+" ", " peak ") {
+			t.Errorf("peak %d: label has the line's class %q", c.peak, m[1])
+		}
+		if m[2] != c.anchor {
+			t.Errorf("peak %d: anchor %q, want %q", c.peak, m[2], c.anchor)
+		}
 	}
 }
