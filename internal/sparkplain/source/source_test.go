@@ -329,3 +329,32 @@ func TestBoundedExactAndOver(t *testing.T) {
 		t.Errorf("over: %q %v", b, err)
 	}
 }
+
+// SP-009: a zip with more entries than the limit reads the first ones and
+// is marked tooLarge (partial), saying how many were left out.
+func TestFetchZipEntryLimitIsPartial(t *testing.T) {
+	entries := map[string]string{}
+	for i := 0; i < 5; i++ {
+		entries[fmt.Sprintf("e%d.txt", i)] = "x"
+	}
+	st := &stubS3{pageLen: 10, etag: map[string]string{}, objects: map[string][]byte{"a/many.zip": zipOf(entries)}}
+	store := NewS3Store(st, "b")
+	objs, _ := store.List(context.Background(), "a/")
+	var n atomic.Int32
+	reads := Fetch(context.Background(), store, objs, Limits{MaxEntries: 4}, func(o Object, name string, r io.Reader) error {
+		n.Add(1)
+		_, err := io.ReadAll(r)
+		return err
+	})
+	if n.Load() != 4 || ClassOf(reads[0].Err) != ClassTooLarge || !strings.Contains(reads[0].Err.Error(), "4 of 5 entries") {
+		t.Fatalf("read %d entries, err %v", n.Load(), reads[0].Err)
+	}
+	// Exactly at the limit: complete, no error.
+	delete(entries, "e4.txt")
+	st.objects["a/many.zip"] = zipOf(entries)
+	objs, _ = store.List(context.Background(), "a/")
+	reads = Fetch(context.Background(), store, objs, Limits{MaxEntries: 4}, func(o Object, name string, r io.Reader) error { _, err := io.ReadAll(r); return err })
+	if reads[0].Err != nil {
+		t.Fatalf("a zip at the limit must read cleanly: %v", reads[0].Err)
+	}
+}

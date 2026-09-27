@@ -133,13 +133,16 @@ func readOne(ctx context.Context, st Store, o Object, lim Limits, zipMem *budget
 			return &Error{Class: ClassCorrupt, Key: where, Err: err}
 		}
 		var tooBig []string
-		for n, f := range zr.File {
-			if n == lim.MaxEntries {
-				break
-			}
+		files, skipped := 0, 0
+		for _, f := range zr.File {
 			if f.FileInfo().IsDir() {
 				continue
 			}
+			if files == lim.MaxEntries {
+				skipped++ // counted so the source can say how much it left out
+				continue
+			}
+			files++
 			ewhere := where + "!" + f.Name
 			if f.UncompressedSize64 > uint64(lim.MaxZipEntry) {
 				tooBig = append(tooBig, f.Name)
@@ -156,8 +159,15 @@ func readOne(ctx context.Context, st Store, o Object, lim Limits, zipMem *budget
 				return wrapRead(ewhere, err)
 			}
 		}
+		var why []string
+		if skipped > 0 {
+			why = append(why, fmt.Sprintf("read the first %d of %d entries (the per-zip entry limit); %d left out", lim.MaxEntries, lim.MaxEntries+skipped, skipped))
+		}
 		if len(tooBig) > 0 {
-			return &Error{Class: ClassTooLarge, Key: where, Err: fmt.Errorf("skipped %d entries that unpack past the %d-byte entry limit: %s", len(tooBig), lim.MaxZipEntry, strings.Join(tooBig, ", "))}
+			why = append(why, fmt.Sprintf("skipped %d entries that unpack past the %d-byte entry limit: %s", len(tooBig), lim.MaxZipEntry, strings.Join(tooBig, ", ")))
+		}
+		if len(why) > 0 {
+			return &Error{Class: ClassTooLarge, Key: where, Err: errors.New(strings.Join(why, "; "))}
 		}
 		return nil
 	}
