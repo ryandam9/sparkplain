@@ -59,6 +59,7 @@
   }
   function pct(f) { return f == null || !isFinite(f) ? "—" : (f * 100 < 10 ? (f * 100).toFixed(1) : Math.round(f * 100)) + "%"; }
   var tfmt = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  var hmfmt = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
   var dfmt = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
   function when(ms, full) {
     if (!ms) return "—";
@@ -1096,7 +1097,6 @@
     Object.keys(extra || {}).forEach(function (k) { o[k] = extra[k]; });
     return o;
   }
-  function withFormat(axis, f) { axis.format = f; return axis; }
   // axis is the recessive default axis, with extra settings merged in.
   function axis(th, extra) {
     var o = { textStyle: { color: th.muted }, gridlines: { color: th.line }, minorGridlines: { color: "transparent" }, baselineColor: th.line, titleTextStyle: { color: th.muted, italic: false } };
@@ -1144,17 +1144,6 @@
   }
   var STATUS_NOTE = " Blue: succeeded. Red: failed. Grey: running, incomplete or skipped.";
 
-  // seriesTable joins metric series on their timestamps into one table.
-  function seriesTable(list, label) {
-    var times = {}, cols = list.map(function (s) { var m = {}; s.points.forEach(function (p) { m[p[0]] = p[1]; times[p[0]] = 1; }); return m; });
-    var dt = new google.visualization.DataTable();
-    dt.addColumn("datetime", "Time");
-    list.forEach(function (s) { dt.addColumn("number", label(s)); });
-    Object.keys(times).map(Number).sort(function (x, y) { return x - y; }).forEach(function (t) {
-      dt.addRow([new Date(t)].concat(cols.map(function (m) { return m[t] == null ? null : m[t]; })));
-    });
-    return dt;
-  }
   function metric(name, stat, scope) {
     return ((D.aws || {}).metrics || []).filter(function (s) { return s.name === name && (!stat || s.stat === stat) && (!scope || s.scope === scope); });
   }
@@ -1204,8 +1193,8 @@
   // Axis units: ticks fall on round numbers of the unit that suits the
   // largest value (200 MiB, 5 min), not of the base unit (bytes, ms).
   var UNITS = { bytes: [[1, "B"], [1024, "KiB"], [1048576, "MiB"], [1073741824, "GiB"], [1099511627776, "TiB"]],
-    ms: [[1, "ms"], [1000, "s"], [60000, "min"], [3600000, "h"]] };
-  var FMT = { bytes: bytes, ms: dur };
+    ms: [[1, "ms"], [1000, "s"], [60000, "min"], [3600000, "h"]], count: [[1, ""]], pct: [[1, "%"]] };
+  var FMT = { bytes: bytes, ms: dur, count: function (v) { return num(Math.round(v * 10) / 10); }, pct: function (v) { return Math.round(v) + "%"; } };
   // unitAxis is a linear scale from 0 to max over range (so the largest
   // bar, such as a full heap, fills it), with round ticks in the chosen
   // unit and their labels.
@@ -1215,7 +1204,7 @@
     UNITS[kind].forEach(function (x) { if (max >= 2 * x[0]) u = x; });
     var f = d3.format("~g");
     return { x: d3.scaleLinear().domain([0, max]).range(range), ticks: d3.ticks(0, max / u[0], n).map(function (t) { return t * u[0]; }),
-      label: function (v) { return v === 0 ? "0" : f(v / u[0]) + " " + u[1]; } };
+      label: function (v) { return v === 0 ? "0" : f(v / u[0]) + (u[1] === "%" ? "%" : u[1] ? " " + u[1] : ""); } };
   }
   // fitChars cuts s to about px pixels of 11px text, keeping the full text
   // for the tooltip.
@@ -1262,6 +1251,58 @@
     hover(row.select(".rl"), summary);
     if (link) linkify(row, link, summary);
   }
+  // timeChart draws series over one time axis: lines, areas or steps. A
+  // cursor snaps to the nearest sample and the tooltip lists every series
+  // there. A series has label, color, points ([ms, value], in time order),
+  // and optionally step (a value holds until the next point), area (fill
+  // opacity under it), dash and dots. opts.max fixes the top of the scale.
+  function timeChart(c, series, g, kind, opts) {
+    opts = opts || {};
+    series = series.filter(function (s) { return s.points.length; });
+    if (!series.length) { waitText(c, "Nothing to chart for this run."); return; }
+    var format = FMT[kind];
+    var plot = frame(c, g);
+    plot.parentNode.insertBefore(legendNode(series), plot);
+    var H = 280, m = { l: 64, r: 18, t: 10, b: 28 };
+    var P = plotSvg(plot, H, g.t);
+    var t0 = d3.min(series, function (s) { return s.points[0][0]; }), t1 = d3.max(series, function (s) { return s.points[s.points.length - 1][0]; });
+    if (t1 <= t0) t1 = t0 + 1000;
+    var x = d3.scaleTime().domain([t0, t1]).range([m.l, P.w - m.r]);
+    var ymax = opts.max != null ? opts.max : d3.max(series, function (s) { return d3.max(s.points, function (p) { return p[1]; }); });
+    var U = unitAxis(kind, ymax, [H - m.b, m.t], Math.max(2, Math.floor((H - m.t - m.b) / 45))), y = U.x;
+    var tf = t1 - t0 < 10 * 60000 ? tfmt : hmfmt;
+    P.svg.append("g").attr("class", "ax").attr("transform", "translate(" + m.l + ",0)")
+      .call(d3.axisLeft(y).tickValues(U.ticks).tickFormat(U.label).tickSize(-(P.w - m.l - m.r)).tickPadding(6))
+      .select(".domain").remove();
+    P.svg.append("g").attr("class", "ax xax").attr("transform", "translate(0," + (H - m.b) + ")")
+      .call(d3.axisBottom(x).ticks(Math.max(2, Math.floor((P.w - m.l - m.r) / 90))).tickFormat(function (d) { return tf.format(d); }).tickSizeOuter(0).tickPadding(6))
+      // labels at the ends lean inward rather than off the chart
+      .selectAll(".tick text").attr("text-anchor", function (d) { var px = x(d); return px > P.w - m.r - 28 ? "end" : px < m.l + 28 ? "start" : "middle"; });
+    var X = function (p) { return x(p[0]); }, Y = function (p) { return y(Math.min(p[1], U.x.domain()[1])); };
+    series.forEach(function (s) {
+      var curve = s.step ? d3.curveStepAfter : d3.curveLinear, pts = s.points.filter(function (p) { return p[1] != null; });
+      if (s.area != null) P.svg.append("path").attr("d", d3.area().curve(curve).x(X).y0(y(0)).y1(Y)(pts)).style("fill", s.color).style("fill-opacity", s.area);
+      P.svg.append("path").attr("class", "ln").attr("d", d3.line().curve(curve).x(X).y(Y)(pts)).style("stroke", s.color).style("stroke-dasharray", s.dash || null);
+      if (s.dots) P.svg.append("g").selectAll("circle").data(pts).join("circle").attr("cx", X).attr("cy", Y).attr("r", 2.5).style("fill", s.color);
+    });
+    // the cursor: the nearest sample time, and each series' value there
+    var times = [];
+    series.forEach(function (s) { s.points.forEach(function (p) { times.push(p[0]); }); });
+    times = Array.from(new Set(times)).sort(function (p, q) { return p - q; });
+    var valueAt = function (s, t) {
+      if (s.step) { var i = d3.bisectRight(s.points.map(function (p) { return p[0]; }), t) - 1; return i < 0 ? null : s.points[i][1]; }
+      var j = d3.bisectCenter(s.points.map(function (p) { return p[0]; }), t);
+      return s.points[j][0] === t ? s.points[j][1] : null;
+    };
+    var cur = P.svg.append("line").attr("class", "cursor").attr("y1", m.t).attr("y2", H - m.b).style("display", "none");
+    P.svg.append("rect").attr("class", "hit").attr("x", m.l).attr("y", m.t).attr("width", P.w - m.l - m.r).attr("height", H - m.t - m.b)
+      .on("pointermove", function (ev) {
+        var t = times[d3.bisectCenter(times, +x.invert(d3.pointer(ev)[0]))];
+        cur.attr("x1", x(t)).attr("x2", x(t)).style("display", null);
+        tipShow(ev, dfmt.format(new Date(t)) + series.map(function (s) { var v = valueAt(s, t); return v == null ? "" : "\n" + s.label + ": " + format(v); }).join(""));
+      })
+      .on("pointerleave", function () { cur.style("display", "none"); tipHide(); });
+  }
   // stageName is one short line, so the axis labels every bar: the call
   // site ("count at Foo.java:0") is cut to its operation.
   function stageName(st) { return "Stage " + st.id + (st.attempt ? "." + st.attempt : "") + " · " + (st.name || "").split(" at ")[0].slice(0, 16); }
@@ -1294,19 +1335,17 @@
       ], { t: "Spill by stage", shows: "Spill by stage: data that did not fit in memory while the stage ran, and what it came to on disk.",
         read: "Smaller is better, and none is ideal. Large spill means the stage's data did not fit in memory; more partitions or more memory per task help." }, "bytes", function (r) { return "#stage/" + r.st.key; });
     },
-    dataOverTime: function (c, th) {
+    dataOverTime: function (c) {
       var done = stages.filter(function (st) { return st.completed; }).sort(function (a2, b2) { return a2.completed - b2.completed; });
       if (done.length < 2) { waitText(c, "Too few finished stages to chart."); return; }
-      var dt = new google.visualization.DataTable();
-      dt.addColumn("datetime", "Time");
-      ["Read", "Shuffle write", "Written"].forEach(function (l) { dt.addColumn("number", l + " (MiB)"); });
-      var inB = 0, sh = 0, out = 0;
-      dt.addRow([new Date(a.start || done[0].submitted), 0, 0, 0]);
-      done.forEach(function (st) { inB += st.input; sh += st.shWrite; out += st.output; dt.addRow([new Date(st.completed), inB / 1048576, sh / 1048576, out / 1048576]); });
-      var plot = frame(c, { t: "Data over time", shows: "Data read, shuffled and written, in MiB, added up as each stage finished.",
-        read: "Steep rises are where the work happened. Long flat stretches are time spent on something other than moving data, such as driver code or waiting for executors." });
-      new google.visualization.SteppedAreaChart(plot).draw(dt, baseOpts(th, { colors: [th.viz[0], th.viz[2], th.viz[3]], areaOpacity: 0.08, connectSteps: true, isStacked: false,
-        hAxis: withFormat(baseOpts(th).hAxis, "HH:mm:ss"), vAxis: axis(th, { minValue: 0, format: "short" }) }));
+      var t = a.start || done[0].submitted, inB = [[t, 0]], sh = [[t, 0]], out = [[t, 0]], ib = 0, sb = 0, ob = 0;
+      done.forEach(function (st) { ib += st.input; sb += st.shWrite; ob += st.output; inB.push([st.completed, ib]); sh.push([st.completed, sb]); out.push([st.completed, ob]); });
+      timeChart(c, [
+        { label: "Read", color: V.viz[0], points: inB, step: true, area: 0.08 },
+        { label: "Shuffle write", color: V.viz[2], points: sh, step: true, area: 0.08 },
+        { label: "Written", color: V.viz[3], points: out, step: true, area: 0.08 }
+      ], { t: "Data over time", shows: "Data read, shuffled and written, added up as each stage finished.",
+        read: "Steep rises are where the work happened. Long flat stretches are time spent on something other than moving data, such as driver code or waiting for executors." }, "bytes");
     },
     execTime: function (c) {
       var rows = topBy(execs.filter(function (x) { return x.id !== "driver"; }), 30, function (x) { return x.run; }).map(function (x) { return { label: "Executor " + x.id, x: x }; });
@@ -1336,43 +1375,36 @@
       ], { t: "What YARN placed on each node", shows: "What YARN placed on each node, against the memory the node offered.",
         read: "Free space helps only if it is at least one executor container wide: smaller gaps are memory paid for but unusable. A node that is mostly free did little work for this run." }, "bytes");
     },
-    clusterContainers: function (c, th) {
+    clusterContainers: function (c) {
       var list = metric("ContainerAllocated").concat(metric("ContainerPending"));
       if (!list.length) { waitText(c, "CloudWatch had no container counts for this run."); return; }
-      var plot = frame(c, { t: "Containers on the cluster", shows: "Containers YARN had placed and containers waiting for room, across the whole cluster, every minute. This application ran from " + (a.start ? tfmt.format(new Date(a.start)) : "?") + " to " + (a.end ? tfmt.format(new Date(a.end)) : "?") + ".",
-        read: "Waiting should stay at zero. Waiting while YARN memory is free means the containers were too big to fit on any node; waiting with memory full means the cluster was too small or busy." });
-      new google.visualization.SteppedAreaChart(plot).draw(seriesTable(list, function (s) { return s.name === "ContainerPending" ? "Waiting" : "Allocated"; }), baseOpts(th, {
-        colors: [th.series, th.fail], areaOpacity: 0.12, connectSteps: true, isStacked: false, hAxis: withFormat(baseOpts(th).hAxis, "HH:mm"), vAxis: axis(th, { title: "Containers", minValue: 0, format: "#,###" })
-      }));
+      timeChart(c, list.map(function (s) {
+        var waiting = s.name === "ContainerPending";
+        return { label: waiting ? "Waiting" : "Allocated", color: waiting ? V.fail : V.series, points: s.points, step: true, area: 0.12 };
+      }), { t: "Containers on the cluster", shows: "Containers YARN had placed and containers waiting for room, across the whole cluster, every minute. This application ran from " + (a.start ? tfmt.format(new Date(a.start)) : "?") + " to " + (a.end ? tfmt.format(new Date(a.end)) : "?") + ".",
+        read: "Waiting should stay at zero. Waiting while YARN memory is free means the containers were too big to fit on any node; waiting with memory full means the cluster was too small or busy." }, "count");
     },
-    nodeCPU: function (c, th) {
+    nodeCPU: function (c) {
       var list = metric("CPUUtilization", "Average");
       if (!list.length) { waitText(c, "CloudWatch had no CPU figures for these nodes."); return; }
       var name = {};
       D.aws.nodes.forEach(function (n) { if (n.instance) name[n.instance.id] = n.instance.id + (n.driver ? " (driver)" : n.executors.length ? " (" + n.executors.length + " executors)" : n.instance.role === "MASTER" ? " (primary)" : " (idle)"); });
-      var plot = frame(c, { t: "Node CPU", shows: "Each node's CPU, averaged over EC2's 5-minute periods: the whole machine, so daemons and other applications count too.",
-        read: "Higher means busier. Staying above about 85% means tasks queued for CPU. Low CPU on a node that ran executors suggests its tasks waited on disk, network or Python." });
-      new google.visualization.LineChart(plot).draw(seriesTable(list, function (s) { return name[s.scope] || s.scope; }), baseOpts(th, {
-        lineWidth: 2, pointSize: 5, hAxis: withFormat(baseOpts(th).hAxis, "HH:mm"), vAxis: axis(th, { title: "CPU %", minValue: 0, maxValue: 100 })
-      }));
+      timeChart(c, list.map(function (s, i) { return { label: name[s.scope] || s.scope, color: V.viz[i % V.viz.length], dash: i >= V.viz.length ? "5 3" : null, points: s.points, dots: true }; }),
+        { t: "Node CPU", shows: "Each node's CPU, averaged over EC2's 5-minute periods: the whole machine, so daemons and other applications count too.",
+          read: "Higher means busier. Staying above about 85% means tasks queued for CPU. Low CPU on a node that ran executors suggests its tasks waited on disk, network or Python." }, "pct", { max: 100 });
     },
-    running: function (c, th) {
+    running: function (c) {
       var R = D.running;
       if (!R || !R.busy.length) { waitText(c, D.collected ? "No tasks finished, so there is nothing to chart." : "Per-task detail was not collected for this run."); return; }
       var workers = execs.filter(function (x) { return x.id !== "driver"; });
       function slotsAt(t) { var n = 0; workers.forEach(function (x) { if (x.added && x.added <= t && t < (x.removed || appEnd + 1)) n += x.cores; }); return n; }
-      var dt = new google.visualization.DataTable();
-      dt.addColumn("datetime", "Time");
-      dt.addColumn("number", "Tasks running (average)");
-      dt.addColumn("number", "Task slots (executor cores)");
-      R.busy.forEach(function (b, i) { var t = R.start + i * R.bucketMs; dt.addRow([new Date(t), Math.round(b / R.bucketMs * 10) / 10, slotsAt(t + R.bucketMs / 2)]); });
-      var plot = frame(c, { t: "Tasks running against task slots", shows: "Average tasks running in each " + dur(R.bucketMs) + " bucket, against the cores of the executors alive then. Task times are stamped by the driver, so running tasks can briefly exceed the slots.",
-        read: "The filled area should reach the dashed line: every core busy. Gaps below it are idle cores, often from the driver working alone, one slow task holding a stage, or too few partitions." });
-      new google.visualization.ComboChart(plot).draw(dt, baseOpts(th, {
-        seriesType: "area", colors: [th.series, th.neutral],
-        series: { 0: { areaOpacity: 0.25, lineWidth: 2 }, 1: { type: "steppedArea", areaOpacity: 0, lineWidth: 2, lineDashStyle: [4, 4] } },
-        hAxis: withFormat(baseOpts(th).hAxis, "HH:mm:ss")
-      }));
+      var busy = [], slots = [];
+      R.busy.forEach(function (b, i) { var t = R.start + i * R.bucketMs; busy.push([t, Math.round(b / R.bucketMs * 10) / 10]); slots.push([t, slotsAt(t + R.bucketMs / 2)]); });
+      timeChart(c, [
+        { label: "Tasks running (average)", color: V.series, points: busy, area: 0.25 },
+        { label: "Task slots (executor cores)", color: V.neutral, points: slots, step: true, dash: "4 4" }
+      ], { t: "Tasks running against task slots", shows: "Average tasks running in each " + dur(R.bucketMs) + " bucket, against the cores of the executors alive then. Task times are stamped by the driver, so running tasks can briefly exceed the slots.",
+        read: "The filled area should reach the dashed line: every core busy. Gaps below it are idle cores, often from the driver working alone, one slow task holding a stage, or too few partitions." }, "count");
     },
     jobsTimeline: function (c, th) {
       c.link = function (r) { return "#job/" + r.id; };
@@ -1469,7 +1501,7 @@
   };
   // D3_DRAW are the charts already moved to the embedded D3 kit; the rest
   // still wait for Google Charts.
-  var D3_DRAW = { stageTimes: 1, stageData: 1, stageSpill: 1, execTime: 1, execHeapAll: 1, nodeMemory: 1 };
+  var D3_DRAW = { stageTimes: 1, stageData: 1, stageSpill: 1, execTime: 1, execHeapAll: 1, nodeMemory: 1, dataOverTime: 1, clusterContainers: 1, nodeCPU: 1, running: 1 };
   function isD3(c) { return D3_DRAW[c.draw.split(":")[0]] === 1; }
   function drawSlot(c) {
     var name = c.draw.split(":")[0], arg = c.draw.slice(name.length + 1);
