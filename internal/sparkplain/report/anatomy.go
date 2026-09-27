@@ -70,6 +70,9 @@ type anatNode struct {
 	HasCPU          bool
 	Badges          []int
 	Alike           int // more nodes like this one, drawn as this card
+	// Away says the node was not there for most of the run ("went away
+	// 1 min 19 s into the run"), so its free space was never on offer.
+	Away string
 }
 
 // shape is what makes two nodes look alike in the diagram; nodes that
@@ -78,7 +81,7 @@ func (n *anatNode) shape() string {
 	if nodeRank(n) < 2 {
 		return ""
 	}
-	return fmt.Sprintf("%s|%s|%d|%d|%d|%d", n.Role, n.Type, n.YARNBytes, n.ExecBytes, len(n.Execs), n.AtOnce)
+	return fmt.Sprintf("%s|%s|%d|%d|%d|%d|%s", n.Role, n.Type, n.YARNBytes, n.ExecBytes, len(n.Execs), n.AtOnce, n.Away)
 }
 
 // free is the YARN memory this application left unused on the node at its
@@ -154,6 +157,30 @@ func noCapacity(r *model.Report) (full []string, node string) {
 	return []string{"YARN's capacity is not known: the node logs read did not record it."}, "YARN capacity not in its logs"
 }
 
+// away says when a node that was not up for most of the run left or
+// joined it, as time into the run, or "" when it was there throughout.
+// Spot nodes come and go: on the phase 4 test cluster one went away 80 s
+// into a run and its replacement joined 36 s before the end.
+func away(in model.Instance, start, end time.Time) string {
+	if start.IsZero() || end.IsZero() || !end.After(start) {
+		return ""
+	}
+	if !in.Ended.IsZero() && in.Ended.After(start) && in.Ended.Before(end) {
+		return "went away " + model.Duration(in.Ended.Sub(start).Milliseconds()) + " into the run"
+	}
+	from := in.Ready
+	if from.IsZero() {
+		from = in.Created
+	}
+	if from.After(start.Add(end.Sub(start) / 2)) {
+		if from.After(end) {
+			return "joined after the run"
+		}
+		return "joined " + model.Duration(from.Sub(start).Milliseconds()) + " into the run"
+	}
+	return ""
+}
+
 func buildAnatomy(r *model.Report) *anatomy {
 	a := &anatomy{}
 	if len(r.Nodes.Hosts) == 0 && r.Cluster == nil {
@@ -222,6 +249,7 @@ func buildAnatomy(r *model.Report) *anatomy {
 				n.Market = "spot"
 			}
 			n.CPU = cpuPoints(r, in.ID)
+			n.Away = away(*in, r.Application.Start, r.Application.End)
 		}
 		if h.HostCPU != nil {
 			n.CPUAvg, n.CPUPeak, n.HasCPU = h.HostCPU.Average, h.HostCPU.Peak, true
@@ -254,8 +282,10 @@ func buildAnatomy(r *model.Report) *anatomy {
 		if n == nil {
 			continue
 		}
-		a.RM.OfferedBytes += n.YARNBytes
-		a.RM.OfferedCores += n.YARNCores
+		if n.Away == "" {
+			a.RM.OfferedBytes += n.YARNBytes
+			a.RM.OfferedCores += n.YARNCores
+		}
 		a.RM.HeldBytes += n.DriverBytes + int64(n.AtOnce)*n.ExecBytes
 	}
 	a.RM.Known = a.RM.OfferedBytes > 0
@@ -890,6 +920,8 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 		}
 		cls := "m"
 		switch {
+		case n.Away != "" && free > 0:
+			note += ", but the node " + n.Away
 		case n.ExecBytes > 0 && free > 0 && !fits:
 			note += fmt.Sprintf(": too small for another %s executor", model.Bytes(n.ExecBytes))
 			cls = "warnt"

@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
 )
@@ -221,5 +222,36 @@ func TestAnatomySaysWhyCPUIsMissing(t *testing.T) {
 	r.Metrics = &model.MetricsSection{Coverage: model.Partial}
 	if svg := anatomySVG(buildAnatomy(r), links); !strings.Contains(svg, "CPU not recorded while the application ran") || strings.Contains(svg, "needs CloudWatch") {
 		t.Error("with CloudWatch read, a node without points should say none were recorded")
+	}
+}
+
+// A spot node that went away early, or joined near the end, offered its
+// memory for only part of the run: the diagram says so and makes no room
+// claim for it, and YARN's total leaves it out.
+func TestAnatomyNodesNotThereForTheRun(t *testing.T) {
+	r := anatReport()
+	start := time.Date(2026, 9, 27, 8, 2, 19, 0, time.UTC)
+	r.Application.Start, r.Application.End = start, start.Add(257*time.Second)
+	for i := range r.Nodes.Hosts {
+		r.Nodes.Hosts[i].Instance.Ready = start.Add(-time.Hour)
+	}
+	spot := func(name, id string, ready, ended time.Time) model.Host {
+		return model.Host{Name: name, Instance: &model.Instance{ID: id, Role: "TASK", Type: "m5.xlarge", Market: "SPOT", Ready: ready, Ended: ended}, YARNMemoryBytes: 12 * gib, YARNVCores: 4}
+	}
+	r.Nodes.Hosts = append(r.Nodes.Hosts,
+		spot("ip-10-0-0-4.internal", "i-4", start.Add(-time.Hour), start.Add(79*time.Second)),
+		spot("ip-10-0-0-5.internal", "i-5", start.Add(221*time.Second), time.Time{}))
+	a := buildAnatomy(r)
+	if a.RM.OfferedBytes != 24*gib {
+		t.Errorf("offered %d GiB, want the two nodes there throughout", a.RM.OfferedBytes/gib)
+	}
+	svg := anatomySVG(a, anatLinks{Finding: func(int) string { return "" }, Ref: func(string) string { return "" }})
+	for _, want := range []string{"12.0 GiB free, but the node went away 1 min 19 s into the run", "12.0 GiB free, but the node joined 3 min 41 s into the run"} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("diagram lacks %q", want)
+		}
+	}
+	if strings.Count(svg, "room for") != 0 { // the other nodes are full
+		t.Errorf("room claimed on a node that was not there: %d claims", strings.Count(svg, "room for"))
 	}
 }
