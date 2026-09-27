@@ -65,6 +65,13 @@ table.code td.src{white-space:pre;color:var(--ink)}
 table.code.side td.uses{font:12px var(--sans);color:var(--muted);width:36%;border-left:1px solid var(--line)}
 table.code tr.hit td.src,table.code tr.hit td.ln{background:var(--accent-soft)}
 table.code tr.focus td{outline:2px solid var(--accent);outline-offset:-2px}
+/* Syntax highlighting: every colour is at least 4.5:1 against the page and
+   against a highlighted (hit) line, in both themes. */
+:root{--tk-k:#8B2FA0;--tk-s:#1B7335;--tk-c:#5C6570;--tk-n:#9A4200;--tk-f:#1D5FA8;--tk-b:#0F6B6B;--tk-d:#80570A}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--tk-k:#D6A2F0;--tk-s:#8FD39A;--tk-c:#95A3AF;--tk-n:#F2AE6E;--tk-f:#86BDF2;--tk-b:#6FD1CF;--tk-d:#E6C27E}}
+:root[data-theme="dark"]{--tk-k:#D6A2F0;--tk-s:#8FD39A;--tk-c:#95A3AF;--tk-n:#F2AE6E;--tk-f:#86BDF2;--tk-b:#6FD1CF;--tk-d:#E6C27E}
+.tk-k{color:var(--tk-k);font-weight:600}.tk-s{color:var(--tk-s)}.tk-c{color:var(--tk-c);font-style:italic}.tk-n{color:var(--tk-n)}
+.tk-f{color:var(--tk-f);font-weight:600}.tk-b{color:var(--tk-b)}.tk-d{color:var(--tk-d)}
 ol.frames{margin:0;padding-left:20px;display:grid;gap:4px;font-size:14px}
 
 /* logs */

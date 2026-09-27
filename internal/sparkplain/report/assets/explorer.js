@@ -1877,6 +1877,100 @@
   window.addEventListener("resize", function () { clearTimeout(resizeTimer); resizeTimer = setTimeout(redrawCharts, 250); });
 
 
+  // ---------- syntax highlighting ----------
+  // A small highlighter for the languages -source reads (CLAUDE.md allows no
+  // script library but D3): comments, strings, numbers, keywords, built-ins,
+  // decorators and the names def, class and the like introduce. It returns
+  // [class, text] tokens per line, turned into text nodes, never HTML, so a
+  // line of code cannot inject markup; strings and comments that span lines
+  // carry over. Unknown file types are left plain.
+  var HL = (function () {
+    function words(s) { var m = {}; s.split(" ").forEach(function (w) { m[w] = 1; }); return m; }
+    var LANGS = {
+      py: { line: "#", strs: ['"""', "'''", '"', "'"], prefix: /^[rRbBuUfF]{1,2}(?=['"])/, deco: true,
+        kw: words("and as assert async await break class continue def del elif else except False finally for from global if import in is lambda None nonlocal not or pass raise return True try while with yield match case"),
+        bi: words("print len range int float str bool list dict set tuple open sum min max abs sorted enumerate zip map filter isinstance type super self cls"),
+        defs: words("def class") },
+      scala: { line: "//", block: ["/*", "*/"], strs: ['"""', '"', "'"], deco: true,
+        kw: words("abstract case catch class def do else extends false final finally for forSome if implicit import lazy match new null object override package private protected return sealed super this throw trait true try type val var while with yield given using enum then"),
+        bi: words("println Some None Seq List Map Set Option String Int Long Double Boolean Array Unit"), defs: words("def class object trait") },
+      java: { line: "//", block: ["/*", "*/"], strs: ['"""', '"', "'"], deco: true,
+        kw: words("abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for if implements import instanceof int interface long native new null package private protected public return short static super switch synchronized this throw throws transient try void volatile while true false var record yield"),
+        bi: words("String Integer Long Double Boolean List Map Set System Object"), defs: words("class interface enum record") },
+      kt: { line: "//", block: ["/*", "*/"], strs: ['"""', '"', "'"], deco: true,
+        kw: words("as break class continue do else false for fun if in interface is null object package return super this throw true try typealias val var when while import private public internal protected override open data sealed companion lateinit suspend"),
+        bi: words("println listOf mapOf setOf String Int Long Double Boolean Unit"), defs: words("fun class object interface") },
+      sql: { line: "--", block: ["/*", "*/"], strs: ["'", '"'], ci: true,
+        kw: words("select from where group by order having limit join inner left right full outer cross on as and or not in is null like between case when then else end distinct union all insert into values update set delete create table view with over partition asc desc cast true false exists"),
+        bi: words("count sum avg min max coalesce date_trunc year month to_date row_number rank dense_rank lag lead") },
+      r: { line: "#", strs: ['"', "'"],
+        kw: words("if else repeat while function for in next break TRUE FALSE NULL Inf NaN NA return"),
+        bi: words("library print c list paste nrow ncol length sum mean") }
+    };
+    var EXT = { py: "py", scala: "scala", sc: "scala", java: "java", kt: "kt", kts: "kt", sql: "sql", r: "r" };
+    function langOf(path) { var m = /\.([A-Za-z]+)$/.exec(path || ""); return m ? LANGS[EXT[m[1].toLowerCase()]] || null : null; }
+    var NUM = /^(?:0[xX][0-9a-fA-F_]+|\d[\d_]*(?:\.\d+)?(?:[eE][+-]?\d+)?)[jJlLfFdD]?/, ID = /^[A-Za-z_][A-Za-z0-9_]*/, WORD = /[A-Za-z0-9_]/;
+    // tokens splits a file's lines; each line is a list of [class, text],
+    // class "" for plain text.
+    function tokens(lines, lang) {
+      var open = null, out = [];
+      lines.forEach(function (line) {
+        var toks = [], plain = "", i = 0, afterDef = false;
+        function push(cls, text) { if (plain) { toks.push(["", plain]); plain = ""; } if (text) toks.push([cls, text]); }
+        while (i < line.length) {
+          var rest = line.slice(i);
+          if (open) { // inside a string or comment begun on an earlier line
+            var j = rest.indexOf(open.end);
+            if (j < 0) { push(open.cls, rest); i = line.length; break; }
+            push(open.cls, rest.slice(0, j + open.end.length)); i += j + open.end.length; open = null; continue;
+          }
+          if (lang.line && rest.slice(0, lang.line.length) === lang.line) { push("c", rest); break; }
+          if (lang.block && rest.slice(0, 2) === lang.block[0]) {
+            var e = rest.indexOf(lang.block[1], 2);
+            if (e < 0) { push("c", rest); open = { end: lang.block[1], cls: "c" }; break; }
+            push("c", rest.slice(0, e + 2)); i += e + 2; continue;
+          }
+          var prev = i ? line[i - 1] : "";
+          var pre = !WORD.test(prev) && lang.prefix && lang.prefix.exec(rest), p = pre ? pre[0].length : 0, q = null;
+          for (var k = 0; k < lang.strs.length; k++) if (rest.substr(p, lang.strs[k].length) === lang.strs[k]) { q = lang.strs[k]; break; }
+          if (q) {
+            var from = p + q.length, end = -1;
+            if (q.length === 3) end = rest.indexOf(q, from);
+            else for (var m = from; m < rest.length; m++) { if (rest[m] === "\\") { m++; continue; } if (rest[m] === q) { end = m; break; } }
+            if (end < 0) { push("s", rest); if (q.length === 3) open = { end: q, cls: "s" }; break; }
+            push("s", rest.slice(0, end + q.length)); i += end + q.length; continue;
+          }
+          if (lang.deco && rest[0] === "@" && ID.test(rest.slice(1))) { var d = "@" + ID.exec(rest.slice(1))[0]; push("d", d); i += d.length; continue; }
+          var nm = WORD.test(prev) ? null : NUM.exec(rest);
+          if (nm) { push("n", nm[0]); i += nm[0].length; continue; }
+          var id = WORD.test(prev) ? null : ID.exec(rest);
+          if (id) {
+            var w = id[0], key = lang.ci ? w.toLowerCase() : w;
+            if (afterDef) { push("f", w); afterDef = false; }
+            else if (prev === ".") plain += w; // a method or field: spark.conf.set is not set()
+            else if (lang.kw[key]) { push("k", w); afterDef = !!(lang.defs && lang.defs[w]); }
+            else if (lang.bi && lang.bi[key]) push("b", w);
+            else plain += w;
+            i += w.length; continue;
+          }
+          plain += rest[0]; i++;
+        }
+        push("", "");
+        out.push(toks);
+      });
+      return out;
+    }
+    return { langOf: langOf, tokens: tokens };
+  })();
+  // ---------- end syntax highlighting ----------
+  // srcCell draws one line of a source file, highlighted when its language
+  // is known; each file is tokenised once.
+  function srcCell(sf, n) {
+    if (sf._hl === undefined) { var lang = HL.langOf(sf.path); sf._hl = lang ? HL.tokens(sf.lines, lang) : null; }
+    if (!sf._hl) return el("td", { cls: "src", text: sf.lines[n] });
+    return el("td", { cls: "src" }, sf._hl[n].map(function (t) { return t[0] ? el("span", { cls: "tk-" + t[0], text: t[1] }) : t[1]; }));
+  }
+
   // ---------- code ----------
   // Where in the application each job, stage and query ran, as Spark
   // recorded it, and the source itself when -source supplied it.
@@ -1890,7 +1984,7 @@
     if (i == null) return null;
     var sf = D.sources[i], from = Math.max(1, c[1] - around), to = Math.min(sf.lines.length, c[1] + around);
     var rows = [];
-    for (var n = from; n <= to; n++) rows.push(el("tr", { cls: n === c[1] ? "hit" : null }, el("td", { cls: "ln", text: String(n) }), el("td", { cls: "src", text: sf.lines[n - 1] })));
+    for (var n = from; n <= to; n++) rows.push(el("tr", { cls: n === c[1] ? "hit" : null }, el("td", { cls: "ln", text: String(n) }), srcCell(sf, n - 1)));
     return el("div", { cls: "codebox" }, el("div", { cls: "codehead" }, link(codeHref(c), sf.path)), el("table", { cls: "code" }, el("tbody", null, rows)));
   }
   // codePanel shows where something ran: its frames, the code around the
@@ -1964,7 +2058,7 @@
       var rows = sf.lines.map(function (line, n) {
         var here = byLine[n + 1];
         return el("tr", { id: "code-" + i + "-" + (n + 1), cls: here ? "hit" : null },
-          el("td", { cls: "ln", text: String(n + 1) }), el("td", { cls: "src", text: line }),
+          el("td", { cls: "ln", text: String(n + 1) }), srcCell(sf, n),
           el("td", { cls: "uses" }, here ? here.map(function (u) { return el("div", null, usesCell(u), u.ms ? el("span", { cls: "sub", text: dur(u.ms) + " of job time" }) : null); }) : null));
       });
       s.appendChild(el("div", { cls: "codebox" }, el("div", { cls: "codehead", text: sf.path + (sf.cut ? " (cut)" : "") }),

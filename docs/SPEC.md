@@ -216,6 +216,7 @@ sparkplain -from ./logs/application_1700000000000_0042 \
 - Tables, text and navigation are drawn by the same embedded script; a chart that cannot be drawn says why in its place, and the rest of the page still works.
 - Stage DAGs and SQL plan graphs are SVG laid out in Go, as in `report.html`.
 - Same redaction, time-zone labelling and light and dark themes as the report. Embedded JSON is escaped so no log value can close the script tag.
+- The Code tab highlights Python, Scala, Java, Kotlin, SQL and R (by file extension; other files stay plain) with a small highlighter in `explorer.js`, since no script library but D3 is allowed: keywords, strings (including those spanning lines), comments, numbers, built-ins, decorators and the names `def`, `class` and the like introduce, in colours of at least 4.5:1 contrast in both themes and on highlighted lines. It builds text nodes, never HTML, so code cannot inject markup. Each source file the logs name gets its own box, one after another.
 
 | Tab | Shows |
 | --- | --- |
