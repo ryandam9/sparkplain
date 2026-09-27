@@ -165,11 +165,19 @@ func analyzeMetrics(c *ctx, r *model.Report) {
 		m.Summary = append(m.Summary, model.Fact{Label: "Applications at once", Value: fmt.Sprintf("%.0f at most", maxApps),
 			Explain: "Applications YARN was running on the cluster at the same time, this one included.", Source: src(apps)})
 		if maxApps > 1 {
-			c.add(model.Finding{Rule: "shared-cluster", Severity: model.Info, Section: "nodes",
+			f := model.Finding{Rule: "shared-cluster", Severity: model.Info, Section: "nodes",
 				Title:       fmt.Sprintf("%.0f applications shared the cluster", maxApps),
 				Explanation: "Other applications ran on the cluster at the same time, so node metrics (CPU, network, containers waiting) include their work too, and they competed with this one for executors.",
 				Evidence:    []model.Evidence{{Source: src(apps), Text: fmt.Sprintf("CloudWatch AppsRunning reached %.0f during the run", maxApps)}},
-				Fix:         "If this run's timing matters, give it its own cluster or a YARN queue with guaranteed capacity."})
+				Fix:         "If this run's timing matters, give it its own cluster or a YARN queue with guaranteed capacity."}
+			// A node this application left alone may have been busy with
+			// the others, so it is not called idle.
+			if idle := c.drop("idle-nodes"); idle != nil {
+				f.Explanation += fmt.Sprintf(" %s ran nothing for this application; the other applications may have been using %s.",
+					model.Plural(len(idle.Evidence), "worker node", "worker nodes"), map[bool]string{true: "it", false: "them"}[len(idle.Evidence) == 1])
+				f.Evidence = append(f.Evidence, idle.Evidence...)
+			}
+			c.add(f)
 		}
 	}
 

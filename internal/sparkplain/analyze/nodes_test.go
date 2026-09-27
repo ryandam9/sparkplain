@@ -175,3 +175,36 @@ func TestNoIdleNodesWithoutExecutors(t *testing.T) {
 		t.Error("idle-nodes for an application with no executors")
 	}
 }
+
+// The phase 4 test cluster: only a node up for most of the run and still
+// there at its end can be one the application left idle, and on a shared
+// cluster such a node may have been busy with another application.
+func TestIdleNodesUpForMostOfTheRun(t *testing.T) {
+	l := synthetic(nil, &model.Executor{ID: "1", Host: "ip-10-0-0-2.ec2.internal", Cores: 2})
+	start, end := l.Application.Start, l.Application.End
+	worker := func(id, role, market string, ready, ended time.Time) model.Instance {
+		return model.Instance{ID: id, PrivateDNS: "ip-10-0-0-" + id[2:] + ".ec2.internal", Role: role, Market: market, Created: ready.Add(-2 * time.Minute), Ready: ready, Ended: ended}
+	}
+	cl := &model.Cluster{ID: "j-1", Instances: []model.Instance{
+		worker("i-2", "CORE", "ON_DEMAND", start.Add(-time.Hour), time.Time{}),
+		worker("i-3", "CORE", "ON_DEMAND", start.Add(-time.Hour), time.Time{}),          // idle all run
+		worker("i-4", "TASK", "SPOT", start.Add(-time.Hour), start.Add(10*time.Minute)), // reclaimed mid-run
+		worker("i-5", "TASK", "SPOT", end.Add(-5*time.Minute), time.Time{}),             // replacement, ready near the end
+	}}
+	in := Input{Tool: "t", EventLog: l, EventSource: model.SourceStatus{Name: "Spark event log", Status: "read"}, Cluster: cl}
+	f, ok := rules(Run(in))["idle-nodes"]
+	if !ok || f.Title != "1 worker node of 2 ran no executors" || len(f.Evidence) != 1 || !strings.Contains(f.Evidence[0].Text, "i-3") {
+		t.Errorf("idle = %+v", f)
+	}
+
+	in.Metrics = &model.MetricsSection{Coverage: model.Complete, From: start, To: end, Cluster: []model.Series{series("AppsRunning", "Maximum", "j-1", start, 1, 2, 2)}}
+	got := rules(Run(in))
+	if _, ok := got["idle-nodes"]; ok {
+		t.Error("a node may have been busy with another application")
+	}
+	sh := got["shared-cluster"]
+	if !strings.Contains(sh.Explanation, "1 worker node ran nothing for this application; the other applications may have been using it.") ||
+		len(sh.Evidence) != 2 || !strings.Contains(sh.Evidence[1].Text, "i-3") {
+		t.Errorf("shared = %+v", sh)
+	}
+}

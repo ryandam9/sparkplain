@@ -189,7 +189,7 @@ func Instances(ctx context.Context, api EMRAPI, cl model.Cluster) ([]model.Insta
 					in.StateReason = redact.Text(aws.ToString(st.StateChangeReason.Message))
 				}
 				if t := st.Timeline; t != nil {
-					in.Created, in.Ended = aws.ToTime(t.CreationDateTime), aws.ToTime(t.EndDateTime)
+					in.Created, in.Ready, in.Ended = aws.ToTime(t.CreationDateTime), aws.ToTime(t.ReadyDateTime), aws.ToTime(t.EndDateTime)
 				}
 			}
 			if d := cl.PrimaryDNS; d != "" && (d == in.PrivateDNS || d == aws.ToString(i.PublicDnsName) || d == in.PrivateIP) {

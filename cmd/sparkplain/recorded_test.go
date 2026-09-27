@@ -171,7 +171,8 @@ func TestRecordedPhase3(t *testing.T) {
 			"log-first-failure": "First error: AWSSecurityTokenServiceException: User: arn:aws:sts::000000000000:assumed-role/EMR_EC2_DefaultRole/",
 			"access-denied":     "AWS refused access 2 times: sts:AssumeRole on arn:aws:iam::000000000000:role/fixture-no-such-role",
 		}, nil},
-		"0062": {exitOK, "succeeded", map[string]string{"idle-nodes": "1 worker node of 2 ran no executors", "shared-cluster": "2 applications shared the cluster"}, []string{"log-first-failure"}},
+		// The spot node that was not busy became ready after the run ended.
+		"0062": {exitOK, "succeeded", map[string]string{"shared-cluster": "2 applications shared the cluster"}, []string{"log-first-failure", "idle-nodes"}},
 		"0063": {exitPartial, "failed", map[string]string{"log-first-failure": cfg}, []string{"waited-for-capacity", "idle-nodes"}},
 		"0064": {exitPartial, "failed", map[string]string{"log-first-failure": cfg}, []string{"waited-for-capacity", "idle-nodes"}},
 		"0065": {exitPartial, "failed", map[string]string{ // the heap ran out; each executor killed itself, exit 137

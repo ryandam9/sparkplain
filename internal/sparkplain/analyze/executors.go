@@ -363,11 +363,29 @@ func joinInstances(c *ctx, r *model.Report, hosts map[string]*model.Host, get fu
 		}
 		h := get(name)
 		h.Instance = &in
-		if len(h.Executors) == 0 && !in.Primary && in.Role != "MASTER" {
+		if len(h.Executors) == 0 && !in.Primary && in.Role != "MASTER" && upForMostOf(in, start, end) {
 			idle = append(idle, h)
 		}
 	}
 	return idle
+}
+
+// upForMostOf reports whether a node was ready for at least half the run
+// and did not end before it: a node that joined near the end, or one that
+// went away mid-run (see spot-interrupted), is not one the application
+// left idle.
+func upForMostOf(in model.Instance, start, end time.Time) bool {
+	if start.IsZero() || end.IsZero() || !end.After(start) {
+		return true
+	}
+	if !in.Ended.IsZero() && in.Ended.Before(end) {
+		return false
+	}
+	from := in.Ready
+	if from.IsZero() {
+		from = in.Created
+	}
+	return !from.After(start.Add(end.Sub(start) / 2))
 }
 
 // nodeFindings reports worker nodes that ran no executors, and spot nodes
@@ -382,7 +400,7 @@ func nodeFindings(c *ctx, r *model.Report, idle []*model.Host) {
 	if len(idle) > 0 && ran > 0 {
 		workers := 0
 		for _, h := range r.Nodes.Hosts {
-			if h.Instance != nil && !h.Instance.Primary && h.Instance.Role != "MASTER" {
+			if in := h.Instance; in != nil && !in.Primary && in.Role != "MASTER" && (len(h.Executors) > 0 || upForMostOf(*in, c.log.Application.Start, c.end)) {
 				workers++
 			}
 		}
@@ -397,7 +415,7 @@ func nodeFindings(c *ctx, r *model.Report, idle []*model.Host) {
 			}
 			ev = append(ev, model.Evidence{Text: fmt.Sprintf("%s (%s, %s %s, %s): %s", in.ID, h.Name, strings.ToLower(in.Role), in.Type, strings.ToLower(strings.ReplaceAll(in.Market, "_", "-")), what)})
 		}
-		expl := fmt.Sprintf("%s of the %s the cluster had up during the run ran no executors, so the application used less of the cluster than was paid for.", model.Plural(len(idle), "worker node", "worker nodes"), model.Plural(workers, "worker node", "worker nodes"))
+		expl := fmt.Sprintf("%s of the %s the cluster had up for most of the run ran no executors, so the application used less of the cluster than was paid for.", model.Plural(len(idle), "worker node", "worker nodes"), model.Plural(workers, "worker node", "worker nodes"))
 		if driverOnly > 0 {
 			expl += " A node that ran only the driver had room left that no executor fitted into: executors are sized for a whole node, and the driver's container already took part of it."
 		}

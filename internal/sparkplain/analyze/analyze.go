@@ -80,6 +80,17 @@ type ctx struct {
 
 func (c *ctx) add(f model.Finding) { c.findings = append(c.findings, f) }
 
+// drop removes the finding with this rule and returns it, if there was one.
+func (c *ctx) drop(rule string) *model.Finding {
+	for i, f := range c.findings {
+		if f.Rule == rule {
+			c.findings = append(c.findings[:i], c.findings[i+1:]...)
+			return &f
+		}
+	}
+	return nil
+}
+
 // Run builds the report.
 func Run(in Input) *model.Report {
 	r := &model.Report{

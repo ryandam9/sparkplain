@@ -492,6 +492,7 @@ type Instance struct {
 	VCPU        int       `json:"vcpu,omitempty"`    // from EC2 DescribeInstanceTypes
 	MemoryBytes int64     `json:"memoryBytes,omitempty"`
 	Created     time.Time `json:"created,omitzero"`
+	Ready       time.Time `json:"ready,omitzero"` // when it joined the cluster, ready for work
 	Ended       time.Time `json:"ended,omitzero"`
 }
 
