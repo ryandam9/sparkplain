@@ -2,6 +2,7 @@ package analyze
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -360,5 +361,53 @@ func TestRetriedAttemptFromEventLogOnly(t *testing.T) {
 	l.Application.AttemptID = "1"
 	if _, ok := rules(runWithLogs(l, nil))["app-retried"]; ok {
 		t.Error("attempt 1 was not retried")
+	}
+}
+
+// The 5-node test cluster's Ookla job failed in its own code before any
+// Spark job ran, on both attempts. Spark still closed the event log
+// normally, so only YARN's records say the application failed: it must
+// not read as "finished on attempt 2".
+func TestFailedAttemptsDespiteCleanEventLog(t *testing.T) {
+	l := synthetic(nil, &model.Executor{ID: "1", Host: "ip-10-0-0-2.ec2.internal", Cores: 2})
+	l.Application.AttemptID, l.Application.DeployMode = "2", "cluster"
+	l.Application.DriverAttributes = map[string]string{"CONTAINER_ID": "container_1_1_02_000001"}
+	exit := `26/09/27 09:48:0%d INFO ApplicationMaster: Final app status: FAILED, exitCode: 1, (reason: User application exited with status 1)
+`
+	r := runWithLogs(l, nil,
+		logFile(t, "containers/application_1_1/container_1_1_01_000001/stdout", `Traceback (most recent call last):
+  File "/mnt/yarn/p5_speedtest.py", line 18, in <module>
+py4j.protocol.Py4JJavaError: An error occurred while calling o228.parquet.
+: java.lang.AssertionError: assertion failed: Conflicting directory structures detected. Suspicious paths:
+`),
+		logFile(t, driverErr, fmt.Sprintf(exit, 1)),
+		logFile(t, "containers/application_1_1/container_1_1_02_000001/stderr", fmt.Sprintf(exit, 9)),
+		logFile(t, "steps/s-FIXTURESTEP0001/controller", `2026-09-27T09:48:10.000Z WARN Step failed with exitCode 1 and took 54 seconds
+`))
+	a := r.Application
+	if a.Status != model.StatusFailed || !strings.Contains(a.StatusReason, "the application master exited with code 1") {
+		t.Errorf("application = %s: %s", a.Status, a.StatusReason)
+	}
+	got := rules(r)
+	for _, rule := range []string{"app-retried", "step-failed"} {
+		if f, ok := got[rule]; ok {
+			t.Errorf("unexpected %s: %s", rule, f.Title)
+		}
+	}
+	if f := got["log-first-failure"]; !strings.Contains(f.Title, "Conflicting directory structures detected") || !strings.Contains(f.Explanation, "YARN started the application 2 times") {
+		t.Errorf("first failure = %+v", f)
+	}
+	if s := r.Summary.Sentences[0]; !strings.Contains(s, "and failed.") || strings.Contains(s, "finished") {
+		t.Errorf("summary = %q", s)
+	}
+
+	// YARN's summary alone is enough, as for an attempt whose driver log
+	// was lost.
+	l.Application.Status, l.Application.StatusReason = model.StatusSucceeded, ""
+	l.Application.AttemptID = "1"
+	r = runWithLogs(l, nil, logFile(t, rmLog, `2026-09-27 09:48:10,000 INFO org.apache.hadoop.yarn.server.resourcemanager.RMAppManager$ApplicationSummary (RM Event dispatcher): appId=application_1_1,name=job.py,user=hadoop,queue=default,state=FINISHED,trackingUrl=x,appMasterHost=h,submitTime=1790000000000,startTime=1790000000000,launchTime=1790000001000,finishTime=1790000010000,finalStatus=FAILED,memorySeconds=1,vcoreSeconds=1,applicationType=SPARK,diagnostics=
+`))
+	if r.Application.Status != model.StatusFailed || r.Application.StatusReason != "Spark's event log ends normally, but YARN recorded the application as failed." {
+		t.Errorf("from YARN's summary: %s: %s", r.Application.Status, r.Application.StatusReason)
 	}
 }

@@ -129,6 +129,7 @@ func analyzeLogs(c *ctx, r *model.Report) {
 		}
 	}
 	applicationFromLogs(c, r)
+	statusFromLogs(c, r)
 	firstFailure(c, r)
 	memoryKillFindings(c, r)
 	lostExecutorCauses(c, r)
@@ -367,12 +368,12 @@ func firstFailure(c *ctx, r *model.Report) {
 			break
 		}
 	}
-	attempts := 0
+	ends, _, _ := attemptExits(c)
+	attempts := len(ends)
 	var lastExit *hit
-	for i, h := range c.logs.hits {
-		if h.l.Kind == model.LogAppExit && h.l.Fields["attempt"] != "" && h.l.Severity == model.Critical {
-			attempts++
-			lastExit = &c.logs.hits[i]
+	for n, e := range ends {
+		if lastExit == nil || n >= attemptOf(lastExit) {
+			lastExit = e.line()
 		}
 	}
 	if lastExit != nil {
@@ -743,33 +744,100 @@ func stepAndAttemptFindings(c *ctx, r *model.Report) {
 	retriedFinding(c, r)
 }
 
-// retriedFinding reports an application YARN had to restart: a failed
-// attempt in the ResourceManager's log or in an attempt's own driver log,
-// or an event log from a later attempt, when a later attempt finished.
-func retriedFinding(c *ctx, r *model.Report) {
-	failed := map[int]hit{} // attempt → its failed exit, the driver's own line preferred
-	succeeded := r.Application.Status == model.StatusSucceeded
-	for _, h := range c.logs.hits {
+// attemptEnd is how one YARN attempt ended, as the ResourceManager and the
+// attempt's own driver ("Final app status") logged it.
+type attemptEnd struct{ rm, am *hit }
+
+// line is the attempt's ending as the driver logged it, else YARN.
+func (e attemptEnd) line() *hit {
+	if e.am != nil {
+		return e.am
+	}
+	return e.rm
+}
+
+func attemptOf(h *hit) int {
+	if a := h.l.Fields["attempt"]; a != "" {
+		return attemptNumber(a)
+	}
+	return containerAttempt(h.f.Container)
+}
+
+// attemptExits reads the attempts that failed or were killed, whether any
+// attempt's driver or YARN's summary says the application succeeded, and
+// the summary's final status ("" without one).
+func attemptExits(c *ctx) (failed map[int]attemptEnd, succeeded bool, final string) {
+	failed = map[int]attemptEnd{}
+	for i := range c.logs.hits {
+		h := &c.logs.hits[i]
 		switch h.l.Kind {
 		case model.LogAppExit:
-			n := containerAttempt(h.f.Container)
-			if a := h.l.Fields["attempt"]; a != "" {
-				n = attemptNumber(a)
-			}
 			switch h.l.Fields["status"] {
 			case "FAILED", "KILLED":
-				if old, ok := failed[n]; !ok || (old.f.Container == "" && h.f.Container != "") {
-					failed[n] = h
+				n, e := attemptOf(h), failed[attemptOf(h)]
+				if h.l.Fields["attempt"] != "" {
+					e.rm = h
+				} else if h.f.Container != "" {
+					e.am = h
 				}
+				failed[n] = e
 			case "SUCCEEDED":
 				succeeded = true
 			}
 		case model.LogAppSummary:
-			if h.l.Fields["finalStatus"] == "SUCCEEDED" {
+			final = h.l.Fields["finalStatus"]
+			if final == "SUCCEEDED" {
 				succeeded = true
 			}
 		}
 	}
+	return failed, succeeded, final
+}
+
+// statusFromLogs corrects an application the event log says finished when
+// YARN says it failed. Spark closes its event log normally on the way out
+// even when the application's own code failed outside any Spark job (on
+// the 5-node test cluster, a Parquet read refused before any job ran), so
+// the last attempt's own exit, or YARN's summary, has the last word.
+func statusFromLogs(c *ctx, r *model.Report) {
+	a := &r.Application
+	if !c.has() || a.Status != model.StatusSucceeded {
+		return
+	}
+	ends, _, final := attemptExits(c)
+	last, _ := strconv.Atoi(a.AttemptID)
+	if last == 0 {
+		last = containerAttempt(a.DriverAttributes["CONTAINER_ID"])
+	}
+	e, ok := ends[last]
+	if !ok && final != "FAILED" && final != "KILLED" {
+		return
+	}
+	a.Status = model.StatusFailed
+	state := "failed"
+	if final == "KILLED" {
+		state = "killed"
+	}
+	a.StatusReason = "Spark's event log ends normally, but YARN recorded the application as " + state + "."
+	if h := e.line(); ok && h != nil {
+		a.StatusReason = fmt.Sprintf("Spark's event log ends normally, but the application master exited with code %s (%s), so YARN recorded it as failed.", h.l.Fields["exitCode"], h.l.Fields["meaning"])
+	}
+}
+
+// retriedFinding reports an application YARN had to restart: a failed
+// attempt in the ResourceManager's log or in an attempt's own driver log,
+// or an event log from a later attempt, when a later attempt finished.
+func retriedFinding(c *ctx, r *model.Report) {
+	ends, logSucceeded, _ := attemptExits(c)
+	failed := map[int]hit{} // attempt → its failed exit, the driver's own line preferred
+	for n, e := range ends {
+		if e.am != nil {
+			failed[n] = *e.am
+		} else {
+			failed[n] = *e.rm
+		}
+	}
+	succeeded := r.Application.Status == model.StatusSucceeded || (logSucceeded && r.Application.Status != model.StatusFailed)
 	last, _ := strconv.Atoi(r.Application.AttemptID)
 	if !succeeded || (len(failed) == 0 && last < 2) {
 		return
