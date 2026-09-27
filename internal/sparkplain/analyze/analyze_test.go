@@ -72,6 +72,9 @@ func TestMainFixtureFindings(t *testing.T) {
 			}
 		}
 	}
+	if tr := got["task-retries"].Title; !regexp.MustCompile(`^(1 task attempt failed and was|\d+ task attempts failed and were) retried successfully$`).MatchString(tr) {
+		t.Errorf("task-retries title = %q", tr)
+	}
 	if !strings.Contains(got["stage-skew"].Title, "Stage 18") || got["stage-skew"].Evidence[0].Source.Line == 0 {
 		t.Errorf("skew finding should point at stage 18's slowest task: %+v", got["stage-skew"])
 	}

@@ -256,7 +256,7 @@ func failureFindings(c *ctx) {
 			ev = append(ev, model.Evidence{Source: f.Source, Text: fmt.Sprintf("%s × %s", model.Num(f.Count), f.Message)})
 		}
 		c.add(model.Finding{Rule: "task-retries", Severity: model.Info, Section: "stages",
-			Title:       fmt.Sprintf("%s failed and were retried successfully", model.Plural(int(n), "task attempt", "task attempts")),
+			Title:       fmt.Sprintf("%s and %s retried successfully", model.Plural(int(n), "task attempt failed", "task attempts failed"), map[bool]string{true: "was", false: "were"}[n == 1]),
 			Explanation: "These failures did not stop their stages, because a retry succeeded, but each one repeated work.",
 			Evidence:    ev,
 			Fix:         "If the reason is a lost executor, see the executor findings; if it is an exception, it may point at bad data that a retry happened to get past."})
