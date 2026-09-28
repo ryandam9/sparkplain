@@ -476,6 +476,7 @@
     { id: "stageTimes", label: "Duration", title: "The longest stages" },
     { id: "stageData", label: "Data", title: "Data each stage moved" },
     { id: "stageSplit", label: "Time", title: "Where stage time went" },
+    { id: "stageSkew", label: "Skew", title: "Which stages have straggler tasks" },
     { id: "stageSpill", label: "Spill", title: "Spill by stage", when: function () { return stages.some(function (st) { return st.diskSpill > 0 || st.memSpill > 0; }); } }
   ];
   var STAGE_VIEW = "stageHealth";
@@ -1493,6 +1494,68 @@
     linkify(g, function (st) { return "#stage/" + st.key; }, label);
   }
 
+  // ---------- cross-stage skew ----------
+  // One row per stage: its task times from fastest to slowest, drawn as
+  // multiples of that stage's median, so a stage of 100 ms tasks and one of
+  // 10 min tasks compare on the same footing. Sorted by p95 over median.
+  var SKEW_ROWS = 40, skewAll = false;
+  function skewLevel(r) { return r >= 5 ? "severe" : r >= 3 ? "strong" : r >= 2 ? "mild" : ""; }
+  function stageSkewChart(c) {
+    var rows = stages.filter(function (st) { return st.durN >= 3 && st.p50 > 0; }).map(function (st) {
+      var q = D.detail[st.key] && D.detail[st.key].m.durationMs; // count, sum, min, p25, p50, p75, max
+      return { st: st, min: st.durMin, p25: q ? q[3] : null, p50: st.p50, p75: q ? q[5] : null, p95: st.p95, max: st.max, r95: st.p95 / st.p50, rMax: st.max / st.p50 };
+    }).sort(function (p, q) { return q.r95 - p.r95 || q.rMax - p.rMax; });
+    var dropped = stages.length - rows.length;
+    if (!rows.length) { waitText(c, "No stage had three or more successful tasks, so there is no spread to compare."); return; }
+    var shown = skewAll ? rows.slice(0, 300) : rows.slice(0, SKEW_ROWS);
+    var plot = frame(c, { t: "Which stages have straggler tasks?",
+      shows: "One row per stage, its task times drawn as multiples of that stage's median task (the line at 1×): the line runs from the fastest to the slowest task, the box from the quarter to the three-quarter mark, the dot is the 95th percentile. Sorted by 95th percentile over median. " +
+        (shown.length < rows.length ? "Showing the " + num(shown.length) + " most skewed of " + num(rows.length) + ". " : "") +
+        (dropped ? num(dropped) + " stages with fewer than three successful tasks are left out. " : "") + "Every successful task counts, not a sample. Click a row to open the stage.",
+      read: "Short rows around 1× are even stages. A dot far right means one task in twenty took several times the median: 2× is mild, 3× strong, 5× severe (a guide, not a rule). A line reaching far past the dot is one or two stragglers; open the stage and compare the slowest tasks' rows read to see whether the data was skewed." });
+    if (rows.length > SKEW_ROWS) {
+      var btn = el("button", { type: "button", cls: "more", text: skewAll ? "Show the " + SKEW_ROWS + " most skewed" : "Show all " + num(Math.min(rows.length, 300)) + " stages" });
+      btn.addEventListener("click", function () { skewAll = !skewAll; drawSlot(c); });
+      plot.parentNode.insertBefore(el("div", { cls: "bar-tools" }, btn), plot);
+    }
+    var rowH = 24, top = 4, bandH = shown.length * rowH;
+    var P = plotSvg(plot, top + bandH + 28, "Which stages have straggler tasks?");
+    // the note names the p95 multiple and its level; phones get the multiple alone
+    var wide = P.w >= 560, labelW = Math.min(170, Math.round(P.w * 0.34)), noteW = wide ? 132 : 46;
+    var lo = Math.min(0.5, d3.min(shown, function (r) { return Math.max(r.min / r.p50, 0.01); })), hi = Math.max(4, d3.max(shown, function (r) { return r.rMax; }));
+    var x = d3.scaleLog().domain([lo, hi * 1.1]).range([labelW, P.w - noteW]).clamp(true);
+    // keep 1× and thin the rest so labels never touch on a narrow chart
+    var ticks = [], lastX = -1e9;
+    [0.01, 0.1, 0.25, 0.5, 1, 2, 3, 5, 10, 20, 50, 100, 1000].filter(function (v) { return v >= lo && v <= hi * 1.1; }).forEach(function (v) {
+      if (x(v) - lastX >= 34 || v === 1) { if (v === 1 && ticks.length && x(1) - x(ticks[ticks.length - 1]) < 34) ticks.pop(); ticks.push(v); lastX = x(v); }
+    });
+    P.svg.append("g").attr("class", "ax").attr("transform", "translate(0," + (top + bandH) + ")")
+      .call(d3.axisBottom(x).tickValues(ticks).tickFormat(function (v) { return v + "×"; }).tickSize(-bandH).tickPadding(6)).call(leanEnds, x, labelW, P.w - noteW).select(".domain").remove();
+    P.svg.append("line").attr("class", "medline").attr("x1", x(1)).attr("x2", x(1)).attr("y1", top).attr("y2", top + bandH);
+    var row = P.svg.append("g").selectAll("g").data(shown).join("g").attr("class", "row")
+      .attr("transform", function (r, i) { return "translate(0," + (top + i * rowH) + ")"; });
+    row.append("rect").attr("class", "hit").attr("x", 0).attr("width", P.w).attr("height", rowH);
+    row.append("text").attr("class", "rl").attr("x", labelW - 8).attr("y", rowH / 2).attr("dy", "0.35em").attr("text-anchor", "end").text(function (r) { return fitChars(stageName(r.st), labelW - 12); });
+    var X = function (v, r) { return x(Math.max(v / r.p50, lo)); }, mid = rowH / 2;
+    row.append("line").attr("class", "skw").attr("x1", function (r) { return X(r.min, r); }).attr("x2", function (r) { return X(r.max, r); }).attr("y1", mid).attr("y2", mid);
+    row.filter(function (r) { return r.p25 != null; }).append("rect").attr("class", "skb").attr("x", function (r) { return X(r.p25, r); }).attr("y", mid - 6)
+      .attr("width", function (r) { return Math.max(X(r.p75, r) - X(r.p25, r), 2); }).attr("height", 12);
+    row.append("line").attr("class", "skm").attr("x1", x(1)).attr("x2", x(1)).attr("y1", mid - 7).attr("y2", mid + 7);
+    row.append("circle").attr("class", function (r) { return "skp " + skewLevel(r.r95); }).attr("cx", function (r) { return X(r.p95, r); }).attr("cy", mid).attr("r", 4.5);
+    row.append("text").attr("class", "note").attr("x", P.w - noteW + 8).attr("y", mid).attr("dy", "0.35em")
+      .text(function (r) { return wide ? "p95 " + r.r95.toFixed(1) + "×" + (skewLevel(r.r95) ? " · " + skewLevel(r.r95) : "") : r.r95.toFixed(1) + "×"; });
+    var label = function (r) {
+      return stageName(r.st) + ": " + num(r.st.durN) + " successful tasks; median " + dur(r.p50) + ", 95th percentile " + dur(r.p95) + " (" + r.r95.toFixed(1) + "×), slowest " + dur(r.max) + " (" + r.rMax.toFixed(1) + "×)" +
+        (skewLevel(r.r95) ? ", " + skewLevel(r.r95) + " skew" : "") + (r.st.failed ? ", " + num(r.st.failed) + " failed attempts" : "");
+    };
+    hover(row, function (r) {
+      return stageName(r.st) + "\n" + num(r.st.durN) + " successful tasks" + (r.st.failed ? ", " + num(r.st.failed) + " failed attempts" : "") +
+        "\nFastest " + dur(r.min) + (r.p25 != null ? " · quarter " + dur(r.p25) : "") + " · median " + dur(r.p50) + (r.p75 != null ? " · three-quarter " + dur(r.p75) : "") +
+        "\n95th percentile " + dur(r.p95) + " (" + r.r95.toFixed(1) + "×) · slowest " + dur(r.max) + " (" + r.rMax.toFixed(1) + "×)";
+    });
+    linkify(row, function (r) { return "#stage/" + r.st.key; }, label);
+  }
+
   // ---------- stage × executor heatmap ----------
   // One square per executor (row) and stage (column), coloured by the
   // chosen metric, either as is or as a multiple of the stage's median
@@ -1843,6 +1906,7 @@
     },
     heatmap: function (c) { heatmap(c); },
     stageHealth: function (c, arg) { stageHealth(c, arg === "compact"); },
+    stageSkew: function (c) { stageSkewChart(c); },
     runTimeline: function (c) { runTimeline(c); },
     dataOverTime: function (c) {
       var done = stages.filter(function (st) { return st.completed; }).sort(function (a2, b2) { return a2.completed - b2.completed; });
