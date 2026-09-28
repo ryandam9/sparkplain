@@ -169,3 +169,10 @@ tr.hl td{background:var(--accent-soft)}
 .d3c .hspill{fill:var(--viz-5);pointer-events:none}
 .d3c .hb.go:hover .hbc,.d3c .hb.go:focus-visible .hbc{fill-opacity:.6}
 .hmk{margin-right:5px}
+/* cross-stage skew */
+.d3c .medline{stroke:var(--muted);stroke-dasharray:3 3}
+.d3c .skw{stroke:var(--muted);stroke-width:1.5}
+.d3c .skb{fill:var(--viz-series);fill-opacity:.35;stroke:var(--viz-series)}
+.d3c .skm{stroke:var(--ink);stroke-width:2}
+.d3c .skp{fill:var(--viz-neutral);stroke:var(--surface);stroke-width:1}
+.d3c .skp.mild{fill:var(--viz-series)} .d3c .skp.strong{fill:var(--warn)} .d3c .skp.severe{fill:var(--viz-fail)}
