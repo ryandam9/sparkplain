@@ -323,6 +323,11 @@
       rs.appendChild(runningTable(runningTasks));
       out.push(rs);
     }
+    if (stages.some(function (st) { return st.submitted && st.completed; })) {
+      var hs = section("Stages worth a look", "The longest stages, placed by how long they ran and how much data they handled. The Stages tab has every stage and other views.");
+      hs.appendChild(chartSlot("", "stageHealth:compact"));
+      out.push(hs);
+    }
     // the diagnosis first, then the charts over time
     var ov = section("Over time", "Tasks running across the run, and when each job ran.");
     ov.appendChild(chartSlot("", "running"));
@@ -465,12 +470,34 @@
       ]
     });
   }
+  // The Stages page's charts, one at a time; the choice stays while the page is open.
+  var STAGE_VIEWS = [
+    { id: "stageHealth", label: "Health", title: "Which stages deserve attention: time against data, sized by tasks" },
+    { id: "stageTimes", label: "Duration", title: "The longest stages" },
+    { id: "stageData", label: "Data", title: "Data each stage moved" },
+    { id: "stageSplit", label: "Time", title: "Where stage time went" },
+    { id: "stageSpill", label: "Spill", title: "Spill by stage", when: function () { return stages.some(function (st) { return st.diskSpill > 0 || st.memSpill > 0; }); } }
+  ];
+  var STAGE_VIEW = "stageHealth";
   views.stages = function () {
     var s = section("Stages", "A stage is a set of tasks that run the same code on different partitions of the data. Retried stages show each attempt.");
-    s.appendChild(chartSlot("", "stageTimes"));
-    s.appendChild(chartSlot("", "stageData"));
-    if (stages.some(function (st) { return st.diskSpill > 0 || st.memSpill > 0; })) s.appendChild(chartSlot("", "stageSpill"));
-    s.appendChild(chartSlot("", "stageSplit"));
+    // one chart at a time, chosen here; the table below stays
+    var choices = STAGE_VIEWS.filter(function (v) { return !v.when || v.when(); });
+    if (!choices.some(function (v) { return v.id === STAGE_VIEW; })) STAGE_VIEW = choices[0].id;
+    var slot = chartSlot("", STAGE_VIEW), slotRec = charts[charts.length - 1];
+    var picker = el("div", { cls: "viewpick", role: "group", "aria-label": "Stage chart" });
+    choices.forEach(function (v) {
+      var b = el("button", { type: "button", text: v.label, "aria-pressed": v.id === STAGE_VIEW ? "true" : "false", title: v.title });
+      b.addEventListener("click", function () {
+        STAGE_VIEW = v.id;
+        picker.querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", x === b ? "true" : "false"); });
+        slotRec.draw = v.id;
+        drawSlot(slotRec);
+      });
+      picker.appendChild(b);
+    });
+    s.appendChild(picker);
+    s.appendChild(slot);
     s.appendChild(stageTable(stages));
     return s;
   };
@@ -1372,6 +1399,100 @@
     spill: { label: "Spilled", kind: "bytes", v: function (r) { return r[T.spill]; }, read: "High marks ran out of execution memory and wrote to disk." }
   };
 
+  // ---------- stage health map ----------
+  // One bubble per stage: how long it ran across, the data it handled up
+  // (read, shuffled in and out, written: honest for one stage, though a
+  // total over stages would count each shuffle twice), sized by tasks.
+  // Both axes are logarithmic. Outlines and small marks, not colour alone,
+  // flag failed, skewed, spilled and critical-path stages.
+  var HEALTH_MAX = 200, HEALTH_COMPACT = 30;
+  // logAxis is a log scale over [lo, hi] with round ticks: powers of ten
+  // for time (and minutes, hours), powers of 32 for bytes, and finer steps
+  // when the range is too narrow for three of those.
+  function logAxis(kind, lo, hi, range) {
+    if (hi / Math.max(lo, 1) < 16) {
+      // a narrow range: widen it around its middle so a few round ticks fit
+      var mid = Math.sqrt(Math.max(lo, 1) * Math.max(hi, 1));
+      lo = mid / 8; hi = mid * 8;
+    }
+    var x = d3.scaleLog().domain([Math.max(lo / 1.6, 1), Math.max(hi * 1.6, lo * 2, 2)]).range(range).clamp(true);
+    var cands = kind === "ms" ? [1, 10, 100, 1e3, 1e4, 6e4, 6e5, 36e5, 36e6, 864e5]
+      : [1, 32, 1024, 32768, 1048576, 33554432, 1073741824, 34359738368, 1099511627776, 35184372088832];
+    var d = x.domain(), inside = function (v) { return v >= d[0] && v <= d[1]; }, ticks = cands.filter(inside);
+    if (ticks.length < 3) {
+      // a narrow range: finer round steps (1, 3, 10… for time; powers of 4 for bytes)
+      var fine = [];
+      if (kind === "ms") [1, 10, 100, 1e3, 1e4, 1e5, 1e6, 1e7].forEach(function (v) { fine.push(v, 3 * v); });
+      else for (var b = 1; b < 1e15; b *= 4) fine.push(b);
+      ticks = fine.filter(inside);
+    }
+    return { x: x, ticks: ticks, label: function (v) { return (kind === "ms" ? dur(v) : bytes(v)).replace(".0 ", " "); } };
+  }
+  function stageMoved(st) { return st.input + st.shRead + st.shWrite + st.output; }
+  function stageSkewed(st) { return st.p50 > 0 && st.max >= 5 * st.p50 && st.max >= 1000; }
+  function stageHealth(c, compact) {
+    var crit = {};
+    (D.critical || []).forEach(function (id) { crit[id] = 1; });
+    var all = stages.filter(function (st) { return st.submitted && st.completed > st.submitted; });
+    if (!all.length) { waitText(c, "No stage has a start and an end to plot."); return; }
+    var wall = function (st) { return st.completed - st.submitted; };
+    // the longest stages, keeping every failed and critical-path one
+    var limit = compact ? HEALTH_COMPACT : HEALTH_MAX, list = all;
+    if (all.length > limit) {
+      var keep = {};
+      all.slice().sort(function (p, q) { return wall(q) - wall(p); }).slice(0, limit).forEach(function (st) { keep[st.key] = 1; });
+      list = all.filter(function (st) { return keep[st.key] || st.status === "failed" || crit[st.id]; });
+    }
+    var plot = frame(c, { t: "Which stages deserve attention?",
+      shows: "Each bubble is a stage: how long it ran, across, against the data it handled (read, shuffled in and out, written), up; bigger bubbles ran more tasks. Both axes are logarithmic: equal steps multiply rather than add, so small and large stages both show. " +
+        (list.length < all.length ? "Showing the " + num(list.length) + " longest of " + num(all.length) + " stages, and every failed or critical-path one. " : "") + "Click a bubble to open the stage.",
+      read: "Far right and low: a long stage that handled little data, so look at where its time went (scheduler delay, garbage collection, Python) or whether it had too few tasks. Far right and high: big work that took its time. A small bubble far right is a few tasks doing a lot each; more partitions may help. Handling a lot of data is not a problem in itself." });
+    var mark = function (sym, color, text) { return el("span", null, el("b", { cls: "hmk", style: "color:" + color, text: sym }), text); };
+    plot.parentNode.insertBefore(el("div", { cls: "legend" }, mark("●", V.series, "Stage (size: tasks)"), mark("○", V.fail, "Red outline: failed"),
+      mark("◎", "var(--accent)", "Thick outline: on the critical path"), mark("▲", "var(--warn)", "Skewed: slowest task over 5× the median"), mark("■", V.viz[4], "Spilled to disk")), plot);
+    var H = compact ? 240 : 320, m = { l: 70, r: 20, t: 14, b: 44 }, noneH = 18;
+    var P = plotSvg(plot, H, "Which stages deserve attention?");
+    var moved = list.map(stageMoved).filter(function (v) { return v > 0; });
+    var X = logAxis("ms", d3.min(list, wall), d3.max(list, wall), [m.l, P.w - m.r]);
+    var Y = moved.length ? logAxis("bytes", d3.min(moved), d3.max(moved), [H - m.b - noneH, m.t]) : null;
+    var yNone = H - m.b - 6;
+    P.svg.append("g").attr("class", "ax").attr("transform", "translate(0," + (H - m.b) + ")")
+      .call(d3.axisBottom(X.x).tickValues(X.ticks).tickFormat(X.label).tickSize(-(H - m.t - m.b)).tickPadding(6)).call(leanEnds, X.x, m.l, P.w - m.r).select(".domain").remove();
+    if (Y) P.svg.append("g").attr("class", "ax").attr("transform", "translate(" + m.l + ",0)")
+      .call(d3.axisLeft(Y.x).tickValues(Y.ticks).tickFormat(Y.label).tickSize(-(P.w - m.l - m.r)).tickPadding(6)).select(".domain").remove();
+    if (list.some(function (st) { return !stageMoved(st); })) P.svg.append("text").attr("class", "axt").attr("x", m.l - 8).attr("y", yNone).attr("dy", "0.35em").attr("text-anchor", "end").text("none");
+    P.svg.append("text").attr("class", "axt").attr("x", (m.l + P.w - m.r) / 2).attr("y", H - 6).attr("text-anchor", "middle").text("How long the stage ran");
+    P.svg.append("text").attr("class", "axt").attr("transform", "translate(12," + ((m.t + H - m.b) / 2) + ") rotate(-90)").attr("text-anchor", "middle").text("Data handled");
+    var r = d3.scaleSqrt().domain([0, d3.max(list, function (st) { return st.tasks || st.numTasks || 1; })]).range([3, compact ? 12 : 16]);
+    var pos = function (st) { var v = stageMoved(st); return [X.x(wall(st)), v > 0 && Y ? Y.x(v) : yNone]; };
+    // big bubbles first, so small ones stay on top and clickable
+    var order = list.slice().sort(function (p, q) { return (q.tasks || 0) - (p.tasks || 0); });
+    var g = P.svg.append("g").selectAll("g").data(order).join("g").attr("class", "hb")
+      .attr("transform", function (st) { var p = pos(st); return "translate(" + p[0] + "," + p[1] + ")"; });
+    g.append("circle").attr("r", function (st) { return r(st.tasks || st.numTasks || 1); })
+      .attr("class", function (st) { return "hbc" + (st.status === "failed" ? " failed" : "") + (crit[st.id] ? " crit" : ""); });
+    g.filter(stageSkewed).append("path").attr("class", "hskew").attr("d", d3.symbol(d3.symbolTriangle, 34)()).attr("transform", function (st) { return "translate(0," + (-r(st.tasks || 1) - 6) + ")"; });
+    g.filter(function (st) { return st.diskSpill > 0; }).append("rect").attr("class", "hspill").attr("width", 6).attr("height", 6)
+      .attr("x", function (st) { return r(st.tasks || 1) + 1; }).attr("y", -3);
+    var label = function (st) {
+      var bits = ["Stage " + st.key + " (" + (st.name || "").split(" at ")[0] + "), " + dur(wall(st)) + ", " + bytes(stageMoved(st)) + " handled, " + num(st.tasks) + " tasks"];
+      if (st.status === "failed") bits.push("failed");
+      if (stageSkewed(st)) bits.push("skewed: slowest task " + (st.max / st.p50).toFixed(1) + "× the median");
+      if (st.diskSpill > 0) bits.push("spilled " + bytes(st.diskSpill) + " to disk");
+      if (crit[st.id]) bits.push("on the critical path");
+      return bits.join(", ");
+    };
+    var tip = function (st) {
+      return label(st).split(", ").slice(0, 1).join("") + "\nRead " + bytes(st.input) + " · shuffle read " + bytes(st.shRead) + " · shuffle write " + bytes(st.shWrite) + " · written " + bytes(st.output) +
+        (st.diskSpill ? "\nSpilled to disk " + bytes(st.diskSpill) : "") +
+        (st.run ? "\nCPU " + pct(st.cpuNs / 1e6 / st.run) + " of run time, GC " + pct(st.gc / st.run) : "") +
+        (st.p50 ? "\nMedian task " + dur(st.p50) + ", slowest " + dur(st.max) + " (" + (st.max / st.p50).toFixed(1) + "×)" : "") +
+        (st.status === "failed" ? "\nFailed" : "") + (crit[st.id] ? "\nOn the critical path" : "");
+    };
+    hover(g, tip);
+    linkify(g, function (st) { return "#stage/" + st.key; }, label);
+  }
+
   // ---------- stage × executor heatmap ----------
   // One square per executor (row) and stage (column), coloured by the
   // chosen metric, either as is or as a multiple of the stage's median
@@ -1721,6 +1842,7 @@
         "ms", key ? null : function (r) { return "#stage/" + r.st.key; });
     },
     heatmap: function (c) { heatmap(c); },
+    stageHealth: function (c, arg) { stageHealth(c, arg === "compact"); },
     runTimeline: function (c) { runTimeline(c); },
     dataOverTime: function (c) {
       var done = stages.filter(function (st) { return st.completed; }).sort(function (a2, b2) { return a2.completed - b2.completed; });

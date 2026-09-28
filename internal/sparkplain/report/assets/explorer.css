@@ -155,3 +155,17 @@ tr.hl td{background:var(--accent-soft)}
 .tabs .tabmore .menu{position:absolute;right:0;top:100%;min-width:180px;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.15);padding:6px;display:flex;flex-direction:column;z-index:6}
 .tabs .tabmore .menu a{border:0;border-radius:6px;margin:0;padding:7px 10px}
 .tabs .tabmore .menu a[aria-current="page"]{background:var(--accent-soft);border:0}
+/* stage chart picker */
+.viewpick{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}
+.viewpick button{font:inherit;font-size:13px;padding:5px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--muted);cursor:pointer}
+.viewpick button:hover{color:var(--ink)}
+.viewpick button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--ink);font-weight:500}
+/* stage health map */
+.d3c .hbc{fill:var(--viz-series);fill-opacity:.32;stroke:var(--viz-series);stroke-width:1.2}
+.d3c .hbc.failed{stroke:var(--viz-fail);stroke-width:2.5}
+.d3c .hbc.crit{stroke:var(--accent);stroke-width:3.5}
+.d3c .hbc.crit.failed{stroke:var(--viz-fail)}
+.d3c .hskew{fill:var(--warn);pointer-events:none}
+.d3c .hspill{fill:var(--viz-5);pointer-events:none}
+.d3c .hb.go:hover .hbc,.d3c .hb.go:focus-visible .hbc{fill-opacity:.6}
+.hmk{margin-right:5px}
