@@ -145,3 +145,13 @@ tr.hl td{background:var(--accent-soft)}
 .d3c .tll.c0{stroke:var(--viz-1)} .d3c .tll.c1{stroke:var(--viz-2)} .d3c .tll.c2{stroke:var(--viz-3)} .d3c .tll.c3{stroke:var(--viz-4)} .d3c .tll.c4{stroke:var(--viz-5)}
 .d3c .tlsel{fill:var(--accent);fill-opacity:.15;stroke:var(--accent);pointer-events:none}
 .d3c .hit{touch-action:pan-y}
+/* the More menu in the tab row */
+.tabs .tabmore{position:relative;margin-bottom:-1px}
+.tabs .tabmore summary{list-style:none;cursor:pointer;padding:8px 14px;border:1px solid transparent;border-bottom:0;border-radius:6px 6px 0 0;color:var(--muted);font-size:14px}
+.tabs .tabmore summary::-webkit-details-marker{display:none}
+.tabs .tabmore summary::after{content:" ▾";font-size:11px}
+.tabs .tabmore summary:hover{color:var(--ink);background:var(--surface-2)}
+.tabs .tabmore.cur summary{background:var(--surface);border-color:var(--line);color:var(--ink);font-weight:500}
+.tabs .tabmore .menu{position:absolute;right:0;top:100%;min-width:180px;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.15);padding:6px;display:flex;flex-direction:column;z-index:6}
+.tabs .tabmore .menu a{border:0;border-radius:6px;margin:0;padding:7px 10px}
+.tabs .tabmore .menu a[aria-current="page"]{background:var(--accent-soft);border:0}
