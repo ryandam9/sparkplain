@@ -192,7 +192,7 @@ func TestExplorerSizeBudget(t *testing.T) {
 			return model.TaskSample{TaskID: int64(s*500 + i + 1_000_000), Index: i, ExecutorID: fmt.Sprint(i % 200), Status: model.StatusSucceeded,
 				LaunchMs: 1_790_000_000_000 + int64(s)*60_000 + int64(i)*97, DurationMs: 123_456, RunTimeMs: 120_000, GCTimeMs: 4_567,
 				DeserializeMs: 123, FetchWaitMs: 2_345, RecordsRead: 12_345_678, InputBytes: 1_234_567_890, ShuffleRead: 234_567_890,
-				ShuffleWrite: 345_678_901, Spill: 456_789_012, Source: src}
+				ShuffleWrite: 345_678_901, Spill: 456_789_012, PeakExec: 567_890_123, Source: src}
 		}
 		for i := range min(slowest, 500) {
 			sd.Slowest = append(sd.Slowest, task(i))

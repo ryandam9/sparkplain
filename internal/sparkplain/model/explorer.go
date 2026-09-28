@@ -134,6 +134,7 @@ type TaskSample struct {
 	Locality      string `json:"locality,omitempty"` // PROCESS_LOCAL, NODE_LOCAL, RACK_LOCAL, ANY, NO_PREF
 	SchedDelayMs  int64  `json:"schedulerDelayMs"`
 	ResultSize    int64  `json:"resultSizeBytes"`
+	PeakExec      int64  `json:"peakExecutionMemory"` // execution memory the task held at its peak
 	Source        Source `json:"source"`
 }
 

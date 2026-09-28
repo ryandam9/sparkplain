@@ -46,6 +46,7 @@ func TestExplorerMainFixture(t *testing.T) {
 		t.Fatalf("want %d stage details, got %+v", len(l.Stages), x)
 	}
 	var taskMs int64
+	peakSeen := false
 	for i, st := range l.Stages {
 		d := x.Stages[i]
 		if d.ID != st.ID || d.Attempt != st.Attempt {
@@ -83,6 +84,21 @@ func TestExplorerMainFixture(t *testing.T) {
 		if int64(len(d.Sample)) != min(st.Totals.Tasks, 1000) || !sort.SliceIsSorted(d.Slowest, func(a, b int) bool { return slower(d.Slowest[a], d.Slowest[b]) }) {
 			t.Errorf("stage %d: sample %d, slowest not in order", st.ID, len(d.Sample))
 		}
+		// Each sampled task carries its own peak execution memory; with
+		// every task sampled, the largest is the stage's.
+		var peak int64
+		for _, ts := range d.Sample {
+			peak = max(peak, ts.PeakExec)
+		}
+		if peak > st.Totals.PeakExecutionMemory || int64(len(d.Sample)) == st.Totals.Tasks && peak != st.Totals.PeakExecutionMemory {
+			t.Errorf("stage %d: sampled peak execution memory %d, stage peak %d", st.ID, peak, st.Totals.PeakExecutionMemory)
+		}
+		if st.Totals.PeakExecutionMemory > 0 {
+			peakSeen = true
+		}
+	}
+	if !peakSeen {
+		t.Error("no stage recorded peak execution memory, so the per-task check proved nothing")
 	}
 	var busy int64
 	for _, b := range x.Running.BusyMs {
