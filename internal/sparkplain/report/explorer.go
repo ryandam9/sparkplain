@@ -811,32 +811,45 @@ func pathLayout(n int, feeds []int, edges [][2]int) *xLayout {
 	return &xLayout{W: 2*padding + (cols+1)*(nodeW+gapX) - gapX, H: 2*padding + (n+row0)*(nodeH+gapY) - gapY, Pos: pos, Edges: edges}
 }
 
-// xUse is one line of the Overview's resource utilisation panel: what the
-// application used of what it had, and what that means. Share is used over
-// available (0 to 1), or -1 when there is no bar to draw; Tone is ok, warn
-// or crit when the reading suggests something.
+// xUse is one card of the Overview's "What the run used" panel: what the
+// application used of what it had, and what that means. Value is the
+// headline figure and Detail what it is out of. Share is used over
+// available (0 to 1), or -1 when there is no bar to draw; Band is the
+// healthy range of Share, when there is one. Tone is ok, warn or crit when
+// the reading suggests something, and Verdict says it in a word or two.
 type xUse struct {
-	Label   string  `json:"label"`
-	Value   string  `json:"value"`
-	Share   float64 `json:"share"`
-	Tone    string  `json:"tone,omitempty"`
-	Explain string  `json:"explain"`
+	Group   string    `json:"group"` // cpu, memory or stability
+	Label   string    `json:"label"`
+	Value   string    `json:"value"`
+	Detail  string    `json:"detail,omitempty"`
+	Share   float64   `json:"share"`
+	Band    []float64 `json:"band,omitempty"`
+	Tone    string    `json:"tone,omitempty"`
+	Verdict string    `json:"verdict,omitempty"`
+	Explain string    `json:"explain"`
 }
 
-// resourceUse lists the utilisation panel's lines from what the analysis
+// resourceUse lists the utilisation panel's cards from what the analysis
 // already worked out. Each stands alone: there is no combined score.
 func resourceUse(r *model.Report, a *anatomy) []xUse {
 	out := []xUse{}
+	verdict := func(tone, ok, warn, crit string) string {
+		return map[string]string{"ok": ok, "warn": warn, "crit": crit}[tone]
+	}
 	c := r.CPU
 	if c.AllocatedCoreMs > 0 {
 		sh := float64(c.RunMs) / float64(c.AllocatedCoreMs)
-		out = append(out, xUse{"Task slots busy", model.Percent(sh) + " · " + model.Duration(c.RunMs) + " of " + model.Duration(c.AllocatedCoreMs) + " core time", min(sh, 1), toneLow(sh, 0.5, 0),
-			"Task run time against the core time the executors held. Low means cores sat idle: too few tasks, work on the driver, or executors kept after the work ran out."})
+		tone := toneLow(sh, 0.5, 0)
+		out = append(out, xUse{"cpu", "Task slots busy", model.Percent(sh), model.Duration(c.RunMs) + " of " + model.Duration(c.AllocatedCoreMs) + " core time",
+			min(sh, 1), []float64{0.5, 1}, tone, verdict(tone, "Healthy", "Idle cores", ""),
+			"Task run time against the core time executors held. Low means cores sat idle: too few tasks, work on the driver, or executors kept after the work ran out."})
 	}
 	if c.RunMs > 0 {
 		sh := float64(c.CPUMs) / float64(c.RunMs)
-		out = append(out, xUse{"JVM CPU share", model.Percent(sh) + " · " + model.Duration(c.CPUMs) + " of " + model.Duration(c.RunMs) + " run time", min(sh, 1), toneLow(sh, 0.3, 0),
-			"Of that run time, the share tasks spent computing on the JVM. The rest was waiting: files, shuffle, garbage collection or Python, which Spark does not count."})
+		tone := toneLow(sh, 0.3, 0)
+		out = append(out, xUse{"cpu", "JVM CPU share", model.Percent(sh), model.Duration(c.CPUMs) + " of " + model.Duration(c.RunMs) + " run time",
+			min(sh, 1), []float64{0.3, 1}, tone, verdict(tone, "Healthy", "Mostly waiting", ""),
+			"Of that run time, the share spent computing on the JVM. The rest was waiting: files, shuffle, garbage collection or Python, which Spark does not count."})
 	}
 	if m := r.Memory; m.HeapKnown && m.Config.HeapBytes > 0 {
 		var peak int64
@@ -848,19 +861,29 @@ func resourceUse(r *model.Report, a *anatomy) []xUse {
 		if sh >= 0.9 {
 			tone = "crit"
 		}
-		out = append(out, xUse{"Peak heap", model.Percent(sh) + " · " + model.Bytes(peak) + " of " + model.Bytes(m.Config.HeapBytes), min(sh, 1), tone,
-			"The most any executor used of the heap it was given. Over 90% risks running out of memory; well under half means executors could be smaller."})
+		out = append(out, xUse{"memory", "Peak heap", model.Percent(sh), model.Bytes(peak) + " of " + model.Bytes(m.Config.HeapBytes),
+			min(sh, 1), []float64{0.4, 0.9}, tone, verdict(tone, "Healthy", "Oversized", "Near the limit"),
+			"The most any executor used of the heap it was given. Over 90% risks running out of memory; well under half means executors could be smaller, so more fit on each node."})
 	}
 	if a != nil && a.RM.Known {
 		sh := float64(a.RM.HeldBytes) / float64(a.RM.OfferedBytes)
-		out = append(out, xUse{"YARN memory held", model.Percent(sh) + " · " + model.Bytes(a.RM.HeldBytes) + " of " + model.Bytes(a.RM.OfferedBytes), min(sh, 1), "",
-			"What this application's containers took of the memory YARN offered on the cluster, at its busiest. The rest was free for other applications, or too small to fit another executor."})
+		out = append(out, xUse{"memory", "YARN memory held", model.Percent(sh), model.Bytes(a.RM.HeldBytes) + " of " + model.Bytes(a.RM.OfferedBytes) + ", at its busiest",
+			min(sh, 1), nil, "", "",
+			"What this application's containers took of the memory YARN offered on the cluster. The rest was free for others, or too small to fit another executor."})
 	}
-	if a != nil && a.RM.Waiting != "" {
-		u := xUse{"Containers waiting", a.RM.Waiting, -1, "warn",
-			"Containers YARN could not place yet, from CloudWatch. Any wait means the cluster was full or the containers too big for any node."}
-		if strings.HasPrefix(a.RM.Waiting, "0 ") {
-			u.Value, u.Tone = "None", "ok"
+	if r.EventLog != nil {
+		var shWrite int64
+		for _, st := range r.Jobs.Stages {
+			shWrite += st.Totals.ShuffleWriteBytes
+		}
+		sp := r.Memory.TotalDiskSpill
+		u := xUse{"memory", "Disk spill", model.Bytes(sp), "", -1, nil, "ok", "None",
+			"Data that did not fit in execution memory and went to local disk. A lot against the shuffle written means too few partitions or too little memory per task."}
+		if shWrite > 0 {
+			u.Detail = "against " + model.Bytes(shWrite) + " shuffle written"
+		}
+		if sp > 0 {
+			u.Tone, u.Verdict = "warn", "Spilled"
 		}
 		out = append(out, u)
 	}
@@ -871,25 +894,20 @@ func resourceUse(r *model.Report, a *anatomy) []xUse {
 				lost++
 			}
 		}
-		tone := "ok"
+		u := xUse{"stability", "Executors lost", strconv.Itoa(lost), "of " + strconv.Itoa(e.Started) + " started", -1, nil, "ok", "None",
+			"Executors that died or were killed for memory. Each loss re-runs its tasks, and its shuffle files if the external shuffle service is off."}
 		if lost > 0 {
-			tone = "crit"
+			u.Tone, u.Verdict = "crit", "Lost"
 		}
-		out = append(out, xUse{"Executors lost", fmt.Sprintf("%d of %d started", lost, e.Started), float64(lost) / float64(e.Started), tone,
-			"Executors that died or were killed for memory. Each loss re-runs its tasks, and its shuffle files if the external shuffle service is off."})
+		out = append(out, u)
 	}
-	if r.EventLog != nil {
-		var shWrite int64
-		for _, st := range r.Jobs.Stages {
-			shWrite += st.Totals.ShuffleWriteBytes
-		}
-		sp := r.Memory.TotalDiskSpill
-		u := xUse{"Disk spill", model.Bytes(sp), -1, "ok", "Data that did not fit in execution memory and went to local disk. None is ideal; a lot against the shuffle written means too few partitions or too little memory per task."}
-		if shWrite > 0 {
-			u.Value += " · against " + model.Bytes(shWrite) + " shuffle written"
-		}
-		if sp > 0 {
-			u.Tone = "warn"
+	if a != nil && a.RM.Waiting != "" {
+		// "53 at most, for 2 min 53 s": the count leads, the rest explains it.
+		n, rest, _ := strings.Cut(a.RM.Waiting, " ")
+		u := xUse{"stability", "Containers waiting", n, rest + ", from CloudWatch", -1, nil, "warn", "Waited",
+			"Containers YARN could not place yet, across the cluster. Any wait means the cluster was full or the containers too big for any node."}
+		if n == "0" {
+			u.Detail, u.Tone, u.Verdict = "from CloudWatch", "ok", "None"
 		}
 		out = append(out, u)
 	}
