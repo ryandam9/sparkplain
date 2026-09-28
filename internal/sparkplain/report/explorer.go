@@ -131,8 +131,9 @@ type xData struct {
 	PlanLays   map[string]xLayout   `json:"planLayouts"` // by query ID, for graphs small enough to draw
 	JobDags    map[string]xJobDag   `json:"jobDags"`     // by job ID, for jobs with 2 to maxGraphNodes stages
 	RunPath    *xRunPath            `json:"runPath,omitempty"`
-	StageOps   map[string]xStageOps `json:"stageOps"` // by "id.attempt": the RDDs each stage computes, laid out as a graph
-	Adaptive   map[string][][]any   `json:"adaptive"` // by query ID: metrics adaptive execution added, rows as in a plan node
+	Resources  []xUse               `json:"resources"` // the Overview's utilisation panel
+	StageOps   map[string]xStageOps `json:"stageOps"`  // by "id.attempt": the RDDs each stage computes, laid out as a graph
+	Adaptive   map[string][][]any   `json:"adaptive"`  // by query ID: metrics adaptive execution added, rows as in a plan node
 	RDDs       table                `json:"rdds"`
 	Runtime    table                `json:"runtime"`
 	Config     []xConfigGroup       `json:"config"`
@@ -256,6 +257,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		Findings: []xFinding{}, Files: []string{}, Execs: []string{}, Notes: []string{},
 		PlanLays: map[string]xLayout{}, JobDags: map[string]xJobDag{}, StageOps: map[string]xStageOps{}, Adaptive: map[string][][]any{},
 	}
+	d.Resources = resourceUse(r, buildAnatomy(r))
 	d.Anatomy = anatomySVG(buildAnatomy(r), anatLinks{
 		Finding: func(n int) string { return fmt.Sprintf("#finding/%d", n) },
 		Ref: func(ref string) string {
@@ -807,4 +809,100 @@ func pathLayout(n int, feeds []int, edges [][2]int) *xLayout {
 		pos[n+k] = [2]int{padding + col[f]*(nodeW+gapX), padding + (f+row0-1)*(nodeH+gapY)}
 	}
 	return &xLayout{W: 2*padding + (cols+1)*(nodeW+gapX) - gapX, H: 2*padding + (n+row0)*(nodeH+gapY) - gapY, Pos: pos, Edges: edges}
+}
+
+// xUse is one line of the Overview's resource utilisation panel: what the
+// application used of what it had, and what that means. Share is used over
+// available (0 to 1), or -1 when there is no bar to draw; Tone is ok, warn
+// or crit when the reading suggests something.
+type xUse struct {
+	Label   string  `json:"label"`
+	Value   string  `json:"value"`
+	Share   float64 `json:"share"`
+	Tone    string  `json:"tone,omitempty"`
+	Explain string  `json:"explain"`
+}
+
+// resourceUse lists the utilisation panel's lines from what the analysis
+// already worked out. Each stands alone: there is no combined score.
+func resourceUse(r *model.Report, a *anatomy) []xUse {
+	out := []xUse{}
+	c := r.CPU
+	if c.AllocatedCoreMs > 0 {
+		sh := float64(c.RunMs) / float64(c.AllocatedCoreMs)
+		out = append(out, xUse{"Task slots busy", model.Percent(sh) + " · " + model.Duration(c.RunMs) + " of " + model.Duration(c.AllocatedCoreMs) + " core time", min(sh, 1), toneLow(sh, 0.5, 0),
+			"Task run time against the core time the executors held. Low means cores sat idle: too few tasks, work on the driver, or executors kept after the work ran out."})
+	}
+	if c.RunMs > 0 {
+		sh := float64(c.CPUMs) / float64(c.RunMs)
+		out = append(out, xUse{"JVM CPU share", model.Percent(sh) + " · " + model.Duration(c.CPUMs) + " of " + model.Duration(c.RunMs) + " run time", min(sh, 1), toneLow(sh, 0.3, 0),
+			"Of that run time, the share tasks spent computing on the JVM. The rest was waiting: files, shuffle, garbage collection or Python, which Spark does not count."})
+	}
+	if m := r.Memory; m.HeapKnown && m.Config.HeapBytes > 0 {
+		var peak int64
+		for _, x := range m.Executors {
+			peak = max(peak, x.PeakHeap)
+		}
+		sh := float64(peak) / float64(m.Config.HeapBytes)
+		tone := toneLow(sh, 0.4, 0)
+		if sh >= 0.9 {
+			tone = "crit"
+		}
+		out = append(out, xUse{"Peak heap", model.Percent(sh) + " · " + model.Bytes(peak) + " of " + model.Bytes(m.Config.HeapBytes), min(sh, 1), tone,
+			"The most any executor used of the heap it was given. Over 90% risks running out of memory; well under half means executors could be smaller."})
+	}
+	if a != nil && a.RM.Known {
+		sh := float64(a.RM.HeldBytes) / float64(a.RM.OfferedBytes)
+		out = append(out, xUse{"YARN memory held", model.Percent(sh) + " · " + model.Bytes(a.RM.HeldBytes) + " of " + model.Bytes(a.RM.OfferedBytes), min(sh, 1), "",
+			"What this application's containers took of the memory YARN offered on the cluster, at its busiest. The rest was free for other applications, or too small to fit another executor."})
+	}
+	if a != nil && a.RM.Waiting != "" {
+		u := xUse{"Containers waiting", a.RM.Waiting, -1, "warn",
+			"Containers YARN could not place yet, from CloudWatch. Any wait means the cluster was full or the containers too big for any node."}
+		if strings.HasPrefix(a.RM.Waiting, "0 ") {
+			u.Value, u.Tone = "None", "ok"
+		}
+		out = append(out, u)
+	}
+	if e := r.Executors; e.Started > 0 {
+		var lost int
+		for _, x := range e.Executors {
+			if x.RemovalKind == model.RemovalLost || x.RemovalKind == model.RemovalMemoryKill {
+				lost++
+			}
+		}
+		tone := "ok"
+		if lost > 0 {
+			tone = "crit"
+		}
+		out = append(out, xUse{"Executors lost", fmt.Sprintf("%d of %d started", lost, e.Started), float64(lost) / float64(e.Started), tone,
+			"Executors that died or were killed for memory. Each loss re-runs its tasks, and its shuffle files if the external shuffle service is off."})
+	}
+	if r.EventLog != nil {
+		var shWrite int64
+		for _, st := range r.Jobs.Stages {
+			shWrite += st.Totals.ShuffleWriteBytes
+		}
+		sp := r.Memory.TotalDiskSpill
+		u := xUse{"Disk spill", model.Bytes(sp), -1, "ok", "Data that did not fit in execution memory and went to local disk. None is ideal; a lot against the shuffle written means too few partitions or too little memory per task."}
+		if shWrite > 0 {
+			u.Value += " · against " + model.Bytes(shWrite) + " shuffle written"
+		}
+		if sp > 0 {
+			u.Tone = "warn"
+		}
+		out = append(out, u)
+	}
+	return out
+}
+
+// toneLow flags a share under warn as a warning and under crit as worse.
+func toneLow(sh, warn, crit float64) string {
+	switch {
+	case sh < crit:
+		return "crit"
+	case sh < warn:
+		return "warn"
+	}
+	return "ok"
 }
