@@ -1,82 +1,326 @@
 # sparkplain
 
-Turns one Spark application's logs into a single plain-language HTML report (plus JSON): what ran, on which nodes, with how much CPU, memory and storage, and what went wrong, with every finding pointing at the log line behind it. The first target is Amazon EMR on EC2 7.3.0+ (Spark 3.5.1+).
+sparkplain turns one Spark application's logs into a plain-language report. The report shows what ran, on which nodes, and how much CPU, memory and storage it used. It says what went wrong, and every finding points at the log line behind it. It is built for Amazon EMR on EC2 7.3.0+ (Spark 3.5.1+). It also works on any Spark 3.5 event log, including one from a laptop.
 
-The design is in [docs/SPEC.md](docs/SPEC.md). It reads a Spark event log you already have, or finds it on S3 from the EMR cluster, along with the cluster's container, step and node logs, the EMR and EC2 APIs, CloudWatch and CloudTrail (SPEC §8 records what each phase built).
+One command gives you three files:
 
-## Build
+- **`<app-id>-report.html`**: the plain-language report. It opens with a short "What happened" summary. It explains every number and lists findings, each with a suggested fix.
+- **`<app-id>-explorer.html`**: an interactive view of the run, like a richer Spark History Server for this one application. It has jobs, stages, executors, SQL plans, storage, environment and your code.
+- **`<app-id>-report.json`**: the same content as the report, for other tools.
+
+Both pages are single self-contained files. They make no network calls, so they work offline and you can attach them to a ticket or an email.
+
+![The top of a report: status, what happened in four sentences, and headline numbers, each explained](docs/images/report-summary.png)
+
+<sub>Screenshots come from the synthetic fixture in `testdata/` (see [Try it in a minute](#try-it-in-a-minute)); no real cluster data.</sub>
+
+## Contents
+
+- [What the report shows](#what-the-report-shows)
+- [Try it in a minute](#try-it-in-a-minute)
+- [Install](#install)
+- [Run it on your own application](#run-it-on-your-own-application)
+- [Get more out of your runs](#get-more-out-of-your-runs)
+- [AWS permissions](#aws-permissions)
+- [Configuration file](#configuration-file)
+- [More options](#more-options)
+- [Exit codes and troubleshooting](#exit-codes-and-troubleshooting)
+- [Supported](#supported)
+- [Develop](#develop)
+- [License](#license)
+
+## What the report shows
+
+**The run at a glance.** One diagram shows each node, what YARN offered on it, the driver and executor containers placed there (to scale), and inside an executor how far each part of the Java heap peaked. Numbered badges pin findings to the part they are about. Hatched space on a node is memory nobody used; when it is narrower than an executor, no executor could use it.
+
+![The run at a glance: a node with its driver and four executors, and the memory regions inside the busiest executor](docs/images/report-at-a-glance.png)
+
+**Findings.** Each finding has a severity (critical, warning or info), the problem in plain words, the evidence, and something to try. Evidence is a `file:line` in the event log or in a container, step or node log, or an AWS API call. Links jump to the stage, job or executor in the explorer.
+
+![Findings: YARN restarted the application, and three stages spilled to disk, each with evidence and a fix](docs/images/report-findings.png)
+
+The rules look for:
+
+| Area | Findings |
+| --- | --- |
+| Failures | failed jobs and steps, the first error in the logs, stage retries, retried task attempts, YARN restarting the application, tasks still running when the log ended, failed bootstrap actions |
+| Memory | out-of-memory errors and memory kills (exit 137), spill to disk, GC pressure, heap near its limit, memory given but never used |
+| Executors and nodes | lost, decommissioned or excluded executors, spot interruptions, executors too big to fit the nodes, idle worker nodes, slow executor start-up, waiting for cluster capacity, clusters shared with other applications |
+| Time and CPU | task skew, low CPU use, idle executor cores, long gaps where only the driver worked, scheduler delay, poor data locality, speculation, host CPU or memory saturated (CloudWatch) |
+| Settings and access | `AccessDenied` (CloudTrail and logs), static AWS keys in the Spark configuration, unlimited `spark.driver.maxResultSize`, dynamic allocation without a shuffle service, AQE turned off, results large enough to hurt the driver |
+
+The report also covers the timeline, cluster and nodes, executors, memory, CPU, storage and I/O, jobs and stages, SQL queries, the runtime environment and configuration, identity and access (user, queue, instance profile, EMR roles, security configuration, Hive and HBase connections), and a Sources panel. Every section says whether its data is complete or partial and what is missing.
+
+**The explorer** is for digging in. It has a zoomable timeline of queries, jobs, stages, executors and running tasks. It has stage pages with task-time percentiles, histograms and task scatter plots, executor tables, SQL plan graphs with each operator's metrics, and your source code next to the stages that ran it.
+
+![Explorer timeline: queries, jobs and stages over time, executors alive, tasks running, with the driver-only gaps shaded](docs/images/explorer-timeline.png)
+
+## Try it in a minute
+
+You need [Go](https://go.dev/dl/) (the release in `go.mod`, currently 1.27.1) on Linux or macOS.
 
 ```sh
-make build     # writes bin/sparkplain, stamped with the git version
-make install   # also copies it to ~/.local/bin or /usr/local/bin (PREFIX=... to override)
+git clone https://github.com/ryandam9/sparkplain.git
+cd sparkplain
+make build
+
+# A scrubbed EMR run: event log plus container, step and node logs, no AWS needed
+./bin/sparkplain -app-id application_1790380000000_0071 \
+  -eventlog testdata/eventlog/application_1790380000000_0071 \
+  -from testdata/emrlogs/j-FIXTURE0071CLUSTER \
+  -source testdata/emrscripts/p4 \
+  -out out/demo
 ```
 
-Without make, `go build ./cmd/sparkplain` works too.
+It prints a summary like this and writes the three files to `out/demo/`:
 
-## Use
+```text
+Read
+  ✓ Spark event log   single, 1 file(s), 1.6 MiB unpacked to 1.6 MiB, 490 events
+  ✓ Container logs    Read 22 files from 12 containers.
+  ✓ Step logs         Step s-FIXTURESTEP0001 submitted this application.
+  ✓ Node logs         Read 5 files from 4 nodes.
+  · Not asked for     EMR API, CloudWatch, CloudTrail. The report's Sources
+                      panel says how to add each.
+
+What happened
+  sparkplain_p4_findings ran for 4 min 17 s as hadoop and finished on attempt 2,
+  after YARN restarted it.
+  It ran 10 jobs (17 stages, 169 tasks) on 4 executors across 1 host. ...
+
+Findings: 3 warning, 1 info
+  ▲ YARN restarted the application after 1 failed attempt
+  ▲ 3 stages spilled 2.2 GiB to disk
+  ▲ No Spark job ran for 2 min 20 s (54%) of the run: the cluster waited on the
+    driver
+  · 1 task attempt failed and was retried successfully
+
+Report    out/demo/application_1790380000000_0071-report.html
+...
+Done in 0.2 s · complete (exit 0)
+```
+
+Open the report with `xdg-open` (Linux) or `open` (macOS). Its "Open the explorer" button leads to the explorer.
+
+## Install
 
 ```sh
-# A single event log (plain, .lz4, .zstd, .snappy or .inprogress)
+make install   # builds bin/sparkplain and copies it to ~/.local/bin (if on $PATH) or /usr/local/bin
+make install PREFIX=~/bin   # or somewhere else
+```
+
+Without make, `go build -o sparkplain ./cmd/sparkplain` works too. Run `sparkplain -version` to check the build.
+
+## Run it on your own application
+
+You need the **application ID**, for example `application_1700000000000_0042`. Look for it in:
+
+- the step's `stderr` in the EMR console, or the YARN ResourceManager UI;
+- the Spark History Server's application list;
+- your code: `spark.sparkContext.applicationId`.
+
+Then pick one of three ways to run it. They can be combined.
+
+### 1. From an event log file
+
+The Spark event log holds most of the detail: jobs, stages, tasks, executors, memory peaks, SQL plans and configuration. It is enough for a useful report.
+
+```sh
+# A single log (plain, .lz4, .zstd, .snappy or .inprogress)
 sparkplain -app-id application_1700000000000_0042 -eventlog ./application_1700000000000_0042.lz4
 
-# A rolling event log folder, a folder holding many logs, or the History Server's Download zip
+# A rolling eventlog_v2_* folder, a folder holding many logs, or the History Server's Download zip
 sparkplain -app-id application_1700000000000_0042 -eventlog ./eventlog_v2_application_1700000000000_0042/
 sparkplain -app-id application_1700000000000_0042 -eventlog /var/log/spark/apps/
 sparkplain -app-id application_1700000000000_0042 -eventlog ./application_1700000000000_0042.zip
+
+# Straight from S3 (read-only; -profile default uses the default credential chain)
+sparkplain -profile default -app-id application_1700000000000_0042 -eventlog s3://my-logs/spark-events/
 ```
 
-Online, from the cluster (read-only AWS calls; `-profile default` uses the default credential chain):
+The run ends with exit code 3 (partial) because the cluster's logs were not read. The report still covers everything the event log holds.
+
+**Where to find the event log on EMR.** EMR writes it to HDFS on the cluster by default (`spark.eventLog.dir` = `hdfs:///var/log/spark/apps`). Anything kept only in HDFS is lost when the cluster terminates. To keep a copy, do one of these:
+
+| How | Notes |
+| --- | --- |
+| **Download it from the persistent Spark History Server.** In the EMR console, open the cluster's *Applications* tab and open the *Spark History Server* under *Persistent application UIs*. Then use the *Download* link in the application's *Event Log* column. | Works after the cluster has terminated, for as long as EMR keeps the UI. It gives a zip, which `-eventlog` reads as-is. |
+| **Copy it to S3 before the cluster ends**, for example as a last step: `hdfs dfs -get /var/log/spark/apps /tmp/apps && aws s3 cp --recursive /tmp/apps s3://my-logs/spark-events/` | Keeps HDFS as the event log folder, so the persistent History Server still works. |
+| **Point `spark.eventLog.dir` at S3** in `spark-defaults`. | sparkplain finds the log by itself from the cluster (next section). AWS documents that the persistent application UIs need the event log in HDFS, so they stop showing these runs. |
+| **Copy it from the primary node** while the cluster runs: `hdfs dfs -get /var/log/spark/apps/application_1700000000000_0042* .` | Useful when you are debugging on the cluster itself. |
+
+### 2. Online, from the EMR cluster
+
+Given a cluster ID and credentials, sparkplain reads the cluster's container, step and node logs from its S3 log URI. It also calls the EMR, EC2, CloudWatch and CloudTrail APIs. This adds instance types, spot or on-demand, YARN capacity, host CPU, the step that submitted the application, driver and executor errors, and AWS calls and `AccessDenied` errors. It works for running and terminated clusters, as long as the cluster had a log URI.
+
+Every AWS call is read-only (List, Get, Describe, Head and Lookup).
 
 ```sh
 # The event log is found from the cluster's spark.eventLog.dir when that is on S3
 sparkplain -profile default -cluster-id j-1ABCDEF -app-id application_1700000000000_0042
-# Otherwise say where it is
+
+# Otherwise say where it is: S3, or a file you downloaded
 sparkplain -profile default -cluster-id j-1ABCDEF -app-id application_1700000000000_0042 -eventlog s3://my-logs/spark-events/
+sparkplain -profile default -cluster-id j-1ABCDEF -app-id application_1700000000000_0042 -eventlog ./application_1700000000000_0042.zip
+
+# By cluster name (the newest cluster with that name), in another region
+sparkplain -profile prod-emr -region us-east-1 -cluster-name nightly-etl -app-id application_1700000000000_0042
 ```
 
-It writes three files to `~/sparkplain/<yyyy-mm-dd>/<app-id>/` (or `-out`), each named after the application so reports of different applications can share a folder, for example `application_1700000000000_0042-report.html`:
+Use `-no-cloudwatch` or `-no-cloudtrail` to skip those calls when you lack the permissions. Only their sections are affected.
 
-- `<app-id>-report.html`: the plain-language report. One self-contained file that makes no network calls when opened.
-- `<app-id>-report.json`: the same content for other tools.
-- `<app-id>-explorer.html`: an interactive, History Server–style view of the run (jobs, stages with task summaries and samples, executors, SQL plans, storage, environment). Like the report, it is one self-contained file that works offline: its charts are drawn with an embedded copy of D3.
+### 3. Offline, from a copy of the cluster's logs
 
-When it finishes it prints a short summary: the sources it read, what happened, each finding in one line, the files written and a command to open the report. On a terminal it also lists each source as it is read.
+No AWS access from where you run sparkplain? Copy the cluster's log folder (or just this application's part of it) and use `-from`. It makes no AWS calls.
 
-`-format` picks which to write, e.g. `-format html,json` (or `both`) to skip the explorer.
+```sh
+# The whole log folder of the cluster...
+aws s3 cp --recursive s3://my-emr-logs/j-1ABCDEF/ ./logs/j-1ABCDEF/
+# ...or only this application's containers, plus steps/ and node/ if you have them
+aws s3 cp --recursive s3://my-emr-logs/j-1ABCDEF/containers/application_1700000000000_0042/ \
+  ./logs/j-1ABCDEF/containers/application_1700000000000_0042/
 
-To see your code beside the jobs and stages that ran it, point `-source` at the file or folder (repeatable). The files are matched to the ones the log names and redacted; PySpark records a code location for some actions only, so the explorer says where none was recorded.
+sparkplain -from ./logs/j-1ABCDEF -app-id application_1700000000000_0042 \
+  -eventlog ./application_1700000000000_0042.zip
+```
+
+`-from` accepts a cluster's log folder (`containers/`, `steps/`, `node/`), a folder holding several of those (the one with the application wins), or one application's `container_*` folders.
+
+## Get more out of your runs
+
+A few Spark settings make the report richer. They are cheap to turn on in `spark-defaults` (an EMR configuration classification) or with `--conf`:
+
+| Setting | What it adds |
+| --- | --- |
+| `spark.eventLog.logStageExecutorMetrics=true` | Peak memory per executor per stage (heap, off-heap, execution and storage memory) |
+| `spark.executor.processTreeMetrics.enabled=true` | Process memory (RSS), including Python workers, not just the JVM heap |
+| `spark.eventLog.logBlockUpdates.enabled=true` | Sizes of cached RDDs and DataFrames on the Storage tab. It makes the event log larger. |
+| A log URI on the cluster (`--log-uri s3://...`) | Container, step and node logs: the first error, memory kills and exit codes, and which step submitted the application |
+
+Pass your code with `-source` to see it beside the jobs and stages that ran it (repeatable; it is redacted like everything else):
 
 ```sh
 sparkplain -app-id application_1700000000000_0042 -eventlog ./application_1700000000000_0042.lz4 -source ./jobs
 ```
 
-Every value on the pages cites the event-log line it came from. To read that event, redacted:
+PySpark records a code location for some actions only. The explorer says so where none was recorded.
 
-```sh
-sparkplain -app-id application_1700000000000_0042 -eventlog ./application_1700000000000_0042.lz4 -show application_1700000000000_0042.lz4:1234
+## AWS permissions
+
+Online runs need read-only access. This policy covers everything. The last statement is optional: without it, only the sections that need it are marked missing.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EmrLogsAndEventLogs",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket", "s3:GetObject"],
+      "Resource": ["arn:aws:s3:::my-emr-logs", "arn:aws:s3:::my-emr-logs/*"]
+    },
+    {
+      "Sid": "EmrMetadata",
+      "Effect": "Allow",
+      "Action": [
+        "elasticmapreduce:ListClusters",
+        "elasticmapreduce:DescribeCluster",
+        "elasticmapreduce:ListInstances",
+        "elasticmapreduce:ListInstanceGroups",
+        "elasticmapreduce:ListInstanceFleets",
+        "elasticmapreduce:ListSteps"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "Optional",
+      "Effect": "Allow",
+      "Action": [
+        "elasticmapreduce:DescribeStep",
+        "elasticmapreduce:DescribeSecurityConfiguration",
+        "ec2:DescribeInstanceTypes",
+        "cloudwatch:ListMetrics",
+        "cloudwatch:GetMetricData",
+        "cloudtrail:LookupEvents"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
 ```
 
-Run `sparkplain -h` for all flags; SPEC §6 describes them and the config file.
+Add `kms:Decrypt` on the key if the log bucket uses SSE-KMS. A refused permission is never fatal. sparkplain names the permission it needed, marks the affected sections, and exits 3.
 
-The files are private to you (mode 0600, in folders sparkplain creates with mode 0700): they are redacted, but still hold user names, hosts, cluster IDs and log lines. `chmod` them to share.
+## Configuration file
 
-Exit codes: 0 complete, 2 fatal, 3 partial (something missing or unreadable, which the report's Sources panel explains), 130 interrupted.
+Defaults can live in `~/.config/sparkplain/config.yaml` (or pass `-config`). Command-line flags win, and unknown keys are rejected. Every key is optional:
+
+```yaml
+eventlog-prefix: s3://my-logs/spark-events/   # used when -eventlog is not given
+timezone: Australia/Sydney                    # for times in the report (default: this machine's zone)
+out: ~/reports                                # default ~/sparkplain/<yyyy-mm-dd>/<app-id>/
+format: html,json,explorer
+thresholds:            # tune when findings fire
+  skew-ratio: 5        # slowest task over 5x the stage median
+  spill-share: 0.10    # disk spill over 10% of shuffle write
+  gc-share: 0.10       # GC over 10% of executor run time
+  low-cpu-share: 0.30
+  memory-used-share: 0.40
+  driver-gap-share: 0.25
+```
+
+[SPEC §6](docs/SPEC.md#6-report-output-and-cli) lists every key and threshold.
+
+## More options
+
+- **`-format`** picks the outputs: `html`, `json`, `explorer`, comma-separated (default all three; `both` means `html,json`).
+- **`-out`** sets the output folder. Files are named after the application, so reports of different applications can share a folder.
+- **`-show file:line`** prints, redacted, the event behind any value the pages cite, then exits:
+
+  ```sh
+  sparkplain -app-id application_1700000000000_0042 -eventlog ./application_1700000000000_0042.lz4 \
+    -show application_1700000000000_0042.lz4:1234
+  ```
+
+- **Limits:** `-max-size` (stored size per file, default 10 GiB), `-max-unpacked` (unpacked size per compressed file, default 50 GiB), `-workers` (files read at once, 1 to 256, default 16), `-overall-timeout` (default 30m) and `-window-pad` (padding around the run for CloudWatch and CloudTrail, default 5m). A file cut short by a limit is marked partial, never passed off as complete.
+
+Run `sparkplain -h` for every flag.
+
+**Privacy.** Passwords, secrets, tokens, keys and credentials are redacted from configuration and log lines before anything is written. The reports still hold user names, host names, cluster IDs and log lines, so they are written private to you (files 0600, new folders 0700). `chmod` them when you mean to share them. Nothing is uploaded anywhere.
+
+**Big logs.** Everything is streamed. A 1 GB event log takes under a minute and under 1 GB of memory.
+
+## Exit codes and troubleshooting
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Complete: every source was read |
+| 2 | Fatal: a usage mistake, a cluster or file that does not exist, an `-app-id` that doesn't match the event log, or output that can't be written |
+| 3 | Partial: a report was written, but a source was missing, unreadable or refused. The report's Sources panel says which and why |
+| 130 | Interrupted |
+
+Common cases:
+
+- **Exit 3 when you only passed `-eventlog`.** This is expected: the cluster's logs were not asked for. Add `-cluster-id` (online) or `-from` (offline) to fill in the rest.
+- **"No event log was given" in the Sources panel.** The cluster's `spark.eventLog.dir` is on HDFS, so sparkplain can't reach it. Get the log one of the [ways above](#1-from-an-event-log-file) and pass `-eventlog`.
+- **"AWS access needs -profile".** Online runs need a profile. `-profile default` uses the default credential chain (environment, SSO, instance role and so on).
+- **No container logs.** EMR uploads them to the log URI every few minutes and at the end, so a cluster without a log URI, or a very recent run, has none yet.
+- **A still-running application.** Its `.inprogress` log gives a report up to the last event, marked incomplete (exit 3).
+- **Times look off.** Times are shown in the `timezone` from the config file. When the page opens, your browser relabels them in its own zone and names the zone.
 
 ## Supported
 
-- **Platforms:** Linux and macOS. Windows is not supported (output files are replaced with a rename that assumes POSIX semantics).
-- **Building:** the Go release in `go.mod` (currently 1.27.1).
-- **Spark and EMR:** Spark 3.5 event logs, tested on PySpark 3.5.1 fixtures and on EMR 7.3.0 cluster logs (`testdata/`); EMR on EC2 only.
-- **Event logs:** plain, `.lz4`, `.zstd`, `.snappy` and `.inprogress` single files; rolling `eventlog_v2_*` folders (including compacted ones); History Server zips (local only). `.lzf` is not supported.
-- **Running applications:** an `.inprogress` log gives a report up to its last event, marked incomplete, and the run exits 3.
-- **AWS permissions:** read-only calls only; SPEC §6 lists them, split into required and optional (each optional one only removes its section when missing).
-- **Limits:** `-max-size` (stored size per file, 10 GiB), `-max-unpacked` (unpacked size per compressed file, 50 GiB), `-workers` (1 to 256). A file cut by a limit is marked partial, never passed off as complete.
+- **Platforms:** Linux and macOS. Windows is not supported: output files are replaced with a rename that assumes POSIX semantics.
+- **Spark and EMR:** Spark 3.5 event logs, tested on PySpark 3.5.1 fixtures and on EMR 7.3.0 clusters. EMR on EC2 only (EMR Serverless and EMR on EKS lay out their logs differently).
+- **Event logs:** plain, `.lz4`, `.zstd`, `.snappy` and `.inprogress` single files, rolling `eventlog_v2_*` folders (including compacted ones), and History Server zips (local only). `.lzf` is not supported.
 
 ## Develop
 
+The design, and what each phase built, is in [docs/SPEC.md](docs/SPEC.md). [docs/sample-report.html](docs/sample-report.html) is the design reference for the report.
+
 ```sh
-make check     # gofmt check, go vet, tests (the race detector on the packages that start goroutines), build and govulncheck: run before calling a task done
-make run       # builds, then writes a report for the committed fixture to out/ (ARGS="..." to override)
+make check     # gofmt check, go vet, tests, build and govulncheck: run before calling a task done
+make run       # builds, then writes a report for a committed fixture to out/ (ARGS="..." to override)
 make help      # lists every target
 ```
 
@@ -84,13 +328,14 @@ make help      # lists every target
 
 ```sh
 gofmt -l . && go vet ./...
-go test ./... && go test -race ./internal/sparkplain/source ./internal/sparkplain/yarnlog
+go test -race ./...
 go build ./cmd/sparkplain
 govulncheck ./...
 ```
 
-- Fixtures in `testdata/eventlog` come from real PySpark 3.5.1 runs, scrubbed. Regenerate them with `make fixtures` (runs `scripts/fixtures/generate.sh`; needs Java 17+, `pyspark==3.5.1` and `SP_SCRATCH`; see the script header).
-- `make bench-log` (`go run ./scripts/benchlog -out out/big.log -tasks 245000`) writes a synthetic 1 GB log for the performance budget in SPEC §8.
+- Fixtures in `testdata/eventlog` come from real PySpark 3.5.1 runs, scrubbed. Regenerate them with `make fixtures` (runs `scripts/fixtures/generate.sh`; needs Java 17+, `pyspark==3.5.1` and `SP_SCRATCH`; see the script header). `testdata/emrlogs` holds scrubbed EMR cluster logs.
+- `make bench-log` writes a synthetic 1 GB log to `out/big.log`. `make bench` checks the time and memory budget in SPEC §8.
+- The screenshots in `docs/images` come from the fixture command in [Try it in a minute](#try-it-in-a-minute), rendered in headless Chrome at 1400 px wide with `TZ=UTC`.
 
 ## License
 
