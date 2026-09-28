@@ -1,6 +1,7 @@
 package analyze
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -121,5 +122,29 @@ func TestHostCPUCountsPeriodsTheRunOverlaps(t *testing.T) {
 	}
 	if k := r.Summary.KPIs[1]; k.Label != "Hosts" || k.Explain != "Machines that ran executors, of 2 nodes up during the run; the Nodes section describes each one." {
 		t.Errorf("hosts card = %+v", k)
+	}
+}
+
+// EMR's cluster series can come back with no point while a short run ran
+// (a 31 s run on the phase 6 cluster). That is not zero containers waiting
+// and 100% memory free: the facts are left out and the gap is said.
+func TestClusterMetricsWithNoPointsAreNotZero(t *testing.T) {
+	r := metricsRun(t, nil, nil, nil, 30, 50)
+	for _, f := range r.Metrics.Summary {
+		t.Errorf("fact from an empty series: %+v", f)
+	}
+	want := "Containers waiting, YARN memory free and applications at once: CloudWatch returned no EMR values for them while the application ran."
+	if !slices.Contains(r.Metrics.Missing, want) {
+		t.Errorf("missing = %q", r.Metrics.Missing)
+	}
+	for _, rule := range []string{"waited-for-capacity", "shared-cluster"} {
+		if _, ok := rules(r)[rule]; ok {
+			t.Errorf("%s fired from an empty series", rule)
+		}
+	}
+	// Only the one without points is left out.
+	r = metricsRun(t, []float64{0, 0}, nil, []float64{1}, 30, 50)
+	if len(r.Metrics.Summary) != 2 || !slices.Contains(r.Metrics.Missing, "YARN memory free: CloudWatch returned no EMR values for them while the application ran.") {
+		t.Errorf("summary = %+v, missing = %q", r.Metrics.Summary, r.Metrics.Missing)
 	}
 }

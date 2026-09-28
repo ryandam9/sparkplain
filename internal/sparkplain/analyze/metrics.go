@@ -2,6 +2,7 @@ package analyze
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -122,6 +123,25 @@ func analyzeMetrics(c *ctx, r *model.Report) {
 	}
 
 	pending, free, apps := find(m.Cluster, "ContainerPending", "Maximum", ""), find(m.Cluster, "YARNMemoryAvailablePercentage", "Minimum", ""), find(m.Cluster, "AppsRunning", "Maximum", "")
+	// A series with no point while the application ran says nothing, not
+	// zero: EMR's cluster metrics can be missing for a short run.
+	var unrecorded []string
+	for _, x := range []struct {
+		s    **model.Series
+		what string
+	}{{&pending, "containers waiting"}, {&free, "YARN memory free"}, {&apps, "applications at once"}} {
+		if *x.s != nil && !slices.ContainsFunc((*x.s).Points, func(p model.Point) bool { return in(*x.s, p) }) {
+			*x.s = nil
+			unrecorded = append(unrecorded, x.what)
+		}
+	}
+	if len(unrecorded) > 0 {
+		list := unrecorded[0]
+		if n := len(unrecorded); n > 1 {
+			list = strings.Join(unrecorded[:n-1], ", ") + " and " + unrecorded[n-1]
+		}
+		m.Missing = append(m.Missing, strings.ToUpper(list[:1])+list[1:]+": CloudWatch returned no EMR values for them while the application ran.")
+	}
 	src := func(s *model.Series) model.Source { return model.Source{File: s.Source} }
 	maxApps := 0.0
 	if apps != nil {

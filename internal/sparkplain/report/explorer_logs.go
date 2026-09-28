@@ -153,6 +153,7 @@ type xNodeRow struct {
 	DriverMem int64           `json:"driverMem,omitempty"` // the driver's YARN container here
 	ExecMem   int64           `json:"execMem,omitempty"`   // each executor container
 	PeakExecs int             `json:"peakExecs,omitempty"` // most of its executors alive at once
+	NoRoom    string          `json:"noRoom,omitempty"`    // why it ran only the driver, when size is why
 	CPUPeak   *float64        `json:"cpuPeak,omitempty"`
 }
 
@@ -194,7 +195,7 @@ func awsData(r *model.Report) *xAWS {
 	}
 	for _, h := range r.Nodes.Hosts {
 		row := xNodeRow{Host: h.Name, Instance: h.Instance, Driver: h.Driver, Executors: orEmpty(h.Executors), YARNMem: h.YARNMemoryBytes, YARNCores: h.YARNVCores,
-			DriverMem: h.DriverContainerBytes, ExecMem: h.ExecutorContainerBytes, PeakExecs: h.PeakExecutors}
+			DriverMem: h.DriverContainerBytes, ExecMem: h.ExecutorContainerBytes, PeakExecs: h.PeakExecutors, NoRoom: h.NoRoomBesideDriver()}
 		if h.HostCPU != nil {
 			row.CPUAvg, row.CPUPeak = &h.HostCPU.Average, &h.HostCPU.Peak
 		}
