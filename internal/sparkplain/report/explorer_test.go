@@ -355,3 +355,51 @@ func TestExplorerCarriesDriverGaps(t *testing.T) {
 		t.Error("no Timeline tab")
 	}
 }
+
+// The page gets the whole run path for its totals and a drawing of it:
+// every stage step, gaps worth showing, and context parents beside.
+func TestExplorerRunPath(t *testing.T) {
+	r, x := buildWithExplorer(t, "application_1790380000000_0046")
+	if len(r.Jobs.RunPath) == 0 {
+		t.Fatal("no run path")
+	}
+	var total int64
+	for _, s := range r.Jobs.RunPath {
+		total += s.DurationMs()
+	}
+	if want := r.Application.End.Sub(r.Application.Start).Milliseconds(); total != want {
+		t.Errorf("path adds up to %d ms, the run took %d", total, want)
+	}
+	g := runPathGraph(r)
+	if len(g.Steps) != len(r.Jobs.RunPath) || g.Graph == nil || len(g.Graph.Pos) != len(g.Drawn)+len(g.Extra) {
+		t.Fatalf("steps %d, drawn %d, extra %d, graph %+v", len(g.Steps), len(g.Drawn), len(g.Extra), g.Graph)
+	}
+	for _, i := range g.Drawn {
+		if s := r.Jobs.RunPath[i]; s.Kind != model.PathStage && s.DurationMs() < 1000 {
+			t.Errorf("drew a %d ms %s gap", s.DurationMs(), s.Kind)
+		}
+	}
+	stagesOnPath := 0
+	for _, s := range r.Jobs.RunPath {
+		if s.Kind == model.PathStage {
+			stagesOnPath++
+		}
+	}
+	drawnStages := 0
+	for _, i := range g.Drawn {
+		if r.Jobs.RunPath[i].Kind == model.PathStage {
+			drawnStages++
+		}
+	}
+	if drawnStages != stagesOnPath {
+		t.Errorf("drew %d of %d stages on the path", drawnStages, stagesOnPath)
+	}
+	for _, e := range g.Graph.Edges {
+		if a, b := g.Graph.Pos[e[0]], g.Graph.Pos[e[1]]; a[1] >= b[1] {
+			t.Errorf("edge %v does not point down: %v → %v", e, a, b)
+		}
+	}
+	if d := embedded(t, renderExplorer(t, r, x)); d["runPath"] == nil {
+		t.Error("page has no runPath")
+	}
+}

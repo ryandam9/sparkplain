@@ -176,3 +176,11 @@ tr.hl td{background:var(--accent-soft)}
 .d3c .skm{stroke:var(--ink);stroke-width:2}
 .d3c .skp{fill:var(--viz-neutral);stroke:var(--surface);stroke-width:1}
 .d3c .skp.mild{fill:var(--viz-series)} .d3c .skp.strong{fill:var(--warn)} .d3c .skp.severe{fill:var(--viz-fail)}
+/* what held up completion */
+svg.dag .node.onpath rect{stroke:var(--accent);stroke-width:2.5}
+svg.dag .node.onpath.failed rect{stroke:var(--crit)}
+svg.dag .node.ctx{opacity:.6}
+svg.dag .node.gapnode rect{fill:var(--warn-soft);stroke:var(--warn);stroke-width:1.5}
+svg.dag .node.waitnode rect{fill:var(--na-soft);stroke:var(--na);stroke-dasharray:4 3}
+svg.dag .edge.chain{stroke:var(--accent);stroke-width:2.5}
+svg.dag .edge.branch{stroke-dasharray:4 3}
