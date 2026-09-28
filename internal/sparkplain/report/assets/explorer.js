@@ -331,13 +331,29 @@
     if (D.runPath) out.push(runPathSection());
     if ((D.resources || []).length) {
       // what the run used of what it had, one line each; no combined score
-      var us = section("What the run used", "Each line stands alone: what the application used of what it had, and what that means.");
-      us.appendChild(el("div", { cls: "uses" }, D.resources.map(function (u) {
-        return el("div", { cls: "use" + (u.tone ? " " + u.tone : "") },
-          el("span", { cls: "l", text: u.label }),
-          u.share >= 0 ? el("span", { cls: "ubar", role: "img", "aria-label": u.label + ": " + u.value }, el("i", { style: "width:" + Math.max(u.share * 100, u.share > 0 ? 1 : 0).toFixed(1) + "%" })) : el("span", { cls: "ubar none" }),
-          el("span", { cls: "v", text: u.value }),
-          el("span", { cls: "x", text: u.explain }));
+      var us = section("What the run used", "Each card is what the application used of what it had, and what that means. Where a bar has a green band, that is the healthy range.");
+      var GROUPS = [["cpu", "CPU"], ["memory", "Memory"], ["stability", "Stability"]];
+      us.appendChild(el("div", { cls: "uses" }, GROUPS.map(function (g) {
+        var cards = D.resources.filter(function (u) { return u.group === g[0]; });
+        if (!cards.length) return null;
+        return el("div", { cls: "usegrp" }, el("h3", { text: g[1] }), cards.map(function (u) {
+          var pc = function (v) { return (Math.max(0, Math.min(v, 1)) * 100).toFixed(1) + "%"; };
+          var gauge = null;
+          if (u.share >= 0) {
+            var band = u.band && u.band.length === 2 ? u.band : null;
+            gauge = el("div", { cls: "ugauge", role: "img", "aria-label": u.label + ": " + u.value + (band ? ", healthy from " + Math.round(band[0] * 100) + "% to " + Math.round(band[1] * 100) + "%" : "") },
+              el("div", { cls: "utrack" },
+                band ? el("i", { cls: "uband", style: "left:" + pc(band[0]) + ";width:" + pc(band[1] - band[0]) }) : null,
+                el("i", { cls: "ufill", style: "width:" + (u.share > 0 ? pc(Math.max(u.share, 0.01)) : "0") })),
+              el("div", { cls: "uscale" }, el("span", { text: "0" }), el("span", { text: "100%" })));
+          }
+          return el("div", { cls: "use" + (u.tone ? " " + u.tone : "") },
+            el("div", { cls: "utop" }, el("span", { cls: "l", text: u.label }), u.verdict ? el("span", { cls: "chip " + (u.tone || ""), text: u.verdict }) : null),
+            el("div", { cls: "v", text: u.value }),
+            u.detail ? el("div", { cls: "d", text: u.detail }) : null,
+            gauge,
+            el("div", { cls: "x", text: u.explain }));
+        }));
       })));
       out.push(us);
     }

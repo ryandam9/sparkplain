@@ -411,23 +411,42 @@ func TestResourceUse(t *testing.T) {
 	got := map[string]xUse{}
 	for _, u := range resourceUse(r, buildAnatomy(r)) {
 		got[u.Label] = u
-		if u.Explain == "" || u.Share > 1 {
+		if u.Explain == "" || u.Share > 1 || u.Group == "" || u.Tone != "" && u.Verdict == "" ||
+			len(u.Band) > 0 && (len(u.Band) != 2 || u.Band[0] >= u.Band[1] || u.Share < 0) {
 			t.Errorf("%s: %+v", u.Label, u)
 		}
 	}
-	for _, c := range []struct{ label, value, tone string }{
-		{"Task slots busy", "69%", "ok"},
-		{"JVM CPU share", "55%", "ok"},
-		{"Peak heap", "757 MiB of 1.0 GiB", "ok"},
-		{"Executors lost", "1 of 2 started", "crit"},
-		{"Disk spill", "337 MiB", "warn"},
+	for _, c := range []struct{ label, value, tone, verdict string }{
+		{"Task slots busy", "69%", "ok", "Healthy"},
+		{"JVM CPU share", "55%", "ok", "Healthy"},
+		{"Peak heap", "74% 757 MiB of 1.0 GiB", "ok", "Healthy"},
+		{"Executors lost", "1 of 2 started", "crit", "Lost"},
+		{"Disk spill", "337 MiB", "warn", "Spilled"},
 	} {
 		u, ok := got[c.label]
-		if !ok || !strings.Contains(u.Value, c.value) || u.Tone != c.tone {
-			t.Errorf("%s = %+v, want %q (%s)", c.label, u, c.value, c.tone)
+		if !ok || !strings.Contains(u.Value+" "+u.Detail, c.value) || u.Tone != c.tone || u.Verdict != c.verdict {
+			t.Errorf("%s = %+v, want %q (%s, %s)", c.label, u, c.value, c.tone, c.verdict)
 		}
 	}
 	if _, ok := got["Containers waiting"]; ok {
 		t.Error("no CloudWatch, so no line for waiting containers")
+	}
+	// With CloudWatch, the count leads and the rest explains it.
+	a := buildAnatomy(r)
+	for _, c := range []struct{ waiting, value, detail, verdict string }{
+		{"53 at most, for 2 min 53 s", "53", "at most, for 2 min 53 s, from CloudWatch", "Waited"},
+		{"0 at most, for 0 ms", "0", "from CloudWatch", "None"},
+	} {
+		a.RM.Waiting = c.waiting
+		found := false
+		for _, u := range resourceUse(r, a) {
+			found = found || u.Label == "Containers waiting"
+			if u.Label == "Containers waiting" && (u.Value != c.value || u.Detail != c.detail || u.Verdict != c.verdict || u.Group != "stability") {
+				t.Errorf("waiting %q: %+v", c.waiting, u)
+			}
+		}
+		if !found {
+			t.Errorf("waiting %q: no card", c.waiting)
+		}
 	}
 }
