@@ -403,3 +403,31 @@ func TestExplorerRunPath(t *testing.T) {
 		t.Error("page has no runPath")
 	}
 }
+
+// The Overview's utilisation panel restates what the analysis found, one
+// line each, with no combined score.
+func TestResourceUse(t *testing.T) {
+	r, _ := buildWithExplorer(t, "application_1790380000000_0042")
+	got := map[string]xUse{}
+	for _, u := range resourceUse(r, buildAnatomy(r)) {
+		got[u.Label] = u
+		if u.Explain == "" || u.Share > 1 {
+			t.Errorf("%s: %+v", u.Label, u)
+		}
+	}
+	for _, c := range []struct{ label, value, tone string }{
+		{"Task slots busy", "69%", "ok"},
+		{"JVM CPU share", "55%", "ok"},
+		{"Peak heap", "757 MiB of 1.0 GiB", "ok"},
+		{"Executors lost", "1 of 2 started", "crit"},
+		{"Disk spill", "337 MiB", "warn"},
+	} {
+		u, ok := got[c.label]
+		if !ok || !strings.Contains(u.Value, c.value) || u.Tone != c.tone {
+			t.Errorf("%s = %+v, want %q (%s)", c.label, u, c.value, c.tone)
+		}
+	}
+	if _, ok := got["Containers waiting"]; ok {
+		t.Error("no CloudWatch, so no line for waiting containers")
+	}
+}

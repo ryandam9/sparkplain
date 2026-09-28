@@ -329,6 +329,18 @@
       out.push(hs);
     }
     if (D.runPath) out.push(runPathSection());
+    if ((D.resources || []).length) {
+      // what the run used of what it had, one line each; no combined score
+      var us = section("What the run used", "Each line stands alone: what the application used of what it had, and what that means.");
+      us.appendChild(el("div", { cls: "uses" }, D.resources.map(function (u) {
+        return el("div", { cls: "use" + (u.tone ? " " + u.tone : "") },
+          el("span", { cls: "l", text: u.label }),
+          u.share >= 0 ? el("span", { cls: "ubar", role: "img", "aria-label": u.label + ": " + u.value }, el("i", { style: "width:" + Math.max(u.share * 100, u.share > 0 ? 1 : 0).toFixed(1) + "%" })) : el("span", { cls: "ubar none" }),
+          el("span", { cls: "v", text: u.value }),
+          el("span", { cls: "x", text: u.explain }));
+      })));
+      out.push(us);
+    }
     // the diagnosis first, then the charts over time
     var ov = section("Over time", "Tasks running across the run, and when each job ran.");
     ov.appendChild(chartSlot("", "running"));
