@@ -12,6 +12,7 @@ import (
 // one, the only executor on the other, and a spot task node that went away
 // mid-run taking an executor with it.
 func TestNodesJoinInstances(t *testing.T) {
+	t.Parallel()
 	start := time.Unix(1_790_000_000, 0).UTC()
 	exec1 := &model.Executor{ID: "1", Host: "ip-10-0-0-2.us-east-1.compute.internal", Cores: 4}
 	exec2 := &model.Executor{ID: "2", Host: "ip-10-0-0-4.ec2.internal", Cores: 4, Removed: start.Add(20 * time.Minute), RemovedReason: "Executor decommission.",
@@ -73,6 +74,7 @@ func TestNodesJoinInstances(t *testing.T) {
 // Without the EMR API, the Nodes section says what it is missing and no
 // node finding appears.
 func TestNodesWithoutCluster(t *testing.T) {
+	t.Parallel()
 	r := Run(Input{Tool: "t", EventLog: synthetic(nil, &model.Executor{ID: "1", Host: "h1", Cores: 2}), EventSource: model.SourceStatus{Name: "Spark event log", Status: "read"}})
 	if r.Nodes.Coverage != model.Partial || len(r.Nodes.Missing) != 2 {
 		t.Errorf("nodes = %v %v", r.Nodes.Coverage, r.Nodes.Missing)
@@ -86,6 +88,7 @@ func TestNodesWithoutCluster(t *testing.T) {
 // one, and executors of 11,264 MB, so only one executor fitted while
 // dynamic allocation wanted up to 42.
 func TestExecutorFit(t *testing.T) {
+	t.Parallel()
 	rm := logFile(t, rmLog, `2024-01-01 10:00:00,000 INFO org.apache.hadoop.yarn.server.resourcemanager.ResourceTrackerService (IPC Server handler 0 on default port 8025): NodeManager from node ip-10-0-0-2.ec2.internal(cmPort: 8041 httpPort: 8042) registered with capability: <memory:12288, vCores:4>, assigned nodeId ip-10-0-0-2.ec2.internal:8041
 2024-01-01 10:00:01,000 INFO org.apache.hadoop.yarn.server.resourcemanager.ResourceTrackerService (IPC Server handler 1 on default port 8025): NodeManager from node ip-10-0-0-3.ec2.internal(cmPort: 8041 httpPort: 8042) registered with capability: <memory:12288, vCores:4>, assigned nodeId ip-10-0-0-3.ec2.internal:8041
 2024-01-01 10:01:00,000 INFO org.apache.hadoop.yarn.server.resourcemanager.scheduler.common.fica.FiCaSchedulerNode (SchedulerEventDispatcher:Event Processor): Assigned container container_1_1_01_000001 of capacity <memory:2432, max memory:12288, vCores:1, max vCores:4> on host ip-10-0-0-3.ec2.internal:8041, which has 1 containers, <memory:2432, vCores:1> used and <memory:9856, vCores:3> available after allocation
@@ -135,6 +138,7 @@ func TestExecutorFit(t *testing.T) {
 // driver's log says what Spark asked YARN for. Checked on the NOAA run: a
 // 9486 MB heap with 11264 MB containers.
 func TestOverheadFromTheContainerRequest(t *testing.T) {
+	t.Parallel()
 	l := synthetic(map[string]string{"spark.executor.memory": "9486m"}, &model.Executor{ID: "1", Host: "ip-10-0-0-2.ec2.internal", Cores: 4})
 	if r := runWithLogs(l, nil); r.Memory.Config.OverheadBytes>>20 != 948 {
 		t.Fatalf("without logs, overhead = %d MiB, want the 10%% default", r.Memory.Config.OverheadBytes>>20)
@@ -154,6 +158,7 @@ func TestOverheadFromTheContainerRequest(t *testing.T) {
 // Settings the cluster's configuration or the step's spark-submit set are
 // marked; a job that overrode the cluster's value is credited to the job.
 func TestSettingOrigins(t *testing.T) {
+	t.Parallel()
 	l := synthetic(map[string]string{"spark.executor.memory": "4g", "spark.sql.shuffle.partitions": "400", "spark.eventLog.dir": "s3://b/e/", "spark.executor.cores": "2", "spark.myapp.db.password": "[redacted]"})
 	l.Config = append(l.Config, model.ConfigEntry{Key: "fs.s3.maxConnections", Value: "200", Group: "Hadoop", Origin: "Hadoop Properties"})
 	cl := &model.Cluster{ID: "j-1", Configurations: map[string]string{"spark-defaults/spark.eventLog.dir": "s3://b/e/", "spark-defaults/spark.executor.memory": "8g",
@@ -181,6 +186,7 @@ func TestSettingOrigins(t *testing.T) {
 // An application that failed before any executor started does not get an
 // idle-nodes finding: its failure is the story.
 func TestNoIdleNodesWithoutExecutors(t *testing.T) {
+	t.Parallel()
 	l := synthetic(nil)
 	cl := &model.Cluster{ID: "j-1", Instances: []model.Instance{{ID: "i-2", PrivateDNS: "ip-10-0-0-2.ec2.internal", Role: "CORE"}}}
 	if _, ok := rules(Run(Input{Tool: "t", EventLog: l, EventSource: model.SourceStatus{Name: "Spark event log", Status: "read"}, Cluster: cl}))["idle-nodes"]; ok {
@@ -192,6 +198,7 @@ func TestNoIdleNodesWithoutExecutors(t *testing.T) {
 // there at its end can be one the application left idle, and on a shared
 // cluster such a node may have been busy with another application.
 func TestIdleNodesUpForMostOfTheRun(t *testing.T) {
+	t.Parallel()
 	l := synthetic(nil, &model.Executor{ID: "1", Host: "ip-10-0-0-2.ec2.internal", Cores: 2})
 	start, end := l.Application.Start, l.Application.End
 	worker := func(id, role, market string, ready, ended time.Time) model.Instance {

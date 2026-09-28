@@ -38,6 +38,7 @@ func metricsRunFor(t *testing.T, run time.Duration, pending, free, apps []float6
 }
 
 func TestMetricFindings(t *testing.T) {
+	t.Parallel()
 	// Waiting 6 of 10 minutes with most memory free: containers too big.
 	r := metricsRun(t, []float64{9, 9, 9, 9, 9, 9, 0, 0, 0, 0}, []float64{40, 40, 40, 40, 40, 40, 100, 100, 100, 100}, []float64{2, 2, 1}, 90, 97)
 	got := rules(r)
@@ -88,6 +89,7 @@ func TestMetricFindings(t *testing.T) {
 // 08:06:36 fell mostly in the 08:00 point, which was left out, and a node
 // reclaimed at 08:03 had no CPU at all.
 func TestHostCPUCountsPeriodsTheRunOverlaps(t *testing.T) {
+	t.Parallel()
 	l := synthetic(nil, &model.Executor{ID: "1", Host: "ip-10-0-0-2.ec2.internal", Cores: 4})
 	start := l.Application.Start
 	l.Application.End = start.Add(4 * time.Minute)
@@ -129,6 +131,7 @@ func TestHostCPUCountsPeriodsTheRunOverlaps(t *testing.T) {
 // (a 31 s run on the phase 6 cluster). That is not zero containers waiting
 // and 100% memory free: the facts are left out and the gap is said.
 func TestClusterMetricsWithNoPointsAreNotZero(t *testing.T) {
+	t.Parallel()
 	r := metricsRun(t, nil, nil, nil, 30, 50)
 	for _, f := range r.Metrics.Summary {
 		t.Errorf("fact from an empty series: %+v", f)

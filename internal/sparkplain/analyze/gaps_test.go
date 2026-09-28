@@ -9,6 +9,7 @@ import (
 )
 
 func TestDriverGaps(t *testing.T) {
+	t.Parallel()
 	t0 := time.Date(2026, 9, 27, 10, 0, 0, 0, time.UTC)
 	at := func(s int) time.Time { return t0.Add(time.Duration(s) * time.Second) }
 	job := func(id, from, to int) *model.Job {

@@ -21,6 +21,7 @@ func html(t *testing.T, r *model.Report, opt Options) string {
 
 // Each chart appears when its data does, and not otherwise.
 func TestReportCharts(t *testing.T) {
+	t.Parallel()
 	r, _ := buildWithExplorer(t, "application_1790380000000_0042")
 	page := html(t, r, Options{ExplorerHref: "app-explorer.html"})
 	for _, title := range []string{"The longest stages", "Task time spread", "Data each stage moved", "Data over time", "Spill by stage", "Where executor time went", "The longest queries"} {
@@ -62,6 +63,7 @@ func TestReportCharts(t *testing.T) {
 
 // Without the event log there is nothing to chart.
 func TestNoChartsWithoutData(t *testing.T) {
+	t.Parallel()
 	page := html(t, &model.Report{Application: model.Application{ID: "application_1_1"}}, Options{})
 	if strings.Contains(page, "<h4>") {
 		t.Error("charts drawn for an empty report")
@@ -71,6 +73,7 @@ func TestNoChartsWithoutData(t *testing.T) {
 // Long tables scroll inside a box no taller than most of the screen, with
 // the header in view, and print in full. Every table sits in such a box.
 func TestTablesScrollInTheirBox(t *testing.T) {
+	t.Parallel()
 	for _, rule := range []string{".tbl{overflow:auto;max-height:75vh;", ".tbl thead th{position:sticky;top:0;", "@media print{", ".tbl{max-height:none;overflow:visible}"} {
 		if !strings.Contains(css, rule) {
 			t.Errorf("report.css lacks %q", rule)
@@ -85,6 +88,7 @@ func TestTablesScrollInTheirBox(t *testing.T) {
 
 // A legend lists only the colours the bars use.
 func TestLegendShowsUsedColours(t *testing.T) {
+	t.Parallel()
 	rows := []hbar{{segs: []seg{{v: 5, color: cInput}, {v: 0, color: cSpill}}}}
 	got := shown(rows, []legendItem{{cInput, "Read"}, {cSpill, "Spilled to disk"}})
 	if len(got) != 1 || got[0].label != "Read" {
@@ -94,6 +98,7 @@ func TestLegendShowsUsedColours(t *testing.T) {
 
 // Findings read in labelled bands, and "What happened" is a bullet list.
 func TestFindingBandsAndSummaryBullets(t *testing.T) {
+	t.Parallel()
 	r, _ := buildWithExplorer(t, "application_1790380000000_0044") // a failed run: critical findings
 	page := html(t, r, Options{})
 	for _, want := range []string{`<div class="fpart what"><span class="k">Error</span>`, `<div class="fpart evid"><span class="k">Evidence</span>`, `<div class="fpart try"><span class="k">Try</span>`, `<h2>What happened</h2>
@@ -112,6 +117,7 @@ func TestFindingBandsAndSummaryBullets(t *testing.T) {
 // Every chart, in both pages, has a title, says what it shows and says how
 // to read it.
 func TestEveryChartExplainsItself(t *testing.T) {
+	t.Parallel()
 	r, _ := buildWithExplorer(t, "application_1790380000000_0042")
 	page := html(t, r, Options{ExplorerHref: "x.html"})
 	charts := strings.Split(page, `<div class="chart">`)[1:]
@@ -141,6 +147,7 @@ func TestEveryChartExplainsItself(t *testing.T) {
 // The stage time split explains every task's time: each bar's parts add up
 // to the stage's task time, which its note shows.
 func TestSplitChart(t *testing.T) {
+	t.Parallel()
 	r, _ := buildWithExplorer(t, "application_1790380000000_0042")
 	out := string(splitChart(r, "x.html"))
 	if !strings.Contains(out, "Where stage time went") || !strings.Contains(out, `href="x.html#stage/`) {

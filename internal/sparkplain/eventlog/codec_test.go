@@ -30,6 +30,7 @@ func readAllCodec(t *testing.T, name string, data []byte) ([]byte, string, error
 // decoding them to the same bytes as the plain log proves the readers match
 // the Java stream formats.
 func TestCodecsMatchPlainFixture(t *testing.T) {
+	t.Parallel()
 	plain, err := os.ReadFile(filepath.Join(fixtures, mainApp))
 	if err != nil {
 		t.Fatal(err)
@@ -59,6 +60,7 @@ func TestCodecsMatchPlainFixture(t *testing.T) {
 }
 
 func TestTruncatedStreamsReportTruncation(t *testing.T) {
+	t.Parallel()
 	for _, codec := range []string{CodecLZ4, CodecZstd, CodecSnappy} {
 		t.Run(codec, func(t *testing.T) {
 			name := mainApp + "." + codec
@@ -78,6 +80,7 @@ func TestTruncatedStreamsReportTruncation(t *testing.T) {
 }
 
 func TestExtensionMagicMismatchUsesMagic(t *testing.T) {
+	t.Parallel()
 	data, err := os.ReadFile(filepath.Join(fixtures, mainApp+".zstd"))
 	if err != nil {
 		t.Fatal(err)
@@ -93,6 +96,7 @@ func TestExtensionMagicMismatchUsesMagic(t *testing.T) {
 }
 
 func TestCorruptLZ4ChecksumFails(t *testing.T) {
+	t.Parallel()
 	data, err := os.ReadFile(filepath.Join(fixtures, mainApp+".lz4"))
 	if err != nil {
 		t.Fatal(err)
@@ -106,12 +110,14 @@ func TestCorruptLZ4ChecksumFails(t *testing.T) {
 }
 
 func TestLZFRejected(t *testing.T) {
+	t.Parallel()
 	if _, _, _, _, err := decompressor(bytes.NewReader([]byte("ZV...")), "a.lzf"); err == nil {
 		t.Fatal("lzf should be rejected")
 	}
 }
 
 func TestXXH32KnownValues(t *testing.T) {
+	t.Parallel()
 	// Reference values from the xxHash specification test vectors.
 	cases := []struct {
 		in   string

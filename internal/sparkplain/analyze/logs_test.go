@@ -38,6 +38,7 @@ func runWithLogs(l *model.EventLog, cl *model.Cluster, files ...model.LogFile) *
 
 // The failed EMR run: no event log, because SparkContext never started.
 func TestLogsExplainFailedRunWithoutEventLog(t *testing.T) {
+	t.Parallel()
 	col := yarnlog.Collect(context.Background(), source.NewLocalStore(emrlogs), yarnlog.Plan{Root: "j-FIXTURE0052CLUSTER/", AppID: "application_1790380000000_0052"})
 	r := Run(Input{AppID: "application_1790380000000_0052", Tool: "t", TimeZone: "UTC", Logs: col.Files, LogsRead: true, LogSources: col.Sources,
 		EventSource: model.SourceStatus{Name: "Spark event log", Status: "not-supplied"}})
@@ -90,6 +91,7 @@ func TestLogsExplainFailedRunWithoutEventLog(t *testing.T) {
 
 // Containers join to executors through the CONTAINER_ID YARN gave Spark.
 func TestLogsJoinExecutors(t *testing.T) {
+	t.Parallel()
 	in, err := resolveFixture("application_1790380000000_0050")
 	if err != nil {
 		t.Fatal(err)
@@ -140,6 +142,7 @@ const (
 // The event log's memory kill gains YARN's own words and the executor's
 // last error; lost executors gain the error in their own logs.
 func TestLogsSharpenExecutorFindings(t *testing.T) {
+	t.Parallel()
 	killed := &model.Executor{ID: "2", Host: "ip-10-0-0-5", Removed: time.Unix(1_790_000_100, 0), RemovedReason: "Container killed by YARN for exceeding physical memory limits",
 		RemovalKind: model.RemovalMemoryKill, Attributes: map[string]string{"CONTAINER_ID": "container_1_1_01_000002"}, RemovedSource: model.Source{File: "ev", Line: 9}}
 	lost := &model.Executor{ID: "3", Host: "ip-10-0-0-6", Removed: time.Unix(1_790_000_200, 0), RemovedReason: "Executor heartbeat timed out",
@@ -167,6 +170,7 @@ java.io.IOException: No space left on device
 }
 
 func TestLogOnlyFindings(t *testing.T) {
+	t.Parallel()
 	cl := &model.Cluster{ID: "j-1", InstanceProfile: "EMR_EC2_Fixture", ServiceRole: "EMR_Fixture", Source: "EMR DescribeCluster j-1"}
 	r := runWithLogs(nil, cl,
 		logFile(t, driverErr, `24/01/01 10:00:00 INFO metastore: Trying to connect to metastore with URI thrift://meta.example.internal:9083
@@ -226,6 +230,7 @@ org.apache.hadoop.hbase.client.RetriesExhaustedException: Failed after attempts=
 // EMR logs "bootstrap action 1 failed" on healthy clusters; only the
 // cluster's state reason makes it a finding.
 func TestBootstrapNeedsClusterState(t *testing.T) {
+	t.Parallel()
 	boot := logFile(t, "node/i-0fee0000000000001/bootstrap-actions/master.log", `2024-01-01 10:00:00,000 ERROR InstanceConfiguratorDoConfigureThread: i-0fee0000000000001: failed to start. bootstrap action 1 failed with non-zero exit code.
 `)
 	if _, ok := rules(runWithLogs(nil, &model.Cluster{ID: "j-1", StateCode: "ALL_STEPS_COMPLETED"}, boot))["bootstrap-failed"]; ok {
@@ -240,6 +245,7 @@ func TestBootstrapNeedsClusterState(t *testing.T) {
 // Without logs, nothing about them appears, and the lost-executor advice
 // says how to get them.
 func TestNoLogsRequested(t *testing.T) {
+	t.Parallel()
 	lost := &model.Executor{ID: "1", Host: "h", Removed: time.Unix(1_790_000_100, 0), RemovedReason: "Executor heartbeat timed out", RemovalKind: model.RemovalLost}
 	r := Run(Input{Tool: "t", EventLog: synthetic(nil, lost), EventSource: model.SourceStatus{Name: "Spark event log", Status: "read"}})
 	if r.Logs != nil || r.ExitCode != 0 {
@@ -258,6 +264,7 @@ func TestNoLogsRequested(t *testing.T) {
 // Exit 137 after HotSpot's out-of-memory banner is the JVM killing itself,
 // not YARN: no memory-kill finding, and the first error is the heap.
 func TestSelfKilledIsNotAMemoryKill(t *testing.T) {
+	t.Parallel()
 	out := logFile(t, "containers/application_1_1/container_1_1_01_000002/stdout", `# java.lang.OutOfMemoryError: GC overhead limit exceeded
 #   Executing /bin/sh -c "kill -9 14396
 `)
@@ -285,6 +292,7 @@ func TestSelfKilledIsNotAMemoryKill(t *testing.T) {
 // The ResourceManager's log had not reached S3, so only the driver's own
 // log and the event log say an attempt was retried.
 func TestRetriedAttemptOnLostSpotNode(t *testing.T) {
+	t.Parallel()
 	l := synthetic(nil, &model.Executor{ID: "1", Host: "ip-10-0-0-2.ec2.internal", Cores: 2})
 	l.Application.AttemptID, l.Application.DeployMode = "2", "cluster"
 	l.Application.DriverAttributes = map[string]string{"CONTAINER_ID": "container_1_1_02_000001", "NM_HOST": "ip-10-0-0-2.ec2.internal"}
@@ -352,6 +360,7 @@ func TestRetriedAttemptOnLostSpotNode(t *testing.T) {
 // An event log from attempt 2 with no earlier attempt's logs still says
 // the application was restarted.
 func TestRetriedAttemptFromEventLogOnly(t *testing.T) {
+	t.Parallel()
 	l := synthetic(nil, &model.Executor{ID: "1", Host: "h", Cores: 2})
 	l.Application.AttemptID = "2"
 	f, ok := rules(runWithLogs(l, nil))["app-retried"]
@@ -369,6 +378,7 @@ func TestRetriedAttemptFromEventLogOnly(t *testing.T) {
 // normally, so only YARN's records say the application failed: it must
 // not read as "finished on attempt 2".
 func TestFailedAttemptsDespiteCleanEventLog(t *testing.T) {
+	t.Parallel()
 	l := synthetic(nil, &model.Executor{ID: "1", Host: "ip-10-0-0-2.ec2.internal", Cores: 2})
 	l.Application.AttemptID, l.Application.DeployMode = "2", "cluster"
 	l.Application.DriverAttributes = map[string]string{"CONTAINER_ID": "container_1_1_02_000001"}

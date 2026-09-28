@@ -44,6 +44,7 @@ func fixtureInputs(t *testing.T) map[string]string {
 // fixture is listed in inventory.txt with what sparkplain does with it, and
 // every listed field was seen in a fixture or says it was not.
 func TestFieldInventory(t *testing.T) {
+	t.Parallel()
 	seen := map[string]map[string]bool{}
 	var missing []string
 	for name, app := range fixtureInputs(t) {
@@ -107,24 +108,21 @@ func TestFieldInventory(t *testing.T) {
 // Parsing every fixture must find no unknown events or fields: the runtime
 // check and the inventory agree.
 func TestFixturesHaveNoUnknownFields(t *testing.T) {
+	t.Parallel()
 	for name, app := range fixtureInputs(t) {
-		in, err := Resolve(filepath.Join(fixtures, name), app, Limits{})
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		l, err := Parse(context.Background(), in, Options{})
-		in.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(l.Stats.UnknownEvents) > 0 || len(l.Stats.UnknownFields) > 0 {
-			t.Errorf("%s: unknown events %v, fields %v", name, l.Stats.UnknownEvents, l.Stats.UnknownFields)
-		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			l := parseFixture(t, name, app)
+			if len(l.Stats.UnknownEvents) > 0 || len(l.Stats.UnknownFields) > 0 {
+				t.Errorf("unknown events %v, fields %v", l.Stats.UnknownEvents, l.Stats.UnknownFields)
+			}
+		})
 	}
 }
 
 // A field Spark adds later is counted, even when it is nested.
 func TestNestedUnknownFieldCounted(t *testing.T) {
+	t.Parallel()
 	p := newParser(Options{})
 	line := `{"Event":"SparkListenerTaskEnd","Stage ID":1,"Stage Attempt ID":0,"Task Info":{"Task ID":1,"Brand New":7},"Task End Reason":{"Reason":"Success"}}`
 	if err := p.line([]byte(line), model.Source{File: "f", Line: 1}); err != nil {
@@ -136,6 +134,7 @@ func TestNestedUnknownFieldCounted(t *testing.T) {
 }
 
 func TestInventoryRejectsBadLines(t *testing.T) {
+	t.Parallel()
 	for _, bad := range []string{"Ev\n    a | used\n", "Ev\n    a | maybe | x\n", "Ev\n    a | planned:x | y\n", "    a | used | x\n"} {
 		if _, err := parseInventory(bad); err == nil {
 			t.Errorf("parseInventory(%q) accepted a bad line", bad)

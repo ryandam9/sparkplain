@@ -61,6 +61,7 @@ func (s *countingStore) Location(key string) string { return "s3://bucket/" + ke
 // SP-002: resolving one application under a busy history prefix lists
 // only that application's names, never the whole prefix.
 func TestResolveStoreNeverListsWholePrefix(t *testing.T) {
+	t.Parallel()
 	objs := map[string][]byte{}
 	for i := 0; i < 100000; i++ {
 		objs[fmt.Sprintf("spark-events/application_1790000000000_%06d", i)] = nil

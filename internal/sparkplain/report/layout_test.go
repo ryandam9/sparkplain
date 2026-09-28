@@ -6,6 +6,7 @@ import (
 )
 
 func TestLayeredPointsEveryEdgeDown(t *testing.T) {
+	t.Parallel()
 	// A diamond (0 → 1, 2 → 3), a tail (3 → 4) and a long edge (0 → 4).
 	edges := [][2]int{{0, 1}, {0, 2}, {1, 3}, {2, 3}, {3, 4}, {0, 4}}
 	lay := layered(5, edges)
@@ -40,6 +41,7 @@ func TestLayeredPointsEveryEdgeDown(t *testing.T) {
 }
 
 func TestLayeredSurvivesBadInput(t *testing.T) {
+	t.Parallel()
 	lay := layered(3, [][2]int{{0, 1}, {1, 2}, {2, 0}, {1, 1}, {0, 7}, {0, 1}})
 	if len(lay.Pos) != 3 {
 		t.Fatalf("%d positions", len(lay.Pos))

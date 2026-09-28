@@ -54,6 +54,7 @@ func obj(v any, k string) map[string]any {
 // Scheduler delay, fetch time, result size and locality must match the Spark
 // UI's definitions, computed here from the raw events.
 func TestTaskTimingSplit(t *testing.T) {
+	t.Parallel()
 	const name = "application_1790380000000_0046"
 	type want struct{ getting, delay, result, process, node int64 }
 	exp := map[stageKey]*want{}
@@ -104,6 +105,7 @@ func TestTaskTimingSplit(t *testing.T) {
 // Every distinct failure keeps its first full stack trace, redacted, and a
 // lost executor says whether Spark blamed the application.
 func TestFailureDetail(t *testing.T) {
+	t.Parallel()
 	l := parseFixture(t, mainApp, mainApp)
 	var traces, lost int
 	for _, st := range l.Stages {
@@ -131,6 +133,7 @@ func TestFailureDetail(t *testing.T) {
 
 // Per-operator SQL spreads match the per-task updates in the raw log.
 func TestSQLOperatorSpreads(t *testing.T) {
+	t.Parallel()
 	const name = "application_1790380000000_0049"
 	updates := map[int64][]int64{}
 	for _, e := range rawTaskEnds(t, name) {
@@ -192,6 +195,7 @@ func minOf(v []int64) int64 {
 
 // GC counters and unified memory reach the executors' peaks.
 func TestExecutorGCCounters(t *testing.T) {
+	t.Parallel()
 	l := parseFixture(t, mainApp, mainApp)
 	var minor int64
 	for _, x := range l.Executors {

@@ -28,6 +28,7 @@ func anatReport() *model.Report {
 }
 
 func TestAnatomyShowsWhatDidNotFit(t *testing.T) {
+	t.Parallel()
 	a := buildAnatomy(anatReport())
 	if a.Primary == nil || a.Primary.Short != "ip-10-0-0-1" {
 		t.Fatalf("primary = %+v", a.Primary)
@@ -55,6 +56,7 @@ func TestAnatomyShowsWhatDidNotFit(t *testing.T) {
 }
 
 func TestAnatomyPinsFindings(t *testing.T) {
+	t.Parallel()
 	r := anatReport()
 	r.Findings = []model.Finding{
 		{Rule: "waited-for-capacity", Severity: model.Warning, Title: "waited"},
@@ -88,6 +90,7 @@ func TestAnatomyPinsFindings(t *testing.T) {
 
 // A big uniform cluster collapses into one card per kind of node.
 func TestAnatomyFoldsLookAlikes(t *testing.T) {
+	t.Parallel()
 	r := anatReport()
 	base := r.Nodes.Hosts[2]
 	for i := 4; i < 30; i++ {
@@ -107,6 +110,7 @@ func TestAnatomyFoldsLookAlikes(t *testing.T) {
 }
 
 func TestAnatomyEscapesAndDegrades(t *testing.T) {
+	t.Parallel()
 	if buildAnatomy(&model.Report{}) != nil {
 		t.Error("an empty report should have no diagram")
 	}
@@ -125,6 +129,7 @@ func TestAnatomyEscapesAndDegrades(t *testing.T) {
 
 // The explorer carries the same diagram, linked to its own pages.
 func TestExplorerCarriesAnatomy(t *testing.T) {
+	t.Parallel()
 	r, x := buildWithExplorer(t, "application_1790380000000_0042")
 	a, _ := embedded(t, renderExplorer(t, r, x))["anatomy"].(string)
 	if !strings.Contains(a, `<svg class="anat"`) || !strings.Contains(a, `href="#executor/`) {
@@ -138,6 +143,7 @@ func TestExplorerCarriesAnatomy(t *testing.T) {
 // On a shared cluster the diagram cannot see other applications'
 // containers, so it must not claim room for more executors.
 func TestAnatomySharedClusterMakesNoRoomClaim(t *testing.T) {
+	t.Parallel()
 	r := anatReport()
 	r.Nodes.Hosts[1].DriverContainerBytes = 0 // a node with 12 GiB unused
 	r.Metrics = &model.MetricsSection{Summary: []model.Fact{{Label: "Applications at once", Value: "2 at most"}}}
@@ -152,6 +158,7 @@ var noLinks = anatLinks{Finding: func(int) string { return "" }, Ref: func(strin
 // An executor's name and status share the chip's top line: however long
 // the ID and whatever the status, the two must fit side by side.
 func TestAnatomyChipLabelsFit(t *testing.T) {
+	t.Parallel()
 	nameRE := regexp.MustCompile(`class="b"[^>]*>([^<]*)<`)
 	statusRE := regexp.MustCompile(`class="m st"[^>]*>([^<]*)<`)
 	for _, id := range []string{"5", "25", "1234", "12345678"} {
@@ -172,6 +179,7 @@ func TestAnatomyChipLabelsFit(t *testing.T) {
 // The peak heap label is never drawn with the line's class (which stroked
 // it doubled), and stays inside the heap strip when the peak is at its edge.
 func TestAnatomyPeakLabel(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		peak   int64
 		anchor string
@@ -194,6 +202,7 @@ func TestAnatomyPeakLabel(t *testing.T) {
 // With the cluster read, missing YARN capacity is not for want of
 // -cluster-id: on a running cluster its node logs may not be in S3 yet.
 func TestAnatomySaysWhyCapacityIsMissing(t *testing.T) {
+	t.Parallel()
 	links := anatLinks{Finding: func(int) string { return "" }, Ref: func(string) string { return "" }}
 	for state, want := range map[string]string{
 		"WAITING":    "YARN capacity not in S3 yet (the cluster is still running)",
@@ -214,6 +223,7 @@ func TestAnatomySaysWhyCapacityIsMissing(t *testing.T) {
 // A node with no CPU points says CloudWatch recorded none, not that it
 // needs CloudWatch, when CloudWatch was read.
 func TestAnatomySaysWhyCPUIsMissing(t *testing.T) {
+	t.Parallel()
 	links := anatLinks{Finding: func(int) string { return "" }, Ref: func(string) string { return "" }}
 	r := anatReport()
 	if svg := anatomySVG(buildAnatomy(r), links); !strings.Contains(svg, "CPU not known (needs CloudWatch)") {
@@ -229,6 +239,7 @@ func TestAnatomySaysWhyCPUIsMissing(t *testing.T) {
 // memory for only part of the run: the diagram says so and makes no room
 // claim for it, and YARN's total leaves it out.
 func TestAnatomyNodesNotThereForTheRun(t *testing.T) {
+	t.Parallel()
 	r := anatReport()
 	start := time.Date(2026, 9, 27, 8, 2, 19, 0, time.UTC)
 	r.Application.Start, r.Application.End = start, start.Add(257*time.Second)

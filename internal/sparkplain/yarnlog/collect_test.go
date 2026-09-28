@@ -37,6 +37,7 @@ func kindCount(c Collection) map[string]int {
 
 // A local copy of the log bucket: the cluster's root is a prefix, as on S3.
 func TestCollectUnderPrefix(t *testing.T) {
+	t.Parallel()
 	st := source.NewLocalStore(emrlogs)
 	c := Collect(context.Background(), st, Plan{Root: "j-FIXTURE0049CLUSTER/", AppID: "application_1790380000000_0049"})
 	if len(c.Steps) != 1 || c.Steps[0] != "s-FIXTURESTEP0001" {
@@ -88,6 +89,7 @@ func TestCollectUnderPrefix(t *testing.T) {
 // The failed run from its own folder (Root ""), with the steps and nodes
 // the EMR API would name.
 func TestCollectNamedStepsAndNodes(t *testing.T) {
+	t.Parallel()
 	st := source.NewLocalStore(filepath.Join(emrlogs, "j-FIXTURE0052CLUSTER"))
 	c := Collect(context.Background(), st, Plan{AppID: "application_1790380000000_0052", Steps: []string{"s-FIXTURESTEP0001", "s-NOSUCHSTEP"},
 		Instances: []string{"i-0fee0000000000003"}, Limits: source.Limits{Workers: 2}})
@@ -101,6 +103,7 @@ func TestCollectNamedStepsAndNodes(t *testing.T) {
 }
 
 func TestCollectSinceSkipsOldDaemonLogs(t *testing.T) {
+	t.Parallel()
 	st := source.NewLocalStore(filepath.Join(emrlogs, "j-FIXTURE0050CLUSTER"))
 	c := Collect(context.Background(), st, Plan{AppID: "application_1790380000000_0050", Since: time.Now().Add(24 * time.Hour)})
 	if n := kindCount(c)["nodemanager"] + kindCount(c)["resourcemanager"]; n != 0 {
@@ -119,6 +122,7 @@ func TestCollectSinceSkipsOldDaemonLogs(t *testing.T) {
 
 // -from given one application's container folder.
 func TestCollectAppFolder(t *testing.T) {
+	t.Parallel()
 	st := source.NewLocalStore(filepath.Join(emrlogs, "j-FIXTURE0050CLUSTER", "containers", "application_1790380000000_0050"))
 	c := Collect(context.Background(), st, Plan{AppFolder: true, AppID: "application_1790380000000_0050"})
 	if n := kindCount(c)["container-stderr"]; n != 5 {
@@ -130,6 +134,7 @@ func TestCollectAppFolder(t *testing.T) {
 }
 
 func TestCollectNothingThere(t *testing.T) {
+	t.Parallel()
 	c := Collect(context.Background(), source.NewLocalStore(t.TempDir()), Plan{AppID: "application_1790380000000_0099"})
 	for name, want := range map[string]string{"Container logs": "not-supplied", "Step logs": "none", "Node logs": "not-supplied"} {
 		if s := sourceRow(t, c, name); s.Status != want {
@@ -149,6 +154,7 @@ func (f failingStore) Open(ctx context.Context, o source.Object) (io.ReadCloser,
 }
 
 func TestCollectReportsUnreadable(t *testing.T) {
+	t.Parallel()
 	st := failingStore{source.NewLocalStore(filepath.Join(emrlogs, "j-FIXTURE0052CLUSTER"))}
 	c := Collect(context.Background(), st, Plan{AppID: "application_1790380000000_0052"})
 	s := sourceRow(t, c, "Container logs")
@@ -167,6 +173,7 @@ func TestCollectReportsUnreadable(t *testing.T) {
 }
 
 func TestLogRoot(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ uri, bucket, prefix string }{
 		{"s3n://logs/emr/", "logs", "emr/j-1/"},
 		{"s3://logs", "logs", "j-1/"},
@@ -193,6 +200,7 @@ func TestMain(m *testing.M) {
 // own entry: results used to overwrite each other, keeping only the last
 // entry's, and every line cited the zip rather than the entry.
 func TestCollectZipKeepsEveryEntry(t *testing.T) {
+	t.Parallel()
 	gzPath := filepath.Join(emrlogs, "j-FIXTURE0049CLUSTER/node/i-0fee0000000000001/applications/hadoop-yarn/hadoop-yarn-nodemanager-ip-10-0-2-10.us-east-1.compute.internal.log.gz")
 	f, err := os.Open(gzPath)
 	if err != nil {
@@ -248,6 +256,7 @@ func TestCollectZipKeepsEveryEntry(t *testing.T) {
 // event log (the last attempt's) never names it: the phase 4 test
 // cluster's first attempt ran its driver on a spot node that went away.
 func TestCollectReadsEarlierAttemptsDriverNode(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	write := func(key, text string) {
 		p := filepath.Join(dir, filepath.FromSlash(key))

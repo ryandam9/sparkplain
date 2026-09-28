@@ -36,6 +36,7 @@ func rawEvents(t *testing.T, name string) []map[string]any {
 // Spark writes every exclusion twice, under its new and its old name; the
 // parser keeps one of each, and notes when an application-level one lifted.
 func TestExclusionsMerged(t *testing.T) {
+	t.Parallel()
 	const name = "application_1790380000000_0046"
 	unique := map[string]bool{}
 	lifted := map[string]bool{}
@@ -82,6 +83,7 @@ func TestExclusionsMerged(t *testing.T) {
 }
 
 func TestNodeExcludedForStage(t *testing.T) {
+	t.Parallel()
 	l := parseFixture(t, "application_1790380000000_0048", "application_1790380000000_0048")
 	var node bool
 	for _, x := range l.Exclusions {
@@ -96,6 +98,7 @@ func TestNodeExcludedForStage(t *testing.T) {
 
 // Tasks that started but never ended in an in-progress log are listed.
 func TestRunningTasksAtLogEnd(t *testing.T) {
+	t.Parallel()
 	const name = "application_1790380000000_0047.inprogress"
 	started := map[int64]bool{}
 	for _, e := range rawEvents(t, name) {
@@ -122,6 +125,7 @@ func TestRunningTasksAtLogEnd(t *testing.T) {
 
 // Executor launch detail and driver links from the real EMR log.
 func TestExecutorLaunchDetail(t *testing.T) {
+	t.Parallel()
 	const name = "application_1790380000000_0049"
 	startup := map[string]int64{}
 	for _, e := range rawEvents(t, name) {
@@ -148,6 +152,7 @@ func TestExecutorLaunchDetail(t *testing.T) {
 // The driver's heartbeat samples carry stage -1 (they are not tied to a
 // stage), so they feed the driver's overall peak memory.
 func TestDriverHeartbeatSamples(t *testing.T) {
+	t.Parallel()
 	const name = "application_1790380000000_0046"
 	var want int64
 	for _, e := range rawEvents(t, name) {
@@ -174,6 +179,7 @@ func TestDriverHeartbeatSamples(t *testing.T) {
 // Where cached partitions were adds up to each cached RDD's size, and block
 // kinds are counted.
 func TestCachedPlacement(t *testing.T) {
+	t.Parallel()
 	const name = "application_1790380000000_0046"
 	l := parseFixture(t, name, name)
 	placed := 0
@@ -204,6 +210,7 @@ func TestCachedPlacement(t *testing.T) {
 // Each stage keeps the RDDs it computes, with the operation that made each,
 // as the raw StageSubmitted event lists them.
 func TestStageOperations(t *testing.T) {
+	t.Parallel()
 	const name = "application_1790380000000_0046"
 	type rdd struct {
 		op      string
@@ -247,6 +254,7 @@ func TestStageOperations(t *testing.T) {
 // A job keeps exactly the properties that differ from the app's settings,
 // redacted.
 func TestJobLocalProperties(t *testing.T) {
+	t.Parallel()
 	const name = "application_1790380000000_0046"
 	var env map[string]any
 	want := map[int64]map[string]bool{}
@@ -293,6 +301,7 @@ func TestJobLocalProperties(t *testing.T) {
 // Queries keep their parent (for sub-queries and nested commands), session
 // settings (redacted) and long call site.
 func TestSQLQueryDetail(t *testing.T) {
+	t.Parallel()
 	const name = "application_1790380000000_0046"
 	roots := map[int64]int64{}
 	for _, e := range rawEvents(t, name) {
@@ -326,6 +335,7 @@ func TestSQLQueryDetail(t *testing.T) {
 
 // Metrics adaptive execution added after planning are resolved.
 func TestAdaptiveMetricsResolved(t *testing.T) {
+	t.Parallel()
 	const name = "application_1790380000000_0046"
 	l := parseExplorer(t, name, name, model.ExplorerLimits{})
 	var registered, known int
@@ -346,6 +356,7 @@ func TestAdaptiveMetricsResolved(t *testing.T) {
 
 // EMR's optimizer report: totals and rule counts match the raw event.
 func TestOptimizerStats(t *testing.T) {
+	t.Parallel()
 	const name = "application_1790380000000_0049"
 	type want struct{ total, rules, useful int64 }
 	exp := map[int64]want{}
@@ -387,6 +398,7 @@ func TestOptimizerStats(t *testing.T) {
 
 // -show prints the event behind a cited file:line, redacted.
 func TestShowEvent(t *testing.T) {
+	t.Parallel()
 	in, err := Resolve(filepath.Join(fixtures, mainApp+".zip"), mainApp, Limits{})
 	if err != nil {
 		t.Fatal(err)
@@ -415,6 +427,7 @@ func TestShowEvent(t *testing.T) {
 // Code locations: a JVM app's stages and jobs carry its own frames; a
 // PySpark app's carry a Python line only for some actions.
 func TestCodeLocations(t *testing.T) {
+	t.Parallel()
 	l := parseFixture(t, "application_1790380000000_0051", "application_1790380000000_0051")
 	for _, j := range l.Jobs {
 		if len(j.Code) == 0 || j.Code[0].File != "ClaimsJob.java" || j.Code[0].Line == 0 {
@@ -450,6 +463,7 @@ func TestCodeLocations(t *testing.T) {
 // ResolveStore finds an application's event log under a prefix, as it would
 // in S3 (a local folder stands in for the bucket).
 func TestResolveStore(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	copyFile := func(src, dst string) {
 		b, err := os.ReadFile(src)

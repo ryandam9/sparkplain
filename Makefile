@@ -26,8 +26,14 @@ fmt-check:
 vet:
 	$(GO) vet $(PKG)
 
+# RACE_PKG are the packages that start goroutines. Only they run under the
+# race detector, which is ten times slower; a test in cmd/sparkplain fails
+# if code elsewhere starts one without being added here.
+RACE_PKG := ./internal/sparkplain/source ./internal/sparkplain/yarnlog
+
 test:
-	$(GO) test -race -count=1 $(PKG)
+	$(GO) test -count=1 $(PKG)
+	$(GO) test -race -count=1 $(RACE_PKG)
 
 build:
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/sparkplain
@@ -99,7 +105,7 @@ help:
 	@echo "  fmt        - Format source code in place"
 	@echo "  fmt-check  - Fail if any file needs gofmt"
 	@echo "  vet        - Run go vet"
-	@echo "  test       - Run tests with the race detector"
+	@echo "  test       - Run the tests, and the race detector on the packages that start goroutines"
 	@echo "  build      - Build $(BINARY) with the version stamped in"
 	@echo "  install    - Build and install the binary to a bin dir (PREFIX= to override)"
 	@echo "  clean      - Remove bin/, out/ and a stray ./sparkplain"

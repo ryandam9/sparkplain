@@ -8,6 +8,7 @@ import (
 )
 
 func TestDistExactForSmallCounts(t *testing.T) {
+	t.Parallel()
 	var d distAcc
 	for _, v := range []int64{5, 1, 9, 3, 7} {
 		d.add(v)
@@ -19,6 +20,7 @@ func TestDistExactForSmallCounts(t *testing.T) {
 }
 
 func TestDistHistogramWithinThreePercent(t *testing.T) {
+	t.Parallel()
 	r := rand.New(rand.NewPCG(1, 2))
 	var d distAcc
 	var all []int64
@@ -41,6 +43,7 @@ func TestDistHistogramWithinThreePercent(t *testing.T) {
 }
 
 func TestBucketBoundsCoverValue(t *testing.T) {
+	t.Parallel()
 	for _, v := range []int64{0, 15, 16, 17, 31, 32, 1000, 123456789, math.MaxInt64 / 2} {
 		i := bucketOf(v)
 		mid := bucketMid(i)
