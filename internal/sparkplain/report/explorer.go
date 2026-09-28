@@ -98,7 +98,7 @@ func (t *table) add(v ...any) {
 // page and so are sent once instead of on every row.
 var (
 	taskCols = []string{"task", "index", "attempt", "exec", "status", "spec", "launch", "dur", "run", "gc", "deser",
-		"fetch", "rows", "input", "shRead", "shWrite", "spill", "file", "line", "part", "loc", "sched", "result"}
+		"fetch", "rows", "input", "shRead", "shWrite", "spill", "file", "line", "part", "loc", "sched", "result", "peakExec"}
 	// localities are the task "loc" codes, in order.
 	localities = []string{"PROCESS_LOCAL", "NODE_LOCAL", "RACK_LOCAL", "ANY", "NO_PREF"}
 	cellCols   = []string{"exec", "tasks", "ok", "failed", "killed", "dur", "gc", "input", "shRead", "shWrite",
@@ -512,7 +512,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		}
 		return []int64{t.TaskID, int64(t.Index), int64(t.Attempt), execIdx(t.ExecutorID), status, spec, launch,
 			t.DurationMs, t.RunTimeMs, t.GCTimeMs, t.DeserializeMs, t.FetchWaitMs, t.RecordsRead, t.InputBytes,
-			t.ShuffleRead, t.ShuffleWrite, t.Spill, fileIdx(t.Source), t.Source.Line, int64(t.PartitionID), loc, t.SchedDelayMs, t.ResultSize}
+			t.ShuffleRead, t.ShuffleWrite, t.Spill, fileIdx(t.Source), t.Source.Line, int64(t.PartitionID), loc, t.SchedDelayMs, t.ResultSize, t.PeakExec}
 	}
 	for _, sd := range x.Stages {
 		xd := xDetail{Metrics: map[string][7]int64{}, Hist: [][3]int64{}, Slowest: [][]int64{}, Sample: [][]int64{}, Cells: [][]int64{}, From: sd.SampledFrom}

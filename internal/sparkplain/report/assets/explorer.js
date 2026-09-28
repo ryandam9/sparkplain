@@ -562,6 +562,7 @@
         numCol("Duration", "dur", dur), numCol("Run", "run", dur), numCol("GC", "gc", dur), numCol("Deserialize", "deser", dur),
         numCol("Fetch wait", "fetch", dur), numCol("Rows read", "rows"), numCol("Input", "input", bytes),
         numCol("Shuffle read", "shRead", bytes), numCol("Shuffle write", "shWrite", bytes), numCol("Spill", "spill", bytes),
+        numCol("Peak execution memory", "peakExec", bytes, "Most memory the task held at once for sorts, joins and aggregations"),
         { h: "Locality", title: LOC_EXPLAIN, v: function (t) { return t.loc; }, f: function (t) { return LOC[t.loc] || "—"; } },
         numCol("Scheduler delay", "sched", dur, "Launch overhead and waiting on the driver"), numCol("Result size", "result", bytes),
         { h: "Log line", v: function (t) { return t.line; }, f: function (t) { return el("span", { cls: "srcref", text: t.file >= 0 ? (D.files[t.file] || "?") + ":" + t.line : "" }); } }
@@ -1447,7 +1448,8 @@
     input: { label: "Input read", kind: "bytes", v: function (r) { return r[T.input]; } },
     rows: { label: "Rows read", kind: "count", v: function (r) { return r[T.rows]; } },
     shRead: { label: "Shuffle read", kind: "bytes", v: function (r) { return r[T.shRead]; } },
-    part: { label: "Partition", kind: "count", v: function (r) { return r[T.part]; } }
+    part: { label: "Partition", kind: "count", v: function (r) { return r[T.part]; } },
+    peakExec: { label: "Peak execution memory", kind: "bytes", v: function (r) { return r[T.peakExec]; } }
   };
   var SCATTER_Y = {
     dur: { label: "Duration", kind: "ms", v: function (r) { return r[T.dur]; }, read: "Higher marks took longer." },
@@ -1455,6 +1457,7 @@
     fetch: { label: "Waiting for shuffle data", kind: "ms", v: function (r) { return r[T.fetch]; }, read: "High marks waited long for data from other executors: a busy network, a slow or lost executor, or skewed shuffle blocks." },
     sched: { label: "Scheduler delay", kind: "ms", v: function (r) { return r[T.sched]; }, read: "High marks waited long to start or to report back: a busy driver or large task closures." },
     spill: { label: "Spilled", kind: "bytes", v: function (r) { return r[T.spill]; }, read: "High marks ran out of execution memory and wrote to disk." },
+    peakExec: { label: "Peak execution memory", kind: "bytes", v: function (r) { return r[T.peakExec]; }, read: "High marks held the most memory at once for sorts, joins and aggregations. If they also spill or spend long in garbage collection, give each task more memory or split the work into more partitions." },
     rows: { label: "Rows read", kind: "count", v: function (r) { return r[T.rows]; }, read: "High marks read more rows than the rest: skewed data, often a hot key." },
     result: { label: "Result size", kind: "bytes", v: function (r) { return r[T.result]; }, read: "High marks sent large results to the driver, which holds them all in memory." }
   };

@@ -169,7 +169,7 @@ func (x *explorerAcc) task(k stageKey, e *taskEndEvent, t *model.TaskTotals, pea
 		FetchWaitMs: t.ShuffleFetchWaitMs, RecordsRead: t.InputRecords + t.ShuffleReadRecords,
 		InputBytes: t.InputBytes, ShuffleRead: t.ShuffleReadBytes, ShuffleWrite: t.ShuffleWriteBytes,
 		Spill: t.MemorySpillBytes + t.DiskSpillBytes, PartitionID: e.Info.PartitionID, Locality: e.Info.Locality,
-		SchedDelayMs: t.SchedulerDelayMs, ResultSize: t.ResultSizeBytes, Source: src,
+		SchedDelayMs: t.SchedulerDelayMs, ResultSize: t.ResultSizeBytes, PeakExec: t.PeakExecutionMemory, Source: src,
 	}
 
 	// Slowest tasks: keep the top slowestCap by duration.
