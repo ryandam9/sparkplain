@@ -2411,7 +2411,7 @@
       cols: [
         { h: "Host", v: function (n) { return n.host; }, f: function (n) { return el("span", { cls: "mono", text: n.host }); } },
         { h: "Ran", v: function (n) { return n.executors.length; }, f: function (n) {
-          if (!n.executors.length) return n.driver ? "the driver only" : n.instance && n.instance.role === "MASTER" ? "primary node" : el("span", { cls: "bad", text: "nothing" });
+          if (!n.executors.length) return n.driver ? el("span", null, "the driver only", n.noRoom ? el("span", { cls: "sub", text: n.noRoom }) : null) : n.instance && n.instance.role === "MASTER" ? "primary node" : el("span", { cls: "bad", text: "nothing" });
           return el("span", null, n.driver ? "driver, " : "", n.executors.map(function (x, i) { return [i ? ", " : "", execLink(x)]; }));
         } },
         { h: "Instance", v: function (n) { return n.instance ? n.instance.id : ""; }, f: function (n) {

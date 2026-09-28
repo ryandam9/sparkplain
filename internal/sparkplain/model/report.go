@@ -169,6 +169,18 @@ type Host struct {
 	Source        Source     `json:"source"`
 }
 
+// NoRoomBesideDriver says why a host that ran the driver ran no executor,
+// when the reason is size: the memory YARN offered, less the driver's
+// container, is smaller than one executor container. It is "" otherwise,
+// or when the sizes are not known.
+func (h Host) NoRoomBesideDriver() string {
+	left := h.YARNMemoryBytes - h.DriverContainerBytes
+	if !h.Driver || len(h.Executors) > 0 || h.YARNMemoryBytes <= 0 || h.DriverContainerBytes <= 0 || h.ExecutorContainerBytes <= left {
+		return ""
+	}
+	return "No room for an executor: " + Bytes(max(left, 0)) + " left beside the driver, and one needs " + Bytes(h.ExecutorContainerBytes) + "."
+}
+
 // NodesSection is module 2.
 type NodesSection struct {
 	Coverage Coverage `json:"coverage"`

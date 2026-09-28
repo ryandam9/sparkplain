@@ -97,6 +97,7 @@ func TestExecutorFit(t *testing.T) {
 24/01/01 10:01:25 INFO YarnAllocator: Driver requested a total number of 7 executor(s) for resource profile id: 0.
 `)
 	l := synthetic(nil, &model.Executor{ID: "1", Host: "ip-10-0-0-2.ec2.internal", Cores: 4})
+	l.Driver = &model.Executor{ID: "driver", Host: "ip-10-0-0-3.ec2.internal"}
 	r := runWithLogs(l, nil, rm, drv)
 	f := rules(r)["executor-fit"]
 	if f.Title != "Spark wanted 42 executors; the cluster had room for 1" || !strings.Contains(f.Explanation, "ip-10-0-0-3.ec2.internal had room for none") ||
@@ -106,10 +107,20 @@ func TestExecutorFit(t *testing.T) {
 	if len(f.Evidence) != 4 || f.Evidence[0].Source.Line != 4 {
 		t.Errorf("evidence = %+v", f.Evidence)
 	}
+	driverOnly := false
 	for _, h := range r.Nodes.Hosts {
+		driverOnly = driverOnly || h.Driver && len(h.Executors) == 0
 		if h.Name == "ip-10-0-0-2.ec2.internal" && (h.YARNMemoryBytes != 12288<<20 || h.YARNVCores != 4) {
 			t.Errorf("host capacity = %+v", h)
 		}
+		// The node that ran only the driver says why no executor joined it.
+		want := map[string]string{"ip-10-0-0-3.ec2.internal": "No room for an executor: 9.6 GiB left beside the driver, and one needs 11.0 GiB."}[h.Name]
+		if got := h.NoRoomBesideDriver(); got != want {
+			t.Errorf("%s: no room = %q, want %q (%+v)", h.Name, got, want, h)
+		}
+	}
+	if !driverOnly {
+		t.Errorf("no host ran only the driver: %+v", r.Nodes.Hosts)
 	}
 	// Room for all it wanted: no finding.
 	few := logFile(t, driverErr, `24/01/01 10:01:10 INFO YarnAllocator: Will request 1 executor container(s) for  ResourceProfile Id: 0, each with 4 core(s) and 11264 MB memory.
