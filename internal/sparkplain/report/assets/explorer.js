@@ -271,7 +271,21 @@
   if (D.aws) TABS.push(["cluster", "Cluster", D.aws.nodes.length]);
   if (logFiles.length || (D.logSources || []).length) TABS.push(["logs", "Logs", logFiles.length]);
   var tabs = document.getElementById("sp-tabs");
-  TABS.forEach(function (t) { tabs.appendChild(el("a", { href: "#" + t[0], "data-tab": t[0] }, t[1], t[2] != null ? el("span", { cls: "n", text: num(t[2]) }) : null)); });
+  // Less-used tabs sit under More (a native disclosure, so it works from the
+  // keyboard); the row keeps the ones a diagnosis starts from.
+  var MORE = { storage: 1, code: 1, environment: 1, log: 1, logs: 1 };
+  var tabLink = function (t) { return el("a", { href: "#" + t[0], "data-tab": t[0] }, t[1], t[2] != null ? el("span", { cls: "n", text: num(t[2]) }) : null); };
+  TABS.filter(function (t) { return !MORE[t[0]]; }).forEach(function (t) { tabs.appendChild(tabLink(t)); });
+  var moreTabs = TABS.filter(function (t) { return MORE[t[0]]; });
+  var moreBox = null, moreLabel = null;
+  if (moreTabs.length) {
+    moreLabel = el("span", { text: "More" });
+    moreBox = el("details", { cls: "tabmore" }, el("summary", null, moreLabel), el("div", { cls: "menu" }, moreTabs.map(tabLink)));
+    moreBox.addEventListener("click", function (e) { if (e.target.closest("a")) moreBox.open = false; });
+    document.addEventListener("click", function (e) { if (moreBox.open && !moreBox.contains(e.target)) moreBox.open = false; });
+    moreBox.addEventListener("keydown", function (e) { if (e.key === "Escape") { moreBox.open = false; moreBox.querySelector("summary").focus(); } });
+    tabs.appendChild(moreBox);
+  }
 
   var views = {};
   views.overview = function () {
@@ -289,11 +303,6 @@
         return el("div", { cls: "kpi" }, el("span", { cls: "l", text: k.label }), el("span", { cls: "v" + (k.tone ? " " + k.tone : "") }, k.value, k.unit ? el("small", { text: " " + k.unit }) : null), el("span", { cls: "x", text: k.explain }));
       })));
     }
-    var ov = section("Over time", "Tasks running across the run, and when each job ran.");
-    ov.appendChild(chartSlot("", "running"));
-    ov.appendChild(chartSlot("tall", "jobsTimeline"));
-    ov.appendChild(chartSlot("", "dataOverTime"));
-    out.push(ov);
     var fs = section("Findings", D.findings.length ? "Problems and notes found in this run. Evidence links open the stage, job or executor it concerns." : "No findings for this run.");
     var list = el("div", { cls: "findings" });
     D.findings.forEach(function (f, i) {
@@ -314,6 +323,12 @@
       rs.appendChild(runningTable(runningTasks));
       out.push(rs);
     }
+    // the diagnosis first, then the charts over time
+    var ov = section("Over time", "Tasks running across the run, and when each job ran.");
+    ov.appendChild(chartSlot("", "running"));
+    ov.appendChild(chartSlot("tall", "jobsTimeline"));
+    ov.appendChild(chartSlot("", "dataOverTime"));
+    out.push(ov);
     if (D.critical && D.critical.length) {
       var cp = section("Critical path", "The chain of stages that set how long the longest job (job " + D.criticalJob + ") took: each waited for the one before it. Speeding up anything else would not shorten that job.");
       cp.appendChild(el("p", null, D.critical.map(function (id, i) { var st = (stagesByID[id] || [])[0]; return [i ? " → " : "", st ? stageLink(st) : String(id), st ? " (" + dur(span(st.submitted, st.completed)) + ")" : ""]; })));
@@ -644,10 +659,11 @@
 
   views.executors = function () {
     var s = section("Executors", "Executors are the worker processes that ran tasks. The driver coordinates and usually runs none.");
+    // which executor behaved differently first; the charts after it explain one
+    s.appendChild(chartSlot("", "heatmap"));
     s.appendChild(chartSlot("tall", "executorsTimeline"));
     s.appendChild(chartSlot("", "execTime"));
     s.appendChild(chartSlot("", "execHeapAll"));
-    s.appendChild(chartSlot("", "heatmap"));
     if (exclusions.length) {
       s.appendChild(el("h3", { text: "Exclusions" }));
       s.appendChild(explain(EXCL_EXPLAIN));
@@ -2286,6 +2302,12 @@
     if (!views[name]) { name = "overview"; arg = null; }
     var tab = { job: "jobs", stage: "stages", executor: "executors", query: "sql", finding: "overview" }[name] || name;
     tabs.querySelectorAll("a").forEach(function (a) { if (a.getAttribute("data-tab") === tab) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+    if (moreBox) {
+      // a tab under More shows its name on the menu while it is open
+      var inMore = moreTabs.filter(function (t) { return t[0] === tab; })[0];
+      moreBox.classList.toggle("cur", !!inMore);
+      moreLabel.textContent = inMore ? "More: " + inMore[1] : "More";
+    }
     charts.length = 0;
     tipHide();
     main.textContent = "";
