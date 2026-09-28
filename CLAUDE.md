@@ -31,12 +31,12 @@ A Go CLI that turns one Spark application's logs into a single plain-language HT
 
 ```sh
 gofmt -l . && go vet ./...
-go test -race ./...
+make test    # go test ./..., then go test -race on the packages that start goroutines (RACE_PKG)
 go build ./cmd/sparkplain
 govulncheck ./...
 ```
 
-Run all four before calling a task done.
+Run all four before calling a task done. Code that starts a goroutine belongs in a package listed in the Makefile's `RACE_PKG`; a test enforces it.
 
 ## Hard rules
 

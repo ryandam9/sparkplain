@@ -75,7 +75,7 @@ Exit codes: 0 complete, 2 fatal, 3 partial (something missing or unreadable, whi
 ## Develop
 
 ```sh
-make check     # gofmt check, go vet, go test -race, build and govulncheck: run before calling a task done
+make check     # gofmt check, go vet, tests (the race detector on the packages that start goroutines), build and govulncheck: run before calling a task done
 make run       # builds, then writes a report for the committed fixture to out/ (ARGS="..." to override)
 make help      # lists every target
 ```
@@ -84,7 +84,7 @@ make help      # lists every target
 
 ```sh
 gofmt -l . && go vet ./...
-go test -race ./...
+go test ./... && go test -race ./internal/sparkplain/source ./internal/sparkplain/yarnlog
 go build ./cmd/sparkplain
 govulncheck ./...
 ```

@@ -11,6 +11,7 @@ import (
 )
 
 func TestExplorerCarriesLogs(t *testing.T) {
+	t.Parallel()
 	r, x := buildWithExplorer(t, "application_1790380000000_0042")
 	evil := `</script><script>alert(2)</script>`
 	var many []model.LogLine
@@ -55,6 +56,7 @@ func TestExplorerCarriesLogs(t *testing.T) {
 }
 
 func TestExplorerCarriesClusterData(t *testing.T) {
+	t.Parallel()
 	r, x := buildWithExplorer(t, "application_1790380000000_0042")
 	at := time.Unix(1_790_000_000, 0).UTC()
 	avg, peak := 42.0, 90.0
@@ -87,6 +89,7 @@ func TestExplorerCarriesClusterData(t *testing.T) {
 
 // A -source path sparkplain may not read becomes a note, not an error.
 func TestLoadSourcesWithoutPermission(t *testing.T) {
+	t.Parallel()
 	if os.Getuid() == 0 {
 		t.Skip("root reads every folder")
 	}

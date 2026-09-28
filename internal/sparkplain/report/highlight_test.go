@@ -11,6 +11,7 @@ import (
 // The Code tab's syntax highlighter (explorer.js) run under Node, which is
 // on developer machines and CI runners; skipped where it is not.
 func TestSyntaxHighlighter(t *testing.T) {
+	t.Parallel()
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Skip("node not installed")

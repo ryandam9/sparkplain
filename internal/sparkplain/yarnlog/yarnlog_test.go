@@ -16,6 +16,7 @@ import (
 const emrlogs = "../../../testdata/emrlogs"
 
 func TestDescribe(t *testing.T) {
+	t.Parallel()
 	for key, want := range map[string]File{
 		"containers/application_1_0001/container_1790380000000_0001_01_000001/stderr.gz":                    {Kind: ContainerStderr, App: "application_1_0001", Container: "container_1790380000000_0001_01_000001"},
 		"logs/j-X/containers/application_1_0001/container_e02_1790380000000_0001_02_000003/stdout":          {Kind: ContainerStdout, App: "application_1_0001", Container: "container_e02_1790380000000_0001_02_000003"},
@@ -160,6 +161,7 @@ func one(t *testing.T, ls []model.LogLine, what string) model.LogLine {
 // The failed EMR run (0052): the script's SparkSession could not start
 // because spark.eventLog.dir named an S3 prefix with no objects.
 func TestFailedRun(t *testing.T) {
+	t.Parallel()
 	got := classifyTree(t, "j-FIXTURE0052CLUSTER", "application_1790380000000_0052")
 	const driver = "container_1790380000000_0052_02_000001/"
 
@@ -254,6 +256,7 @@ func TestFailedRun(t *testing.T) {
 // The first EMR run (0049): a deliberate cast failure in stage 22, and a
 // step that tried to run s3-dist-cp, which the release lacks.
 func TestTaskFailureRun(t *testing.T) {
+	t.Parallel()
 	got := classifyTree(t, "j-FIXTURE0049CLUSTER", "application_1790380000000_0049")
 	te := one(t, find(t, got, "container_1790380000000_0049_01_000002/stderr.gz", model.LogTaskError), "executor task errors folded")
 	if te.Count != 7 || te.Fields["stage"] != "22.0" || te.Fields["root"] != "org.apache.spark.SparkNumberFormatException" ||
@@ -287,6 +290,7 @@ func TestTaskFailureRun(t *testing.T) {
 // The speculation run (0050): a speculative copy won, and Spark killed the
 // original; executors were stopped with SIGTERM at the end.
 func TestSpeculationRun(t *testing.T) {
+	t.Parallel()
 	got := classifyTree(t, "j-FIXTURE0050CLUSTER", "application_1790380000000_0050")
 	te := one(t, find(t, got, "container_1790380000000_0050_01_000001/stderr.gz", model.LogTaskError), "killed twin")
 	if te.Severity != model.Info || te.Fields["reason"] != "TaskKilled (Stage finished)" {
@@ -322,6 +326,7 @@ func kinds(res Result) string {
 // Rules the test clusters never triggered, with lines in the formats of
 // Spark 3.5.1's and Hadoop 3.3's classes (checked against their strings).
 func TestSyntheticRules(t *testing.T) {
+	t.Parallel()
 	const drv = "containers/application_1700000000000_0001/container_1700000000000_0001_01_000001/stderr"
 	const exe = "containers/application_1700000000000_0001/container_1700000000000_0001_01_000002/stderr"
 	for _, tc := range []struct {
@@ -440,6 +445,7 @@ java.sql.SQLException: login failed, token=FAKE-PLANTED-3 key AKIAFAKEFAKEFAKEFA
 }
 
 func TestControllerRedactsCommand(t *testing.T) {
+	t.Parallel()
 	res := classifyText(t, "steps/s-FIXTURESTEP0009/controller", `2024-01-01T10:00:00.000Z INFO Ensure step 9 jar file command-runner.jar
 INFO startExec 'hadoop jar /var/lib/aws/emr/step-runner/hadoop-jars/command-runner.jar spark-submit --conf spark.hadoop.fs.s3a.secret.key=FAKE-PLANTED-4 --conf spark.executor.memory=4g -Dapi.token=FAKE-PLANTED-5 s3://example-bucket/job.py'
 INFO Environment:
@@ -455,6 +461,7 @@ INFO Environment:
 }
 
 func TestFoldingAndCaps(t *testing.T) {
+	t.Parallel()
 	var b strings.Builder
 	for i := 0; i < 30; i++ {
 		b.WriteString("24/01/01 10:00:00 ERROR Executor: Exception in task " + strconv.Itoa(i) + ".0 in stage 1.0 (TID " + strconv.Itoa(100+i) + ")\r\n")
@@ -478,6 +485,7 @@ func TestFoldingAndCaps(t *testing.T) {
 }
 
 func TestContainerExitMeaning(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		code   int
 		driver bool
@@ -525,6 +533,7 @@ func FuzzClassify(f *testing.F) {
 // Capacity lines are node-wide, so they are kept though they name no
 // application; container placements are kept for this application only.
 func TestCapacityAndRequests(t *testing.T) {
+	t.Parallel()
 	nm := classifyText(t, "node/i-0fee0000000000001/applications/hadoop-yarn/hadoop-yarn-nodemanager-ip-10-0-0-2.log",
 		`2024-01-01 10:00:00,000 INFO org.apache.hadoop.yarn.server.nodemanager.NodeStatusUpdaterImpl (main): Registered with ResourceManager as ip-10-0-0-2.ec2.internal:8041 with total resource of <memory:12288, vCores:4>
 `, Options{AppID: "application_1700000000000_0001"})
@@ -569,6 +578,7 @@ func TestCapacityAndRequests(t *testing.T) {
 // itself and its container exits 137 with no YARN memory kill. Lines as
 // the phase 3 test cluster wrote them, in the executor's stdout.
 func TestHotSpotOutOfMemory(t *testing.T) {
+	t.Parallel()
 	res := classifyText(t, "containers/application_1700000000000_0001/container_1700000000000_0001_01_000002/stdout", `#
 # java.lang.OutOfMemoryError: GC overhead limit exceeded
 # -XX:OnOutOfMemoryError="kill -9 %p
@@ -598,6 +608,7 @@ kill -9 14396"...
 // as the phase 4 test cluster's first attempt logged them when its spot
 // node was reclaimed.
 func TestDriverHostAndNodeState(t *testing.T) {
+	t.Parallel()
 	res := classifyText(t, "containers/application_1700000000000_0001/container_1700000000000_0001_01_000001/stderr", `26/09/27 08:02:00 INFO BlockManagerMaster: Registering BlockManager BlockManagerId(driver, ip-10-0-0-4.ec2.internal, 34591, None)
 26/09/27 08:02:00 INFO BlockManagerMaster: Registered BlockManager BlockManagerId(driver, ip-10-0-0-4.ec2.internal, 34591, None)
 26/09/27 08:02:01 INFO BlockManagerMaster: Registered BlockManager BlockManagerId(1, ip-10-0-0-2.ec2.internal, 40001, None)

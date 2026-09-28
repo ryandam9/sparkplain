@@ -62,6 +62,7 @@ func embedded(t *testing.T, page string) map[string]any {
 func rows(d map[string]any, key string) []any { return d[key].(map[string]any)["rows"].([]any) }
 
 func TestExplorerDataMatchesReport(t *testing.T) {
+	t.Parallel()
 	r, x := buildWithExplorer(t, "application_1790380000000_0042")
 	d := embedded(t, renderExplorer(t, r, x))
 	if got, want := len(rows(d, "jobs")), len(r.Jobs.Jobs); got != want {
@@ -115,6 +116,7 @@ func TestExplorerDataMatchesReport(t *testing.T) {
 // phase 1d). Only the SVG namespace, an identifier browsers never fetch,
 // may appear as a URL in the page's own markup and script.
 func TestExplorerLoadsNothingExternal(t *testing.T) {
+	t.Parallel()
 	r, x := buildWithExplorer(t, "application_1790380000000_0042")
 	page := dataRE.ReplaceAllString(renderExplorer(t, r, x), "") // log values may contain URLs; they are data, not loads
 	// The vendored D3 holds XML namespace names and its licence URL, never
@@ -141,6 +143,7 @@ func TestExplorerLoadsNothingExternal(t *testing.T) {
 }
 
 func TestExplorerHasNoPlantedSecrets(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"application_1790380000000_0042", "application_1790380000000_0044"} {
 		r, x := buildWithExplorer(t, name)
 		if m := regexp.MustCompile(`FAKE-[A-Z0-9-]+|AKIAIOSFODNN7EXAMPLE`).FindString(renderExplorer(t, r, x)); m != "" {
@@ -151,6 +154,7 @@ func TestExplorerHasNoPlantedSecrets(t *testing.T) {
 
 // A value from the log must not be able to end the data block and run code.
 func TestExplorerEscapesHostileText(t *testing.T) {
+	t.Parallel()
 	r, x := buildWithExplorer(t, "application_1790380000000_0042")
 	evil := `</script><script>alert(1)</script><!--`
 	r.Jobs.Jobs[0].Description = evil
@@ -170,6 +174,7 @@ func TestExplorerEscapesHostileText(t *testing.T) {
 // executors), with the samples shrunk the way the parser shrinks them, and
 // fills every value with a large number.
 func TestExplorerSizeBudget(t *testing.T) {
+	t.Parallel()
 	r := &model.Report{Application: model.Application{ID: "application_1_1", Start: time.UnixMilli(1_790_000_000_000)}}
 	lim := model.DefaultExplorerLimits()
 	sample, slowest, shrinks := lim.SamplePerStage, lim.SlowestPerStage, 0
@@ -221,6 +226,7 @@ func TestExplorerSizeBudget(t *testing.T) {
 }
 
 func TestExplorerWithoutCollectedData(t *testing.T) {
+	t.Parallel()
 	r, _ := buildWithExplorer(t, "application_1790380000000_0042")
 	d := embedded(t, renderExplorer(t, r, nil))
 	if d["collected"] != false || len(d["notes"].([]any)) == 0 {
@@ -233,6 +239,7 @@ func TestExplorerWithoutCollectedData(t *testing.T) {
 }
 
 func TestReportLinksToExplorer(t *testing.T) {
+	t.Parallel()
 	r, _ := buildWithExplorer(t, "application_1790380000000_0042")
 	var b bytes.Buffer
 	if err := WriteHTML(&b, r, Options{ExplorerHref: "explorer.html"}); err != nil {
@@ -249,6 +256,7 @@ func TestReportLinksToExplorer(t *testing.T) {
 // -source: the log's file names find the local files, and the embedded code
 // is redacted (the fixture workload plants secrets in its own source).
 func TestLoadSources(t *testing.T) {
+	t.Parallel()
 	r, x := buildWithExplorer(t, "application_1790380000000_0046")
 	srcs, notes, err := LoadSources(r, []string{"../../../scripts/fixtures"})
 	if err != nil {
@@ -286,6 +294,7 @@ func TestLoadSources(t *testing.T) {
 // Every chart the explorer places has a function to draw it; a misspelt
 // name would only show as an empty box in the browser.
 func TestExplorerChartsHaveDrawers(t *testing.T) {
+	t.Parallel()
 	slots := regexp.MustCompile(`chartSlot\("[^"]*", "([A-Za-z]+)`).FindAllStringSubmatch(explorerJS, -1)
 	if len(slots) < 15 {
 		t.Fatalf("found %d chart slots; the pattern no longer matches explorer.js", len(slots))
@@ -301,6 +310,7 @@ func TestExplorerChartsHaveDrawers(t *testing.T) {
 // integrity hash when vendored), and the page never calls the parts of it
 // that fetch data.
 func TestVendoredD3(t *testing.T) {
+	t.Parallel()
 	sum := sha256.Sum256([]byte(d3JS))
 	if got := hex.EncodeToString(sum[:]); got != "f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539" {
 		t.Errorf("assets/vendor/d3-7.9.0.min.js changed: sha256 %s", got)
@@ -313,6 +323,7 @@ func TestVendoredD3(t *testing.T) {
 // SP-006: a source file cut short by an over-long line is marked cut and
 // noted, not embedded as if it were complete.
 func TestLoadSourcesLongLineMarkedCut(t *testing.T) {
+	t.Parallel()
 	r, _ := buildWithExplorer(t, "application_1790380000000_0046")
 	orig, err := os.ReadFile("../../../scripts/fixtures/workload.py")
 	if err != nil {
@@ -336,6 +347,7 @@ func TestLoadSourcesLongLineMarkedCut(t *testing.T) {
 
 // The run timeline shades the same driver gaps the report lists.
 func TestExplorerCarriesDriverGaps(t *testing.T) {
+	t.Parallel()
 	r, x := buildWithExplorer(t, "application_1790380000000_0046")
 	if len(r.Jobs.DriverGaps) == 0 {
 		t.Fatal("fixture has no driver gaps")
@@ -359,6 +371,7 @@ func TestExplorerCarriesDriverGaps(t *testing.T) {
 // The page gets the whole run path for its totals and a drawing of it:
 // every stage step, gaps worth showing, and context parents beside.
 func TestExplorerRunPath(t *testing.T) {
+	t.Parallel()
 	r, x := buildWithExplorer(t, "application_1790380000000_0046")
 	if len(r.Jobs.RunPath) == 0 {
 		t.Fatal("no run path")
@@ -407,6 +420,7 @@ func TestExplorerRunPath(t *testing.T) {
 // The Overview's utilisation panel restates what the analysis found, one
 // line each, with no combined score.
 func TestResourceUse(t *testing.T) {
+	t.Parallel()
 	r, _ := buildWithExplorer(t, "application_1790380000000_0042")
 	got := map[string]xUse{}
 	for _, u := range resourceUse(r, buildAnatomy(r)) {

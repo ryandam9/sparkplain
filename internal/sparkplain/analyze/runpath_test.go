@@ -10,6 +10,7 @@ import (
 )
 
 func TestRunPath(t *testing.T) {
+	t.Parallel()
 	t0 := time.Date(2026, 9, 28, 10, 0, 0, 0, time.UTC)
 	at := func(s int) time.Time { return t0.Add(time.Duration(s) * time.Second) }
 	stage := func(id, from, to int, parents ...int) *model.Stage {

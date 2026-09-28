@@ -45,6 +45,7 @@ func rules(r *model.Report) map[string]model.Finding {
 }
 
 func TestMainFixtureFindings(t *testing.T) {
+	t.Parallel()
 	r := fixtureReport(t, "application_1790380000000_0042", "application_1790380000000_0042", DefaultThresholds())
 	got := rules(r)
 	for rule, sev := range map[string]model.Severity{
@@ -124,6 +125,7 @@ func keys(m map[string]model.Finding) []string {
 }
 
 func TestThresholdsAreTunable(t *testing.T) {
+	t.Parallel()
 	th := DefaultThresholds()
 	th.SkewRatio = 50
 	th.SpillShare = 1e9
@@ -138,6 +140,7 @@ func TestThresholdsAreTunable(t *testing.T) {
 }
 
 func TestFailedAndInProgressApps(t *testing.T) {
+	t.Parallel()
 	r := fixtureReport(t, "application_1790380000000_0044", "application_1790380000000_0044", DefaultThresholds())
 	if f := rules(r)["job-failed"]; f.Severity != model.Critical || !strings.Contains(f.Title, "application ended") {
 		t.Errorf("failed app: %+v", f)
@@ -152,6 +155,7 @@ func TestFailedAndInProgressApps(t *testing.T) {
 }
 
 func TestNoEventLog(t *testing.T) {
+	t.Parallel()
 	r := Run(Input{Tool: "t", EventSource: model.SourceStatus{Name: "Spark event log", Status: "error", Class: "corrupt", Detail: "bad"}})
 	if r.ExitCode != 3 || r.Jobs.Coverage != model.NeedsEventLog || r.Memory.Coverage != model.NeedsEventLog || len(r.Summary.Sentences) == 0 {
 		t.Errorf("exit %d jobs %s", r.ExitCode, r.Jobs.Coverage)
@@ -162,6 +166,7 @@ func TestNoEventLog(t *testing.T) {
 }
 
 func TestReportHasNoPlantedSecrets(t *testing.T) {
+	t.Parallel()
 	for _, n := range []string{"application_1790380000000_0042", "application_1790380000000_0044"} {
 		r := fixtureReport(t, n, n, DefaultThresholds())
 		b, _ := json.Marshal(r)
@@ -192,6 +197,7 @@ func runSynthetic(l *model.EventLog) map[string]model.Finding {
 }
 
 func TestRuleGCPressureLowCPUAndIdle(t *testing.T) {
+	t.Parallel()
 	x := &model.Executor{ID: "1", Host: "h", Cores: 4, Tasks: model.TaskTotals{RunTimeMs: 600_000, GCTimeMs: 120_000, CPUTimeNs: 60_000 * 1e6}}
 	got := runSynthetic(synthetic(nil, x))
 	for _, r := range []string{"memory-gc-pressure", "cpu-low", "cpu-idle-executors"} {
@@ -209,6 +215,7 @@ func TestRuleGCPressureLowCPUAndIdle(t *testing.T) {
 }
 
 func TestRuleMemoryOverAndNearLimit(t *testing.T) {
+	t.Parallel()
 	conf := map[string]string{"spark.executor.memory": "8g"}
 	low := &model.Executor{ID: "1", Host: "h", Cores: 2, Tasks: model.TaskTotals{RunTimeMs: 600_000, CPUTimeNs: 500_000 * 1e6}, Peak: model.PeakMemory{JVMHeap: 1 << 30}}
 	if f, ok := runSynthetic(synthetic(conf, low))["memory-over-provisioned"]; !ok || !strings.Contains(f.Title, "8.0 GiB") {
@@ -224,6 +231,7 @@ func TestRuleMemoryOverAndNearLimit(t *testing.T) {
 // carry no memory samples at all. Peak heap must then read "not recorded",
 // never 0 B, and no memory rule may fire on the missing numbers.
 func TestNoMemorySamples(t *testing.T) {
+	t.Parallel()
 	conf := map[string]string{"spark.executor.memory": "8g"}
 	x := &model.Executor{ID: "1", Host: "h", Cores: 2, Tasks: model.TaskTotals{RunTimeMs: 600_000, CPUTimeNs: 500_000 * 1e6}}
 	r := Run(Input{Tool: "t", EventLog: synthetic(conf, x), EventSource: model.SourceStatus{Name: "Spark event log", Status: "read"}})
@@ -253,6 +261,7 @@ func TestNoMemorySamples(t *testing.T) {
 // because its executor was warming up (every task read 1.25M rows); stage 27's
 // slowest task read 24M rows against a 640K median.
 func TestRuleSkewNeedsData(t *testing.T) {
+	t.Parallel()
 	stage := func(id int, recs, recsP50, shuffle, shuffleP50 int64) *model.Stage {
 		return &model.Stage{ID: id, Name: "count at job.py:1", Status: model.StatusSucceeded,
 			TaskDuration: model.Dist{Count: 32, Max: 2300, P50: 94},
@@ -283,6 +292,7 @@ func TestRuleSkewNeedsData(t *testing.T) {
 }
 
 func TestRuleLostAndDecommissioned(t *testing.T) {
+	t.Parallel()
 	lost := &model.Executor{ID: "1", Host: "h", Removed: time.Unix(1_790_000_100, 0), RemovedReason: "Executor heartbeat timed out", RemovalKind: model.RemovalLost}
 	dec := &model.Executor{ID: "2", Host: "h", Removed: time.Unix(1_790_000_100, 0), RemovedReason: "Executor decommission", RemovalKind: model.RemovalDecommissioned}
 	got := runSynthetic(synthetic(nil, lost, dec))
@@ -295,6 +305,7 @@ func TestRuleLostAndDecommissioned(t *testing.T) {
 }
 
 func TestRuleConfigRisks(t *testing.T) {
+	t.Parallel()
 	got := runSynthetic(synthetic(map[string]string{
 		"spark.driver.maxResultSize": "0", "spark.dynamicAllocation.enabled": "true", "spark.sql.adaptive.enabled": "false",
 	}))
@@ -310,6 +321,7 @@ func TestRuleConfigRisks(t *testing.T) {
 }
 
 func TestShortError(t *testing.T) {
+	t.Parallel()
 	msg := "Job aborted due to stage failure: Task 1 in stage 30.0 failed 3 times, most recent failure: Lost task 1.2 (TID 1): org.apache.spark.api.python.PythonException: Traceback (most recent call last):\n  File \"x.py\", line 3, in f\n    raise ValueError(\"bad\")\nValueError: bad\n\n\tat org.apache.X"
 	if got := shortError(msg); got != "Job aborted due to stage failure: Task 1 in stage 30.0 failed 3 times — ValueError: bad" {
 		t.Errorf("got %q", got)
@@ -320,6 +332,7 @@ func TestShortError(t *testing.T) {
 }
 
 func TestSettingsCompare(t *testing.T) {
+	t.Parallel()
 	if !sameValue(settingByKey["spark.executor.memory"], "1024m") || sameValue(settingByKey["spark.executor.memory"], "2g") {
 		t.Error("size compare")
 	}
@@ -332,6 +345,7 @@ func TestSettingsCompare(t *testing.T) {
 }
 
 func TestRuntimeTable(t *testing.T) {
+	t.Parallel()
 	r := fixtureReport(t, "application_1790380000000_0042", "application_1790380000000_0042", DefaultThresholds())
 	rows := map[string]model.RuntimeRow{}
 	groups := []string{}
@@ -372,6 +386,7 @@ func TestRuntimeTable(t *testing.T) {
 }
 
 func TestRuntimeTableWithSparseEnvironment(t *testing.T) {
+	t.Parallel()
 	l := synthetic(map[string]string{"spark.master": "yarn"})
 	rows := Run(Input{Tool: "t", EventLog: l, EventSource: model.SourceStatus{Name: "Spark event log", Status: "read"}}).Config.Runtime
 	missing := 0
@@ -391,6 +406,7 @@ func TestRuntimeTableWithSparseEnvironment(t *testing.T) {
 // The phase 1c rules fire on the fixtures that exercise them, and not on the
 // main fixture.
 func TestInvestigateRulesOnFixtures(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name string
 		want map[string]model.Severity
@@ -418,6 +434,7 @@ func TestInvestigateRulesOnFixtures(t *testing.T) {
 }
 
 func TestSchedulerDelayResultsAndStartup(t *testing.T) {
+	t.Parallel()
 	stage := func(delay, dur, result int64) *model.Stage {
 		return &model.Stage{ID: 1, Name: "collect at job.py:3", TaskType: "ResultTask",
 			Totals: model.TaskTotals{Tasks: 100, DurationMs: dur, SchedulerDelayMs: delay, ResultSizeBytes: result}}

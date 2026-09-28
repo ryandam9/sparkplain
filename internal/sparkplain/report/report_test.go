@@ -40,6 +40,7 @@ func render(t *testing.T, r *model.Report, loc *time.Location) string {
 }
 
 func TestHTMLIsSelfContained(t *testing.T) {
+	t.Parallel()
 	html := render(t, build(t, "application_1790380000000_0042"), nil)
 	for _, re := range []string{`<link\b`, `<script[^>]+src=`, `<img[^>]+src="?https?:`, `@import`, `url\(\s*['"]?https?:`, `<iframe`, `fonts\.googleapis`} {
 		if m := regexp.MustCompile(re).FindString(html); m != "" {
@@ -49,6 +50,7 @@ func TestHTMLIsSelfContained(t *testing.T) {
 }
 
 func TestHTMLHasEverySection(t *testing.T) {
+	t.Parallel()
 	html := render(t, build(t, "application_1790380000000_0042"), nil)
 	for _, id := range []string{"summary", "coverage", "findings", "timeline", "nodes", "executors", "memory", "cpu", "io", "stages", "sql", "config", "access", "sources"} {
 		if !strings.Contains(html, `<section id="`+id+`"`) {
@@ -63,6 +65,7 @@ func TestHTMLHasEverySection(t *testing.T) {
 }
 
 func TestNoPlantedSecretsInOutputs(t *testing.T) {
+	t.Parallel()
 	for _, n := range []string{"application_1790380000000_0042", "application_1790380000000_0044"} {
 		r := build(t, n)
 		html := render(t, r, nil)
@@ -79,6 +82,7 @@ func TestNoPlantedSecretsInOutputs(t *testing.T) {
 }
 
 func TestTimesRenderInConfiguredZoneWithLabel(t *testing.T) {
+	t.Parallel()
 	r := build(t, "application_1790380000000_0042")
 	syd, err := time.LoadLocation("Australia/Sydney")
 	if err != nil {
@@ -95,6 +99,7 @@ func TestTimesRenderInConfiguredZoneWithLabel(t *testing.T) {
 }
 
 func TestJSONRoundTrips(t *testing.T) {
+	t.Parallel()
 	r := build(t, "application_1790380000000_0042")
 	var b bytes.Buffer
 	if err := WriteJSON(&b, r); err != nil {
@@ -110,6 +115,7 @@ func TestJSONRoundTrips(t *testing.T) {
 }
 
 func TestRendersWithoutEventLog(t *testing.T) {
+	t.Parallel()
 	r := analyze.Run(analyze.Input{Tool: "t", EventSource: model.SourceStatus{Name: "Spark event log", Status: "error", Class: "corrupt", Detail: "bad magic"}})
 	html := render(t, r, nil)
 	if !strings.Contains(html, "Event log: not read") || !strings.Contains(html, "bad magic") {
@@ -118,6 +124,7 @@ func TestRendersWithoutEventLog(t *testing.T) {
 }
 
 func TestHostileTextIsEscaped(t *testing.T) {
+	t.Parallel()
 	r := build(t, "application_1790380000000_0044")
 	r.Application.Name = `<script>alert(1)</script>`
 	r.Findings = append(r.Findings, model.Finding{Title: `<img src=x onerror=alert(1)>`, Severity: model.Info})
@@ -128,6 +135,7 @@ func TestHostileTextIsEscaped(t *testing.T) {
 }
 
 func TestRuntimeEnvironmentTable(t *testing.T) {
+	t.Parallel()
 	html := render(t, build(t, "application_1790380000000_0042"), nil)
 	for _, want := range []string{`id="runtime"`, `href="#runtime"`, "Runtime environment", "Spark 3.5.1</b> · Java 21.0.10 · Hadoop 3.3.4",
 		"/usr/lib/jvm/java-21-openjdk-amd64", `<tr class="grp"><th colspan="4">Locations</th></tr>`, `class="missingrow"`} {

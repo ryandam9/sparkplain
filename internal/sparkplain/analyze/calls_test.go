@@ -22,6 +22,7 @@ func callsSection() *model.AWSCallsSection {
 
 // Refusals only CloudTrail saw become the access-denied finding.
 func TestCallsMakeAccessFinding(t *testing.T) {
+	t.Parallel()
 	r := Run(Input{Tool: "t", EventLog: synthetic(nil), EventSource: model.SourceStatus{Name: "Spark event log", Status: "read"},
 		Cluster: &model.Cluster{ID: "j-1", InstanceProfile: "EMR_EC2_DefaultRole"}, AWSCalls: callsSection()})
 	f := rules(r)["access-denied"]
@@ -47,6 +48,7 @@ func TestCallsMakeAccessFinding(t *testing.T) {
 // When the logs already showed the refusal, CloudTrail adds evidence to
 // the same finding rather than a second one.
 func TestCallsJoinLogFinding(t *testing.T) {
+	t.Parallel()
 	drv := logFile(t, driverErr, `24/01/01 10:00:00 ERROR Client: failed
 com.amazonaws.services.securitytoken.model.AWSSecurityTokenServiceException: User: arn:aws:sts::000000000000:assumed-role/EMR_EC2_DefaultRole/i-1 is not authorized to perform: sts:AssumeRole on resource: arn:aws:iam::000000000000:role/nope (Service: AWSSecurityTokenService; Status Code: 403; Error Code: AccessDenied)
 `)

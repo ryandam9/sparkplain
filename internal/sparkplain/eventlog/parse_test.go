@@ -29,6 +29,7 @@ func parseFixture(t *testing.T, name, app string) *model.EventLog {
 // Expected values were computed independently with Python's json module
 // from the plain fixture (see the commit that added this test).
 func TestParseMainFixture(t *testing.T) {
+	t.Parallel()
 	l := parseFixture(t, mainApp, mainApp)
 	a := l.Application
 	if a.ID != mainApp || a.Name != "claims_enrich_fixture" || a.User != "hadoop" || a.SparkVersion != "3.5.1" {
@@ -107,6 +108,7 @@ func TestParseMainFixture(t *testing.T) {
 }
 
 func TestSQLDataRefs(t *testing.T) {
+	t.Parallel()
 	l := parseFixture(t, mainApp, mainApp)
 	got := map[string]bool{}
 	for _, q := range l.SQL {
@@ -138,6 +140,7 @@ func TestSQLDataRefs(t *testing.T) {
 
 // Every codec and layout of the same log must parse to the same model.
 func TestAllVariantsParseTheSame(t *testing.T) {
+	t.Parallel()
 	base := summary(parseFixture(t, mainApp, mainApp))
 	for _, v := range []string{mainApp + ".lz4", mainApp + ".zstd", mainApp + ".snappy", mainApp + ".zip"} {
 		if got := summary(parseFixture(t, v, mainApp)); got != base {
@@ -161,6 +164,7 @@ func summary(l *model.EventLog) string {
 }
 
 func TestParseRollingLog(t *testing.T) {
+	t.Parallel()
 	for _, v := range []string{"eventlog_v2_application_1790380000000_0043", "application_1790380000000_0043_rolling.zip"} {
 		l := parseFixture(t, v, "application_1790380000000_0043")
 		if l.Application.Status != model.StatusSucceeded || len(l.Stats.Files) != 6 || len(l.Jobs) != 51 { // AQE runs each aggregation as two jobs; counted from the raw Spark output
@@ -173,6 +177,7 @@ func TestParseRollingLog(t *testing.T) {
 }
 
 func TestParseFailedAndInProgress(t *testing.T) {
+	t.Parallel()
 	f := parseFixture(t, "application_1790380000000_0044", "application_1790380000000_0044")
 	if f.Application.Status != model.StatusFailed || !strings.Contains(f.Application.StatusReason, "job 2") {
 		t.Errorf("failed app: %s %s", f.Application.Status, f.Application.StatusReason)
@@ -187,6 +192,7 @@ func TestParseFailedAndInProgress(t *testing.T) {
 }
 
 func TestUnknownAndMalformedCounted(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	log := strings.Join([]string{
 		`{"Event":"SparkListenerLogStart","Spark Version":"3.5.1","New Field":1}`,
@@ -215,13 +221,16 @@ func TestUnknownAndMalformedCounted(t *testing.T) {
 
 // The fixtures carry planted fake secrets; none may survive parsing.
 func TestPlantedSecretsNeverInModel(t *testing.T) {
+	t.Parallel()
 	for name, app := range fixtureInputs(t) {
-		l := parseFixture(t, name, app)
-		b, err := json.Marshal(l)
-		if err != nil {
-			t.Fatal(err)
-		}
-		assertNoSecrets(t, string(b))
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			b, err := json.Marshal(parseFixture(t, name, app))
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertNoSecrets(t, string(b))
+		})
 	}
 }
 
@@ -235,6 +244,7 @@ func assertNoSecrets(t *testing.T, s string) {
 }
 
 func TestRemovalKind(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{
 		"Command exited with code 137": model.RemovalMemoryKill,
 		"Container killed by YARN for exceeding physical memory limits. 12.1 GB of 12 GB physical memory used.":       model.RemovalMemoryKill,
@@ -254,6 +264,7 @@ func TestRemovalKind(t *testing.T) {
 }
 
 func TestCallSite(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{
 		"collect at /mnt1/yarn/usercache/hadoop/appcache/application_1_0001/container_1_0001_01_000001/job.py:32": "collect at job.py:32",
 		`count at C:\work\job.py:7`:                  "count at job.py:7",
@@ -287,6 +298,7 @@ func FuzzParseLine(f *testing.F) {
 }
 
 func TestComponentsFromClasspath(t *testing.T) {
+	t.Parallel()
 	l := parseFixture(t, mainApp, mainApp)
 	got := map[string]string{}
 	for _, c := range l.Components {
@@ -306,6 +318,7 @@ func TestComponentsFromClasspath(t *testing.T) {
 }
 
 func TestComponentsEMRNames(t *testing.T) {
+	t.Parallel()
 	cp := map[string]string{
 		"/usr/lib/spark/jars/spark-core_2.12-3.5.1-amzn-0.jar":                       "System Classpath",
 		"/usr/lib/hadoop/hadoop-common-3.3.6-amzn-3.jar":                             "System Classpath",
@@ -331,6 +344,7 @@ func TestComponentsEMRNames(t *testing.T) {
 // SP-003: a compressed log that unpacks past the limit is read up to it and
 // marked partial, never passed off as complete.
 func TestUnpackedLimitMarksPartial(t *testing.T) {
+	t.Parallel()
 	in, err := Resolve(filepath.Join(fixtures, mainApp+".zstd"), mainApp, Limits{MaxUnpackedBytes: 200 << 10})
 	if err != nil {
 		t.Fatal(err)

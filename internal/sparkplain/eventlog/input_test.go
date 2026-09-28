@@ -24,6 +24,7 @@ func countLines(t *testing.T, in *Input) (int64, []model.FileRead, bool) {
 }
 
 func TestResolveLayouts(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name, path, app, layout string
 		parts                   int
@@ -61,6 +62,7 @@ func TestResolveLayouts(t *testing.T) {
 }
 
 func TestRollingPartsInNumericOrder(t *testing.T) {
+	t.Parallel()
 	in, err := Resolve(filepath.Join(fixtures, "eventlog_v2_application_1790380000000_0043"), "application_1790380000000_0043", Limits{})
 	if err != nil {
 		t.Fatal(err)
@@ -74,6 +76,7 @@ func TestRollingPartsInNumericOrder(t *testing.T) {
 }
 
 func TestRollingCompactionStartsAtCompactFile(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "eventlog_v2_app_1")
 	os.MkdirAll(dir, 0o755)
 	for _, n := range []string{"events_1_app_1", "events_2_app_1", "events_2_app_1.compact", "events_3_app_1", "events_10_app_1", "appstatus_app_1.inprogress"} {
@@ -90,6 +93,7 @@ func TestRollingCompactionStartsAtCompactFile(t *testing.T) {
 }
 
 func TestResolvePicksLatestAttempt(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, n := range []string{"application_1_2_1.lz4", "application_1_2_2.inprogress", "application_1_2_2", "application_1_20"} {
 		os.WriteFile(filepath.Join(dir, n), nil, 0o644)
@@ -104,6 +108,7 @@ func TestResolvePicksLatestAttempt(t *testing.T) {
 }
 
 func TestResolveErrors(t *testing.T) {
+	t.Parallel()
 	if _, err := Resolve(filepath.Join(fixtures, "nope"), mainApp, Limits{}); ErrorClass(err) != ClassNotFound {
 		t.Errorf("missing path: %v (%s)", err, ErrorClass(err))
 	}
@@ -122,6 +127,7 @@ func TestResolveErrors(t *testing.T) {
 }
 
 func TestReadLinesLongAndPartial(t *testing.T) {
+	t.Parallel()
 	long := strings.Repeat("x", 3<<20)
 	data := "{\"a\":1}\r\n" + long + "\n{\"b\":2}\n{\"c\":"
 	var got []string
@@ -170,6 +176,7 @@ func writeZip(t *testing.T, dir, name string, entries map[string][]byte) string 
 
 // SP-008: a zip is never allowed to stand in another application's log.
 func TestResolveZipNeverGuesses(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	log := []byte(`{"Event":"SparkListenerLogStart","Spark Version":"3.5.1"}` + "\n")
 	two := writeZip(t, dir, "two.zip", map[string][]byte{"application_1_1": log, "application_1_2": log})

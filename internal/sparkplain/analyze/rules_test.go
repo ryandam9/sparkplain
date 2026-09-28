@@ -13,6 +13,7 @@ import (
 )
 
 func TestRulePoorLocality(t *testing.T) {
+	t.Parallel()
 	stage := func(id int, input, process, node, rack, anyHost int64) *model.Stage {
 		return &model.Stage{ID: id, Name: "load at job.py:2", Status: model.StatusSucceeded, TaskSource: model.Source{File: "f", Line: int64(20 + id)},
 			Totals: model.TaskTotals{Tasks: process + node + rack + anyHost, InputBytes: input,
@@ -38,6 +39,7 @@ func TestRulePoorLocality(t *testing.T) {
 }
 
 func TestRuleStageRetried(t *testing.T) {
+	t.Parallel()
 	l := synthetic(nil)
 	l.Stages = []*model.Stage{
 		{ID: 3, Attempt: 0, Name: "count at job.py:5", Status: model.StatusFailed, FailureReason: "org.apache.spark.shuffle.FetchFailedException: Failed to connect to ip-10-0-0-9\n\tat ..."},
@@ -63,6 +65,7 @@ func TestRuleStageRetried(t *testing.T) {
 // Every finding rule is exercised by at least one test (SPEC §8, phase 4):
 // a rule named in analyze but in no test file fails the build.
 func TestEveryRuleHasATest(t *testing.T) {
+	t.Parallel()
 	defined := map[string]bool{}
 	ruleRE := regexp.MustCompile(`Rule:\s+"([a-z0-9-]+)"`)
 	files, _ := filepath.Glob("*.go")

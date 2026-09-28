@@ -32,6 +32,7 @@ func parseExplorer(t *testing.T, name, app string, lim model.ExplorerLimits) *mo
 }
 
 func TestExplorerOffByDefault(t *testing.T) {
+	t.Parallel()
 	if l := parseFixture(t, mainApp, mainApp); l.Explorer != nil {
 		t.Error("explorer data collected without being asked for")
 	}
@@ -40,6 +41,7 @@ func TestExplorerOffByDefault(t *testing.T) {
 // The explorer's numbers must agree with the report's, which were checked
 // against the fixture independently.
 func TestExplorerMainFixture(t *testing.T) {
+	t.Parallel()
 	l := parseExplorer(t, mainApp, mainApp, model.ExplorerLimits{})
 	x := l.Explorer
 	if x == nil || len(x.Stages) != len(l.Stages) {
@@ -136,6 +138,7 @@ func TestExplorerMainFixture(t *testing.T) {
 // The bucket arithmetic must give the same task-ms per bucket as
 // integrating every interval directly, including after many merges.
 func TestRunningMatchesBruteForce(t *testing.T) {
+	t.Parallel()
 	rng := rand.New(rand.NewPCG(1, 2))
 	var r runningAcc
 	r.width = 100
@@ -174,6 +177,7 @@ func synthTask(id int64, dur int64, exec string) (*taskEndEvent, *model.TaskTota
 // Over budget, every stage's sample halves but stays a uniform sample, the
 // slowest list stays exactly the slowest, and reruns are identical.
 func TestSampleBudget(t *testing.T) {
+	t.Parallel()
 	run := func() *explorerAcc {
 		x := newExplorerAcc(model.ExplorerLimits{SlowestPerStage: 20, SamplePerStage: 80, MaxSampledTasks: 1000})
 		rng := rand.New(rand.NewPCG(3, 4))
@@ -228,6 +232,7 @@ func TestSampleBudget(t *testing.T) {
 }
 
 func TestStageExecutorCellCap(t *testing.T) {
+	t.Parallel()
 	x := newExplorerAcc(model.ExplorerLimits{MaxStageExecutorCells: 3})
 	for i := range 5 {
 		e, tt := synthTask(int64(i), 10, string(rune('a'+i)))
@@ -239,6 +244,7 @@ func TestStageExecutorCellCap(t *testing.T) {
 }
 
 func TestQuartilesAndHistogram(t *testing.T) {
+	t.Parallel()
 	var d distAcc
 	for v := int64(1); v <= 10_000; v++ {
 		d.add(v)
@@ -267,6 +273,7 @@ func TestQuartilesAndHistogram(t *testing.T) {
 //
 //	SPARKPLAIN_BIG_LOG=$PWD/out/big.log go test -run TestExplorerBudget -v ./internal/sparkplain/eventlog/
 func TestExplorerBudget(t *testing.T) {
+	t.Parallel()
 	path := os.Getenv("SPARKPLAIN_BIG_LOG")
 	if path == "" {
 		t.Skip("set SPARKPLAIN_BIG_LOG to a large event log")
