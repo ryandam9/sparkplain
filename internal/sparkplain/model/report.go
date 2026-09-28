@@ -308,6 +308,12 @@ type JobsSection struct {
 	SQL          []*SQLQuery `json:"sql"`
 	CriticalPath []int       `json:"criticalPath,omitempty"` // stage IDs of the longest job's slowest chain
 	CriticalJob  int         `json:"criticalJob"`
+	// RunPath is what held up the application's completion, traced back
+	// from its end (analyze.runPath): stage attempts, and the stretches
+	// between them with none on the path running. Its steps run from the
+	// application's start to its end with no gaps or overlaps, so they add
+	// up to its wall time.
+	RunPath []PathStep `json:"runPath,omitempty"`
 	// DriverGaps are the stretches of the run, a second or longer, when no
 	// Spark job was running, longest first (capped at maxDriverGaps in
 	// analyze); DriverGapMs adds up all such time, however short.
@@ -546,3 +552,23 @@ type DriverGap struct {
 
 // DurationMs is the gap's length.
 func (g DriverGap) DurationMs() int64 { return g.End.Sub(g.Start).Milliseconds() }
+
+// Kinds of PathStep.
+const (
+	PathStage   = "stage"      // a stage attempt ran
+	PathDriver  = "driver"     // no job was running: the driver worked alone or waited
+	PathWaiting = "scheduling" // a job was running but no stage on the path: submitting the next stage, or waiting on tasks elsewhere
+)
+
+// PathStep is one link of RunPath. StageID and Attempt name the stage
+// attempt when Kind is PathStage.
+type PathStep struct {
+	Kind    string    `json:"kind"`
+	StageID int       `json:"stageId,omitempty"`
+	Attempt int       `json:"attempt,omitempty"`
+	Start   time.Time `json:"start"`
+	End     time.Time `json:"end"`
+}
+
+// DurationMs is the step's length.
+func (p PathStep) DurationMs() int64 { return p.End.Sub(p.Start).Milliseconds() }

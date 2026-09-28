@@ -328,17 +328,13 @@
       hs.appendChild(chartSlot("", "stageHealth:compact"));
       out.push(hs);
     }
+    if (D.runPath) out.push(runPathSection());
     // the diagnosis first, then the charts over time
     var ov = section("Over time", "Tasks running across the run, and when each job ran.");
     ov.appendChild(chartSlot("", "running"));
     ov.appendChild(chartSlot("tall", "jobsTimeline"));
     ov.appendChild(chartSlot("", "dataOverTime"));
     out.push(ov);
-    if (D.critical && D.critical.length) {
-      var cp = section("Critical path", "The chain of stages that set how long the longest job (job " + D.criticalJob + ") took: each waited for the one before it. Speeding up anything else would not shorten that job.");
-      cp.appendChild(el("p", null, D.critical.map(function (id, i) { var st = (stagesByID[id] || [])[0]; return [i ? " → " : "", st ? stageLink(st) : String(id), st ? " (" + dur(span(st.submitted, st.completed)) + ")" : ""]; })));
-      out.push(cp);
-    }
     var slow = stages.filter(function (s) { return s.completed && s.submitted; }).sort(function (x, y) { return (y.completed - y.submitted) - (x.completed - x.submitted); }).slice(0, 5);
     if (slow.length) {
       var ss = section("Longest stages", "Where the run spent its time. Open one for its task summary, slowest tasks and per-executor breakdown.");
@@ -1047,7 +1043,7 @@
     lay.edges.forEach(function (e) {
       var a = lay.pos[e[0]], b = lay.pos[e[1]];
       var x1 = a[0] + W / 2, y1 = a[1] + H, x2 = b[0] + W / 2, y2 = b[1], my = (y1 + y2) / 2;
-      svg.appendChild(sv("path", { "class": "edge", d: "M" + x1 + "," + y1 + " C" + x1 + "," + my + " " + x2 + "," + my + " " + x2 + "," + (y2 - 4), "marker-end": "url(#sp-arrow)" }));
+      svg.appendChild(sv("path", { "class": "edge" + (g.edgeCls ? " " + g.edgeCls(e) : ""), d: "M" + x1 + "," + y1 + " C" + x1 + "," + my + " " + x2 + "," + my + " " + x2 + "," + (y2 - 4), "marker-end": "url(#sp-arrow)" }));
     });
     var defs = sv("defs"), m = sv("marker", { id: "sp-arrow", viewBox: "0 0 8 8", refX: "4", refY: "4", markerWidth: "7", markerHeight: "7", orient: "auto" });
     var mp = sv("path", { d: "M0,0 L8,4 L0,8 z" });
@@ -1067,6 +1063,45 @@
     wrap.appendChild(svg);
     add(wrap, guideNodes(g));
     wrap.hidden = false;
+  }
+  // runPathSection shows what held up completion (JobsSection.RunPath):
+  // the chain as a graph, its totals by kind, or the steps as a list when
+  // the chain is too long to draw.
+  var PATH_KIND = { stage: "Stages", driver: "The driver alone (no job running)", scheduling: "Scheduling (a job running, no stage on the chain)" };
+  function runPathSection() {
+    var P = D.runPath, steps = P.steps, byKey = {};
+    stages.forEach(function (st) { byKey[st.key] = st; });
+    var total = {}, run = 0;
+    steps.forEach(function (x) { total[x[0]] = (total[x[0]] || 0) + (x[3] - x[2]); run += x[3] - x[2]; });
+    var s = section("What held up completion", "The chain of work that set when the application finished, traced back from its end. Speeding up anything on it shortens the run; a stage off it can be slow without delaying the end.");
+    s.appendChild(el("div", { cls: "facts" }, ["stage", "driver", "scheduling"].filter(function (k) { return total[k]; }).map(function (k) {
+      return fact(PATH_KIND[k], dur(total[k]), pct(total[k] / run) + " of the " + dur(run) + " run");
+    })));
+    var drawn = P.drawn, hidden = steps.length - drawn.length;
+    var info = function (i) {
+      var x = i < drawn.length ? steps[drawn[i]] : null;
+      if (x && x[0] !== "stage") return { title: x[0] === "driver" ? "The driver alone" : "Scheduling", sub: dur(x[3] - x[2]) + " · " + tfmt.format(new Date(x[2])), cls: x[0] === "driver" ? "gapnode" : "waitnode",
+        tip: x[0] === "driver" ? "No job was running for " + dur(x[3] - x[2]) + ": the driver planned, listed files, ran code outside Spark or handled collected results." : "A job was running but no stage on the chain for " + dur(x[3] - x[2]) + ": Spark was submitting the next stage, or waiting on tasks elsewhere." };
+      var key = x ? x[1] : P.extra[i - drawn.length], st = byKey[key];
+      if (!st) return { title: "Stage " + key, sub: "not logged", cls: x ? "onpath" : "ctx" };
+      if (!x && !st.submitted) return { title: "Stage " + st.id, sub: "skipped (output reused)", href: "#stage/" + st.key, cls: "ctx skipped", tip: "Stage " + st.id + ": " + st.name };
+      var d = x ? x[3] - x[2] : span(st.submitted, st.completed);
+      return { title: "Stage " + st.id + (st.attempt ? " (attempt " + (st.attempt + 1) + ")" : ""), sub: (x ? "" : "finished earlier · ") + dur(d) + " · " + (st.name || "").split(" at ")[0],
+        href: "#stage/" + st.key, cls: (x ? "onpath" : "ctx") + (st.status === "failed" ? " failed" : ""), tip: "Stage " + st.id + ": " + st.name + (x ? "" : "\nAnother parent of a stage on the chain; it finished first, so it did not hold anything up.") };
+    };
+    var g = { t: "The chain", shows: "Read down: each box waited for the one above it, its slowest parent stage or, at a job's start, the job before. Shaded boxes are time with no stage on the chain running. " +
+        (P.extra.length ? "Muted boxes to the right are other parents of stages on the chain; they finished first. " : "") +
+        (hidden ? num(hidden) + " pauses shorter than " + dur(Math.max(1000, run / 100)) + " are left out of the drawing but counted above. " : "") + "Click a stage to open it.",
+      read: "Shorten the longest boxes on the chain to shorten the run. A long driver box is time the cluster waited on the driver (the driver gaps finding says more); a long stage box is where the stage's own charts help.",
+      edgeCls: function (e) { return e[0] < drawn.length && e[1] < drawn.length ? "chain" : "branch"; } };
+    var wrap = el("div", { cls: "dagwrap" });
+    if (P.graph) drawGraph(wrap, P.graph, info, g);
+    else {
+      wrap.appendChild(el("h4", { text: "The chain (" + num(drawn.length) + " steps, too many to draw)" }));
+      wrap.appendChild(el("ol", null, drawn.map(function (x, i) { var inf = info(i); return el("li", null, inf.href ? link(inf.href, inf.title) : inf.title, " · " + inf.sub); })));
+    }
+    s.appendChild(wrap);
+    return s;
   }
   function jobDag(wrap, jobID, hot) {
     var dag = D.jobDags[String(jobID)];
@@ -1432,8 +1467,8 @@
   function stageMoved(st) { return st.input + st.shRead + st.shWrite + st.output; }
   function stageSkewed(st) { return st.p50 > 0 && st.max >= 5 * st.p50 && st.max >= 1000; }
   function stageHealth(c, compact) {
-    var crit = {};
-    (D.critical || []).forEach(function (id) { crit[id] = 1; });
+    var crit = {}; // stages on the chain that held up completion
+    ((D.runPath || {}).steps || []).forEach(function (x) { if (x[0] === "stage") crit[+x[1].split(".")[0]] = 1; });
     var all = stages.filter(function (st) { return st.submitted && st.completed > st.submitted; });
     if (!all.length) { waitText(c, "No stage has a start and an end to plot."); return; }
     var wall = function (st) { return st.completed - st.submitted; };

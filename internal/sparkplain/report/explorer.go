@@ -130,8 +130,9 @@ type xData struct {
 	Graphs     map[string][]xNode   `json:"graphs"`      // by query ID
 	PlanLays   map[string]xLayout   `json:"planLayouts"` // by query ID, for graphs small enough to draw
 	JobDags    map[string]xJobDag   `json:"jobDags"`     // by job ID, for jobs with 2 to maxGraphNodes stages
-	StageOps   map[string]xStageOps `json:"stageOps"`    // by "id.attempt": the RDDs each stage computes, laid out as a graph
-	Adaptive   map[string][][]any   `json:"adaptive"`    // by query ID: metrics adaptive execution added, rows as in a plan node
+	RunPath    *xRunPath            `json:"runPath,omitempty"`
+	StageOps   map[string]xStageOps `json:"stageOps"` // by "id.attempt": the RDDs each stage computes, laid out as a graph
+	Adaptive   map[string][][]any   `json:"adaptive"` // by query ID: metrics adaptive execution added, rows as in a plan node
 	RDDs       table                `json:"rdds"`
 	Runtime    table                `json:"runtime"`
 	Config     []xConfigGroup       `json:"config"`
@@ -448,6 +449,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		d.RunTasks.add(t.TaskID, t.StageID, t.StageAttempt, t.Index, t.Partition, t.Attempt, t.ExecutorID, t.Host, unixMs(t.Launched), t.Locality, t.Speculative, src(t.Source))
 	}
 	d.RunCapped = r.Jobs.RunningCapped
+	d.RunPath = runPathGraph(r)
 	d.Gaps = [][4]any{}
 	for _, g := range r.Jobs.DriverGaps {
 		var before, after any
@@ -695,4 +697,114 @@ func codeRows(cs []model.CodeLocation) [][]any {
 // shuffle write, result, other.
 func splitRow(p model.TimeSplit) []int64 {
 	return []int64{p.SchedulerDelayMs, p.DeserializeMs, p.ComputeMs, p.GCMs, p.ShuffleFetchMs, p.ShuffleWriteMs, p.ResultMs, p.OtherMs}
+}
+
+// xRunPath is JobsSection.RunPath for the page: the steps (kind, stage key
+// or "", start and end in Unix ms), and a graph of them drawn like the job
+// DAGs. The graph's first len(Steps) nodes are the steps, joined in order;
+// the rest are other parents of stages on the path, for context, when the
+// path is short enough to show them. Graph is nil when the path is too
+// long to draw; the page then lists the steps.
+type xRunPath struct {
+	Steps [][4]any `json:"steps"`
+	Drawn []int    `json:"drawn"` // the steps the graph shows, in order: short gaps are left out of the drawing, not the totals
+	Extra []string `json:"extra"` // stage keys of the context nodes
+	Graph *xLayout `json:"graph,omitempty"`
+}
+
+// maxPathContext is the longest path that gets its stages' other parents
+// drawn beside it.
+const maxPathContext = 40
+
+func runPathGraph(r *model.Report) *xRunPath {
+	p := r.Jobs.RunPath
+	if len(p) == 0 {
+		return nil
+	}
+	out := &xRunPath{Steps: [][4]any{}, Drawn: []int{}, Extra: []string{}}
+	onPath := map[int]bool{}
+	// Gaps shorter than a second or 1% of the run are pauses between
+	// back-to-back jobs, not causes: the drawing leaves them out.
+	var run int64
+	for _, s := range p {
+		run += s.DurationMs()
+	}
+	minGap := max(int64(1000), run/100)
+	var drawn []model.PathStep
+	for i, s := range p {
+		if s.Kind == model.PathStage || s.DurationMs() >= minGap {
+			out.Drawn = append(out.Drawn, i)
+			drawn = append(drawn, s)
+		}
+	}
+	for _, s := range p {
+		key := ""
+		if s.Kind == model.PathStage {
+			key = strconv.Itoa(s.StageID) + "." + strconv.Itoa(s.Attempt)
+			onPath[s.StageID] = true
+		}
+		out.Steps = append(out.Steps, [4]any{s.Kind, key, unixMs(s.Start), unixMs(s.End)})
+	}
+	p = drawn
+	if len(p) > maxGraphNodes {
+		return out
+	}
+	var edges [][2]int
+	for i := 1; i < len(p); i++ {
+		edges = append(edges, [2]int{i - 1, i})
+	}
+	var feeds []int // for each context node, the drawn step it feeds
+	if len(p) <= maxPathContext {
+		latest := map[int]*model.Stage{}
+		for _, st := range r.Jobs.Stages {
+			if cur := latest[st.ID]; cur == nil || st.Attempt > cur.Attempt {
+				latest[st.ID] = st
+			}
+		}
+		extra := map[int]int{} // stage ID → node
+		for i, s := range p {
+			if s.Kind != model.PathStage || latest[s.StageID] == nil {
+				continue
+			}
+			for _, pid := range latest[s.StageID].ParentIDs {
+				par := latest[pid]
+				if onPath[pid] || par == nil {
+					continue
+				}
+				if _, ok := extra[pid]; ok {
+					continue // already drawn beside an earlier step
+				}
+				n := len(p) + len(out.Extra)
+				extra[pid] = n
+				out.Extra = append(out.Extra, strconv.Itoa(par.ID)+"."+strconv.Itoa(par.Attempt))
+				feeds = append(feeds, i)
+				edges = append(edges, [2]int{n, i})
+			}
+		}
+	}
+	out.Graph = pathLayout(len(p), feeds, edges)
+	return out
+}
+
+// pathLayout places the path's steps down the left, one per row, and each
+// context node to the right of the step it feeds, one row above it, like a
+// branch joining the chain. Every edge points down, as in layered.
+func pathLayout(n int, feeds []int, edges [][2]int) *xLayout {
+	row0 := 0
+	for _, f := range feeds {
+		if f == 0 {
+			row0 = 1 // room above the first step
+		}
+	}
+	pos := make([][2]int, n+len(feeds))
+	for i := range n {
+		pos[i] = [2]int{padding, padding + (i+row0)*(nodeH+gapY)}
+	}
+	col, cols := map[int]int{}, 0
+	for k, f := range feeds {
+		col[f]++
+		cols = max(cols, col[f])
+		pos[n+k] = [2]int{padding + col[f]*(nodeW+gapX), padding + (f+row0-1)*(nodeH+gapY)}
+	}
+	return &xLayout{W: 2*padding + (cols+1)*(nodeW+gapX) - gapX, H: 2*padding + (n+row0)*(nodeH+gapY) - gapY, Pos: pos, Edges: edges}
 }
