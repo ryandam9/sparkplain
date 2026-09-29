@@ -292,7 +292,18 @@
           {{if .Quorum}}<div class="fact"><span class="l">ZooKeeper quorum</span><span class="v">{{.Quorum}}</span><span class="x">Where the HBase clients asked for HBase's address, from their own logs. <span class="srcref">{{src .QuorumSource}}</span></span></div>
           <div class="fact"><span class="l">ZooKeeper connections</span><span class="v num">{{numi .Sessions}}{{if .MostSessionsBy}} · most {{numi .MostSessions}}, by {{.MostSessionsBy}}{{end}}</span><span class="x">Each HBase connection a process opens makes one, and each is a trip to ZooKeeper. Code that opens a connection per task makes one per task.</span></div>{{end}}
           {{range .Libraries}}<div class="fact"><span class="l">{{.Name}}</span><span class="v">{{.Version}}</span><span class="x">From <span class="mono">{{.Path}}</span>. <span class="srcref">{{src .Source}}</span></span></div>{{end}}
+          {{if .Stages}}<div class="fact"><span class="l">Time in HBase stages</span><span class="v num">{{dur .TimeMs}} of {{dur .RunMs}}{{if .RunTimeMs}} · CPU {{pct (ratio (hbaseCPUMs .CPUTimeNs) .RunTimeMs)}} of task time{{end}}</span><span class="x">Wall-clock time while a stage that read or wrote HBase ran. Task time the CPU was not busy is mostly time spent waiting, usually on HBase.</span></div>{{end}}
+          {{if or .LocalRegions .RemoteRegions}}<div class="fact"><span class="l">Regions read on their node</span><span class="v num">{{numi .LocalRegions}} of {{numi (hbaseRegions .LocalRegions .RemoteRegions)}}</span><span class="x">TableInputFormat regions an executor read on the node of the region server holding them; the rest crossed the network between nodes.</span></div>{{end}}
         </div>
+        {{if .Stages}}<div class="tbl"><table>
+          <thead><tr><th data-sort="num">Stage</th><th>What</th><th>Reads</th><th>Writes</th><th>How</th><th class="num" data-sort="num">Took</th><th class="num" data-sort="num">CPU of task time</th><th>HBase retries and errors</th><th>Slowest task</th></tr></thead>
+          <tbody>{{range .Stages}}<tr><td data-v="{{.StageID}}">{{.StageID}}{{if .Attempt}}.{{.Attempt}}{{end}}</td><td>{{short .Description 90}}<span class="sub srcref">{{src .Source}}</span></td>
+            <td class="mono">{{join .Reads ", "}}</td><td class="mono">{{join .Writes ", "}}</td><td>{{.API}}</td>
+            <td class="num" data-v="{{.DurationMs}}">{{dur .DurationMs}}</td><td class="num" data-v="{{hbaseCPUMs .CPUTimeNs}}">{{pct (ratio (hbaseCPUMs .CPUTimeNs) .RunTimeMs)}}</td>
+            <td>{{hbaseRetries .Retries}}{{if .Servers}}<span class="sub">on {{join .Servers ", "}}</span>{{end}}</td>
+            <td>{{with .Slowest}}{{dur .DurationMs}} on {{.Host}}{{end}}{{if .MedianMs}}<span class="sub">median {{dur .MedianMs}}</span>{{end}}</td></tr>
+          {{end}}</tbody>
+        </table></div>{{end}}
         {{if .Tables}}<div class="tbl"><table>
           <thead><tr><th data-sort="text">Table</th><th>Read</th><th>Written</th><th>How</th><th>Regions read, by region server</th><th>Found in</th></tr></thead>
           <tbody>{{range .Tables}}<tr><td class="mono">{{.Name}}</td><td>{{if .Read}}yes{{end}}</td><td>{{if .Written}}yes{{end}}</td><td>{{join .APIs ", "}}</td>

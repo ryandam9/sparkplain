@@ -207,8 +207,11 @@ func funcs(loc *time.Location) template.FuncMap {
 			}
 			return float64(a) / float64(b)
 		},
-		"gcBad": func(f float64) bool { return f > 0.10 },
-		"join":  strings.Join,
+		"gcBad":        func(f float64) bool { return f > 0.10 },
+		"join":         strings.Join,
+		"hbaseRetries": model.HBaseRetriesText,
+		"hbaseCPUMs":   func(ns int64) int64 { return ns / 1e6 },
+		"hbaseRegions": func(a, b int) int { return a + b },
 		"removal": func(k string) string {
 			return map[string]string{"": "running at end", model.RemovalMemoryKill: "killed (137)", model.RemovalLost: "lost", model.RemovalDecommissioned: "decommissioned", model.RemovalKilledByDriver: "removed by Spark", model.RemovalIdle: "idle", model.RemovalOther: "other"}[k]
 		},

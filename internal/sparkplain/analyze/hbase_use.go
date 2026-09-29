@@ -66,7 +66,7 @@ func analyzeHBase(c *ctx, r *model.Report) {
 						h.Quorum, h.QuorumSource = q, l.Source
 					}
 					h.Sessions += l.Count
-					perProcess[x.who()] += l.Count
+					perProcess[processOf(x)] += l.Count
 				}
 			case model.LogLocalized:
 				if m := hbaseJarRE.FindStringSubmatch(l.Fields["name"]); m != nil {
@@ -111,6 +111,8 @@ func analyzeHBase(c *ctx, r *model.Report) {
 	if len(h.Tables) == 0 && h.Quorum == "" && len(h.Libraries) == 0 {
 		return
 	}
+	hbaseStages(c, r, h)
+	hbaseLocality(c, h)
 	if slices.ContainsFunc(h.Tables, func(t model.HBaseTable) bool { return t.Read && slices.Contains(t.APIs, "hbase-spark connector") }) {
 		h.Missing = append(h.Missing, "Regions per region server for tables the hbase-spark connector read: the connector does not log its regions (HBase's own logs, step 7, will).")
 	}
@@ -121,4 +123,5 @@ func analyzeHBase(c *ctx, r *model.Report) {
 		h.Missing = append(h.Missing, "Tables read or written with TableInputFormat or TableOutputFormat, their regions, and the ZooKeeper connections: these are in the container logs (-cluster-id or -from).")
 	}
 	r.HBase = h
+	hbaseSlowFindings(c, h)
 }

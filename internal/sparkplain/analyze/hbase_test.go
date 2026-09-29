@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
 )
 
 // Each HBase problem is its own finding, with the table, server or
@@ -127,7 +130,7 @@ func TestHBaseSection(t *testing.T) {
 	if h == nil {
 		t.Fatal("no HBase section")
 	}
-	if h.Quorum != "zk.example.internal:2181" || h.Sessions != 4 || h.MostSessions != 3 || h.MostSessionsBy != "container container_1_1_01_000002 stderr" {
+	if h.Quorum != "zk.example.internal:2181" || h.Sessions != 4 || h.MostSessions != 3 || h.MostSessionsBy != "container container_1_1_01_000002" {
 		t.Errorf("zookeeper = %q %d, most %d by %q", h.Quorum, h.Sessions, h.MostSessions, h.MostSessionsBy)
 	}
 	var libs []string
@@ -151,5 +154,80 @@ func TestHBaseSection(t *testing.T) {
 
 	if r := runWithLogs(nil, nil, logFile(t, driverErr, "24/01/01 10:00:00 INFO SparkContext: Running Spark version 3.5.1\n")); r.HBase != nil {
 		t.Errorf("a run without HBase has %+v", r.HBase)
+	}
+}
+
+// A TableInputFormat scan that took most of the run: the stage is found
+// from its RDD and the executors' split lines, the scanner lease that
+// expired while it ran is tied to it, and the scan's regions give the
+// hotspot and locality findings. The executor opened a connection per task.
+func TestHBaseSlowFindings(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
+	stage := &model.Stage{ID: 0, Name: "count at Scan.java:10", NumTasks: 4, JobIDs: []int{0}, Submitted: start.Add(30 * time.Second), Completed: start.Add(330 * time.Second),
+		TaskType: "ResultTask", RDDs: []model.StageRDD{{ID: 0, Name: "NewHadoopRDD", Callsite: "newAPIHadoopRDD at Scan.java:8"}},
+		Totals:       model.TaskTotals{Tasks: 4, Succeeded: 4, RunTimeMs: 600_000, CPUTimeNs: 30_000 * 1e6},
+		TaskDuration: model.Dist{Count: 4, P50: 60_000}, Slowest: &model.TaskRef{TaskID: 3, ExecutorID: "1", Host: "rs1.example.internal", DurationMs: 300_000},
+		Source: model.Source{File: "eventlog", Line: 9}}
+	l := &model.EventLog{
+		Application: model.Application{ID: "application_1_1", Start: start, End: start.Add(6 * time.Minute), DurationMs: 360_000, Status: model.StatusSucceeded},
+		Jobs:        []*model.Job{{ID: 0, Description: "scan events", StageIDs: []int{0}}},
+		Stages:      []*model.Stage{stage},
+	}
+	var exec strings.Builder
+	for i := range 60 {
+		fmt.Fprintf(&exec, "24/01/01 10:00:31 INFO ZooKeeper: Initiating client connection, connectString=zk.example.internal:2181 sessionTimeout=90000 watcher=x@%d\n", i)
+	}
+	for _, rs := range []string{"rs2", "rs2", "rs2", "rs1"} {
+		fmt.Fprintf(&exec, "24/01/01 10:00:32 INFO NewHadoopRDD: Input split: Split(tablename=events, startrow=, endrow=, regionLocation=%s.example.internal, regionname=ab)\n", rs)
+	}
+	exec.WriteString(`24/01/01 10:03:00 INFO ZooKeeper: closed
+org.apache.hadoop.hbase.UnknownScannerException: org.apache.hadoop.hbase.UnknownScannerException: Unknown scanner '-1'. b) Scanner lease expired because of long wait between consecutive client checkins
+`)
+	f := logFile(t, exec2Err, exec.String())
+	f.Host = "rs1.example.internal"
+	r := runWithLogs(l, nil, f)
+	h := r.HBase
+	if h == nil || len(h.Stages) != 1 || h.Stages[0].API != "TableInputFormat" || h.Stages[0].Reads[0] != "events" || h.Stages[0].Retries["scanner"] != 1 {
+		t.Fatalf("hbase = %+v", h)
+	}
+	if h.TimeMs != 300_000 || h.LocalRegions != 1 || h.RemoteRegions != 3 {
+		t.Errorf("time %d, local %d, remote %d", h.TimeMs, h.LocalRegions, h.RemoteRegions)
+	}
+	got := rules(r)
+	for rule, want := range map[string][]string{
+		"hbase-time": {"Stages reading or writing HBase took 5 min 0 s of the 6 min 0 s run (83%)", "Its tasks were on the CPU 5.0% of their run time, so they spent most of it waiting",
+			"1 expired scanner lease", "its slowest task took 5 min 0 s on rs1.example.internal, against a median of 1 min 0 s"},
+		"hbase-scanner-expired": {"They happened while stage 0 (scan events) ran."},
+		"hbase-zk-connections":  {"Container container_1_1_01_000002 opened 60 ZooKeeper connections to reach HBase", "nothing cached"},
+		"hbase-hotspot":         {"Region server rs2.example.internal held 3 of the 4 regions of events the run read", "75%"},
+		"hbase-remote-regions":  {"3 of 4 HBase regions were read from another node", "spark.locality.wait"},
+	} {
+		f, ok := got[rule]
+		if !ok {
+			t.Errorf("no %s", rule)
+			continue
+		}
+		text := f.Title + " " + f.Explanation + " " + f.Fix
+		for _, w := range want {
+			if !strings.Contains(text, w) {
+				t.Errorf("%s: %q lacks %q", rule, text, w)
+			}
+		}
+	}
+	if got["hbase-time"].Severity != model.Warning {
+		t.Errorf("hbase-time severity %s", got["hbase-time"].Severity)
+	}
+
+	// A short run, a shared connection and an even spread: none of them.
+	l.Application.DurationMs, stage.Completed = 50_000, start.Add(40*time.Second)
+	r = runWithLogs(l, nil, logFile(t, exec2Err, `24/01/01 10:00:31 INFO ZooKeeper: Initiating client connection, connectString=zk.example.internal:2181 sessionTimeout=90000 watcher=x@1
+24/01/01 10:00:32 INFO NewHadoopRDD: Input split: Split(tablename=events, startrow=, endrow=, regionLocation=rs1.example.internal, regionname=ab)
+24/01/01 10:00:32 INFO NewHadoopRDD: Input split: Split(tablename=events, startrow=, endrow=, regionLocation=rs2.example.internal, regionname=ab)
+`))
+	for _, rule := range []string{"hbase-time", "hbase-zk-connections", "hbase-hotspot", "hbase-remote-regions"} {
+		if f, ok := rules(r)[rule]; ok {
+			t.Errorf("unexpected %s: %s", rule, f.Title)
+		}
 	}
 }
