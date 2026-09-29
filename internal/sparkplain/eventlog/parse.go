@@ -828,7 +828,7 @@ func (p *parser) environment(e *envEvent, src model.Source) {
 	add("Hadoop Properties", e.Hadoop)
 	add("System Properties", e.System)
 	add("Metrics Properties", e.Metrics)
-	p.log.Components = components(e.Classpath, src)
+	p.log.Components = components(shippedJars(e.Classpath, e.Spark), src)
 	if n := len(e.Classpath); n > 0 {
 		p.log.Stats.Notes = append(p.log.Stats.Notes, fmt.Sprintf("The environment lists %d classpath entries; only the library versions named in the runtime table are shown.", n))
 	}

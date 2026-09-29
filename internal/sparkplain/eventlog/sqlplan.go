@@ -11,6 +11,12 @@ import (
 var (
 	backtickTable = regexp.MustCompile("(?:`[^`]+`\\.)*`[^`]+`")
 	locationPaths = regexp.MustCompile(`\[([^\[\]]+)\]\s*$`)
+	// The hbase-spark connector's relation, read or nested under a write,
+	// and its write command, as Spark 3.5 prints them with connector 1.0.1:
+	// "HBaseRelation(Map(hbase.table -> sp_orders, …" and
+	// "SaveIntoDataSourceCommand org.apache.hadoop.hbase.spark.DefaultSource@…, Map(hbase.table -> sp_totals, …".
+	hbaseReadRE  = regexp.MustCompile(`HBaseRelation\(Map\((?:[^()]*?, )?hbase\.table -> ([\w:.-]+)`)
+	hbaseWriteRE = regexp.MustCompile(`SaveIntoDataSourceCommand org\.apache\.hadoop\.hbase\.spark\.DefaultSource@\w+, Map\((?:[^()]*?, )?hbase\.table -> ([\w:.-]+)`)
 )
 
 // writeNodes are plan nodes that write data. V1 commands appear as
@@ -53,7 +59,25 @@ func planData(root planNode, planText string, src model.Source) (reads, writes [
 		}
 	}
 	walk(root)
-	return dedupe(reads), dedupe(writes)
+	r, w := hbaseRefs(planText, src)
+	return dedupe(append(reads, r...)), dedupe(append(writes, w...))
+}
+
+// hbaseRefs finds the HBase tables the connector read and wrote in the
+// physical plan. Its write command prints no arguments in the plan's
+// nodes, and a read under a write appears only in the text.
+func hbaseRefs(planText string, src model.Source) (reads, writes []model.DataRef) {
+	_, phys, ok := strings.Cut(planText, "== Physical Plan ==")
+	if !ok {
+		phys = planText
+	}
+	for _, m := range hbaseReadRE.FindAllStringSubmatch(phys, -1) {
+		reads = append(reads, model.DataRef{Kind: "table", Access: "read", Name: redact.Text(m[1]), Format: "hbase", Source: src})
+	}
+	for _, m := range hbaseWriteRE.FindAllStringSubmatch(phys, -1) {
+		writes = append(writes, model.DataRef{Kind: "table", Access: "write", Name: redact.Text(m[1]), Format: "hbase", Source: src})
+	}
+	return reads, writes
 }
 
 func scanRef(n planNode, src model.Source) (model.DataRef, bool) {
@@ -65,6 +89,11 @@ func scanRef(n planNode, src model.Source) (model.DataRef, bool) {
 		name := strings.TrimSuffix(strings.TrimPrefix(format, "JDBCRelation("), ")")
 		return model.DataRef{Kind: "table", Access: "read", Name: redact.Text(name), Format: "jdbc", Source: src}, true
 	case format == "ExistingRDD" || format == "OneRowRelation" || format == "In-memory" || format == "":
+		return model.DataRef{}, false
+	case strings.Contains(format, "("):
+		// A relation printed with its options, such as the hbase-spark
+		// connector's HBaseRelation(Map(…)): hbaseRefs reads the ones it
+		// knows, and the rest would only give a name made of punctuation.
 		return model.DataRef{}, false
 	case target != "" && !strings.HasPrefix(target, "["):
 		return model.DataRef{Kind: "table", Access: "read", Name: redact.Text(target), Format: strings.ToLower(format), Source: src}, true

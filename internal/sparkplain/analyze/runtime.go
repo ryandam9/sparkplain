@@ -62,7 +62,7 @@ func runtimeRows(c *ctx) []model.RuntimeRow {
 	add(groupVersions, "Java", java, "System Properties › java.version, java.vendor, java.vm.name", "The Java runtime of the driver. Libraries and JVM flags must suit this version.", src)
 	v, jar, s := fromJar("Hadoop")
 	add(groupVersions, "Hadoop", v, jarFrom(jar), "The Hadoop client libraries Spark used for HDFS, S3A and YARN. Read from the jar name, since the event log does not record it directly.", s)
-	for _, name := range []string{"Hive", "EMRFS", "AWS SDK for Java v1", "AWS SDK for Java v2", "Apache Iceberg", "Apache Hudi", "Delta Lake", "HBase client"} {
+	for _, name := range []string{"Hive", "EMRFS", "AWS SDK for Java v1", "AWS SDK for Java v2", "Apache Iceberg", "Apache Hudi", "Delta Lake", "HBase client", "HBase Spark connector"} {
 		if v, jar, s := fromJar(name); v != "" {
 			add(groupVersions, name, v, jarFrom(jar), componentExplain[name], s)
 		}
@@ -118,14 +118,15 @@ func runtimeRows(c *ctx) []model.RuntimeRow {
 }
 
 var componentExplain = map[string]string{
-	"Hive":                "Hive libraries Spark uses to talk to a Hive metastore or the Glue Data Catalog.",
-	"EMRFS":               "Amazon's S3 filesystem for EMR (s3:// paths).",
-	"AWS SDK for Java v1": "AWS client library used by EMRFS, S3A and other AWS integrations.",
-	"AWS SDK for Java v2": "AWS client library used by newer AWS integrations, including S3A in Hadoop 3.4.",
-	"Apache Iceberg":      "Table format library for Iceberg tables.",
-	"Apache Hudi":         "Table format library for Hudi tables.",
-	"Delta Lake":          "Table format library for Delta tables.",
-	"HBase client":        "Client library for reading and writing HBase tables.",
+	"Hive":                  "Hive libraries Spark uses to talk to a Hive metastore or the Glue Data Catalog.",
+	"EMRFS":                 "Amazon's S3 filesystem for EMR (s3:// paths).",
+	"AWS SDK for Java v1":   "AWS client library used by EMRFS, S3A and other AWS integrations.",
+	"AWS SDK for Java v2":   "AWS client library used by newer AWS integrations, including S3A in Hadoop 3.4.",
+	"Apache Iceberg":        "Table format library for Iceberg tables.",
+	"Apache Hudi":           "Table format library for Hudi tables.",
+	"Delta Lake":            "Table format library for Delta tables.",
+	"HBase client":          "Client library for reading and writing HBase tables.",
+	"HBase Spark connector": "The hbase-spark connector, which reads and writes HBase tables as DataFrames (format org.apache.hadoop.hbase.spark).",
 }
 
 func jarFrom(jar string) string {
