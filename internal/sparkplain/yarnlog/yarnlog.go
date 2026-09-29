@@ -433,6 +433,12 @@ func (c *classifier) header(h header, line string) {
 		if m[1] != "" {
 			l.Fields["uri"] = redact.Text(m[1])
 		}
+	case hbaseAsyncRE.MatchString(msg):
+		// HBase's client retrying a batch, at INFO: it recovered or will
+		// give up at the last attempt. The error follows in the text.
+		m := hbaseAsyncRE.FindStringSubmatch(msg)
+		l = c.entry(model.LogHBase, model.Warning, h.time, msg)
+		l.Fields["table"], l.Fields["attempt"], l.Fields["attempts"] = m[1], m[2], m[3]
 	case !problem && hbaseConnRE.MatchString(msg):
 		m := hbaseConnRE.FindStringSubmatch(msg)
 		l = c.entry(model.LogHBase, model.Info, h.time, msg)
@@ -441,7 +447,13 @@ func (c *classifier) header(h header, line string) {
 		}
 	case problem:
 		l = c.entry(model.LogError, model.Info, h.time, msg)
-		if tagged(l, msg) || h.level != "WARN" {
+		if tagged(l, msg) {
+			if h.level == "WARN" && l.Kind == model.LogClasspath {
+				l.Severity = model.Warning // libraries probe for optional classes and log the miss
+			}
+			break
+		}
+		if h.level != "WARN" {
 			break
 		}
 		return // WARN lines are kept only when a rule names them
@@ -684,24 +696,60 @@ func (c *classifier) flush() {
 		l.Kind, l.Severity = model.LogException, model.Warning
 	}
 	all := l.Text + "\n" + strings.Join(l.Detail, "\n")
-	tagged(l, all)
+	if tagged(l, all) && l.Fields["class"] != "" {
+		l.Fields["neededBy"] = neededBy(l.Text, b.lines)
+	}
 	c.add(l)
 }
 
-// tagged names a line by what its text shows (out of memory, access,
-// Kerberos, metastore or HBase failures), raising its severity. A task
-// error or lost executor keeps its kind and gains a cause instead.
+// neededBy names the jar of the first stack frame, after the missing-class
+// error, that says which jar it is in: the code that needed the class.
+func neededBy(lead string, lines []string) string {
+	seen := classpathRE.MatchString(lead)
+	for _, s := range lines {
+		if !seen {
+			seen = classpathRE.MatchString(s)
+			continue
+		}
+		if m := frameJarRE.FindStringSubmatch(s); m != nil {
+			return m[1]
+		}
+	}
+	return ""
+}
+
+// tagged names a line by what its text shows (out of memory, a missing
+// class, access, Kerberos, metastore or HBase failures), raising its
+// severity. A task error or lost executor keeps its kind and gains a cause
+// instead.
 func tagged(l *model.LogLine, text string) bool {
 	var kind model.LogKind
 	var cause string
+	sev := model.Critical
 	switch {
 	case oomRE.MatchString(text):
 		kind, cause = model.LogOutOfMemory, "OutOfMemoryError"
 		if m := oomRE.FindStringSubmatch(text); m != nil && m[1] != "" {
 			l.Fields["oom"] = clip(redact.Text(m[1]), maxDetailLine)
 		}
+	case classpathRE.MatchString(text):
+		kind, cause = model.LogClasspath, "missing class"
+		if l.Kind == model.LogClasspath && l.Severity == model.Warning {
+			sev = model.Warning // a WARN line's probe, seen again with its stack
+		}
+		m := classpathRE.FindStringSubmatch(text)
+		l.Fields["classError"] = m[1]
+		if m[2] != "" {
+			l.Fields["class"] = redact.Text(strings.ReplaceAll(strings.TrimRight(m[2], ".,;:'\""), "/", "."))
+		}
 	case accessRE.MatchString(text):
 		kind, cause = model.LogAccess, "access denied"
+		if hbaseAccessRE.MatchString(text) {
+			l.Fields["service"] = "HBase"
+			if m := hbaseTableAtRE.FindStringSubmatch(text); m != nil {
+				l.Fields["table"] = redact.Text(m[1] + m[2])
+			}
+		}
 		if m := authActRE.FindStringSubmatch(text); m != nil {
 			l.Fields["action"] = m[1]
 			if m[2] != "" {
@@ -717,6 +765,7 @@ func tagged(l *model.LogLine, text string) bool {
 		kind, cause = model.LogMetastore, "metastore"
 	case hbaseFailRE.MatchString(text):
 		kind, cause = model.LogHBase, "HBase"
+		sev = hbaseDetail(l, text)
 	default:
 		return false
 	}
@@ -726,8 +775,47 @@ func tagged(l *model.LogLine, text string) bool {
 	default:
 		l.Kind = kind
 	}
-	l.Severity = model.Critical
+	l.Severity = sev
 	return true
+}
+
+// hbaseDetail names the HBase problem text shows (Fields "hbase") and
+// where: the table, the region server and the ZooKeeper address tried. The
+// client retries expired scanners, busy regions and moved regions itself,
+// so those are warnings; the run's own failure says when they were fatal.
+func hbaseDetail(l *model.LogLine, text string) model.Severity {
+	problem, sev := "other", model.Critical
+	switch {
+	case hbaseTableRE.MatchString(text):
+		problem = "table-missing"
+		l.Fields["table"] = redact.Text(hbaseTableRE.FindStringSubmatch(text)[1])
+	case hbaseZKRE.MatchString(text):
+		problem = "zookeeper"
+	case hbaseScannerRE.MatchString(text):
+		problem, sev = "scanner", model.Warning
+	case hbaseBusyRE.MatchString(text):
+		problem, sev = "busy", model.Warning
+		if m := hbaseLimitRE.FindStringSubmatch(text); m != nil {
+			l.Fields["limit"] = m[1]
+		}
+	case hbaseMovedRE.MatchString(text):
+		problem, sev = "moved", model.Warning
+	case hbaseServerRE.MatchString(text):
+		problem = "server"
+	case hbaseRetryRE.MatchString(text):
+		problem = "retries"
+	}
+	l.Fields["hbase"] = problem
+	if m := hbaseTableAtRE.FindStringSubmatch(text); m != nil && l.Fields["table"] == "" {
+		l.Fields["table"] = redact.Text(m[1] + m[2])
+	}
+	if m := hbaseServerAtRE.FindStringSubmatch(text); m != nil {
+		l.Fields["server"] = redact.Text(m[1])
+	}
+	if m := hbaseZKAtRE.FindStringSubmatch(text); m != nil {
+		l.Fields["zookeeper"] = redact.Text(m[1])
+	}
+	return sev
 }
 
 // summarise fills a line's detail from the lines of its block: exception
@@ -830,7 +918,7 @@ func lostSeverity(reason string) model.Severity {
 // executor or container.
 var foldKinds = map[model.LogKind]bool{model.LogTaskError: true, model.LogException: true, model.LogError: true,
 	model.LogTraceback: true, model.LogAccess: true, model.LogOutOfMemory: true, model.LogKerberos: true,
-	model.LogMetastore: true, model.LogHBase: true}
+	model.LogMetastore: true, model.LogHBase: true, model.LogClasspath: true}
 
 var digitsRE = regexp.MustCompile(`\d+`)
 

@@ -97,7 +97,7 @@
   });
   var LOG_KIND = { exception: "Exception", traceback: "Python traceback", "out-of-memory": "Out of memory", "memory-kill": "Memory kill", "container-exit": "Container exit",
     "app-exit": "Application master exit", "lost-executor": "Lost executor", "task-error": "Task error", signal: "Signal", "access-denied": "Access denied",
-    kerberos: "Kerberos", metastore: "Metastore", hbase: "HBase", identity: "Identity", submit: "spark-submit command", submitted: "Submitted application",
+    kerberos: "Kerberos", metastore: "Metastore", hbase: "HBase", classpath: "Missing class", identity: "Identity", submit: "spark-submit command", submitted: "Submitted application",
     resource: "Uploaded file", "step-status": "Step status", "app-report": "YARN report", "app-summary": "YARN summary", bootstrap: "Bootstrap", error: "Error" };
   var FILE_KIND = { "container-stderr": "Container stderr", "container-stdout": "Container stdout", "step-controller": "Step controller", "step-stderr": "Step stderr",
     nodemanager: "NodeManager", resourcemanager: "ResourceManager", bootstrap: "Bootstrap log", "bootstrap-output": "Bootstrap action output" };

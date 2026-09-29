@@ -154,8 +154,39 @@ var (
 	krbLoginRE  = regexp.MustCompile(`Login successful for user (\S+) using keytab file (\S+)`)
 	metaFailRE  = regexp.MustCompile(`Failed to connect to the MetaStore Server|Could not connect to meta ?store|MetaException|Unable to instantiate \S*MetaStoreClient|AWSGlue\w*Exception|services\.glue\.model\.\w+Exception`)
 	metaConnRE  = regexp.MustCompile(`Trying to connect to metastore with URI (\S+)|Connected to metastore|Opened a connection to metastore`)
-	hbaseFailRE = regexp.MustCompile(`org\.apache\.hadoop\.hbase\.\S*(?:Exception|Error)|RetriesExhaustedException|KeeperException|Can't get connection to ZooKeeper|Unable to (?:set watcher|connect) (?:on znode|to ZooKeeper)`)
+	hbaseFailRE = regexp.MustCompile(`org\.apache\.hadoop\.hbase\.\S*(?:Exception|Error)|RetriesExhaustedException|KeeperException|failed for get of \S+, code = |Can't get connection to ZooKeeper|Unable to (?:set watcher|connect) (?:on znode|to ZooKeeper)`)
 	hbaseConnRE = regexp.MustCompile(`Initiating client connection, connectString=(\S+)|hbase\.zookeeper\.quorum`)
+
+	// What an HBase client error shows, most specific first, because each
+	// has its own fix. Checked on the phase 5 test cluster (HBase 2.4.17):
+	// a missing table, a wrong ZooKeeper port, expired scanner leases and
+	// a region over its memstore limit. Region moves and a stopped region
+	// server left no client line there; their exceptions are HBase's own
+	// class names.
+	hbaseTableRE   = regexp.MustCompile(`TableNotFoundException: ([\w:.-]+)`)
+	hbaseZKRE      = regexp.MustCompile(`KeeperException\$ConnectionLossException|KeeperException\$SessionExpiredException|failed for get of \S+, code = CONNECTIONLOSS|Can't get connection to ZooKeeper|Unable to (?:set watcher|connect) (?:on znode|to ZooKeeper)`)
+	hbaseScannerRE = regexp.MustCompile(`UnknownScannerException|ScannerTimeoutException|regionserver\.LeaseException|OutOfOrderScannerNextException`)
+	hbaseBusyRE    = regexp.MustCompile(`RegionTooBusyException|CallQueueTooBigException`)
+	hbaseMovedRE   = regexp.MustCompile(`NotServingRegionException|RegionMovedException|RegionOpeningException`)
+	hbaseServerRE  = regexp.MustCompile(`CallTimeoutException|ConnectionClosingException|ConnectionClosedException|ServerNotRunningYetException|RegionServerStoppedException|RegionServerAbortedException`)
+	hbaseRetryRE   = regexp.MustCompile(`RetriesExhausted(?:WithDetails)?Exception`)
+	hbaseAccessRE  = regexp.MustCompile(`hbase\.security\.AccessDeniedException`)
+	// Where the error happened: the table, the region server (host,port,
+	// start code) and the ZooKeeper address the client tried.
+	hbaseTableAtRE  = regexp.MustCompile(`\btable=([\w:.-]+)|Failed \d+ actions?: ([\w:.-]+):`)
+	hbaseServerAtRE = regexp.MustCompile(`\bserver=([\w.-]+),\d+,\d+`)
+	hbaseZKAtRE     = regexp.MustCompile(`to (\S+:\d+) failed for get of`)
+	hbaseLimitRE    = regexp.MustCompile(`Over memstore limit=([\d.]+ ?[KMGT]?)`)
+	// HBase's client logs its retries of a batch at INFO, with the error
+	// that made it retry: "id=10, table=sp_hot, attempt=6/16,
+	// failureCount=2048ops, last exception=…RegionTooBusyException: …".
+	hbaseAsyncRE = regexp.MustCompile(`^id=\d+, table=([\w:.-]+), attempt=(\d+)/(\d+), failureCount=(\d+)ops, last exception=`)
+
+	// A class missing, or of another version, at run time. The first stack
+	// frame that names its jar (log4j adds "~[jar:version]") is the code
+	// that needed it.
+	classpathRE = regexp.MustCompile(`java\.lang\.(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|AbstractMethodError|IncompatibleClassChangeError)(?::\s*(?:Could not initialize class\s+)?(\S+))?`)
+	frameJarRE  = regexp.MustCompile(`^\s+at .*~?\[([\w.+-]+\.jar):[^\]]*\]`)
 
 	// Application, attempt and container IDs, to keep node logs to one app.
 	idRE = regexp.MustCompile(`(?:application|appattempt|container(?:_e\d+)?)_(\d{10,}_\d{4,})`)

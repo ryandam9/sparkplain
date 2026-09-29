@@ -19,6 +19,7 @@ const (
 	LogKerberos     LogKind = "kerberos"       // a Kerberos or SASL failure
 	LogMetastore    LogKind = "metastore"      // Hive metastore or Glue catalog connections and failures
 	LogHBase        LogKind = "hbase"          // HBase and ZooKeeper connections and failures
+	LogClasspath    LogKind = "classpath"      // a class missing, or of another version, at run time
 	LogIdentity     LogKind = "identity"       // who the application ran as: user, queue, principal
 	LogSubmit       LogKind = "submit"         // the command a step ran (redacted)
 	LogSubmitted    LogKind = "submitted"      // the application a step submitted
