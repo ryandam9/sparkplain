@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"path"
 	"slices"
 	"sort"
@@ -33,6 +34,11 @@ type Plan struct {
 	// Instances are the node folders to read (the nodes that ran the
 	// application and the primary node); nil reads every one.
 	Instances []string
+	// Lifetimes are when each instance started and ended (zero while it
+	// runs), so HBase's logs are listed only on nodes up during the run:
+	// ListInstances names every instance a cluster ever had, and a long-lived
+	// cluster that scales can have thousands. Nil lists them all.
+	Lifetimes map[string][2]time.Time
 	// Others maps the short host names of the cluster's other nodes to
 	// their instance IDs. A node the application's own container logs name
 	// as a driver's host (an earlier attempt's, which the event log does
@@ -114,6 +120,23 @@ func (p Plan) withWindow(files []model.LogFile) Plan {
 	return p
 }
 
+// upDuringRun reports whether an instance was up at some point of the
+// application's time, when both are known.
+func (p Plan) upDuringRun(id string) bool {
+	life, ok := p.Lifetimes[id]
+	if !ok {
+		return true
+	}
+	started, ended := life[0], life[1]
+	switch {
+	case !p.Until.IsZero() && !started.IsZero() && started.After(p.Until):
+		return false // joined after the run
+	case !p.Since.IsZero() && !ended.IsZero() && ended.Before(p.Since):
+		return false // gone before it
+	}
+	return true
+}
+
 // hbase reads HBase's Master and region server logs on every node, for the
 // application's time only: a region server can serve the application from
 // a node that ran none of its executors.
@@ -125,12 +148,13 @@ func (c *Collection) hbase(ctx context.Context, st source.Store, p Plan) {
 	if p.Instances == nil {
 		objs, listErr = st.List(ctx, prefix)
 	} else {
-		ids := slices.Clone(p.Instances)
-		for _, id := range p.Others {
-			if !slices.Contains(ids, id) {
+		var ids []string
+		for _, id := range append(slices.Clone(p.Instances), slices.Collect(maps.Values(p.Others))...) {
+			if !slices.Contains(ids, id) && p.upDuringRun(id) {
 				ids = append(ids, id)
 			}
 		}
+		sort.Strings(ids)
 		var mu sync.Mutex
 		forEach(ids, p.Limits.Workers, func(id string) {
 			found, err := st.List(ctx, prefix+id+"/applications/hbase/")

@@ -139,6 +139,10 @@ func (out *clusterLogs) readLogs(ctx context.Context, cloud *awsSession, log *mo
 		plan.Until = log.Application.End
 	}
 	plan.Others = otherNodes(out.instances, plan.Instances)
+	plan.Lifetimes = map[string][2]time.Time{}
+	for _, in := range out.instances {
+		plan.Lifetimes[in.ID] = [2]time.Time{in.Created, in.Ended}
+	}
 	col := yarnlog.Collect(ctx, st, plan)
 	out.files, out.sources = col.Files, col.Sources
 	api := awsDeps.emr(cfg)

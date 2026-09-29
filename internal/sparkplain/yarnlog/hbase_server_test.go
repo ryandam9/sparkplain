@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -137,5 +138,47 @@ func TestCollectHBaseLogs(t *testing.T) {
 	}
 	if events["server-lost"] != 1 || events["server-stopped"] != 1 {
 		t.Errorf("events = %v", events)
+	}
+}
+
+// listed records which prefixes a collection listed.
+type listed struct {
+	source.Store
+	mu       sync.Mutex
+	prefixes []string
+}
+
+func (l *listed) List(ctx context.Context, prefix string) ([]source.Object, error) {
+	l.mu.Lock()
+	l.prefixes = append(l.prefixes, prefix)
+	l.mu.Unlock()
+	return l.Store.List(ctx, prefix)
+}
+
+// HBase's logs are listed only on nodes up during the application: a
+// long-lived cluster that scales has thousands of instances it once had.
+func TestHBaseLogsOnlyFromNodesUpDuringTheRun(t *testing.T) {
+	t.Parallel()
+	st := &listed{Store: source.NewLocalStore(filepath.Join(emrlogs, "j-FIXTURE0083CLUSTER"))}
+	since, until := time.Date(2026, 9, 29, 6, 8, 47, 0, time.UTC), time.Date(2026, 9, 29, 6, 10, 11, 0, time.UTC)
+	Collect(context.Background(), st, Plan{AppID: "application_1790380000000_0092", Since: since, Until: until,
+		Instances: []string{"i-0fee0000000000001"},
+		Others:    map[string]string{"ip-10-0-2-10": "i-0fee0000000000002", "ip-10-0-2-12": "i-0fee0000000000003", "ip-10-0-2-99": "i-0fee0000000000099", "ip-10-0-2-98": "i-0fee0000000000098"},
+		Lifetimes: map[string][2]time.Time{
+			"i-0fee0000000000002": {since.Add(-time.Hour), time.Time{}},               // still up
+			"i-0fee0000000000003": {since.Add(-time.Hour), since.Add(time.Minute)},    // ended during the run
+			"i-0fee0000000000099": {since.Add(-3 * time.Hour), since.Add(-time.Hour)}, // gone before it
+			"i-0fee0000000000098": {until.Add(time.Hour), time.Time{}},                // joined after it
+		}})
+	var hbase []string
+	for _, p := range st.prefixes {
+		if strings.HasSuffix(p, "/applications/hbase/") {
+			hbase = append(hbase, p)
+		}
+	}
+	sort.Strings(hbase)
+	want := []string{"node/i-0fee0000000000001/applications/hbase/", "node/i-0fee0000000000002/applications/hbase/", "node/i-0fee0000000000003/applications/hbase/"}
+	if strings.Join(hbase, " ") != strings.Join(want, " ") {
+		t.Errorf("listed %v, want %v", hbase, want)
 	}
 }
