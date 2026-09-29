@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -187,14 +188,16 @@ func (listOnly) GetMetricData(context.Context, *cloudwatch.GetMetricDataInput, .
 // reading an object, reading a metric, each EMR call, the job's script in
 // its own bucket, an event log folder a step set, and the local paths.
 func TestAccessCheckCoversEveryAccess(t *testing.T) {
+	readOnly := unwritableDir(t)
 	scriptStep := types.StepSummary{Id: aws.String("s-1"), Name: aws.String("job"), Config: &types.HadoopStepConfig{Jar: aws.String("command-runner.jar"),
 		Args: []string{"spark-submit", "--deploy-mode", "cluster", "--conf", "spark.eventLog.dir=s3://code/events/", "s3://code/job.py"}}}
-	for _, tc := range []struct {
+	type checkCase struct {
 		name  string
 		setup func(bucket string, stub stubEMR)
 		args  []string
 		want  []string
-	}{
+	}
+	cases := []checkCase{
 		{"listing allowed, reading refused", func(bucket string, _ stubEMR) {
 			awsDeps.s3 = func(context.Context, aws.Config, string) (source.Store, error) {
 				return noRead{source.NewLocalStore(bucket)}, nil
@@ -237,9 +240,13 @@ func TestAccessCheckCoversEveryAccess(t *testing.T) {
 				return saved(ctx, cfg, b)
 			}
 		}, nil, []string{"N Job scripts s3://code/job.py Reading is refused: needs s3:GetObject on it", "try: aws s3 cp s3://code/job.py - --profile test"}},
-		{"local paths", func(string, stubEMR) {}, []string{"-source", "/no/such/code", "-out", "/proc/not-writable/out"},
-			[]string{"N Source code stat /no/such/code: no such file or directory", "N Output folder /proc/not-writable/out /proc is not writable"}},
-	} {
+	}
+	if readOnly != "" {
+		out := filepath.Join(readOnly, "not-writable", "out")
+		cases = append(cases, checkCase{"local paths", func(string, stubEMR) {}, []string{"-source", "/no/such/code", "-out", out},
+			[]string{"N Source code stat /no/such/code: no such file or directory", "N Output folder " + out + " " + readOnly + " is not writable"}})
+	}
+	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			bucket, stub := hbaseCluster0083(t, false)
 			fakeAWS(t, map[string]string{"logs": bucket}, stub.clusters)
@@ -257,4 +264,25 @@ func TestAccessCheckCoversEveryAccess(t *testing.T) {
 			}
 		})
 	}
+}
+
+// unwritableDir is a folder nothing can be written in, for the output check,
+// or "" when this system has none. It is found by asking the system rather
+// than by assuming: /proc is one on Linux for a normal user, but root can
+// write there in some containers, and macOS has no /proc at all. Failing
+// that, a temporary folder made read-only works for everyone but root.
+func unwritableDir(t *testing.T) string {
+	t.Helper()
+	if syscall.Access("/proc", 2) != nil {
+		return "/proc"
+	}
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o700) })
+	if syscall.Access(dir, 2) == nil {
+		return "" // root, which can write anywhere
+	}
+	return dir
 }
