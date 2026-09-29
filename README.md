@@ -75,31 +75,51 @@ make build
   -out out/demo
 ```
 
-It prints a summary like this and writes the three files to `out/demo/`:
+It checks what it can read, reads it, prints a summary like this and writes the three files to `out/demo/`. On a terminal the marks are coloured ✓, ✗, ! and ○ and findings are coloured dots; piped, as here, they are plain letters:
 
 ```text
-Read
-  ✓ Spark event log   single, 1 file(s), 1.6 MiB unpacked to 1.6 MiB, 490 events
-  ✓ Container logs    Read 22 files from 12 containers.
-  ✓ Step logs         Step s-FIXTURESTEP0001 submitted this application.
-  ✓ Node logs         Read 5 files from 4 nodes.
-  · Not asked for     EMR API, CloudWatch, CloudTrail. The report's Sources
-                      panel says how to add each.
+◆ sparkplain 0.1.0-dev · application_1790380000000_0071
 
-What happened
+  As       offline: local files only, no AWS calls
+  Logs     testdata/emrlogs/j-FIXTURE0071CLUSTER/
+
+▸ Access check
+  - AWS                    EMR API, CloudWatch and CloudTrail: not asked for.
+                           Pass -profile and -cluster-id to read from AWS.
+  Y Container logs         containers/application_1790380000000_0071/
+  Y Step logs              steps/
+  Y Node logs              node/
+  - HBase server logs      node/*/applications/hbase/
+                           None in this copy: the cluster runs no HBase, or its
+                           node/ folder was not copied.
+  Y Spark event log        testdata/eventlog/application_1790380000000_0071
+  Y Source code            testdata/emrscripts/p4
+  Y Output folder          out/demo  Will be created
+
+▸ Read
+  Y Spark event log        490 events, 1.6 MiB
+  Y Container logs         22 files from 12 containers
+  Y Step logs              step s-FIXTURESTEP0001 submitted it
+  Y Node logs              5 files from 4 nodes
+
+▸ What happened
   sparkplain_p4_findings ran for 4 min 17 s as hadoop and finished on attempt 2,
   after YARN restarted it.
-  It ran 10 jobs (17 stages, 169 tasks) on 4 executors across 1 host. ...
+  ...
 
-Findings: 3 warning, 1 info
-  ▲ YARN restarted the application after 1 failed attempt
-  ▲ 3 stages spilled 2.2 GiB to disk
-  ▲ No Spark job ran for 2 min 20 s (54%) of the run: the cluster waited on the
+▸ Findings  3 warnings · 1 note
+  ! YARN restarted the application after 1 failed attempt
+  ! 3 stages spilled 2.2 GiB to disk
+  ! No Spark job ran for 2 min 20 s (54%) of the run: the cluster waited on the
     driver
-  · 1 task attempt failed and was retried successfully
+  - 1 task attempt failed and was retried successfully
 
-Report    out/demo/application_1790380000000_0071-report.html
-...
+▸ Written  out/demo/
+  application_1790380000000_0071-report.html ·
+  application_1790380000000_0071-explorer.html ·
+  application_1790380000000_0071-report.json
+  Open it xdg-open out/demo/application_1790380000000_0071-report.html
+
 Done in 0.2 s · complete (exit 0)
 ```
 
@@ -170,29 +190,36 @@ sparkplain -profile default -cluster-id j-1ABCDEF -app-id application_1700000000
 sparkplain -profile prod-emr -region us-east-1 -cluster-name nightly-etl -app-id application_1700000000000_0042
 ```
 
-**Access check.** Every run starts by checking what it can read, with one small read-only call per source, and prints a line for each before it reads anything. A source it cannot read says why, what permission or file it needs, and an `aws` command that repeats the call. Add `-check` to stop there, which is a quick way to try a new profile or cluster: it exits 0 when everything is readable and 3 when something is not.
+**Access check.** Every run starts by checking what it can read, with small read-only calls, and prints a line for each source before it reads anything. It checks every access the run will need: each EMR call, listing *and* reading each log folder (a one-byte read, since a bucket policy or KMS key can allow the one and refuse the other), the event log and the job's script wherever they are, CloudWatch metrics, EC2, CloudTrail, the output folder and `-source` paths. A source it cannot read says why, what permission or file it needs, and an `aws` command that repeats the call. Add `-check` to stop there, which is a quick way to try a new profile or cluster: it exits 0 when everything is readable and 3 when something is not.
 
 ```
-Access check   profile default · arn:aws:sts::123456789012:assumed-role/analyst/me · ap-southeast-2
-  Y EMR API                j-1ABCDEF (nightly-etl, emr-7.3.0, TERMINATED)
-  Y Container logs
-    s3://my-emr-logs/j-1ABCDEF/containers/application_1700000000000_0042/
-  Y Step logs              s3://my-emr-logs/j-1ABCDEF/steps/
-  Y Node logs              s3://my-emr-logs/j-1ABCDEF/node/
-  Y HBase server logs
-    s3://my-emr-logs/j-1ABCDEF/node/i-0abc123def4567890/applications/hbase/
-  N Spark event log        The cluster keeps the event log on HDFS (EMR's default,
+◆ sparkplain 0.1.0-dev · application_1700000000000_0042
+
+  Cluster  j-1ABCDEF · nightly-etl · emr-7.3.0 · terminated
+  As       assumed-role/analyst/me · profile default · ap-southeast-2
+  Logs     s3://my-emr-logs/j-1ABCDEF/
+
+▸ Access check
+  ✓ EMR API                cluster, steps, instances, groups
+  ✓ Container logs         containers/application_1700000000000_0042/  list, read
+  ✓ Step logs              steps/  list, read
+  ✓ Node logs              node/  list, read
+  ✓ HBase server logs      node/*/applications/hbase/
+                           Checked on the primary node, i-0abc123def4567890 · list, read
+  ✗ Spark event log        The cluster keeps the event log on HDFS (EMR's default,
                            hdfs:///var/log/spark/apps), which sparkplain cannot read.
                            Supply it with -eventlog: the Spark History Server's
                            "Download", or a copy in S3.
-  Y CloudWatch             14 cluster metrics.
-  Y EC2 instance types     m5.xlarge.
-  N CloudTrail             Access denied: needs cloudtrail:LookupEvents (optional;
+  ✓ Job scripts            s3://my-code/jobs/etl.py  The newest step's script · read
+  ✓ CloudWatch             14 cluster metrics · list, read
+  ✓ EC2 instance types     m5.xlarge
+  ✗ CloudTrail             Access denied: needs cloudtrail:LookupEvents (optional;
                            without it the report marks what it would add as missing).
                            try: aws cloudtrail lookup-events --max-results 1 --profile default --region ap-southeast-2
+  ✓ Output folder          ~/sparkplain/2026-09-29/application_1700000000000_0042  Will be created
 ```
 
-On a terminal the marks are ✓, ✗ and –. Offline runs check the local paths instead. The rows are also in the JSON report, as `accessCheck`.
+On a terminal the marks are coloured ✓ (readable), ✗ (refused or failed), ! (empty) and ○ (not asked for); piped or with `NO_COLOR` they are Y, N, ! and -. Offline runs check the local paths instead. The rows are also in the JSON report, as `accessCheck`.
 
 Use `-no-cloudwatch` or `-no-cloudtrail` to skip those calls when you lack the permissions. Only their sections are affected.
 

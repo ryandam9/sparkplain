@@ -32,6 +32,7 @@ type console struct {
 	shown        map[string]bool // sources listed live
 	notAsked     []string        // sources this run was not asked to read, listed together
 	readHeader   bool            // "Read" printed live
+	headed       bool            // the access check printed the cluster and the sources checked
 	working      bool            // a transient "reading …" line is on screen
 	home, opener string
 }
@@ -86,23 +87,49 @@ func (c *console) clear() {
 	}
 }
 
-// begin names the run; on a terminal it heads the live listing.
+// begin names the run, on stdout, before anything else.
 func (c *console) begin(appID string) {
+	fmt.Fprintf(c.out, "%s %s\n", paint(c.colOut, bold, "◆ sparkplain "+version), paint(c.colOut, dim, "· "+appID))
+}
+
+// clusterFound names the cluster being read, unless the access check's
+// header already did.
+func (c *console) clusterFound(cl model.Cluster) {
+	c.cluster = strings.Join(nonEmpty(cl.ID, cl.Name, cl.Release, strings.ToLower(cl.State)), " · ")
+	if c.headed {
+		return
+	}
 	if c.live {
-		fmt.Fprintf(c.err, "%s %s\n", paint(c.colErr, bold, "sparkplain "+version), paint(c.colErr, dim, "· "+appID))
+		c.clear()
+		fmt.Fprintln(c.err, "  Cluster  "+c.cluster)
+	} else {
+		fmt.Fprintf(c.err, "sparkplain: cluster %s\n", c.cluster)
 	}
 }
 
-// clusterFound names the cluster being read.
-func (c *console) clusterFound(cl model.Cluster) {
-	c.cluster = fmt.Sprintf("Cluster %s (%s, %s, %s)", cl.ID, cl.Name, cl.Release, strings.ToLower(cl.State))
-	if c.live {
-		c.clear()
-		fmt.Fprintln(c.err, c.cluster)
-	} else {
-		fmt.Fprintf(c.err, "sparkplain: cluster %s (%s, %s, %s)\n", cl.ID, cl.Name, cl.Release, cl.State)
+// Marks, the same everywhere: ✓ read, ✗ refused or failed, ! partial or
+// empty, ○ not asked for; without colour (piped, NO_COLOR) Y, N, ! and -,
+// so logs and scripts stay plain.
+const (
+	markOK = iota
+	markBad
+	markPartial
+	markOff
+)
+
+func (c *console) mark(col bool, m int) string {
+	sym := [...]string{"✓", "✗", "!", "○"}[m]
+	if !col {
+		return [...]string{"Y", "N", "!", "-"}[m]
 	}
+	return paint(true, [...]string{green, red, amber, dim}[m], sym)
 }
+
+// heading is a section's title line.
+func heading(col bool, title string) string { return "\n" + paint(col, bold, "▸ "+title) }
+
+// nameCol is the width of a source's name, in both lists.
+const nameCol = 22
 
 // note says something about how the run is going, such as where the
 // event log was looked for.
@@ -136,11 +163,14 @@ func (c *console) sources(rows ...model.SourceStatus) {
 		if c.shown[s.Name] {
 			continue
 		}
+		c.shown[s.Name] = true
+		if !c.listed(s) {
+			continue
+		}
 		if !c.readHeader {
-			fmt.Fprintln(c.err, "\n"+paint(c.colErr, bold, "Read"))
+			fmt.Fprintln(c.err, heading(c.colErr, "Read"))
 			c.readHeader = true
 		}
-		c.shown[s.Name] = true
 		if s.Status == "not-requested" {
 			c.notAsked = append(c.notAsked, s.Name)
 			continue
@@ -149,10 +179,18 @@ func (c *console) sources(rows ...model.SourceStatus) {
 	}
 }
 
+// listed reports whether a source gets a line of its own under Read: the
+// EMR and EC2 APIs read as the access check found they could be say
+// nothing new.
+func (c *console) listed(s model.SourceStatus) bool {
+	return !(c.headed && s.Status == "read" && (s.Name == "EMR API" || s.Name == "EC2 API"))
+}
+
 // notAskedLine lists together the sources the run was not asked to read,
 // which each say the same thing: pass -cluster-id or -from.
 func (c *console) notAskedLine(w io.Writer, col bool) {
-	if len(c.notAsked) == 0 {
+	if len(c.notAsked) == 0 || c.headed {
+		c.notAsked = nil // the access check said what was not asked for
 		return
 	}
 	c.sourceLine(w, col, model.SourceStatus{Name: "Not asked for", Status: "not-requested",
@@ -160,27 +198,24 @@ func (c *console) notAskedLine(w io.Writer, col bool) {
 	c.notAsked = nil
 }
 
-// sourceLine is one source: a marker, its name, and the first sentence of
-// what was read, or all of why it was not.
+// sourceLine is one source: a mark, its name, and what was read in a few
+// words, or all of why it was not.
 func (c *console) sourceLine(w io.Writer, col bool, s model.SourceStatus) {
-	mark, code := "·", dim
+	m := markOff
 	switch s.Status {
 	case "read":
-		mark, code = "✓", green
-	case "partial":
-		mark, code = "!", amber
+		m = markOK
+	case "partial", "not-supplied":
+		m = markPartial
 	case "error":
-		mark, code = "✗", red
-	case "not-supplied":
-		mark, code = "–", amber
+		m = markBad
 	}
-	name := fmt.Sprintf("%-17s", s.Name)
 	detail := s.Detail
 	if s.Status == "read" {
-		detail = parenRE.ReplaceAllString(firstSentence(detail), "")
+		detail = firstNonEmpty(s.Brief, parenRE.ReplaceAllString(firstSentence(detail), ""))
 	}
-	lead := "  " + paint(col, code, mark) + " " + name + " "
-	c.wrapLimited(w, lead, strings.Repeat(" ", 22), detail, s.Status == "read")
+	lead := "  " + c.mark(col, m) + " " + fmt.Sprintf("%-*s", nameCol, s.Name) + " "
+	c.wrapLimited(w, lead, strings.Repeat(" ", nameCol+5), detail, s.Status == "read")
 }
 
 // parenRE is an aside in brackets, which a source read as expected can do
@@ -202,12 +237,11 @@ func (c *console) summary(r *model.Report, written map[string]string, order []st
 	c.clear()
 	w, col := c.out, c.colOut
 	if !c.live {
-		fmt.Fprintf(w, "%s %s\n", paint(col, bold, "sparkplain "+version), paint(col, dim, "· "+r.Application.ID))
-		if c.cluster != "" {
-			fmt.Fprintln(w, c.cluster)
-		}
-		fmt.Fprintln(w, "\n"+paint(col, bold, "Read"))
+		fmt.Fprintln(w, heading(col, "Read"))
 		for _, s := range r.Sources {
+			if !c.listed(s) {
+				continue
+			}
 			if s.Status == "not-requested" {
 				c.notAsked = append(c.notAsked, s.Name)
 				continue
@@ -235,7 +269,7 @@ func (c *console) summary(r *model.Report, written map[string]string, order []st
 		}
 	}
 	if len(said) > 0 {
-		fmt.Fprintln(w, "\n"+paint(col, bold, "What happened"))
+		fmt.Fprintln(w, heading(col, "What happened"))
 		for _, s := range said {
 			c.wrap(w, "  ", "  ", s, nil)
 		}
@@ -247,49 +281,53 @@ func (c *console) summary(r *model.Report, written map[string]string, order []st
 	}
 	var parts []string
 	for _, sv := range []struct {
-		s    model.Severity
-		name string
-	}{{model.Critical, "critical"}, {model.Warning, "warning"}, {model.Info, "info"}} {
+		s           model.Severity
+		one, others string
+	}{{model.Critical, "critical", "critical"}, {model.Warning, "warning", "warnings"}, {model.Info, "note", "notes"}} {
 		if n := counts[sv.s]; n > 0 {
-			parts = append(parts, fmt.Sprintf("%d %s", n, sv.name))
+			parts = append(parts, model.Plural(n, sv.one, sv.others))
 		}
 	}
 	if len(parts) == 0 {
-		fmt.Fprintln(w, "\n"+paint(col, bold, "Findings: none"))
-	} else {
-		fmt.Fprintln(w, "\n"+paint(col, bold, "Findings: "+strings.Join(parts, ", ")))
+		parts = []string{"none"}
 	}
+	fmt.Fprintln(w, heading(col, "Findings")+"  "+strings.Join(parts, " · "))
 	for _, f := range r.Findings {
-		mark, code := "·", blue
-		switch f.Severity {
-		case model.Critical:
-			mark, code = "✖", red
-		case model.Warning:
-			mark, code = "▲", amber
+		// A dot coloured by severity; without colour, !! critical, ! warning, - note.
+		mark := map[model.Severity]string{model.Critical: "!!", model.Warning: "!"}[f.Severity]
+		if mark == "" {
+			mark = "-"
 		}
-		c.wrap(w, "  "+paint(col, code, mark)+" ", "    ", f.Title, nil)
+		if col {
+			mark = paint(true, map[model.Severity]string{model.Critical: red, model.Warning: amber, model.Info: blue}[f.Severity], "●")
+		}
+		lead := "  " + mark + " "
+		c.wrap(w, lead, strings.Repeat(" ", visibleLen(lead)), f.Title, nil)
 	}
 
-	// The first file with its folder, the rest by name when they sit
-	// beside it.
+	// The folder once, then the files in it.
 	if len(order) > 0 {
-		fmt.Fprintln(w)
 		dir := filepath.Dir(written[order[0]])
-		for i, k := range order {
-			p := c.tilde(written[k])
-			if i > 0 && filepath.Dir(written[k]) == dir {
-				p = filepath.Base(p)
+		var names []string
+		for _, k := range order {
+			if filepath.Dir(written[k]) == dir {
+				names = append(names, filepath.Base(written[k]))
+			} else {
+				names = append(names, c.tilde(written[k]))
 			}
-			fmt.Fprintf(w, "%-9s %s\n", k, paint(col, dim, p))
 		}
+		fmt.Fprintln(w, heading(col, "Written")+"  "+c.tilde(dir)+string(os.PathSeparator))
+		c.wrap(w, "  ", "  ", strings.Join(names, " · "), func(s string) string { return paint(col, dim, s) })
 	}
 	if p := written["Report"]; p != "" {
-		fmt.Fprintf(w, "%s %s %s\n", paint(col, dim, "Open it:"), c.opener, shellQuote(p))
+		fmt.Fprintf(w, "  %s %s %s\n", paint(col, dim, "Open it"), c.opener, shellQuote(p))
 	}
 	done := fmt.Sprintf("Done in %s · ", elapsed(time.Since(c.started)))
+	m := -1
 	switch exit {
 	case exitOK:
 		done += paint(col, green, "complete") + " (exit 0)"
+		m = markOK
 	case exitPartial:
 		missing := 0
 		for _, s := range r.Sources {
@@ -298,8 +336,12 @@ func (c *console) summary(r *model.Report, written map[string]string, order []st
 			}
 		}
 		done += paint(col, amber, "partial") + fmt.Sprintf(" (exit 3): %s missing or incomplete, marked above and in the report's Sources panel", model.Plural(missing, "source", "sources"))
+		m = markPartial
 	default:
 		done += fmt.Sprintf("exit %d", exit)
+	}
+	if col && m >= 0 {
+		done = c.mark(true, m) + " " + done
 	}
 	fmt.Fprintln(w, "\n"+done)
 	if exit == exitPartial && !c.live {
@@ -417,64 +459,92 @@ func visibleLen(s string) int {
 	return n
 }
 
-// accessCheck prints the access check a run starts with (SPEC §2): one
-// line per source, marked ✓, ✗ or – (Y, N or - without colour, so a piped
-// log reads plainly), with where it looked and, when it could not read a
-// source, why and an aws command that repeats the call.
-func (c *console) accessCheck(rows []model.AccessCheck, profile, region, who string, online bool) {
+// accessCheck prints what the run found it could read, before reading it
+// (SPEC §2): a header naming the cluster, the credentials and the log
+// folder once, then one line per source with a location relative to that
+// folder. A source it cannot read says why and gives an aws command that
+// repeats the call, on one line so it can be copied.
+func (c *console) accessCheck(chk checked, profile, region string, online bool) {
 	c.clear()
+	c.headed = true
 	w, col := c.out, c.colOut
-	head := "offline: local files only, no AWS calls"
-	if online {
-		var bits []string
-		for _, b := range []string{"profile " + profile, who, region} {
-			if strings.TrimSpace(strings.TrimPrefix(b, "profile ")) != "" {
-				bits = append(bits, b)
-			}
+	fmt.Fprintln(w)
+	field := func(label, value string) {
+		if value != "" {
+			fmt.Fprintf(w, "  %-8s %s\n", label, value)
 		}
-		head = strings.Join(bits, " · ")
 	}
-	fmt.Fprintln(w, "\n"+paint(col, bold, "Access check")+"   "+paint(col, dim, head))
-	for _, r := range rows {
-		mark, code := "–", dim
+	if online {
+		field("Cluster", chk.cluster)
+		field("As", strings.Join(nonEmpty(chk.who, "profile "+profile, region), " · "))
+	} else {
+		field("As", "offline: local files only, no AWS calls")
+	}
+	field("Logs", c.tilde(chk.logRoot))
+	fmt.Fprintln(w, heading(col, "Access check"))
+	for _, r := range chk.rows {
+		m := markOff
 		switch r.Status {
 		case "ok":
-			mark, code = "✓", green
+			m = markOK
 		case "empty":
-			mark, code = "✗", amber
+			m = markPartial
 		case "denied", "error":
-			mark, code = "✗", red
+			m = markBad
 		}
-		if !col {
-			mark = map[string]string{"✓": "Y", "✗": "N", "–": "-"}[mark]
+		lead := "  " + c.mark(col, m) + " " + fmt.Sprintf("%-*s", nameCol, r.Name) + " "
+		indent := strings.Repeat(" ", nameCol+5)
+		loc := r.Location
+		if chk.logRoot != "" && strings.HasPrefix(loc, chk.logRoot) && loc != chk.logRoot {
+			loc = strings.TrimPrefix(loc, chk.logRoot)
 		}
-		lead := "  " + paint(col, code, mark) + " " + fmt.Sprintf("%-22s", r.Name) + " "
-		indent := strings.Repeat(" ", 27)
-		loc, detail := r.Location, strings.TrimSpace(r.Detail)
-		if detail == "Readable." || detail == "Found." {
-			detail = ""
+		loc = c.tilde(loc)
+		detail := strings.TrimSpace(r.Detail)
+		if r.Status == "ok" {
+			// What it proved, briefly: "list, read".
+			var keep []string
+			for _, part := range strings.Split(strings.TrimSuffix(detail, "."), ". ") {
+				switch part {
+				case "", "Readable", "Found", "Writable":
+				case "List, read", "Read":
+					keep = append(keep, strings.ToLower(part))
+				default:
+					keep = append(keep, part)
+				}
+			}
+			detail = strings.Join(keep, " · ")
 		}
 		if loc != "" && strings.Contains(detail, loc) {
 			loc = ""
 		}
-		if loc == "" {
-			loc, detail = detail, ""
+		if r.Status == "ok" && loc == "" && detail == "" {
+			detail = "readable"
+		}
+		first, rest := loc, detail
+		if first == "" {
+			first, rest = detail, ""
 		}
 		switch {
-		case loc == "":
+		case first == "":
 			fmt.Fprintln(w, strings.TrimRight(lead, " "))
-		case !strings.Contains(loc, " ") && visibleLen(lead)+len(loc) > c.width:
-			// A path or URL too long to share the line: on its own line.
+		case !strings.Contains(first, " ") && visibleLen(lead)+len(first) > c.width:
+			// A path too long to share the line: on its own line.
 			fmt.Fprintln(w, strings.TrimRight(lead, " "))
-			fmt.Fprintln(w, "    "+loc)
+			fmt.Fprintln(w, "    "+first)
+		case r.Status == "ok" && rest != "" && visibleLen(lead)+len(first)+3+len(rest) <= c.width:
+			fmt.Fprintln(w, lead+first+"  "+paint(col, dim, rest))
+			rest = ""
 		default:
-			c.wrap(w, lead, indent, loc, nil)
+			c.wrap(w, lead, indent, first, nil)
 		}
-		if detail != "" {
-			c.wrap(w, indent, indent, detail, nil)
+		if rest != "" {
+			style := func(s string) string { return s }
+			if r.Status == "ok" {
+				style = func(s string) string { return paint(col, dim, s) }
+			}
+			c.wrap(w, indent, indent, rest, style)
 		}
 		if r.Try != "" && r.Status != "ok" && r.Status != "skipped" {
-			// One line, however long, so it can be copied and run.
 			fmt.Fprintln(w, indent+paint(col, dim, "try: "+r.Try))
 		}
 	}

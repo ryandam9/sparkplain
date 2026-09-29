@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -39,160 +41,213 @@ var checkTimeout = 15 * time.Second
 type checkInput struct {
 	o              options
 	eventLogPrefix string // from the config file
+	outDir         string // where the outputs will be written
+}
+
+// checked is what the access check found: its rows, in a fixed order, and
+// what the console heads its output with.
+type checked struct {
+	rows    []model.AccessCheck
+	who     string // the credentials' principal, such as user/ryandam
+	cluster string // "j-… · name · emr-7.3.0 · terminated"
+	logRoot string // s3://bucket/prefix/<cluster-id>/, or the -from folder
 }
 
 // accessCheck finds out what the run can read before it reads anything
-// (SPEC §2): one small read-only call per source, made in parallel. It
-// returns the rows in a fixed order and who the credentials are.
-func accessCheck(ctx context.Context, cloud *awsSession, in checkInput) (rows []model.AccessCheck, who string) {
+// (SPEC §2): one small read-only call per source, made in parallel. A
+// log folder is checked by listing one object and reading its first byte,
+// since a bucket policy can allow the one and refuse the other, and a
+// KMS-encrypted object fails only when read.
+func accessCheck(ctx context.Context, cloud *awsSession, in checkInput) checked {
 	o := in.o
+	local := localChecks(o, in.outDir)
 	if o.clusterID == "" && o.clusterName == "" {
-		return offlineCheck(o, in.eventLogPrefix), ""
+		c := offlineCheck(o, in.eventLogPrefix)
+		c.rows = orderChecks(append(c.rows, local...))
+		return c
 	}
+	var c checked
 	cfg, err := cloud.config(ctx)
 	if err != nil {
-		row := model.AccessCheck{Name: "AWS credentials", Status: "error", Class: "accessDenied", Call: "load profile " + o.profile, Detail: err.Error(),
-			Try: "aws sts get-caller-identity --profile " + o.profile}
-		return []model.AccessCheck{row, {Name: "Everything else", Status: "skipped", Detail: "Nothing on AWS can be checked or read without credentials."}}, ""
+		c.rows = append(local, model.AccessCheck{Name: "AWS credentials", Status: "error", Class: "accessDenied", Call: "load profile " + o.profile, Detail: err.Error(),
+			Try: "aws sts get-caller-identity --profile " + o.profile},
+			model.AccessCheck{Name: "Everything else", Status: "skipped", Detail: "Nothing on AWS can be checked or read without credentials."})
+		c.rows = orderChecks(c.rows)
+		return c
 	}
 	if id, err := awsDeps.sts(cfg).GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{}); err == nil {
-		who = aws.ToString(id.Arn)
+		arn := aws.ToString(id.Arn)
+		c.who = arn[strings.LastIndexByte(arn, ':')+1:]
 	}
 	region := cfg.Region
 	try := func(cmd string) string { return cmd + " --profile " + o.profile + " --region " + region }
 
 	// The cluster first: it says where the logs and the event log are.
-	emrRow := model.AccessCheck{Name: "EMR API", Call: "DescribeCluster, ListSteps, ListInstances"}
+	emrRow := model.AccessCheck{Name: "EMR API", Call: "DescribeCluster, ListSteps, ListInstances, ListInstanceGroups or ListInstanceFleets, DescribeStep"}
 	cl, err := cloud.cluster(ctx, o.clusterID, o.clusterName)
 	if err != nil {
-		emrRow.Status, emrRow.Class, emrRow.Detail = "denied", awsmeta.ErrorClass(err), err.Error()
-		if emrRow.Class != "accessDenied" {
-			emrRow.Status = "error"
+		emrRow.Status, emrRow.Class, emrRow.Detail = "error", awsmeta.ErrorClass(err), err.Error()
+		if emrRow.Class == "accessDenied" {
+			emrRow.Status = "denied"
 		}
 		emrRow.Try = try("aws emr describe-cluster --cluster-id " + firstNonEmpty(o.clusterID, "<cluster-id>"))
-		rows = append(rows, emrRow)
-		rows = append(rows, model.AccessCheck{Name: "Logs and the rest", Status: "skipped",
+		c.rows = append(local, emrRow, model.AccessCheck{Name: "Logs and the rest", Status: "skipped",
 			Detail: "Where the logs are comes from DescribeCluster. Pass -from with a copy of the cluster's logs, or -eventlog, to run without it."})
-		return rows, who
+		c.rows = orderChecks(c.rows)
+		return c
 	}
+	c.cluster = strings.Join(nonEmpty(cl.ID, cl.Name, cl.Release, strings.ToLower(cl.State)), " · ")
 	api := awsDeps.emr(cfg)
-	var steps, insts error
-	var instances []string
-	var types []string
+	var steps []model.Step
+	var stepsErr, instErr, groupsErr, stepErr error
+	var instances, types []string
 	var primary string
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
 	go func() {
 		defer wg.Done()
-		c, cancel := context.WithTimeout(ctx, checkTimeout)
+		x, cancel := context.WithTimeout(ctx, checkTimeout)
 		defer cancel()
-		_, steps = api.ListSteps(c, &emr.ListStepsInput{ClusterId: aws.String(cl.ID)})
+		steps, stepsErr = awsmeta.Steps(x, api, cl.ID)
+		if stepsErr == nil && len(steps) > 0 {
+			_, stepErr = api.DescribeStep(x, &emr.DescribeStepInput{ClusterId: aws.String(cl.ID), StepId: aws.String(steps[len(steps)-1].ID)})
+		}
 	}()
 	go func() {
 		defer wg.Done()
-		c, cancel := context.WithTimeout(ctx, checkTimeout)
+		x, cancel := context.WithTimeout(ctx, checkTimeout)
 		defer cancel()
-		out, err := api.ListInstances(c, &emr.ListInstancesInput{ClusterId: aws.String(cl.ID)})
-		insts = err
+		out, err := api.ListInstances(x, &emr.ListInstancesInput{ClusterId: aws.String(cl.ID)})
+		instErr = err
 		if err != nil {
 			return
 		}
-		for _, x := range out.Instances {
-			id := aws.ToString(x.Ec2InstanceId)
+		for _, i := range out.Instances {
+			id := aws.ToString(i.Ec2InstanceId)
 			instances = append(instances, id)
-			if t := aws.ToString(x.InstanceType); t != "" && !slices.Contains(types, t) {
+			if t := aws.ToString(i.InstanceType); t != "" && !slices.Contains(types, t) {
 				types = append(types, t)
 			}
-			if aws.ToString(x.PrivateDnsName) == cl.PrimaryDNS || aws.ToString(x.PublicDnsName) == cl.PrimaryDNS {
+			if aws.ToString(i.PrivateDnsName) == cl.PrimaryDNS || aws.ToString(i.PublicDnsName) == cl.PrimaryDNS {
 				primary = id
 			}
 		}
 	}()
+	go func() {
+		defer wg.Done()
+		x, cancel := context.WithTimeout(ctx, checkTimeout)
+		defer cancel()
+		if cl.Fleets {
+			_, groupsErr = api.ListInstanceFleets(x, &emr.ListInstanceFleetsInput{ClusterId: aws.String(cl.ID)})
+		} else {
+			_, groupsErr = api.ListInstanceGroups(x, &emr.ListInstanceGroupsInput{ClusterId: aws.String(cl.ID)})
+		}
+	}()
 	wg.Wait()
 	emrRow.Status = "ok"
-	emrRow.Detail = strings.Trim(fmt.Sprintf("%s (%s, %s, %s)", cl.ID, cl.Name, cl.Release, cl.State), " ")
+	emrRow.Detail = "cluster, steps, instances, " + map[bool]string{true: "fleets", false: "groups"}[cl.Fleets]
+	groupsCall := map[bool]string{true: "ListInstanceFleets", false: "ListInstanceGroups"}[cl.Fleets]
 	for _, e := range []struct {
-		err  error
-		call string
-	}{{steps, "ListSteps"}, {insts, "ListInstances"}} {
-		if e.err != nil {
-			emrRow.Status, emrRow.Class = "denied", awsmeta.ErrorClass(e.err)
-			emrRow.Detail = fmt.Sprintf("%s failed (%s): %v", e.call, emrRow.Class, e.err)
-			emrRow.Try = try(fmt.Sprintf("aws emr %s --cluster-id %s", map[string]string{"ListSteps": "list-steps", "ListInstances": "list-instances"}[e.call], cl.ID))
+		err       error
+		call, cmd string
+		optional  bool
+	}{
+		{stepsErr, "ListSteps", "list-steps", false},
+		{instErr, "ListInstances", "list-instances", false},
+		{groupsErr, groupsCall, map[bool]string{true: "list-instance-fleets", false: "list-instance-groups"}[cl.Fleets], false},
+		{stepErr, "DescribeStep", "describe-step --step-id " + func() string {
+			if len(steps) > 0 {
+				return steps[len(steps)-1].ID
+			}
+			return ""
+		}(), true},
+	} {
+		if e.err == nil || emrRow.Status != "ok" {
+			continue
 		}
+		emrRow.Status, emrRow.Class = "denied", awsmeta.ErrorClass(e.err)
+		if emrRow.Class != "accessDenied" {
+			emrRow.Status = "error"
+		}
+		need := "elasticmapreduce:" + e.call
+		if e.optional {
+			need += " (optional; it gives the step's runtime role)"
+		}
+		emrRow.Detail = fmt.Sprintf("%s failed (%s): needs %s.", e.call, emrRow.Class, need)
+		emrRow.Try = try("aws emr " + e.cmd + " --cluster-id " + cl.ID)
 	}
-	rows = append(rows, emrRow)
+	c.rows = append(local, emrRow)
 
 	var mu sync.Mutex
 	add := func(r model.AccessCheck) {
 		mu.Lock()
-		rows = append(rows, r)
+		c.rows = append(c.rows, r)
 		mu.Unlock()
 	}
 	var jobs []func(context.Context)
 
 	// The logs under the cluster's log URI.
 	bucket, root, ok := yarnlog.LogRoot(cl.LogURI, cl.ID)
-	logRows := []struct{ name, prefix string }{
-		{"Container logs", root + "containers/" + o.appID + "/"},
-		{"Step logs", root + "steps/"},
-		{"Node logs", root + "node/"},
+	if ok {
+		c.logRoot = "s3://" + bucket + "/" + root
 	}
-	// DescribeCluster gives each application with its version: "HBase 2.4.17-amzn-7".
-	hbase := slices.ContainsFunc(cl.Applications, func(a string) bool { name, _, _ := strings.Cut(a, " "); return strings.EqualFold(name, "HBase") })
+	type logRow struct{ name, prefix, where string }
+	logRows := []logRow{
+		{"Container logs", root + "containers/" + o.appID + "/", ""},
+		{"Step logs", root + "steps/", ""},
+		{"Node logs", root + "node/", ""},
+	}
+	hbase := slices.ContainsFunc(cl.Applications, func(a string) bool {
+		name, _, _ := strings.Cut(a, " ") // DescribeCluster gives "HBase 2.4.17-amzn-7"
+		return strings.EqualFold(name, "HBase")
+	})
 	if hbase {
 		host := primary
 		if host == "" && len(instances) > 0 {
 			host = instances[0]
 		}
-		logRows = append(logRows, struct{ name, prefix string }{"HBase server logs", root + "node/" + host + "/applications/hbase/"})
+		logRows = append(logRows, logRow{"HBase server logs", root + "node/" + host + "/applications/hbase/", host})
+	} else {
+		c.rows = append(c.rows, model.AccessCheck{Name: "HBase server logs", Status: "skipped", Detail: "HBase is not installed on this cluster."})
 	}
 	if !ok {
 		for _, lr := range logRows {
-			rows = append(rows, model.AccessCheck{Name: lr.name, Status: "skipped", Detail: "The cluster has no log URI, so EMR kept no logs in S3."})
+			c.rows = append(c.rows, model.AccessCheck{Name: lr.name, Status: "skipped", Detail: "The cluster has no log URI, so EMR kept no logs in S3."})
 		}
 	} else {
-		jobs = append(jobs, func(c context.Context) {
-			st, err := awsDeps.s3(c, cfg, bucket)
+		jobs = append(jobs, func(x context.Context) {
+			st, err := awsDeps.s3(x, cfg, bucket)
 			for _, lr := range logRows {
-				r := model.AccessCheck{Name: lr.name, Location: "s3://" + bucket + "/" + lr.prefix, Call: "ListObjectsV2 (one object)",
+				r := model.AccessCheck{Name: lr.name, Location: "s3://" + bucket + "/" + lr.prefix, Call: "ListObjectsV2 and GetObject (one byte)",
 					Try: try("aws s3 ls s3://" + bucket + "/" + lr.prefix)}
-				if err == nil {
-					objs, err2 := source.Sample(c, st, lr.prefix, 1)
-					r = probed(r, objs, err2, emptyWhy(lr.name))
-				} else {
-					r = probed(r, nil, err, "")
+				if err != nil {
+					add(probed(r, nil, nil, err, ""))
+					continue
+				}
+				r = readable(x, st, r, lr.prefix, emptyWhy(lr.name))
+				if lr.where != "" {
+					// The run reads every node's; the primary node's (the
+					// Master's) stands for them here.
+					r.Location = "s3://" + bucket + "/" + root + "node/*/applications/hbase/"
+					if r.Status == "ok" {
+						r.Detail = "Checked on the primary node, " + lr.where + ". List, read."
+					}
 				}
 				add(r)
 			}
 		})
 	}
-	if !hbase {
-		rows = append(rows, model.AccessCheck{Name: "HBase server logs", Status: "skipped", Detail: "HBase is not installed on this cluster."})
-	}
 
-	// Where the event log will come from.
-	jobs = append(jobs, func(c context.Context) { add(eventLogCheck(c, cfg, o, in.eventLogPrefix, cl, try)) })
+	// Where the event log will come from, and the job's scripts.
+	jobs = append(jobs, func(x context.Context) { add(eventLogCheck(x, cfg, o, in.eventLogPrefix, cl, steps, try)) })
+	jobs = append(jobs, func(x context.Context) { add(scriptCheck(x, cfg, steps, try)) })
 
 	// CloudWatch, EC2 and CloudTrail.
 	if o.noCloudWatch {
-		rows = append(rows, model.AccessCheck{Name: "CloudWatch", Status: "skipped", Detail: "Not asked for (-no-cloudwatch)."},
+		c.rows = append(c.rows, model.AccessCheck{Name: "CloudWatch", Status: "skipped", Detail: "Not asked for (-no-cloudwatch)."},
 			model.AccessCheck{Name: "EC2 instance types", Status: "skipped", Detail: "Not asked for (-no-cloudwatch)."})
 	} else {
-		jobs = append(jobs, func(c context.Context) {
-			r := model.AccessCheck{Name: "CloudWatch", Call: "ListMetrics (AWS/ElasticMapReduce)", Try: try("aws cloudwatch list-metrics --namespace AWS/ElasticMapReduce --dimensions Name=JobFlowId,Value=" + cl.ID)}
-			out, err := awsDeps.cloudwatch(cfg).ListMetrics(c, &cloudwatch.ListMetricsInput{Namespace: aws.String("AWS/ElasticMapReduce"),
-				Dimensions: []cwtypes.DimensionFilter{{Name: aws.String("JobFlowId"), Value: aws.String(cl.ID)}}})
-			switch {
-			case err != nil:
-				r = apiFailed(r, err, "cloudwatch:ListMetrics")
-			case len(out.Metrics) == 0:
-				r.Status, r.Detail = "empty", "Readable, but CloudWatch holds no metrics for this cluster (it keeps them 15 months; a new cluster needs a few minutes)."
-			default:
-				r.Status, r.Detail = "ok", fmt.Sprintf("%d cluster metrics.", len(out.Metrics))
-			}
-			add(r)
-		}, func(c context.Context) {
+		jobs = append(jobs, func(x context.Context) { add(cloudWatchCheck(x, cfg, cl.ID, try)) }, func(x context.Context) {
 			r := model.AccessCheck{Name: "EC2 instance types", Call: "DescribeInstanceTypes"}
 			if len(types) == 0 {
 				r.Status, r.Detail = "skipped", "No instances listed to look up."
@@ -200,7 +255,7 @@ func accessCheck(ctx context.Context, cloud *awsSession, in checkInput) (rows []
 				return
 			}
 			r.Try = try("aws ec2 describe-instance-types --instance-types " + types[0])
-			_, err := awsDeps.ec2(cfg).DescribeInstanceTypes(c, &ec2.DescribeInstanceTypesInput{InstanceTypes: []ec2types.InstanceType{ec2types.InstanceType(types[0])}})
+			_, err := awsDeps.ec2(cfg).DescribeInstanceTypes(x, &ec2.DescribeInstanceTypesInput{InstanceTypes: []ec2types.InstanceType{ec2types.InstanceType(types[0])}})
 			if err != nil {
 				r = apiFailed(r, err, "ec2:DescribeInstanceTypes")
 			} else {
@@ -210,11 +265,11 @@ func accessCheck(ctx context.Context, cloud *awsSession, in checkInput) (rows []
 		})
 	}
 	if o.noCloudTrail {
-		rows = append(rows, model.AccessCheck{Name: "CloudTrail", Status: "skipped", Detail: "Not asked for (-no-cloudtrail)."})
+		c.rows = append(c.rows, model.AccessCheck{Name: "CloudTrail", Status: "skipped", Detail: "Not asked for (-no-cloudtrail)."})
 	} else {
-		jobs = append(jobs, func(c context.Context) {
+		jobs = append(jobs, func(x context.Context) {
 			r := model.AccessCheck{Name: "CloudTrail", Call: "LookupEvents (one event)", Try: try("aws cloudtrail lookup-events --max-results 1")}
-			if _, err := awsDeps.cloudtrail(cfg).LookupEvents(c, &cloudtrail.LookupEventsInput{MaxResults: aws.Int32(1)}); err != nil {
+			if _, err := awsDeps.cloudtrail(cfg).LookupEvents(x, &cloudtrail.LookupEventsInput{MaxResults: aws.Int32(1)}); err != nil {
 				r = apiFailed(r, err, "cloudtrail:LookupEvents")
 			} else {
 				r.Status, r.Detail = "ok", "Readable."
@@ -223,13 +278,13 @@ func accessCheck(ctx context.Context, cloud *awsSession, in checkInput) (rows []
 		})
 	}
 	if cl.SecurityConfig != "" {
-		jobs = append(jobs, func(c context.Context) {
+		jobs = append(jobs, func(x context.Context) {
 			r := model.AccessCheck{Name: "Security configuration", Call: "DescribeSecurityConfiguration", Location: cl.SecurityConfig,
 				Try: try("aws emr describe-security-configuration --name " + cl.SecurityConfig)}
-			if _, err := api.DescribeSecurityConfiguration(c, &emr.DescribeSecurityConfigurationInput{Name: aws.String(cl.SecurityConfig)}); err != nil {
+			if _, err := api.DescribeSecurityConfiguration(x, &emr.DescribeSecurityConfigurationInput{Name: aws.String(cl.SecurityConfig)}); err != nil {
 				r = apiFailed(r, err, "elasticmapreduce:DescribeSecurityConfiguration")
 			} else {
-				r.Status, r.Detail = "ok", cl.SecurityConfig+"."
+				r.Status, r.Detail = "ok", "Readable."
 			}
 			add(r)
 		})
@@ -239,18 +294,19 @@ func accessCheck(ctx context.Context, cloud *awsSession, in checkInput) (rows []
 		jw.Add(1)
 		go func() {
 			defer jw.Done()
-			c, cancel := context.WithTimeout(ctx, checkTimeout)
+			x, cancel := context.WithTimeout(ctx, checkTimeout)
 			defer cancel()
-			j(c)
+			j(x)
 		}()
 	}
 	jw.Wait()
-	return orderChecks(rows), who
+	c.rows = orderChecks(c.rows)
+	return c
 }
 
 // checkOrder is the order rows are shown in.
-var checkOrder = []string{"AWS", "AWS credentials", "EMR API", "Security configuration", "Container logs", "Step logs", "Node logs", "HBase server logs",
-	"Spark event log", "CloudWatch", "EC2 instance types", "CloudTrail", "Logs and the rest", "Everything else"}
+var checkOrder = []string{"AWS", "AWS credentials", "EMR API", "Cluster logs", "Security configuration", "Container logs", "Step logs", "Node logs", "HBase server logs",
+	"Spark event log", "Job scripts", "CloudWatch", "EC2 instance types", "CloudTrail", "Logs and the rest", "Everything else", "Source code", "Output folder"}
 
 func orderChecks(rows []model.AccessCheck) []model.AccessCheck {
 	slices.SortStableFunc(rows, func(a, b model.AccessCheck) int {
@@ -270,22 +326,44 @@ func emptyWhy(name string) string {
 	return "Readable, but nothing there yet: EMR copies logs to S3 every few minutes."
 }
 
-// probed fills a row from a one-object listing.
-func probed(r model.AccessCheck, objs []source.Object, err error, empty string) model.AccessCheck {
+// readable lists one object under prefix and reads its first byte.
+func readable(ctx context.Context, st source.Store, r model.AccessCheck, prefix, empty string) model.AccessCheck {
+	objs, err := source.Sample(ctx, st, prefix, 1)
+	var peekErr error
+	if err == nil && len(objs) > 0 {
+		peekErr = source.Peek(ctx, st, objs[0])
+	}
+	return probed(r, objs, peekErr, err, empty)
+}
+
+// probed fills a row from a one-object listing and a one-byte read.
+func probed(r model.AccessCheck, objs []source.Object, readErr, listErr error, empty string) model.AccessCheck {
 	switch {
-	case err != nil:
-		r.Class = source.ClassOf(err)
+	case listErr != nil:
+		r.Class = source.ClassOf(listErr)
 		r.Status = "error"
 		if r.Class == source.ClassAccessDenied {
 			r.Status = "denied"
-			r.Detail = "Access denied: needs s3:ListBucket and s3:GetObject on the log bucket (and kms:Decrypt when it uses SSE-KMS)."
+			r.Detail = "Listing refused: needs s3:ListBucket on the bucket."
 		} else {
-			r.Detail = err.Error()
+			r.Detail = listErr.Error()
 		}
 	case len(objs) == 0:
 		r.Status, r.Detail = "empty", empty
+	case readErr != nil:
+		r.Class = source.ClassOf(readErr)
+		r.Status = "error"
+		if r.Class == source.ClassAccessDenied {
+			r.Status = "denied"
+			r.Detail = "Listing works, but reading is refused: needs s3:GetObject (and kms:Decrypt when the bucket uses SSE-KMS)."
+		} else {
+			r.Detail = "Listing works, but reading failed: " + readErr.Error()
+		}
+		if r.Location != "" {
+			r.Try = strings.Replace(r.Try, "aws s3 ls "+r.Location, "aws s3 cp "+strings.TrimSuffix(r.Location, "/")+"/"+path.Base(objs[0].Key)+" -", 1)
+		}
 	default:
-		r.Status, r.Detail, r.Try = "ok", "Readable.", ""
+		r.Status, r.Detail, r.Try = "ok", "List, read.", ""
 	}
 	return r
 }
@@ -301,28 +379,104 @@ func apiFailed(r model.AccessCheck, err error, permission string) model.AccessCh
 	return r
 }
 
+// cloudWatchCheck lists the cluster's metrics and reads one of them:
+// cloudwatch:ListMetrics and GetMetricData are separate permissions.
+func cloudWatchCheck(ctx context.Context, cfg aws.Config, clusterID string, try func(string) string) model.AccessCheck {
+	r := model.AccessCheck{Name: "CloudWatch", Call: "ListMetrics, GetMetricData (AWS/ElasticMapReduce)",
+		Try: try("aws cloudwatch list-metrics --namespace AWS/ElasticMapReduce --dimensions Name=JobFlowId,Value=" + clusterID)}
+	api := awsDeps.cloudwatch(cfg)
+	out, err := api.ListMetrics(ctx, &cloudwatch.ListMetricsInput{Namespace: aws.String("AWS/ElasticMapReduce"),
+		Dimensions: []cwtypes.DimensionFilter{{Name: aws.String("JobFlowId"), Value: aws.String(clusterID)}}})
+	switch {
+	case err != nil:
+		return apiFailed(r, err, "cloudwatch:ListMetrics")
+	case len(out.Metrics) == 0:
+		r.Status, r.Detail = "empty", "Readable, but CloudWatch holds no metrics for this cluster (it keeps them 15 months; a new cluster needs a few minutes)."
+		return r
+	}
+	m := out.Metrics[0]
+	now := awsDeps.now()
+	_, err = api.GetMetricData(ctx, &cloudwatch.GetMetricDataInput{StartTime: aws.Time(now.Add(-10 * time.Minute)), EndTime: aws.Time(now),
+		MetricDataQueries: []cwtypes.MetricDataQuery{{Id: aws.String("check"), MetricStat: &cwtypes.MetricStat{Metric: &m, Period: aws.Int32(300), Stat: aws.String("Average")}}}})
+	if err != nil {
+		r = apiFailed(r, err, "cloudwatch:GetMetricData")
+		r.Try = try("aws cloudwatch get-metric-statistics --namespace AWS/ElasticMapReduce --metric-name " + aws.ToString(m.MetricName) +
+			" --dimensions Name=JobFlowId,Value=" + clusterID + " --statistics Average --period 300 --start-time " + now.Add(-10*time.Minute).UTC().Format(time.RFC3339) + " --end-time " + now.UTC().Format(time.RFC3339))
+		return r
+	}
+	r.Status, r.Detail, r.Try = "ok", fmt.Sprintf("%d cluster metrics. List, read.", len(out.Metrics)), ""
+	return r
+}
+
+// scriptCheck reads the first byte of the newest step's script on S3,
+// which the run shows beside the stages it ran; it is often in another
+// bucket than the logs.
+func scriptCheck(ctx context.Context, cfg aws.Config, steps []model.Step, try func(string) string) model.AccessCheck {
+	r := model.AccessCheck{Name: "Job scripts", Call: "ListObjectsV2 and GetObject (one byte)"}
+	var script string
+	for i := len(steps) - 1; i >= 0 && script == ""; i-- {
+		if s := submitScripts(steps[i].Args); len(s) > 0 {
+			script = s[0]
+		}
+	}
+	if script == "" {
+		r.Status, r.Detail = "skipped", "No step names a script on S3."
+		return r
+	}
+	bucket, key, _ := source.ParseS3(script)
+	r.Location, r.Try, r.Call = script, try("aws s3 cp "+script+" -"), "GetObject (one byte)"
+	st, err := awsDeps.s3(ctx, cfg, bucket)
+	if err == nil {
+		// The run reads the script with GetObject alone, so this does too.
+		err = source.Peek(ctx, st, source.Object{Key: key})
+	}
+	switch cls := source.ClassOf(err); {
+	case err == nil:
+		r.Status, r.Detail, r.Try = "ok", "The newest step's script. Read.", ""
+	case cls == source.ClassAccessDenied:
+		r.Status, r.Class, r.Detail = "denied", cls, "Reading is refused: needs s3:GetObject on it (and kms:Decrypt when the bucket uses SSE-KMS). Only the code beside the stages is missing without it."
+	default:
+		r.Status, r.Class, r.Detail = "error", cls, err.Error()
+	}
+	return r
+}
+
 // eventLogCheck says where the event log will come from and whether it can
 // be read there.
-func eventLogCheck(ctx context.Context, cfg aws.Config, o options, prefix string, cl model.Cluster, try func(string) string) model.AccessCheck {
+func eventLogCheck(ctx context.Context, cfg aws.Config, o options, prefix string, cl model.Cluster, steps []model.Step, try func(string) string) model.AccessCheck {
 	r := model.AccessCheck{Name: "Spark event log"}
 	loc, from := o.eventLog, "-eventlog"
 	if loc == "" && prefix != "" {
 		loc, from = prefix, "eventlog-prefix in the config file"
 	}
 	if loc == "" {
-		dir := cl.Configurations["spark-defaults/spark.eventLog.dir"]
-		switch {
-		case isS3(dir):
+		if dir := cl.Configurations["spark-defaults/spark.eventLog.dir"]; isS3(dir) {
 			loc, from = dir, "the cluster's spark.eventLog.dir"
-		default:
-			where := dir
-			if dir == "" {
-				dir, where = "hdfs:///var/log/spark/apps", "EMR's default, hdfs:///var/log/spark/apps"
-			}
-			r.Status, r.Location = "denied", dir
-			r.Detail = "The cluster keeps the event log on HDFS (" + where + "), which sparkplain cannot read. Supply it with -eventlog: the Spark History Server's \"Download\", or a copy in S3. The run also tries any S3 spark.eventLog.dir the cluster's steps set."
-			return r
 		}
+	}
+	if loc == "" {
+		// Jobs often set it per job in their spark-submit arguments.
+		for _, dir := range stepEventLogDirs(steps) {
+			bucket, key, _ := source.ParseS3(dir)
+			st, err := awsDeps.s3(ctx, cfg, bucket)
+			if err != nil {
+				continue
+			}
+			if objs, err := source.Sample(ctx, st, key, 1); err == nil && len(objs) > 0 {
+				loc, from = dir, "a step's spark.eventLog.dir"
+				break
+			}
+		}
+	}
+	if loc == "" {
+		dir := cl.Configurations["spark-defaults/spark.eventLog.dir"]
+		where := dir
+		if dir == "" {
+			dir, where = "hdfs:///var/log/spark/apps", "EMR's default, hdfs:///var/log/spark/apps"
+		}
+		r.Status, r.Location = "denied", dir
+		r.Detail = "The cluster keeps the event log on HDFS (" + where + "), which sparkplain cannot read. Supply it with -eventlog: the Spark History Server's \"Download\", or a copy in S3."
+		return r
 	}
 	r.Location, r.Call = loc, from
 	if !isS3(loc) {
@@ -337,23 +491,64 @@ func eventLogCheck(ctx context.Context, cfg aws.Config, o options, prefix string
 		return r
 	}
 	bucket, key, _ := source.ParseS3(loc)
-	r.Call = "ListObjectsV2 (one object), " + from
+	r.Call = "ListObjectsV2 and GetObject (one byte), " + from
 	r.Try = try("aws s3 ls " + loc)
 	st, err := awsDeps.s3(ctx, cfg, bucket)
 	if err != nil {
-		return probed(r, nil, err, "")
+		return probed(r, nil, nil, err, "")
 	}
-	objs, err := source.Sample(ctx, st, key, 1)
-	r = probed(r, objs, err, "Readable, but nothing there: check the path, or that the application's log was written there.")
+	r = readable(ctx, st, r, key, "Readable, but nothing there: check the path, or that the application's log was written there.")
 	if r.Status == "ok" {
-		r.Detail = "From " + from + "."
+		r.Detail = "From " + from + ". List, read."
 	}
 	return r
 }
 
+// localChecks are the local paths every run needs: the -source code and
+// the output folder, which would otherwise fail only once all was read.
+func localChecks(o options, outDir string) []model.AccessCheck {
+	var rows []model.AccessCheck
+	if len(o.sources) > 0 {
+		r := model.AccessCheck{Name: "Source code", Location: strings.Join(o.sources, ", "), Status: "ok", Detail: "Found."}
+		for _, s := range o.sources {
+			if _, err := os.Stat(s); err != nil {
+				r.Status, r.Class, r.Detail = "error", "notFound", err.Error()
+				break
+			}
+		}
+		rows = append(rows, r)
+	}
+	if outDir != "" {
+		r := model.AccessCheck{Name: "Output folder", Location: outDir, Status: "ok", Detail: "Writable."}
+		dir := outDir
+		for {
+			if _, err := os.Stat(dir); err == nil {
+				break
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+			r.Detail = "Will be created."
+		}
+		// W_OK: the folder (or the one it will be created in) is writable,
+		// checked without writing anything.
+		if err := syscall.Access(dir, 2); err != nil {
+			r.Status, r.Class, r.Detail = "denied", "accessDenied", dir+" is not writable: "+err.Error()+". Pass -out with a folder you can write to."
+		}
+		rows = append(rows, r)
+	}
+	return rows
+}
+
 // offlineCheck checks the local paths a run without AWS reads.
-func offlineCheck(o options, prefix string) []model.AccessCheck {
-	rows := []model.AccessCheck{{Name: "AWS", Status: "skipped", Detail: "EMR API, CloudWatch and CloudTrail: not asked for. Pass -profile and -cluster-id to read from AWS."}}
+func offlineCheck(o options, prefix string) checked {
+	c := checked{}
+	if o.from != "" {
+		c.logRoot = strings.TrimSuffix(o.from, "/") + "/"
+	}
+	c.rows = []model.AccessCheck{{Name: "AWS", Status: "skipped", Detail: "EMR API, CloudWatch and CloudTrail: not asked for. Pass -profile and -cluster-id to read from AWS."}}
 	loc := firstNonEmpty(o.eventLog, prefix)
 	ev := model.AccessCheck{Name: "Spark event log", Location: loc}
 	switch {
@@ -368,12 +563,11 @@ func offlineCheck(o options, prefix string) []model.AccessCheck {
 			ev.Status, ev.Detail = "ok", "Found."
 		}
 	}
-	rows = append(rows, ev)
+	c.rows = append(c.rows, ev)
 	if o.from == "" {
-		for _, name := range []string{"Container logs", "Step logs", "Node logs", "HBase server logs"} {
-			rows = append(rows, model.AccessCheck{Name: name, Status: "skipped", Detail: "Not asked for: pass -from with a copy of the cluster's logs, or -cluster-id."})
-		}
-		return orderChecks(rows)
+		c.rows = append(c.rows, model.AccessCheck{Name: "Cluster logs", Status: "skipped",
+			Detail: "Container, step, node and HBase logs: not asked for. Pass -from with a copy of the cluster's logs, or -cluster-id."})
+		return c
 	}
 	objs, err := source.NewLocalStore(o.from).List(context.Background(), "")
 	for _, lr := range []struct{ name, glob string }{
@@ -382,7 +576,7 @@ func offlineCheck(o options, prefix string) []model.AccessCheck {
 		{"Node logs", "node/"},
 		{"HBase server logs", "node/*/applications/hbase"},
 	} {
-		r := model.AccessCheck{Name: lr.name, Location: path.Join(o.from, lr.glob)}
+		r := model.AccessCheck{Name: lr.name, Location: path.Join(o.from, lr.glob) + "/"}
 		found := false
 		for _, x := range objs {
 			switch {
@@ -400,12 +594,14 @@ func offlineCheck(o options, prefix string) []model.AccessCheck {
 			r.Status, r.Class, r.Detail = "error", source.ClassOf(err), err.Error()
 		case found:
 			r.Status, r.Detail = "ok", "Found."
+		case lr.name == "HBase server logs":
+			r.Status, r.Detail = "skipped", "None in this copy: the cluster runs no HBase, or its node/ folder was not copied." // not every cluster has HBase
 		default:
 			r.Status, r.Detail = "empty", "Not in this copy."
 		}
-		rows = append(rows, r)
+		c.rows = append(c.rows, r)
 	}
-	return orderChecks(rows)
+	return c
 }
 
 // checkExit is the -check exit code: 3 when a source the run would read

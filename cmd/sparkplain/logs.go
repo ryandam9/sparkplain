@@ -520,6 +520,7 @@ func (out *clusterLogs) readMetrics(ctx context.Context, cloud *awsSession, log 
 	row.Detail = fmt.Sprintf("GetMetricData for the cluster and %s from %s to %s UTC (the run with %s either side): %s series, %s points.",
 		model.Plural(len(ids), "node", "nodes"), from.UTC().Format("2006-01-02 15:04"), to.UTC().Format("15:04"), pad,
 		model.Num(int64(len(out.metrics.Cluster)+len(out.metrics.Hosts))), model.Num(int64(points)))
+	row.Brief = fmt.Sprintf("%s series, %s–%s UTC", model.Num(int64(len(out.metrics.Cluster)+len(out.metrics.Hosts))), from.UTC().Format("15:04"), to.UTC().Format("15:04"))
 	if out.metrics.Coverage == model.NoData {
 		row.Status = "none"
 		row.Detail += " " + strings.Join(out.metrics.Missing, " ")
@@ -556,6 +557,11 @@ func (out *clusterLogs) readCalls(ctx context.Context, cloud *awsSession, log *m
 	}
 	row.Detail = fmt.Sprintf("LookupEvents for %s (%s) from %s to %s UTC: %s events, %s refused.", model.Plural(len(users), "node", "nodes"), strings.Join(users, ", "),
 		from.UTC().Format("2006-01-02 15:04"), to.UTC().Format("15:04"), model.Num(int64(out.calls.Events)), model.Num(int64(len(out.calls.Denied))))
+	refused := "none refused"
+	if n := len(out.calls.Denied); n > 0 {
+		refused = fmt.Sprintf("%d refused", n)
+	}
+	row.Brief = fmt.Sprintf("%s, %s, %s", model.Plural(len(users), "node", "nodes"), model.Plural(out.calls.Events, "call", "calls"), refused)
 	switch {
 	case out.calls.Coverage == model.NoData:
 		row.Status = "none"

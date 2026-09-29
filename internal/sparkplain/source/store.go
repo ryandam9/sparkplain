@@ -59,6 +59,29 @@ func Sample(ctx context.Context, st Store, prefix string, n int) ([]Object, erro
 	return objs, err
 }
 
+// Peeker reads the first byte of an object: enough to prove it can be
+// read (on S3, s3:GetObject and any KMS decryption) without fetching it.
+type Peeker interface {
+	Peek(ctx context.Context, obj Object) error
+}
+
+// Peek reads the first byte of obj, with st's own Peek when it has one.
+func Peek(ctx context.Context, st Store, obj Object) error {
+	if p, ok := st.(Peeker); ok {
+		return p.Peek(ctx, obj)
+	}
+	r, err := st.Open(ctx, obj)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	_, err = r.Read(make([]byte, 1))
+	if errors.Is(err, io.EOF) {
+		err = nil // an empty object is still readable
+	}
+	return err
+}
+
 // Error classes shown in the report's Sources panel (SPEC §2).
 const (
 	ClassAccessDenied = "accessDenied"

@@ -20,20 +20,26 @@ func TestConsoleSummaryPiped(t *testing.T) {
 		t.Fatalf("exit %d: %s", code, errs)
 	}
 	for _, want := range []string{
-		"sparkplain " + version + " · application_1790380000000_0042\n",
-		"\nRead\n  ✓ Spark event log   ",
-		"  · Not asked for     Container logs, Step logs, Node logs, EMR API, CloudWatch,",
-		"\nWhat happened\n  ",
-		"\nFindings: 1 critical, ",
-		"  ✖ ",
-		"\nReport    " + outPath(dir, "report.html") + "\n",
-		"\nExplorer  application_1790380000000_0042-explorer.html\nJSON      application_1790380000000_0042-report.json\n",
-		"Open it: xdg-open ",
+		"◆ sparkplain " + version + " · application_1790380000000_0042\n",
+		"\n▸ Access check\n  - AWS                    EMR API, CloudWatch and CloudTrail: not asked for.",
+		"  - Cluster logs           Container, step, node and HBase logs: not asked for.",
+		"  Y Spark event log\n    ../../testdata/eventlog/application_1790380000000_0042\n",
+		"\n▸ Read\n  Y Spark event log        ",
+		"\n▸ What happened\n  ",
+		"\n▸ Findings  1 critical · ",
+		"\n  !! ",
+		"\n▸ Written  " + dir + "/\n  application_1790380000000_0042-report.html ·",
+		"application_1790380000000_0042-explorer.html ·",
+		"  Open it xdg-open " + outPath(dir, "report.html") + "\n",
+		"\nDone in ",
 		"· complete (exit 0)\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("stdout lacks %q:\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "Not asked for") {
+		t.Error("the access check already said what was not asked for")
 	}
 	if strings.Contains(out, "What needs attention") {
 		t.Error("the findings list replaces the summary's attention sentence")
@@ -71,11 +77,10 @@ func TestConsoleLive(t *testing.T) {
 			t.Fatalf("exit %d: %s", code, errs)
 		}
 		plainErr, plainOut := ansiRE.ReplaceAllString(errs, ""), ansiRE.ReplaceAllString(out, "")
-		if !strings.Contains(plainErr, "\nRead\n") || !strings.Contains(plainErr, "✓ Spark event log") || !strings.Contains(errs, "reading the event log…") ||
-			!strings.Contains(plainErr, "Not asked for") {
+		if !strings.Contains(plainErr, "\n▸ Read\n") || !strings.Contains(plainErr, map[bool]string{true: "✓", false: "Y"}[noColor == ""]+" Spark event log") || !strings.Contains(errs, "reading the event log…") {
 			t.Errorf("NO_COLOR=%q: stderr lacks the live listing:\n%s", noColor, errs)
 		}
-		if strings.Contains(plainOut, "\nRead\n") || !strings.Contains(plainOut, "What happened") || !strings.Contains(plainOut, "complete (exit 0)") {
+		if strings.Contains(plainOut, "\n▸ Read\n") || !strings.Contains(plainOut, "▸ Access check") || !strings.Contains(plainOut, "What happened") || !strings.Contains(plainOut, "✓ Done in ") && noColor == "" || !strings.Contains(plainOut, "complete (exit 0)") {
 			t.Errorf("NO_COLOR=%q: stdout should have the summary without the sources:\n%s", noColor, out)
 		}
 		coloured := regexp.MustCompile(`\x1b\[3\dm`).MatchString(out + errs)

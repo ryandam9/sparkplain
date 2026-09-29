@@ -175,9 +175,18 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if online && o.profile == "" {
 		return fail("%v", errNoProfile)
 	}
+	outDir := firstNonEmpty(o.out, cfg.Out)
+	if outDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fail("no home folder for the default output path; pass -out: %v", err)
+		}
+		outDir = filepath.Join(home, "sparkplain", time.Now().Format("2006-01-02"), o.appID)
+	}
 	con.status("checking what the run can read")
-	checks, who := accessCheck(ctx, cloud, checkInput{o: o, eventLogPrefix: cfg.EventLogPrefix})
-	con.accessCheck(checks, o.profile, cloud.regionName(), who, online)
+	chk := accessCheck(ctx, cloud, checkInput{o: o, eventLogPrefix: cfg.EventLogPrefix, outDir: outDir})
+	checks := chk.rows
+	con.accessCheck(chk, o.profile, cloud.regionName(), online)
 	if o.check {
 		return checkExit(checks)
 	}
@@ -239,14 +248,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stdout, "%s\n", b)
 		return exitOK
-	}
-	outDir := firstNonEmpty(o.out, cfg.Out)
-	if outDir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return fail("no home folder for the default output path; pass -out: %v", err)
-		}
-		outDir = filepath.Join(home, "sparkplain", time.Now().Format("2006-01-02"), o.appID)
 	}
 
 	src := model.SourceStatus{Name: "Spark event log", Location: evPath}
@@ -325,6 +326,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			log.Stats.Notes = append(log.Stats.Notes, "The log has no application start event; it was matched to "+o.appID+" by its file name.")
 		}
 		src.Status, src.Detail = eventSourceDetail(log, time.Since(start))
+		src.Brief = eventSourceBrief(log)
 		if log.Stats.Events == 0 {
 			// Nothing usable: say why, and let every section show that it
 			// needs the event log instead of an empty application.
@@ -476,6 +478,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 // checked against appIDRE, so it is safe in a file name.
 func outputName(appID, kind string) string {
 	return appID + "-" + kind
+}
+
+// eventSourceBrief is the event log read, in a few words.
+func eventSourceBrief(l *model.EventLog) string {
+	var unpacked int64
+	for _, f := range l.Stats.Files {
+		unpacked += f.Decompressed
+	}
+	return fmt.Sprintf("%s events, %s", model.Num(l.Stats.Events), model.Bytes(unpacked))
 }
 
 func eventSourceDetail(l *model.EventLog, took time.Duration) (string, string) {

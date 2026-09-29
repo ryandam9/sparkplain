@@ -415,6 +415,8 @@ type SourceStatus struct {
 	Class    string `json:"errorClass,omitempty"`
 	Location string `json:"location,omitempty"`
 	Detail   string `json:"detail"`
+	// Brief is what was read in a few words, for the console.
+	Brief string `json:"brief,omitempty"`
 	// Files lists every object read or skipped for this source, and why.
 	Files []SourceFile `json:"files,omitempty"`
 }

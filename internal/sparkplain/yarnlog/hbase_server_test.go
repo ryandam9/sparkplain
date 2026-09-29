@@ -113,7 +113,7 @@ func TestCollectHBaseLogs(t *testing.T) {
 	var row *struct{ status, detail string }
 	skipped := 0
 	for _, s := range c.Sources {
-		if s.Name == "HBase logs" {
+		if s.Name == "HBase server logs" {
 			row = &struct{ status, detail string }{s.Status, s.Detail}
 			for _, f := range s.Files {
 				if f.Status == "skipped" && f.Detail == "an hour before the application started" {

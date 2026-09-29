@@ -142,7 +142,7 @@ func (p Plan) upDuringRun(id string) bool {
 // a node that ran none of its executors.
 func (c *Collection) hbase(ctx context.Context, st source.Store, p Plan) {
 	prefix := p.Root + "node/"
-	src := model.SourceStatus{Name: "HBase logs", Location: st.Location(prefix)}
+	src := model.SourceStatus{Name: "HBase server logs", Location: st.Location(prefix)}
 	var objs []source.Object
 	var listErr error
 	if p.Instances == nil {
@@ -201,6 +201,10 @@ func (c *Collection) hbase(ctx context.Context, st source.Store, p Plan) {
 			src.Status = "partial"
 		}
 		src.Detail = g.summary() + ", kept to the application's time." + g.problems()
+		src.Brief = model.Plural(len(g.files), "file", "files")
+		if !p.Since.IsZero() && !p.Until.IsZero() {
+			src.Brief += fmt.Sprintf(", %s–%s UTC", p.Since.UTC().Format("15:04"), p.Until.UTC().Format("15:04"))
+		}
 	}
 	src.Files = g.sourceFiles
 	c.Files = append(c.Files, g.files...)
@@ -275,6 +279,7 @@ func (c *Collection) containers(ctx context.Context, st source.Store, p Plan) {
 	default:
 		src.Status, src.Class = g.status()
 		src.Detail = fmt.Sprintf("%s from %d containers.%s", g.summary(), len(containers), g.problems())
+		src.Brief = fmt.Sprintf("%s from %s", model.Plural(len(g.files), "file", "files"), model.Plural(len(containers), "container", "containers"))
 	}
 	src.Files = g.sourceFiles
 	c.Files = append(c.Files, g.files...)
@@ -371,6 +376,7 @@ func (c *Collection) steps(ctx context.Context, st source.Store, p Plan) {
 			src.Status = "partial"
 		}
 		src.Detail = fmt.Sprintf("Step %s submitted this application. Read %s.%s", strings.Join(c.Steps, ", "), filesSummary(kept), g.problems()+cg.problems())
+		src.Brief = "step " + strings.Join(c.Steps, ", ") + " submitted it"
 	}
 	c.Files = append(c.Files, kept...)
 	c.Sources = append(c.Sources, src)
@@ -436,6 +442,7 @@ func (c *Collection) nodes(ctx context.Context, st source.Store, p Plan) {
 			src.Status = "partial"
 		}
 		src.Detail = fmt.Sprintf("%s from %d nodes.%s", g.summary(), len(nodes), g.problems())
+		src.Brief = fmt.Sprintf("%s from %s", model.Plural(len(g.files), "file", "files"), model.Plural(len(nodes), "node", "nodes"))
 	}
 	src.Files = g.sourceFiles
 	c.Files = append(c.Files, g.files...)

@@ -124,6 +124,21 @@ func s3Object(o types.Object) Object {
 	return obj
 }
 
+// Peek reads the first byte of obj with a ranged GetObject.
+func (s *S3Store) Peek(ctx context.Context, obj Object) error {
+	if obj.Archived {
+		return &Error{Class: ClassArchived, Key: s.Location(obj.Key), Err: errors.New("archived in " + obj.StorageClass + " and not restored")}
+	}
+	// A one-byte range has no checksum to validate; the SDK would log that
+	// it skipped the check, on the user's terminal.
+	out, err := s.api.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(obj.Key), Range: aws.String("bytes=0-0")},
+		func(o *s3.Options) { o.DisableLogOutputChecksumValidationSkipped = true })
+	if err != nil {
+		return classify(s.Location(obj.Key), err)
+	}
+	return out.Body.Close()
+}
+
 func (s *S3Store) Open(ctx context.Context, obj Object) (io.ReadCloser, error) {
 	if obj.Archived {
 		return nil, &Error{Class: ClassArchived, Key: s.Location(obj.Key), Err: errors.New("archived in " + obj.StorageClass + " and not restored")}
