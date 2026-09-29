@@ -1,0 +1,9 @@
+# Recreate sp_hot as one region with a 1 MB memstore that blocks writes at
+# 2 MB, so a heavy writer hits HBase's back-pressure (scenario.sh hot).
+a = org.apache.hadoop.hbase.client.ConnectionFactory.createConnection(org.apache.hadoop.hbase.HBaseConfiguration.create).getAdmin
+if a.tableExists(org.apache.hadoop.hbase.TableName.valueOf('sp_hot'))
+  disable 'sp_hot'
+  drop 'sp_hot'
+end
+create 'sp_hot', 'd', MEMSTORE_FLUSHSIZE => '1048576', CONFIGURATION => {'hbase.hregion.memstore.block.multiplier' => '2'}
+exit

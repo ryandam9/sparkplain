@@ -1,0 +1,15 @@
+# Run beside a job that writes and scans sp_orders (scenario.sh moves):
+# move every region, split, flush and compact while the job's clients hold
+# cached region locations.
+tn = org.apache.hadoop.hbase.TableName.valueOf('sp_orders')
+a = org.apache.hadoop.hbase.client.ConnectionFactory.createConnection(org.apache.hadoop.hbase.HBaseConfiguration.create).getAdmin
+sleep 15
+10.times do |i|
+  a.getRegions(tn).each { |r| a.move(r.getEncodedNameAsBytes) }
+  puts "moved #{a.getRegions(tn).size} regions, round #{i}"
+  a.split(tn) if i == 2
+  a.flush(tn) if i.odd?
+  a.majorCompact(tn) if i == 5
+  sleep 10
+end
+exit
