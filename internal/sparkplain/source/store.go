@@ -40,6 +40,25 @@ type Store interface {
 	Location(key string) string
 }
 
+// Sampler lists at most n objects under prefix: enough to tell a readable
+// prefix from an empty or refused one without listing all of it.
+type Sampler interface {
+	Sample(ctx context.Context, prefix string, n int) ([]Object, error)
+}
+
+// Sample lists at most n objects under prefix, with st's own Sample when
+// it has one (the access check, SPEC §6).
+func Sample(ctx context.Context, st Store, prefix string, n int) ([]Object, error) {
+	if s, ok := st.(Sampler); ok {
+		return s.Sample(ctx, prefix, n)
+	}
+	objs, err := st.List(ctx, prefix)
+	if len(objs) > n {
+		objs = objs[:n]
+	}
+	return objs, err
+}
+
 // Error classes shown in the report's Sources panel (SPEC §2).
 const (
 	ClassAccessDenied = "accessDenied"

@@ -81,6 +81,19 @@ func (s *S3Store) List(ctx context.Context, prefix string) ([]Object, error) {
 	return out, nil
 }
 
+// Sample lists at most n objects under prefix, with one ListObjectsV2.
+func (s *S3Store) Sample(ctx context.Context, prefix string, n int) ([]Object, error) {
+	page, err := s.api.ListObjectsV2(ctx, &s3.ListObjectsV2Input{Bucket: aws.String(s.bucket), Prefix: aws.String(prefix), MaxKeys: aws.Int32(int32(n))})
+	if err != nil {
+		return nil, classify(s.Location(prefix), err)
+	}
+	out := make([]Object, 0, len(page.Contents))
+	for _, o := range page.Contents {
+		out = append(out, s3Object(o))
+	}
+	return out, nil
+}
+
 // Head finds the one object named key without listing what lies below it.
 // It lists at most one key starting with key: S3 lists keys in order and a
 // key sorts before every longer key that starts with it, so the first

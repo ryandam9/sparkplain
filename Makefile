@@ -29,7 +29,7 @@ vet:
 # RACE_PKG are the packages that start goroutines. Only they run under the
 # race detector, which is ten times slower; a test in cmd/sparkplain fails
 # if code elsewhere starts one without being added here.
-RACE_PKG := ./internal/sparkplain/source ./internal/sparkplain/yarnlog
+RACE_PKG := ./internal/sparkplain/source ./internal/sparkplain/yarnlog ./cmd/sparkplain
 
 test:
 	$(GO) test -count=1 $(PKG)

@@ -416,3 +416,76 @@ func visibleLen(s string) int {
 	}
 	return n
 }
+
+// accessCheck prints the access check a run starts with (SPEC §6): one
+// line per source, marked ✓, ✗ or – (Y, N or - without colour, so a piped
+// log reads plainly), with where it looked and, when it could not read a
+// source, why and an aws command that repeats the call.
+func (c *console) accessCheck(rows []model.AccessCheck, profile, region, who string, online bool) {
+	c.clear()
+	w, col := c.out, c.colOut
+	head := "offline: local files only, no AWS calls"
+	if online {
+		var bits []string
+		for _, b := range []string{"profile " + profile, who, region} {
+			if strings.TrimSpace(strings.TrimPrefix(b, "profile ")) != "" {
+				bits = append(bits, b)
+			}
+		}
+		head = strings.Join(bits, " · ")
+	}
+	fmt.Fprintln(w, "\n"+paint(col, bold, "Access check")+"   "+paint(col, dim, head))
+	for _, r := range rows {
+		mark, code := "–", dim
+		switch r.Status {
+		case "ok":
+			mark, code = "✓", green
+		case "empty":
+			mark, code = "✗", amber
+		case "denied", "error":
+			mark, code = "✗", red
+		}
+		if !col {
+			mark = map[string]string{"✓": "Y", "✗": "N", "–": "-"}[mark]
+		}
+		lead := "  " + paint(col, code, mark) + " " + fmt.Sprintf("%-22s", r.Name) + " "
+		indent := strings.Repeat(" ", 27)
+		loc, detail := r.Location, strings.TrimSpace(r.Detail)
+		if detail == "Readable." || detail == "Found." {
+			detail = ""
+		}
+		if loc != "" && strings.Contains(detail, loc) {
+			loc = ""
+		}
+		if loc == "" {
+			loc, detail = detail, ""
+		}
+		switch {
+		case loc == "":
+			fmt.Fprintln(w, strings.TrimRight(lead, " "))
+		case !strings.Contains(loc, " ") && visibleLen(lead)+len(loc) > c.width:
+			// A path or URL too long to share the line: on its own line.
+			fmt.Fprintln(w, strings.TrimRight(lead, " "))
+			fmt.Fprintln(w, "    "+loc)
+		default:
+			c.wrap(w, lead, indent, loc, nil)
+		}
+		if detail != "" {
+			c.wrap(w, indent, indent, detail, nil)
+		}
+		if r.Try != "" && r.Status != "ok" && r.Status != "skipped" {
+			// One line, however long, so it can be copied and run.
+			fmt.Fprintln(w, indent+paint(col, dim, "try: "+r.Try))
+		}
+	}
+}
+
+func nonEmpty(v ...string) []string {
+	var out []string
+	for _, s := range v {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}

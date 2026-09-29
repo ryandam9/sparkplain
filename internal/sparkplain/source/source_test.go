@@ -50,7 +50,11 @@ func (s *stubS3) ListObjectsV2(ctx context.Context, in *s3.ListObjectsV2Input, _
 	if in.ContinuationToken != nil {
 		start = len(aws.ToString(in.ContinuationToken))
 	}
-	end := min(len(keys), start+s.pageLen)
+	page := s.pageLen
+	if in.MaxKeys != nil && int(*in.MaxKeys) < page {
+		page = int(*in.MaxKeys)
+	}
+	end := min(len(keys), start+page)
 	out := &s3.ListObjectsV2Output{}
 	for _, k := range keys[start:end] {
 		o := types.Object{Key: aws.String(k), Size: aws.Int64(int64(len(s.objects[k]))), ETag: aws.String(s.etag[k]), StorageClass: s.class[k]}
@@ -431,5 +435,28 @@ func TestLocalObjectKeepsUnreadableMetadata(t *testing.T) {
 	}
 	if _, ok := localObject("c/stderr.gz", badEntry{fs.ErrNotExist}); ok {
 		t.Error("a vanished file should be left out")
+	}
+}
+
+// Sample lists at most n objects under a prefix with one small call, and
+// a store without its own Sample lists and cuts.
+func TestSample(t *testing.T) {
+	t.Parallel()
+	api := &stubS3{objects: map[string][]byte{"logs/a": nil, "logs/b": nil, "logs/c": nil}, pageLen: 1000}
+	st := NewS3Store(api, "bucket")
+	for prefix, want := range map[string]int{"logs/": 1, "none/": 0} {
+		objs, err := Sample(context.Background(), st, prefix, 1)
+		if err != nil || len(objs) != want {
+			t.Errorf("S3 %s: %d objects, %v", prefix, len(objs), err)
+		}
+	}
+	dir := t.TempDir()
+	for _, n := range []string{"a", "b"} {
+		if err := os.WriteFile(filepath.Join(dir, n), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if objs, err := Sample(context.Background(), NewLocalStore(dir), "", 1); err != nil || len(objs) != 1 || objs[0].Key != "a" {
+		t.Errorf("local: %v, %v", objs, err)
 	}
 }

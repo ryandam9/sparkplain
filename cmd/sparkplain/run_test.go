@@ -23,6 +23,7 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/emr"
 	emrtypes "github.com/aws/aws-sdk-go-v2/service/emr/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/smithy-go"
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/awsmeta"
@@ -285,6 +286,9 @@ func (stubCloudWatch) GetMetricData(_ context.Context, in *cloudwatch.GetMetricD
 type stubCloudTrail struct{}
 
 func (stubCloudTrail) LookupEvents(_ context.Context, in *cloudtrail.LookupEventsInput, _ ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error) {
+	if len(in.LookupAttributes) == 0 {
+		return &cloudtrail.LookupEventsOutput{}, nil // the access check's one-event probe
+	}
 	user := aws.ToString(in.LookupAttributes[0].AttributeValue)
 	at := aws.ToTime(in.StartTime).Add(time.Minute)
 	return &cloudtrail.LookupEventsOutput{Events: []cttypes.Event{
@@ -321,6 +325,7 @@ func fakeAWS(t *testing.T, buckets map[string]string, clusters map[string]*emrty
 	awsDeps.ec2 = func(aws.Config) awsmeta.EC2API { return stubEC2{} }
 	awsDeps.cloudwatch = func(aws.Config) awsmeta.CloudWatchAPI { return stubCloudWatch{} }
 	awsDeps.cloudtrail = func(aws.Config) awsmeta.CloudTrailAPI { return stubCloudTrail{} }
+	awsDeps.sts = func(aws.Config) STSAPI { return stsAs{arn: "arn:aws:sts::000000000000:assumed-role/fixture/tester"} }
 	awsDeps.now = func() time.Time { return time.Date(2026, 9, 27, 0, 0, 0, 0, time.UTC) }
 	interval := awsmeta.LookupInterval
 	awsmeta.LookupInterval = 0
@@ -332,14 +337,27 @@ func fakeAWS(t *testing.T, buckets map[string]string, clusters map[string]*emrty
 		}
 		return source.NewLocalStore(root), nil
 	}
-	// Tests never call real AWS: every client the CLI can make must be
-	// replaced above, including ones added later.
+	requireStubbed(t, saved)
+}
+
+// requireStubbed fails unless every client the CLI can make has been
+// replaced since saved: tests never call real AWS, including through
+// clients added later.
+func requireStubbed(t *testing.T, saved any) {
+	t.Helper()
 	now, before := reflect.ValueOf(awsDeps), reflect.ValueOf(saved)
 	for i := 0; i < now.NumField(); i++ {
 		if now.Field(i).Pointer() == before.Field(i).Pointer() {
-			t.Fatalf("fakeAWS does not stub awsDeps.%s", now.Type().Field(i).Name)
+			t.Fatalf("a test does not stub awsDeps.%s", now.Type().Field(i).Name)
 		}
 	}
+}
+
+// stsAs answers GetCallerIdentity with a fixed identity.
+type stsAs struct{ arn string }
+
+func (s stsAs) GetCallerIdentity(context.Context, *sts.GetCallerIdentityInput, ...func(*sts.Options)) (*sts.GetCallerIdentityOutput, error) {
+	return &sts.GetCallerIdentityOutput{Arn: aws.String(s.arn), Account: aws.String("000000000000")}, nil
 }
 
 func cluster(id, eventLogDir string) *emrtypes.Cluster {

@@ -30,7 +30,9 @@ type Report struct {
 	Config   ConfigSection   `json:"config"`
 	Identity IdentitySection `json:"identity"`
 	Sources  []SourceStatus  `json:"sources"`
-	EventLog *EventLogStats  `json:"eventLog,omitempty"`
+	// AccessCheck is what the run found it could read before reading it.
+	AccessCheck []AccessCheck  `json:"accessCheck,omitempty"`
+	EventLog    *EventLogStats `json:"eventLog,omitempty"`
 	// Cluster, Steps and Logs come from the EMR API and the cluster's
 	// container, step and node logs (online or -from runs).
 	Cluster *Cluster     `json:"cluster,omitempty"`
@@ -586,3 +588,17 @@ type PathStep struct {
 
 // DurationMs is the step's length.
 func (p PathStep) DurationMs() int64 { return p.End.Sub(p.Start).Milliseconds() }
+
+// AccessCheck is one line of the access check a run starts with (SPEC §6):
+// whether sparkplain can read a source, where, and with which call.
+type AccessCheck struct {
+	Name string `json:"name"`
+	// Status is ok, empty (readable, but nothing there yet), denied, error
+	// or skipped (not asked for, or not needed).
+	Status   string `json:"status"`
+	Class    string `json:"class,omitempty"` // the error class, for denied and error
+	Location string `json:"location,omitempty"`
+	Call     string `json:"call,omitempty"`   // the read-only call made
+	Detail   string `json:"detail,omitempty"` // what was found, or why not and what to do
+	Try      string `json:"try,omitempty"`    // an aws command that repeats the call
+}

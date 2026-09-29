@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/analyze"
 	"github.com/ryandam9/sparkplain/internal/sparkplain/awsmeta"
@@ -53,7 +54,7 @@ type options struct {
 	eventLog, from, out, format, maxSize, maxUnpacked, show    string
 	workers                                                    int
 	timeout, windowPad                                         time.Duration
-	noCloudWatch, noCloudTrail, showVersion                    bool
+	noCloudWatch, noCloudTrail, showVersion, check             bool
 	sources                                                    []string
 }
 
@@ -79,6 +80,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.BoolVar(&o.noCloudTrail, "no-cloudtrail", false, "skip CloudTrail lookups (fewer permissions needed)")
 	fs.DurationVar(&o.windowPad, "window-pad", 5*time.Minute, "padding around the run's time window for CloudWatch and CloudTrail queries")
 	fs.BoolVar(&o.showVersion, "version", false, "print the version and exit")
+	fs.BoolVar(&o.check, "check", false, "check what the run can read, print it, and exit (0 all readable, 3 not)")
 	fs.StringVar(&o.show, "show", "", "print the event at file:line (as the pages cite it), redacted, and exit")
 	fs.Func("source", "the application's source file or folder, shown beside jobs and stages in the explorer (repeatable; redacted)", func(v string) error {
 		o.sources = append(o.sources, v)
@@ -170,6 +172,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cloud := &awsSession{profile: o.profile, region: o.region}
+	if online && o.profile == "" {
+		return fail("%v", errNoProfile)
+	}
+	con.status("checking what the run can read")
+	checks, who := accessCheck(ctx, cloud, checkInput{o: o, eventLogPrefix: cfg.EventLogPrefix})
+	con.accessCheck(checks, o.profile, cloud.regionName(), who, online)
+	if o.check {
+		return checkExit(checks)
+	}
 	var cluster *model.Cluster
 	var logs clusterLogs
 	if online {
@@ -398,6 +409,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	ain.LogSources = append(ain.LogSources, logs.sources...)
 	r := analyze.Run(ain)
+	r.AccessCheck = checks
 	for _, g := range r.AccessGaps {
 		con.note("no access to %s, so the report does not show %s (needs %s).", g.Source, g.Missing, g.Needs)
 	}
@@ -580,6 +592,7 @@ var awsDeps = struct {
 	ec2        func(cfg aws.Config) awsmeta.EC2API
 	cloudwatch func(cfg aws.Config) awsmeta.CloudWatchAPI
 	cloudtrail func(cfg aws.Config) awsmeta.CloudTrailAPI
+	sts        func(cfg aws.Config) STSAPI
 	// now is the clock AWS retention windows are measured against.
 	now func() time.Time
 	s3  func(ctx context.Context, cfg aws.Config, bucket string) (source.Store, error)
@@ -589,6 +602,7 @@ var awsDeps = struct {
 	ec2:        awsmeta.NewEC2,
 	cloudwatch: awsmeta.NewCloudWatch,
 	cloudtrail: awsmeta.NewCloudTrail,
+	sts:        func(cfg aws.Config) STSAPI { return sts.NewFromConfig(cfg) },
 	now:        time.Now,
 	s3: func(ctx context.Context, cfg aws.Config, bucket string) (source.Store, error) {
 		return source.OpenS3(ctx, cfg, bucket)
@@ -600,6 +614,18 @@ var awsDeps = struct {
 type awsSession struct {
 	profile, region string
 	cfg             *aws.Config
+	// described is the cluster the access check described, so the run
+	// does not ask again.
+	described *model.Cluster
+	descErr   error
+}
+
+// regionName is the region the credentials use, once loaded.
+func (a *awsSession) regionName() string {
+	if a.cfg == nil {
+		return a.region
+	}
+	return a.cfg.Region
 }
 
 func (a *awsSession) config(ctx context.Context) (aws.Config, error) {
@@ -624,6 +650,22 @@ func (a *awsSession) config(ctx context.Context) (aws.Config, error) {
 
 // cluster finds the cluster by ID or name and describes it.
 func (a *awsSession) cluster(ctx context.Context, id, name string) (model.Cluster, error) {
+	if a.described != nil || a.descErr != nil {
+		if a.described == nil {
+			return model.Cluster{}, a.descErr
+		}
+		return *a.described, nil
+	}
+	c, err := a.describe(ctx, id, name)
+	if err == nil {
+		a.described = &c
+	} else if !errors.Is(err, errNoProfile) {
+		a.descErr = err
+	}
+	return c, err
+}
+
+func (a *awsSession) describe(ctx context.Context, id, name string) (model.Cluster, error) {
 	cfg, err := a.config(ctx)
 	if err != nil {
 		return model.Cluster{}, err

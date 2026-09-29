@@ -170,6 +170,30 @@ sparkplain -profile default -cluster-id j-1ABCDEF -app-id application_1700000000
 sparkplain -profile prod-emr -region us-east-1 -cluster-name nightly-etl -app-id application_1700000000000_0042
 ```
 
+**Access check.** Every run starts by checking what it can read, with one small read-only call per source, and prints a line for each before it reads anything. A source it cannot read says why, what permission or file it needs, and an `aws` command that repeats the call. Add `-check` to stop there, which is a quick way to try a new profile or cluster: it exits 0 when everything is readable and 3 when something is not.
+
+```
+Access check   profile default · arn:aws:sts::123456789012:assumed-role/analyst/me · ap-southeast-2
+  Y EMR API                j-1ABCDEF (nightly-etl, emr-7.3.0, TERMINATED)
+  Y Container logs
+    s3://my-emr-logs/j-1ABCDEF/containers/application_1700000000000_0042/
+  Y Step logs              s3://my-emr-logs/j-1ABCDEF/steps/
+  Y Node logs              s3://my-emr-logs/j-1ABCDEF/node/
+  Y HBase server logs
+    s3://my-emr-logs/j-1ABCDEF/node/i-0abc123def4567890/applications/hbase/
+  N Spark event log        The cluster keeps the event log on HDFS (EMR's default,
+                           hdfs:///var/log/spark/apps), which sparkplain cannot read.
+                           Supply it with -eventlog: the Spark History Server's
+                           "Download", or a copy in S3.
+  Y CloudWatch             14 cluster metrics.
+  Y EC2 instance types     m5.xlarge.
+  N CloudTrail             Access denied: needs cloudtrail:LookupEvents (optional;
+                           without it the report marks what it would add as missing).
+                           try: aws cloudtrail lookup-events --max-results 1 --profile default --region ap-southeast-2
+```
+
+On a terminal the marks are ✓, ✗ and –. Offline runs check the local paths instead. The rows are also in the JSON report, as `accessCheck`.
+
 Use `-no-cloudwatch` or `-no-cloudtrail` to skip those calls when you lack the permissions. Only their sections are affected.
 
 ### 3. Offline, from a copy of the cluster's logs
@@ -279,6 +303,7 @@ thresholds:            # tune when findings fire
 
 - **`-format`** picks the outputs: `html`, `json`, `explorer`, comma-separated (default all three; `both` means `html,json`).
 - **`-out`** sets the output folder. Files are named after the application, so reports of different applications can share a folder.
+- **`-check`** runs only the access check and exits (0 all readable, 3 not).
 - **`-show file:line`** prints, redacted, the event behind any value the pages cite, then exits:
 
   ```sh

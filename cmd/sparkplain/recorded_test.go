@@ -90,6 +90,7 @@ func replayAWS(t *testing.T, name string) *awsfake.Recording {
 	awsDeps.ec2 = func(aws.Config) awsmeta.EC2API { return awsfake.EC2{R: rec} }
 	awsDeps.cloudwatch = func(aws.Config) awsmeta.CloudWatchAPI { return awsfake.CloudWatch{R: rec} }
 	awsDeps.cloudtrail = func(aws.Config) awsmeta.CloudTrailAPI { return awsfake.CloudTrail{R: rec} }
+	awsDeps.sts = func(aws.Config) STSAPI { return stsAs{arn: "arn:aws:sts::000000000000:assumed-role/fixture/tester"} }
 	awsDeps.now = func() time.Time { return rec.RecordedAt }
 	awsDeps.s3 = func(_ context.Context, _ aws.Config, b string) (source.Store, error) {
 		if b != bucket {
@@ -100,6 +101,7 @@ func replayAWS(t *testing.T, name string) *awsfake.Recording {
 	interval := awsmeta.LookupInterval
 	awsmeta.LookupInterval = 0
 	t.Cleanup(func() { awsmeta.LookupInterval = interval })
+	requireStubbed(t, saved)
 	return rec
 }
 
