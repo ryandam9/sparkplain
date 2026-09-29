@@ -210,6 +210,8 @@ func funcs(loc *time.Location) template.FuncMap {
 		"gcBad":        func(f float64) bool { return f > 0.10 },
 		"join":         strings.Join,
 		"hbaseRetries": model.HBaseRetriesText,
+		"hbaseServer":  model.HBaseServerEventsText,
+		"hbaseEvent":   model.HBaseServerEventName,
 		"hbaseCPUMs":   func(ns int64) int64 { return ns / 1e6 },
 		"hbaseRegions": func(a, b int) int { return a + b },
 		"removal": func(k string) string {

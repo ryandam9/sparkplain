@@ -231,3 +231,73 @@ org.apache.hadoop.hbase.UnknownScannerException: org.apache.hadoop.hbase.Unknown
 		}
 	}
 }
+
+// HBase's own logs are the cluster's, so only events that name the run's
+// tables, a scan from its executors or a whole region server are its own;
+// they give findings the client's logs cannot, and the server's side of
+// the client's busy and scanner findings.
+func TestHBaseServerFindings(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
+	stage := &model.Stage{ID: 0, Name: "scan", NumTasks: 2, JobIDs: []int{0}, Submitted: start.Add(10 * time.Second), Completed: start.Add(290 * time.Second),
+		TaskType: "ResultTask", RDDs: []model.StageRDD{{ID: 0, Name: "NewHadoopRDD", Callsite: "newAPIHadoopRDD at Scan.java:8"}},
+		Totals: model.TaskTotals{Tasks: 2, Succeeded: 2, RunTimeMs: 200_000, CPUTimeNs: 150_000 * 1e6}, Source: model.Source{File: "eventlog", Line: 9}}
+	l := &model.EventLog{
+		Application: model.Application{ID: "application_1_1", Start: start, End: start.Add(5 * time.Minute), DurationMs: 300_000, Status: model.StatusSucceeded},
+		Jobs:        []*model.Job{{ID: 0, Description: "scan events", StageIDs: []int{0}}},
+		Stages:      []*model.Stage{stage},
+	}
+	exec := logFile(t, exec2Err, `24/01/01 10:00:20 INFO NewHadoopRDD: Input split: Split(tablename=events, startrow=, endrow=, regionLocation=ip-10-0-0-6.example.internal, regionname=ab)
+24/01/01 10:01:00 INFO ZooKeeper: closed
+org.apache.hadoop.hbase.UnknownScannerException: org.apache.hadoop.hbase.UnknownScannerException: Unknown scanner '-1'. b) Scanner lease expired because of long wait between consecutive client checkins
+24/01/01 10:02:00 INFO AsyncRequestFutureImpl: id=1, table=events, attempt=3/16, failureCount=5ops, last exception=org.apache.hadoop.hbase.RegionTooBusyException: org.apache.hadoop.hbase.RegionTooBusyException: Over memstore limit=2.0 M, regionName=ab, server=ip-10-0-0-6.example.internal,16020,1
+`)
+	exec.Host = "ip-10-0-0-5.example.internal"
+	master := logFile(t, "node/i-0fee0000000000001/applications/hbase/hbase-hbase-master-ip-10-0-0-1.example.internal.log.gz", `2024-01-01 10:01:10,000 INFO  [PEWorker-4] procedure2.ProcedureExecutor: Finished pid=30, state=SUCCESS; TransitRegionStateProcedure table=events, region=554f, REOPEN/MOVE in 793 msec
+2024-01-01 10:01:11,000 INFO  [PEWorker-4] procedure2.ProcedureExecutor: Finished pid=31, state=SUCCESS; TransitRegionStateProcedure table=events, region=17c3, REOPEN/MOVE in 12 msec
+2024-01-01 10:01:12,000 INFO  [PEWorker-12] procedure2.ProcedureExecutor: Finished pid=79, state=SUCCESS; SplitTableRegionProcedure table=other, parent=4562, daughterA=badc, daughterB=5fcf in 920 msec
+2024-01-01 10:03:00,000 INFO  [RegionServerTracker-0] assignment.AssignmentManager: Scheduled ServerCrashProcedure pid=335 for ip-10-0-0-7.example.internal,16020,1 (carryingMeta=false) ip-10-0-0-7.example.internal,16020,1/CRASHED/regionCount=3/lock=x
+`)
+	rs := logFile(t, "node/i-0fee0000000000002/applications/hbase/hbase-hbase-regionserver-ip-10-0-0-6.example.internal.log.gz", `2024-01-01 10:01:05,000 INFO  [leaseChecker] regionserver.RSRpcServices: Scanner lease 1 expired clientIPAndPort=10.0.0.5:47002, userName=hadoop, regionInfo=events,,1.ab.
+2024-01-01 10:01:06,000 INFO  [leaseChecker] regionserver.RSRpcServices: Scanner lease 2 expired clientIPAndPort=10.0.0.9:47002, userName=hadoop, regionInfo=events,,1.ab.
+2024-01-01 10:02:00,000 WARN  [handler=27] regionserver.HRegion: Region is too busy due to exceeding memstore size limit.
+2024-01-01 10:02:01,000 WARN  [handler=28] regionserver.HRegion: Region is too busy due to exceeding memstore size limit.
+2024-01-01 10:02:02,000 INFO  [MemStoreFlusher.0] regionserver.HRegion: Flushing 1595e783b53d99cd5eef43b6debb2682 1/1 column families, dataSize=1.16 MB heapSize=1.47 MB
+2024-01-01 10:02:30,000 WARN  [JvmPauseMonitor] util.JvmPauseMonitor: Detected pause in JVM or host machine (eg GC): pause of approximately 12345ms
+2024-01-01 10:02:40,000 WARN  [handler=3] ipc.RpcServer: (responseTooSlow): {"method":"Scan","param":"region= events,,1.ab., scanner_id= 1","processingtimems":14002,"client":"10.0.0.5:47002"}
+`)
+	r := runWithLogs(l, nil, exec, master, rs)
+	got := rules(r)
+	for rule, want := range map[string][]string{
+		"hbase-server-lost":     {"Region server ip-10-0-0-7.example.internal stopped while the run was using HBase", "moved the 3 regions it held to other region servers", "It happened while stage 0 (scan events) ran."},
+		"hbase-regions-changed": {"HBase moved 2 regions of events while the run used it", "closed for a moment"},
+		"hbase-server-pause":    {"Region server ip-10-0-0-6.example.internal paused for 12 s", "garbage collection"},
+		"hbase-slow-calls":      {"Region servers logged 1 call from the run's tables as too slow or too large", "hbase.ipc.warn.response.time"},
+		"hbase-scanner-expired": {"The region servers' logs confirm 1 expired lease on events from this run's executors."},
+		"hbase-busy":            {"The region server's own log shows 2 refusals while the run wrote, and 1 memstore flush: it was flushing as fast as it could."},
+	} {
+		f, ok := got[rule]
+		if !ok {
+			t.Errorf("no %s", rule)
+			continue
+		}
+		text := f.Title + " " + f.Explanation
+		for _, w := range want {
+			if !strings.Contains(text, w) {
+				t.Errorf("%s: %q lacks %q", rule, text, w)
+			}
+		}
+	}
+	mine := map[string]bool{}
+	for _, e := range r.HBase.ServerEvents {
+		mine[e.Event+" "+e.Table+" "+e.Detail] = e.Mine
+	}
+	for k, want := range map[string]bool{"split other ": false, "moved events ": true, "scanner events client 10.0.0.5": true, "scanner events client 10.0.0.9": false, "flush  ": false} {
+		if v, ok := mine[k]; !ok || v != want {
+			t.Errorf("%q mine = %v (present %v), want %v; all %v", k, v, ok, want, mine)
+		}
+	}
+	if s := r.HBase.Stages[0].ServerEvents; s["moved"] != 2 || s["server-lost"] != 1 || s["pause"] != 1 {
+		t.Errorf("stage server events = %v", s)
+	}
+}

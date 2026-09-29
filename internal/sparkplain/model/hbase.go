@@ -32,9 +32,28 @@ type HBaseSection struct {
 	CPUTimeNs int64        `json:"cpuTimeNs"`
 	// LocalRegions and RemoteRegions count the TableInputFormat regions an
 	// executor read on the region server's own node, or from another one.
-	LocalRegions  int      `json:"localRegions"`
-	RemoteRegions int      `json:"remoteRegions"`
-	Missing       []string `json:"missing,omitempty"`
+	LocalRegions  int `json:"localRegions"`
+	RemoteRegions int `json:"remoteRegions"`
+	// ServerEvents are what HBase's Master and region servers logged while
+	// the run went on (phase 5 step 7), one row per event, server and
+	// table. Mine marks those tied to this run: its tables, its executors'
+	// hosts, or a whole region server. The others may be other work on the
+	// cluster at the same time.
+	ServerEvents []HBaseServerEvent `json:"serverEvents,omitempty"`
+	Missing      []string           `json:"missing,omitempty"`
+}
+
+// HBaseServerEvent is one kind of thing an HBase server logged, how often,
+// and where: moved, split, server-lost, server-stopped, busy, scanner,
+// pause, slow-call, large-response, store-files, flush or compaction.
+type HBaseServerEvent struct {
+	Event  string `json:"event"`
+	Host   string `json:"host"`            // the server that logged it
+	Table  string `json:"table,omitempty"` // the table it names
+	Detail string `json:"detail,omitempty"`
+	Count  int    `json:"count"`
+	Mine   bool   `json:"mine"`
+	Source Source `json:"source"`
 }
 
 // HBaseStage is one stage that read or wrote HBase, what its tasks spent
@@ -55,6 +74,9 @@ type HBaseStage struct {
 	// servers they named.
 	Retries map[string]int `json:"retries,omitempty"`
 	Servers []string       `json:"servers,omitempty"`
+	// ServerEvents counts what HBase's servers logged while it ran, of the
+	// events tied to this run.
+	ServerEvents map[string]int `json:"serverEvents,omitempty"`
 	// Slowest is its slowest task, and MedianMs the median task's time.
 	Slowest  *TaskRef `json:"slowest,omitempty"`
 	MedianMs int64    `json:"medianMs"`
@@ -106,6 +128,58 @@ func HBaseRetriesText(n map[string]int) string {
 	var parts []string
 	for _, k := range keys {
 		w := hbaseProblemNames[k]
+		parts = append(parts, Plural(n[k], w[0], w[1]))
+	}
+	switch len(parts) {
+	case 0:
+		return ""
+	case 1:
+		return parts[0]
+	}
+	return strings.Join(parts[:len(parts)-1], ", ") + " and " + parts[len(parts)-1]
+}
+
+// hbaseServerEventNames says what an HBase server event is, in words.
+var hbaseServerEventNames = map[string][2]string{
+	"moved":          {"region moved", "regions moved"},
+	"split":          {"region split", "regions split"},
+	"server-lost":    {"region server lost", "region servers lost"},
+	"server-stopped": {"region server stopped", "region servers stopped"},
+	"busy":           {"write refused (memstore full)", "writes refused (memstore full)"},
+	"scanner":        {"scanner lease expired", "scanner leases expired"},
+	"pause":          {"JVM pause", "JVM pauses"},
+	"slow-call":      {"slow call", "slow calls"},
+	"large-response": {"large response", "large responses"},
+	"store-files":    {"flush held back (too many store files)", "flushes held back (too many store files)"},
+	"flush":          {"memstore flush", "memstore flushes"},
+	"compaction":     {"compaction", "compactions"},
+}
+
+// HBaseServerEventName names one HBase server event.
+func HBaseServerEventName(ev string) string {
+	if w, ok := hbaseServerEventNames[ev]; ok {
+		return strings.ToUpper(w[0][:1]) + w[0][1:]
+	}
+	return ev
+}
+
+// HBaseServerEventsText says what HBase's servers logged, by event, as
+// "291 writes refused (memstore full) and 74 compactions".
+func HBaseServerEventsText(n map[string]int) string {
+	keys := make([]string, 0, len(n))
+	for k := range n {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return n[keys[i]] > n[keys[j]] || n[keys[i]] == n[keys[j]] && keys[i] < keys[j] })
+	var parts []string
+	for _, k := range keys {
+		if n[k] == 0 {
+			continue
+		}
+		w, ok := hbaseServerEventNames[k]
+		if !ok {
+			w = [2]string{k, k}
+		}
 		parts = append(parts, Plural(n[k], w[0], w[1]))
 	}
 	switch len(parts) {

@@ -124,4 +124,5 @@ func analyzeHBase(c *ctx, r *model.Report) {
 	}
 	r.HBase = h
 	hbaseSlowFindings(c, h)
+	hbaseServer(c, h)
 }

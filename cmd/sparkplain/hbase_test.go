@@ -36,9 +36,11 @@ var hbaseRuns = []struct {
 	{"0088", "application_1790380000000_0088", "sparkplain_hbase_slow", model.StatusSucceeded, "2181", "scanner leases expired; the client reopened them",
 		map[string]string{"hbase-scanner-expired": "HBase scanner leases expired (6 times", "hbase-time": "took 9 min 0 s of the 9 min 3 s run (99%)"}},
 	{"0090", "application_1790380000000_0090", "sparkplain_hbase_hot", model.StatusSucceeded, "2181", "one small region pushed back (RegionTooBusyException)",
-		map[string]string{"hbase-busy": "HBase pushed back on writes to sp_hot", "hbase-time": "took 1 min 19 s of the 1 min 25 s run (93%)"}},
-	{"0092", "", "", model.StatusSucceeded, "2181", "a region server stopped mid-job; the client logged nothing",
-		map[string]string{"hbase-zk-connections": "opened 215 ZooKeeper connections"}},
+		map[string]string{"hbase-busy": "HBase pushed back on writes to sp_hot", "hbase-time": "took 1 min 19 s of the 1 min 25 s run (93%)",
+			"hbase-regions-changed": "HBase split 1 region of sp_hot while the run used it"}},
+	{"0092", "application_1790380000000_0092.zstd", "sparkplain_hbase_connector", model.StatusSucceeded, "2181", "a region server stopped mid-job; only HBase's own logs show it",
+		map[string]string{"hbase-zk-connections": "Executor 1 opened 215 ZooKeeper connections", "hbase-time": "took 54 s of the 1 min 2 s run (86%)",
+			"hbase-server-lost": "Region server ip-10-0-2-10.us-east-1.compute.internal stopped while the run was using HBase"}},
 }
 
 // Every HBase run renders from its logs, with its event log where it has
@@ -106,7 +108,7 @@ var hbaseTables = map[string]string{
 	"0086": "", // it failed on ZooKeeper before Spark planned the read
 	"0088": "sp_events r TableInputFormat [ip-10-0-2-10.us-east-1.compute.internal=2 ip-10-0-2-12.us-east-1.compute.internal=1]",
 	"0090": "sp_hot w hbase-spark connector",
-	"0092": "",
+	"0092": "sp_events w hbase-spark connector; sp_orders rw hbase-spark connector; sp_totals rw hbase-spark connector",
 }
 
 func hbaseSummary(r model.Report) string {

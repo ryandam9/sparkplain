@@ -300,10 +300,17 @@
           <tbody>{{range .Stages}}<tr><td data-v="{{.StageID}}">{{.StageID}}{{if .Attempt}}.{{.Attempt}}{{end}}</td><td>{{short .Description 90}}<span class="sub srcref">{{src .Source}}</span></td>
             <td class="mono">{{join .Reads ", "}}</td><td class="mono">{{join .Writes ", "}}</td><td>{{.API}}</td>
             <td class="num" data-v="{{.DurationMs}}">{{dur .DurationMs}}</td><td class="num" data-v="{{hbaseCPUMs .CPUTimeNs}}">{{pct (ratio (hbaseCPUMs .CPUTimeNs) .RunTimeMs)}}</td>
-            <td>{{hbaseRetries .Retries}}{{if .Servers}}<span class="sub">on {{join .Servers ", "}}</span>{{end}}</td>
+            <td>{{hbaseRetries .Retries}}{{if .Servers}}<span class="sub">on {{join .Servers ", "}}</span>{{end}}{{with .ServerEvents}}<span class="sub">servers logged {{hbaseServer .}}</span>{{end}}</td>
             <td>{{with .Slowest}}{{dur .DurationMs}} on {{.Host}}{{end}}{{if .MedianMs}}<span class="sub">median {{dur .MedianMs}}</span>{{end}}</td></tr>
           {{end}}</tbody>
         </table></div>{{end}}
+        {{if .ServerEvents}}<h3>What HBase's servers logged while the run went on</h3>
+        <div class="tbl"><table>
+          <thead><tr><th data-sort="text">Event</th><th data-sort="text">Server</th><th data-sort="text">Table</th><th class="num" data-sort="num">Times</th><th>This run's</th><th>Detail</th><th>Found in</th></tr></thead>
+          <tbody>{{range .ServerEvents}}<tr><td>{{hbaseEvent .Event}}</td><td class="mono">{{.Host}}</td><td class="mono">{{.Table}}</td><td class="num" data-v="{{.Count}}">{{numi .Count}}</td><td>{{if .Mine}}yes{{else}}—{{end}}</td><td>{{.Detail}}</td><td class="srcref">{{src .Source}}</td></tr>
+          {{end}}</tbody>
+        </table></div>
+        <p class="explain">From the HBase Master's and region servers' own logs, kept to the run's time. They are the whole cluster's logs: a row marked "yes" names one of this run's tables, a scan from one of its executors, or a whole region server, which every client depends on. The other rows may be other work on the cluster at the same time.</p>{{end}}
         {{if .Tables}}<div class="tbl"><table>
           <thead><tr><th data-sort="text">Table</th><th>Read</th><th>Written</th><th>How</th><th>Regions read, by region server</th><th>Found in</th></tr></thead>
           <tbody>{{range .Tables}}<tr><td class="mono">{{.Name}}</td><td>{{if .Read}}yes{{end}}</td><td>{{if .Written}}yes{{end}}</td><td>{{join .APIs ", "}}</td>
