@@ -196,7 +196,7 @@ org.apache.hadoop.hbase.client.RetriesExhaustedException: Failed after attempts=
 		"access-denied":     "AWS refused access 1 time: glue:GetTable on arn:aws:glue:us-east-1:000000000000:table/db/t",
 		"kerberos-failure":  "Kerberos authentication failed (1 error in the logs)",
 		"metastore-failure": "The table catalog could not be reached (1 error in the logs)",
-		"hbase-failure":     "HBase could not be reached (1 error in the logs)",
+		"hbase-retries":     "HBase calls gave up after all their retries (1 error in the logs)",
 		"step-failed":       "The step failed although Spark finished",
 		"app-retried":       "YARN restarted the application after 1 failed attempt",
 	}

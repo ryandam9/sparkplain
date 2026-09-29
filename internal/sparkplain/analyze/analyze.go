@@ -13,20 +13,23 @@ import (
 // Thresholds tune the findings rules (SPEC §5). They can be set in the
 // config file.
 type Thresholds struct {
-	SkewRatio        float64       `yaml:"skew-ratio"`         // slowest task over this × the stage median
-	SkewMinTask      time.Duration `yaml:"skew-min-task"`      // ignore stages whose slowest task is shorter
-	SkewMinTasks     int           `yaml:"skew-min-tasks"`     // ignore stages with fewer successful tasks
-	SpillShare       float64       `yaml:"spill-share"`        // disk spill over this share of shuffle write
-	GCShare          float64       `yaml:"gc-share"`           // GC time over this share of run time
-	LowCPUShare      float64       `yaml:"low-cpu-share"`      // CPU time under this share of run time
-	MemoryUsedShare  float64       `yaml:"memory-used-share"`  // peak heap under this share of the heap
-	MinRunTime       time.Duration `yaml:"min-run-time"`       // skip CPU and GC rules for less task time than this
-	SchedDelayShare  float64       `yaml:"sched-delay-share"`  // scheduler delay over this share of task time
-	LocalityAnyShare float64       `yaml:"locality-any-share"` // input tasks off their data's host over this share
-	ResultShare      float64       `yaml:"result-share"`       // a stage's results over this share of spark.driver.maxResultSize
-	SlowStartup      time.Duration `yaml:"slow-startup"`       // executors taking longer than this to register
-	DriverGapShare   float64       `yaml:"driver-gap-share"`   // time with no job running over this share of the run
-	DriverGapMin     time.Duration `yaml:"driver-gap-min"`     // and at least this long in all
+	SkewRatio        float64       `yaml:"skew-ratio"`          // slowest task over this × the stage median
+	SkewMinTask      time.Duration `yaml:"skew-min-task"`       // ignore stages whose slowest task is shorter
+	SkewMinTasks     int           `yaml:"skew-min-tasks"`      // ignore stages with fewer successful tasks
+	SpillShare       float64       `yaml:"spill-share"`         // disk spill over this share of shuffle write
+	GCShare          float64       `yaml:"gc-share"`            // GC time over this share of run time
+	LowCPUShare      float64       `yaml:"low-cpu-share"`       // CPU time under this share of run time
+	MemoryUsedShare  float64       `yaml:"memory-used-share"`   // peak heap under this share of the heap
+	MinRunTime       time.Duration `yaml:"min-run-time"`        // skip CPU and GC rules for less task time than this
+	SchedDelayShare  float64       `yaml:"sched-delay-share"`   // scheduler delay over this share of task time
+	LocalityAnyShare float64       `yaml:"locality-any-share"`  // input tasks off their data's host over this share
+	ResultShare      float64       `yaml:"result-share"`        // a stage's results over this share of spark.driver.maxResultSize
+	SlowStartup      time.Duration `yaml:"slow-startup"`        // executors taking longer than this to register
+	DriverGapShare   float64       `yaml:"driver-gap-share"`    // time with no job running over this share of the run
+	DriverGapMin     time.Duration `yaml:"driver-gap-min"`      // and at least this long in all
+	HBaseTimeShare   float64       `yaml:"hbase-time-share"`    // stages reading or writing HBase over this share of the run
+	HBaseConnections int           `yaml:"hbase-connections"`   // ZooKeeper connections one process opened over this
+	HBaseHotspot     float64       `yaml:"hbase-hotspot-share"` // one region server holding over this share of a table's regions read
 }
 
 // DefaultThresholds are the values in SPEC §5.
@@ -37,6 +40,7 @@ func DefaultThresholds() Thresholds {
 		MinRunTime:      time.Minute,
 		SchedDelayShare: 0.20, LocalityAnyShare: 0.30, ResultShare: 0.50, SlowStartup: time.Minute,
 		DriverGapShare: 0.25, DriverGapMin: time.Minute,
+		HBaseTimeShare: 0.50, HBaseConnections: 50, HBaseHotspot: 0.75,
 	}
 }
 
@@ -134,7 +138,7 @@ func Run(in Input) *model.Report {
 	}
 	for _, a := range []func(*ctx, *model.Report){
 		analyzeConfig, analyzeExecutors, analyzeNodes, analyzeMemory, analyzeCPU,
-		analyzeIO, analyzeJobs, analyzeTimeline, analyzeLogs, spotFindings, analyzeMetrics, analyzeIdentity, analyzeCalls,
+		analyzeIO, analyzeJobs, analyzeTimeline, analyzeLogs, analyzeHBase, spotFindings, analyzeMetrics, analyzeIdentity, analyzeCalls,
 	} {
 		a(c, r)
 	}
@@ -189,8 +193,8 @@ func share(a, b int64) float64 {
 // first, then what slowed it, then tuning notes.
 func rulePriority(rule string) int {
 	for i, r := range []string{
-		"log-first-failure", "job-failed", "step-failed", "bootstrap-failed", "executor-memory-kill", "out-of-memory", "access-denied",
-		"kerberos-failure", "metastore-failure", "hbase-failure", "executor-lost", "spot-interrupted", "app-retried", "waited-for-capacity", "executor-fit", "idle-nodes", "host-memory-pressure", "host-cpu-saturated", "executor-decommissioned", "stage-retried",
+		"log-first-failure", "job-failed", "step-failed", "bootstrap-failed", "executor-memory-kill", "out-of-memory", "classpath-clash", "access-denied",
+		"hbase-access-denied", "kerberos-failure", "metastore-failure", "hbase-table-missing", "hbase-zookeeper", "hbase-server", "hbase-retries", "hbase-error", "executor-lost", "spot-interrupted", "app-retried", "waited-for-capacity", "executor-fit", "idle-nodes", "host-memory-pressure", "host-cpu-saturated", "executor-decommissioned", "stage-retried", "hbase-server-lost", "hbase-time", "hbase-regions-changed", "hbase-server-pause", "hbase-slow-calls", "hbase-busy", "hbase-scanner-expired", "hbase-region-moved", "hbase-hotspot", "hbase-zk-connections", "hbase-remote-regions",
 		"access-static-keys", "stage-skew", "memory-spill", "memory-gc-pressure", "memory-heap-near-limit",
 		"config-unlimited-result", "config-dynalloc-no-shuffle",
 	} {

@@ -135,6 +135,9 @@ func (out *clusterLogs) readLogs(ctx context.Context, cloud *awsSession, log *mo
 	}
 	plan := yarnlog.Plan{Root: root, AppID: appID, Limits: lim}
 	plan.Steps, plan.Instances, plan.Since = narrow(out.steps, out.instances, log)
+	if log != nil {
+		plan.Until = log.Application.End
+	}
 	plan.Others = otherNodes(out.instances, plan.Instances)
 	col := yarnlog.Collect(ctx, st, plan)
 	out.files, out.sources = col.Files, col.Sources
@@ -281,11 +284,11 @@ func offlineLogs(ctx context.Context, dir, appID string, log *model.EventLog, li
 	if err != nil {
 		return clusterLogs{}, err
 	}
-	var since time.Time
+	var since, until time.Time
 	if log != nil {
-		since = log.Application.Start
+		since, until = log.Application.Start, log.Application.End
 	}
-	col := yarnlog.Collect(ctx, source.NewLocalStore(dir), yarnlog.Plan{Root: root, AppFolder: appFolder, AppID: appID, Since: since, Limits: lim})
+	col := yarnlog.Collect(ctx, source.NewLocalStore(dir), yarnlog.Plan{Root: root, AppFolder: appFolder, AppID: appID, Since: since, Until: until, Limits: lim})
 	return clusterLogs{files: col.Files, sources: col.Sources}, nil
 }
 

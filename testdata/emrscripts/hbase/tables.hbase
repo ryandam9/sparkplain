@@ -1,0 +1,13 @@
+# Recreate the job's tables, pre-split so each has regions on both core nodes.
+a = org.apache.hadoop.hbase.client.ConnectionFactory.createConnection(org.apache.hadoop.hbase.HBaseConfiguration.create).getAdmin
+['sp_orders', 'sp_totals', 'sp_events'].each do |t|
+  if a.tableExists(org.apache.hadoop.hbase.TableName.valueOf(t))
+    disable t
+    drop t
+  end
+end
+create 'sp_orders', 'd', SPLITS => ['2', '4', '6', '8']
+create 'sp_totals', 'd'
+create 'sp_events', 'd', SPLITS => ['3', '6']
+list
+exit

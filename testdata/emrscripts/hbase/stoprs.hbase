@@ -1,0 +1,9 @@
+# Stop one region server that holds sp_orders regions, as if its node
+# failed mid-job (scenario.sh rsdown).
+a = org.apache.hadoop.hbase.client.ConnectionFactory.createConnection(org.apache.hadoop.hbase.HBaseConfiguration.create).getAdmin
+servers = a.getRegionServers.to_a
+puts servers.map(&:to_s)
+sn = servers.find { |s| a.getRegions(s).any? { |r| r.getTable.getNameAsString == 'sp_orders' } } || servers.first
+puts "stopping #{sn}"
+a.stopRegionServer(sn.getAddress.toString)
+exit

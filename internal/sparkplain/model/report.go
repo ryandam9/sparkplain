@@ -24,11 +24,13 @@ type Report struct {
 	Memory        MemorySection   `json:"memory"`
 	CPU           CPUSection      `json:"cpu"`
 	IO            IOSection       `json:"io"`
-	Jobs          JobsSection     `json:"jobs"`
-	Config        ConfigSection   `json:"config"`
-	Identity      IdentitySection `json:"identity"`
-	Sources       []SourceStatus  `json:"sources"`
-	EventLog      *EventLogStats  `json:"eventLog,omitempty"`
+	// HBase is what the run did with HBase, when it used it (phase 5).
+	HBase    *HBaseSection   `json:"hbase,omitempty"`
+	Jobs     JobsSection     `json:"jobs"`
+	Config   ConfigSection   `json:"config"`
+	Identity IdentitySection `json:"identity"`
+	Sources  []SourceStatus  `json:"sources"`
+	EventLog *EventLogStats  `json:"eventLog,omitempty"`
 	// Cluster, Steps and Logs come from the EMR API and the cluster's
 	// container, step and node logs (online or -from runs).
 	Cluster *Cluster     `json:"cluster,omitempty"`

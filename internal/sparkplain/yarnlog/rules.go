@@ -22,6 +22,8 @@ var (
 	sparkHeadRE = regexp.MustCompile(`^(\d{2}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) (TRACE|DEBUG|INFO|WARN|ERROR|FATAL) ([^\s:]+): ?(.*)$`)
 	// Hadoop daemons and EMR's instance controller:
 	// "2026-09-26 10:15:43,675 WARN org.apache…DefaultContainerExecutor (ContainersLauncher #0): Exit code …"
+	// HBase's daemons: "2026-09-29 06:00:00,369 INFO  [PEWorker-6] procedure.MasterProcedureScheduler: …".
+	hbaseHeadRE  = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d{3} (TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\s+\[[^\]]*\] (\S+?): ?(.*)$`)
 	hadoopHeadRE = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d{3} (TRACE|DEBUG|INFO|WARN|ERROR|FATAL) (\S+?):?(?: \([^)]*\))?: ?(.*)$`)
 	// The step controller: "2026-09-26T10:15:56.651Z WARN Step failed …", or "INFO startExec …" with no time.
 	controllerHeadRE = regexp.MustCompile(`^(?:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.\d{3}Z )?(TRACE|DEBUG|INFO|WARN|ERROR|FATAL) (.*)$`)
@@ -35,6 +37,10 @@ func parseHeader(kind FileKind, line string) (header, bool) {
 	}
 	if m := sparkHeadRE.FindStringSubmatch(line); m != nil {
 		t, _ := time.Parse("06/01/02 15:04:05", m[1])
+		return header{time: t, level: m[2], logger: m[3], msg: m[4]}, true
+	}
+	if m := hbaseHeadRE.FindStringSubmatch(line); m != nil {
+		t, _ := time.Parse("2006-01-02 15:04:05", m[1])
 		return header{time: t, level: m[2], logger: m[3], msg: m[4]}, true
 	}
 	if m := hadoopHeadRE.FindStringSubmatch(line); m != nil {
@@ -154,8 +160,75 @@ var (
 	krbLoginRE  = regexp.MustCompile(`Login successful for user (\S+) using keytab file (\S+)`)
 	metaFailRE  = regexp.MustCompile(`Failed to connect to the MetaStore Server|Could not connect to meta ?store|MetaException|Unable to instantiate \S*MetaStoreClient|AWSGlue\w*Exception|services\.glue\.model\.\w+Exception`)
 	metaConnRE  = regexp.MustCompile(`Trying to connect to metastore with URI (\S+)|Connected to metastore|Opened a connection to metastore`)
-	hbaseFailRE = regexp.MustCompile(`org\.apache\.hadoop\.hbase\.\S*(?:Exception|Error)|RetriesExhaustedException|KeeperException|Can't get connection to ZooKeeper|Unable to (?:set watcher|connect) (?:on znode|to ZooKeeper)`)
+	hbaseFailRE = regexp.MustCompile(`org\.apache\.hadoop\.hbase\.\S*(?:Exception|Error)|RetriesExhaustedException|KeeperException|failed for get of \S+, code = |Can't get connection to ZooKeeper|Unable to (?:set watcher|connect) (?:on znode|to ZooKeeper)`)
 	hbaseConnRE = regexp.MustCompile(`Initiating client connection, connectString=(\S+)|hbase\.zookeeper\.quorum`)
+
+	// What an HBase client error shows, most specific first, because each
+	// has its own fix. Checked on the phase 5 test cluster (HBase 2.4.17):
+	// a missing table, a wrong ZooKeeper port, expired scanner leases and
+	// a region over its memstore limit. Region moves and a stopped region
+	// server left no client line there; their exceptions are HBase's own
+	// class names.
+	hbaseTableRE   = regexp.MustCompile(`TableNotFoundException: ([\w:.-]+)`)
+	hbaseZKRE      = regexp.MustCompile(`KeeperException\$ConnectionLossException|KeeperException\$SessionExpiredException|failed for get of \S+, code = CONNECTIONLOSS|Can't get connection to ZooKeeper|Unable to (?:set watcher|connect) (?:on znode|to ZooKeeper)`)
+	hbaseScannerRE = regexp.MustCompile(`UnknownScannerException|ScannerTimeoutException|regionserver\.LeaseException|OutOfOrderScannerNextException`)
+	hbaseBusyRE    = regexp.MustCompile(`RegionTooBusyException|CallQueueTooBigException`)
+	hbaseMovedRE   = regexp.MustCompile(`NotServingRegionException|RegionMovedException|RegionOpeningException`)
+	hbaseServerRE  = regexp.MustCompile(`CallTimeoutException|ConnectionClosingException|ConnectionClosedException|ServerNotRunningYetException|RegionServerStoppedException|RegionServerAbortedException`)
+	hbaseRetryRE   = regexp.MustCompile(`RetriesExhausted(?:WithDetails)?Exception`)
+	hbaseAccessRE  = regexp.MustCompile(`hbase\.security\.AccessDeniedException`)
+	// Where the error happened: the table, the region server (host,port,
+	// start code) and the ZooKeeper address the client tried.
+	hbaseTableAtRE  = regexp.MustCompile(`\btable=([\w:.-]+)|Failed \d+ actions?: ([\w:.-]+):`)
+	hbaseServerAtRE = regexp.MustCompile(`\bserver=([\w.-]+),\d+,\d+`)
+	hbaseZKAtRE     = regexp.MustCompile(`to (\S+:\d+) failed for get of`)
+	hbaseLimitRE    = regexp.MustCompile(`Over memstore limit=([\d.]+ ?[KMGT]?)`)
+	// HBase's client logs its retries of a batch at INFO, with the error
+	// that made it retry: "id=10, table=sp_hot, attempt=6/16,
+	// failureCount=2048ops, last exception=…RegionTooBusyException: …".
+	hbaseAsyncRE = regexp.MustCompile(`^id=\d+, table=([\w:.-]+), attempt=(\d+)/(\d+), failureCount=(\d+)ops, last exception=`)
+	// Tables used through HBase's MapReduce API (checked on the phase 5
+	// test cluster): the driver sizing a table's regions before a
+	// TableInputFormat scan, each executor task's region split and the
+	// region server holding it, and TableOutputFormat opening a table.
+	hbaseSizingRE = regexp.MustCompile(`^Calculating region sizes for table "([\w:.-]+)"`)
+	hbaseSplitRE  = regexp.MustCompile(`^Input split: Split\(tablename=([\w:.-]+), .*\bregionLocation=([\w.-]+), regionname=`)
+	hbaseOutputRE = regexp.MustCompile(`^Created table instance for ([\w:.-]+)`)
+	// The ZooKeeper client's connection line, up to its quorum: the
+	// watcher after it differs on every connection.
+	zkConnectRE = regexp.MustCompile(`^Initiating client connection, connectString=\S+`)
+
+	// HBase's own logs (phase 5 step 7). Checked on the test cluster (HBase
+	// 2.4.17): the Master finishing a region move or split and scheduling
+	// a lost region server's recovery; a region server refusing writes,
+	// dropping an idle scanner, flushing and compacting, and stopping. JVM
+	// pauses, slow calls and store-file pile-ups did not happen there; those
+	// rules use HBase 2.4's own messages.
+	hbMovedRE   = regexp.MustCompile(`^Finished pid=\d+, state=SUCCESS; TransitRegionStateProcedure table=([\w:.-]+), region=\w+, REOPEN/MOVE in `)
+	hbSplitRE   = regexp.MustCompile(`^Finished pid=\d+, state=SUCCESS; SplitTableRegionProcedure table=([\w:.-]+), `)
+	hbCrashRE   = regexp.MustCompile(`^Scheduled ServerCrashProcedure pid=\d+ for ([\w.-]+),\d+,\d+ \(carryingMeta=(true|false)\).*?regionCount=(\d+)`)
+	hbBusyRE    = regexp.MustCompile(`^Region is too busy due to exceeding memstore size limit`)
+	hbLeaseRE   = regexp.MustCompile(`^Scanner lease -?\d+ expired clientIPAndPort=([\d.]+):\d+, userName=([^,]+), regionInfo=([\w:.-]+),`)
+	hbStoppedRE = regexp.MustCompile(`^STOPPED: (.*)$`)
+	hbAbortRE   = regexp.MustCompile(`^\*+ ABORTING region server ([\w.-]+),\d+,\d+: (.*?)\s*\**$`)
+	hbPauseRE   = regexp.MustCompile(`^Detected pause in JVM or host machine \(eg GC\): pause of approximately (\d+)ms`)
+	hbSlowRE    = regexp.MustCompile(`^\(response(TooSlow|TooLarge)\): `)
+	hbSlowMsRE  = regexp.MustCompile(`"processingtimems":(\d+)`)
+	hbSlowOpRE  = regexp.MustCompile(`"method":"(\w+)"`)
+	hbSlowTblRE = regexp.MustCompile(`region= ([\w:.-]+),`)
+	hbStoreRE   = regexp.MustCompile(`^([\w:.-]+),\S* has too many store files`)
+	hbFlushRE   = regexp.MustCompile(`^Flushing [0-9a-f]{32} \d+/\d+ column families, dataSize=`)
+	hbCompactRE = regexp.MustCompile(`^Completed compaction region=([\w:.-]+),`)
+
+	// A file YARN localized for the application, as the application
+	// master lists them: "    hbase-client-2.4.17-amzn-7.jar -> resource { scheme: …".
+	localizedRE = regexp.MustCompile(`^\s+([\w.+-]+) -> resource \{`)
+
+	// A class missing, or of another version, at run time. The first stack
+	// frame that names its jar (log4j adds "~[jar:version]") is the code
+	// that needed it.
+	classpathRE = regexp.MustCompile(`java\.lang\.(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|AbstractMethodError|IncompatibleClassChangeError)(?::\s*(?:Could not initialize class\s+)?(\S+))?`)
+	frameJarRE  = regexp.MustCompile(`^\s+at .*~?\[([\w.+-]+\.jar):[^\]]*\]`)
 
 	// Application, attempt and container IDs, to keep node logs to one app.
 	idRE = regexp.MustCompile(`(?:application|appattempt|container(?:_e\d+)?)_(\d{10,}_\d{4,})`)

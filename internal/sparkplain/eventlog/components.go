@@ -33,7 +33,28 @@ var componentSpecs = []struct {
 	{"Apache Hudi", regexp.MustCompile(`^hudi-spark[\w.\-]*-bundle[\w.\-]*$`)},
 	{"Delta Lake", regexp.MustCompile(`^delta-(core|spark)_[\d.]+$`)},
 	{"HBase client", regexp.MustCompile(`^hbase-(shaded-)?client$`)},
+	{"HBase Spark connector", regexp.MustCompile(`^hbase-spark$`)},
 	{"Py4J (PySpark bridge)", regexp.MustCompile(`^py4j$`)},
+}
+
+// shippedJars adds the jars the job shipped (--jars, --packages) to the
+// classpath entries: in cluster mode they reach the classpath through
+// YARN, and the environment lists them only in these settings.
+func shippedJars(classpath, spark map[string]string) map[string]string {
+	out := make(map[string]string, len(classpath))
+	for k, v := range classpath {
+		out[k] = v
+	}
+	for _, k := range []string{"spark.jars", "spark.yarn.dist.jars", "spark.yarn.secondary.jars"} {
+		for _, j := range strings.Split(spark[k], ",") {
+			if j = strings.TrimSpace(j); strings.HasSuffix(j, ".jar") {
+				if _, ok := out[j]; !ok {
+					out[j] = "Shipped with the job (" + k + ")"
+				}
+			}
+		}
+	}
+	return out
 }
 
 // components picks library versions out of the classpath entries.

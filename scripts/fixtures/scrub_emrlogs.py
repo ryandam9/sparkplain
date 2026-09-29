@@ -5,7 +5,7 @@ Usage: scrub_emrlogs.py <cluster log dir> <out root> <old app id> <new app id> [
 <cluster log dir> is <LogUri>/<cluster-id>/ as downloaded from S3. Only the
 files sparkplain classifies are copied (container stdout and stderr, step
 controller and stderr, NodeManager and ResourceManager logs, bootstrap
-master.log), rewritten line by line with scrub_emr.Scrubber, and written
+master.log, HBase Master and region server logs), rewritten line by line with scrub_emr.Scrubber, and written
 gzipped under <out root>/<new cluster id>/ in the same layout. Given the
 original event log, hosts are named exactly as in its fixture, so the logs
 join with it. Cluster, step and instance IDs become fixture IDs. The script
@@ -25,6 +25,8 @@ KEEP = [
     re.compile(r"^steps/s-[^/]+/(controller|stderr)\.gz$"),
     re.compile(r"^node/i-[^/]+/applications/hadoop-yarn/[^/]*(nodemanager|resourcemanager)[^/]*\.log\.gz$"),
     re.compile(r"^node/i-[^/]+/bootstrap-actions/master\.log\.gz$"),
+    # HBase's Master and region server logs, current and rolled each hour.
+    re.compile(r"^node/i-[^/]+/applications/hbase/hbase-hbase-(master|regionserver)-[^/]*\.log(\.\d{4}-\d{2}-\d{2}-\d{2})?\.gz$"),
 ]
 
 

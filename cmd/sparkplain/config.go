@@ -47,6 +47,9 @@ type thresholds struct {
 	SlowStartup      *time.Duration `yaml:"slow-startup"`
 	DriverGapShare   *float64       `yaml:"driver-gap-share"`
 	DriverGapMin     *time.Duration `yaml:"driver-gap-min"`
+	HBaseTimeShare   *float64       `yaml:"hbase-time-share"`
+	HBaseConnections *int           `yaml:"hbase-connections"`
+	HBaseHotspot     *float64       `yaml:"hbase-hotspot-share"`
 }
 
 func (t thresholds) apply(d analyze.Thresholds) analyze.Thresholds {
@@ -76,6 +79,11 @@ func (t thresholds) apply(d analyze.Thresholds) analyze.Thresholds {
 	setD(&d.SlowStartup, t.SlowStartup)
 	setF(&d.DriverGapShare, t.DriverGapShare)
 	setD(&d.DriverGapMin, t.DriverGapMin)
+	setF(&d.HBaseTimeShare, t.HBaseTimeShare)
+	if t.HBaseConnections != nil {
+		d.HBaseConnections = *t.HBaseConnections
+	}
+	setF(&d.HBaseHotspot, t.HBaseHotspot)
 	return d
 }
 

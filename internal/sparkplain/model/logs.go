@@ -19,6 +19,10 @@ const (
 	LogKerberos     LogKind = "kerberos"       // a Kerberos or SASL failure
 	LogMetastore    LogKind = "metastore"      // Hive metastore or Glue catalog connections and failures
 	LogHBase        LogKind = "hbase"          // HBase and ZooKeeper connections and failures
+	LogClasspath    LogKind = "classpath"      // a class missing, or of another version, at run time
+	LogHBaseUse     LogKind = "hbase-use"      // a table read or written with HBase's MapReduce API, and where each region read was
+	LogLocalized    LogKind = "localized"      // a file YARN copied into the application's containers, such as a jar
+	LogHBaseServer  LogKind = "hbase-server"   // what an HBase Master or region server logged: moves, splits, lost servers, busy regions
 	LogIdentity     LogKind = "identity"       // who the application ran as: user, queue, principal
 	LogSubmit       LogKind = "submit"         // the command a step ran (redacted)
 	LogSubmitted    LogKind = "submitted"      // the application a step submitted
