@@ -1,6 +1,7 @@
 package analyze
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -102,5 +103,53 @@ func TestClasspathFinding(t *testing.T) {
 `))
 	if ff := rules(r)["log-first-failure"]; !strings.Contains(ff.Title, "IllegalStateException: boom") {
 		t.Errorf("first failure from a warning = %q", ff.Title)
+	}
+}
+
+// The HBase section joins the logs of every process: tables and how they
+// were used, regions read per region server, ZooKeeper connections per
+// process, and library versions from the jars YARN localized when there is
+// no event log. A run that never touched HBase has no section.
+func TestHBaseSection(t *testing.T) {
+	t.Parallel()
+	zk := "26/09/29 05:14:00 INFO ZooKeeper: Initiating client connection, connectString=zk.example.internal:2181 sessionTimeout=90000 watcher=x@%d\n"
+	exec := fmt.Sprintf(zk, 1) + fmt.Sprintf(zk, 2) + fmt.Sprintf(zk, 3) + `26/09/29 05:14:00 INFO NewHadoopRDD: Input split: Split(tablename=sp_orders, startrow=4, endrow=6, regionLocation=rs2.example.internal, regionname=45)
+26/09/29 05:14:05 INFO NewHadoopRDD: Input split: Split(tablename=sp_orders, startrow=6, endrow=8, regionLocation=rs2.example.internal, regionname=52)
+26/09/29 05:14:08 INFO NewHadoopRDD: Input split: Split(tablename=sp_orders, startrow=8, endrow=, regionLocation=rs1.example.internal, regionname=a4)
+26/09/29 05:14:10 INFO TableOutputFormat: Created table instance for sp_totals
+`
+	drv := fmt.Sprintf(zk, 4) + `26/09/29 05:13:50 INFO ApplicationMaster: resources:
+    hbase-client-2.4.17-amzn-7.jar -> resource { scheme: "hdfs" }
+    hbase-spark-1.0.1.jar -> resource { scheme: "hdfs" }
+`
+	r := runWithLogs(nil, nil, logFile(t, driverErr, drv), logFile(t, exec2Err, exec))
+	h := r.HBase
+	if h == nil {
+		t.Fatal("no HBase section")
+	}
+	if h.Quorum != "zk.example.internal:2181" || h.Sessions != 4 || h.MostSessions != 3 || h.MostSessionsBy != "container container_1_1_01_000002 stderr" {
+		t.Errorf("zookeeper = %q %d, most %d by %q", h.Quorum, h.Sessions, h.MostSessions, h.MostSessionsBy)
+	}
+	var libs []string
+	for _, l := range h.Libraries {
+		libs = append(libs, l.Name+" "+l.Version)
+	}
+	if strings.Join(libs, ", ") != "HBase client 2.4.17-amzn-7, HBase Spark connector 1.0.1" {
+		t.Errorf("libraries = %v", libs)
+	}
+	var tables []string
+	for _, x := range h.Tables {
+		tables = append(tables, fmt.Sprintf("%s r=%v w=%v %v %v", x.Name, x.Read, x.Written, x.APIs, x.Regions))
+	}
+	want := "sp_orders r=true w=false [TableInputFormat] [{rs2.example.internal 2} {rs1.example.internal 1}]; sp_totals r=false w=true [TableOutputFormat] []"
+	if strings.Join(tables, "; ") != want {
+		t.Errorf("tables = %s\nwant %s", strings.Join(tables, "; "), want)
+	}
+	if len(h.Missing) != 1 || !strings.Contains(h.Missing[0], "need the event log") {
+		t.Errorf("missing = %v", h.Missing)
+	}
+
+	if r := runWithLogs(nil, nil, logFile(t, driverErr, "24/01/01 10:00:00 INFO SparkContext: Running Spark version 3.5.1\n")); r.HBase != nil {
+		t.Errorf("a run without HBase has %+v", r.HBase)
 	}
 }

@@ -287,6 +287,21 @@
           {{end}}</tbody>
         </table></div>{{else}}<p class="note">Nothing was cached (persist() or cache()) in this run.</p>{{end}}
         {{end}}
+        {{with $r.HBase}}<h3 id="hbase">HBase</h3>
+        <div class="facts">
+          {{if .Quorum}}<div class="fact"><span class="l">ZooKeeper quorum</span><span class="v">{{.Quorum}}</span><span class="x">Where the HBase clients asked for HBase's address, from their own logs. <span class="srcref">{{src .QuorumSource}}</span></span></div>
+          <div class="fact"><span class="l">ZooKeeper connections</span><span class="v num">{{numi .Sessions}}{{if .MostSessionsBy}} · most {{numi .MostSessions}}, by {{.MostSessionsBy}}{{end}}</span><span class="x">Each HBase connection a process opens makes one, and each is a trip to ZooKeeper. Code that opens a connection per task makes one per task.</span></div>{{end}}
+          {{range .Libraries}}<div class="fact"><span class="l">{{.Name}}</span><span class="v">{{.Version}}</span><span class="x">From <span class="mono">{{.Path}}</span>. <span class="srcref">{{src .Source}}</span></span></div>{{end}}
+        </div>
+        {{if .Tables}}<div class="tbl"><table>
+          <thead><tr><th data-sort="text">Table</th><th>Read</th><th>Written</th><th>How</th><th>Regions read, by region server</th><th>Found in</th></tr></thead>
+          <tbody>{{range .Tables}}<tr><td class="mono">{{.Name}}</td><td>{{if .Read}}yes{{end}}</td><td>{{if .Written}}yes{{end}}</td><td>{{join .APIs ", "}}</td>
+            <td>{{range .Regions}}<span class="mono">{{.Server}}</span>: {{.Regions}}<br>{{else}}—{{end}}</td><td class="srcref">{{src .Source}}</td></tr>
+          {{end}}</tbody>
+        </table></div>
+        <p class="explain">Tables come from the hbase-spark connector's SQL plans and from the log lines of HBase's TableInputFormat and TableOutputFormat. A TableInputFormat scan reads one region per task; the region server is where that region was held.</p>{{end}}
+        {{if .Missing}}<div class="missing"><h3>Not shown for HBase</h3><ul>{{range .Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+        {{end}}
         {{if $io.Missing}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $io.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
       </section>
 

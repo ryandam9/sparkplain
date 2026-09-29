@@ -2,6 +2,7 @@ package main
 
 import (
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -83,6 +84,44 @@ func TestHBaseFixtures(t *testing.T) {
 					t.Errorf("%s: unexpected %s: %s", tc.what, rule, title)
 				}
 			}
+			if want := hbaseTables[tc.app]; hbaseSummary(r) != want {
+				t.Errorf("%s: HBase tables\n%s\nwant\n%s", tc.what, hbaseSummary(r), want)
+			}
 		})
 	}
+}
+
+// hbaseTables is what each run did with HBase, as hbaseSummary prints it.
+// The connector's tables need the event log; TableInputFormat's regions
+// come from the executors' split lines.
+var hbaseTables = map[string]string{
+	"0081": "",
+	"0082": "sp_orders w hbase-spark connector",
+	"0083": "sp_events w hbase-spark connector; sp_orders rw hbase-spark connector; sp_totals rw hbase-spark connector",
+	"0084": "sp_orders r TableInputFormat [ip-10-0-2-12.us-east-1.compute.internal=3 ip-10-0-2-10.us-east-1.compute.internal=2]; sp_totals w TableOutputFormat",
+	"0085": "sp_missing w hbase-spark connector",
+	"0086": "", // it failed on ZooKeeper before Spark planned the read
+	"0088": "sp_events r TableInputFormat [ip-10-0-2-10.us-east-1.compute.internal=2 ip-10-0-2-12.us-east-1.compute.internal=1]",
+	"0090": "sp_hot w hbase-spark connector",
+	"0092": "",
+}
+
+func hbaseSummary(r model.Report) string {
+	if r.HBase == nil {
+		return ""
+	}
+	var out []string
+	for _, x := range r.HBase.Tables {
+		rw := map[[2]bool]string{{true, false}: "r", {false, true}: "w", {true, true}: "rw"}[[2]bool{x.Read, x.Written}]
+		s := x.Name + " " + rw + " " + strings.Join(x.APIs, "+")
+		if len(x.Regions) > 0 {
+			var reg []string
+			for _, g := range x.Regions {
+				reg = append(reg, g.Server+"="+strconv.Itoa(g.Regions))
+			}
+			s += " [" + strings.Join(reg, " ") + "]"
+		}
+		out = append(out, s)
+	}
+	return strings.Join(out, "; ")
 }
