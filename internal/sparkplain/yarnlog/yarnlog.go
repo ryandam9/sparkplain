@@ -181,6 +181,13 @@ func (c *classifier) feed(line string) {
 		c.lastOOM = len(c.res.Lines) - 1
 		return
 	}
+	if m := localizedRE.FindStringSubmatch(line); m != nil && (kind == ContainerStderr || kind == ContainerStdout) {
+		c.flush()
+		l := c.entry(model.LogLocalized, model.Info, c.lastTime, m[1])
+		l.Fields["name"] = redact.Text(m[1])
+		c.add(l)
+		return
+	}
 	if hotspotKillRE.MatchString(line) {
 		if c.lastOOM >= 0 && c.lastOOM < len(c.res.Lines) {
 			c.res.Lines[c.lastOOM].Fields["selfKilled"] = "true" // the JVM ran kill -9 on itself: exit 137 without YARN
@@ -439,9 +446,33 @@ func (c *classifier) header(h header, line string) {
 		m := hbaseAsyncRE.FindStringSubmatch(msg)
 		l = c.entry(model.LogHBase, model.Warning, h.time, msg)
 		l.Fields["table"], l.Fields["attempt"], l.Fields["attempts"] = m[1], m[2], m[3]
+	case hbaseSizingRE.MatchString(msg):
+		m := hbaseSizingRE.FindStringSubmatch(msg)
+		l = c.entry(model.LogHBaseUse, model.Info, h.time, "TableInputFormat is reading "+m[1])
+		l.Fields["table"], l.Fields["access"], l.Fields["api"] = m[1], "read", "TableInputFormat"
+		c.add(l)
+		return
+	case hbaseSplitRE.MatchString(msg):
+		// One line per task; kept as one entry per table and region
+		// server, whose count is the regions read there.
+		m := hbaseSplitRE.FindStringSubmatch(msg)
+		l = c.entry(model.LogHBaseUse, model.Info, h.time, "TableInputFormat read a region of "+m[1]+" held on "+m[2])
+		l.Fields["table"], l.Fields["access"], l.Fields["api"], l.Fields["server"] = m[1], "read", "TableInputFormat", m[2]
+		c.add(l)
+		return
+	case hbaseOutputRE.MatchString(msg):
+		m := hbaseOutputRE.FindStringSubmatch(msg)
+		l = c.entry(model.LogHBaseUse, model.Info, h.time, "TableOutputFormat is writing "+m[1])
+		l.Fields["table"], l.Fields["access"], l.Fields["api"] = m[1], "write", "TableOutputFormat"
+		c.add(l)
+		return
 	case !problem && hbaseConnRE.MatchString(msg):
 		m := hbaseConnRE.FindStringSubmatch(msg)
-		l = c.entry(model.LogHBase, model.Info, h.time, msg)
+		text := msg
+		if z := zkConnectRE.FindString(msg); z != "" {
+			text = z // one entry per quorum, counting the connections
+		}
+		l = c.entry(model.LogHBase, model.Info, h.time, text)
 		if m[1] != "" {
 			l.Fields["quorum"] = redact.Text(m[1])
 		}

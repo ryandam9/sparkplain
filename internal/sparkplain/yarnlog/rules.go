@@ -181,6 +181,20 @@ var (
 	// that made it retry: "id=10, table=sp_hot, attempt=6/16,
 	// failureCount=2048ops, last exception=…RegionTooBusyException: …".
 	hbaseAsyncRE = regexp.MustCompile(`^id=\d+, table=([\w:.-]+), attempt=(\d+)/(\d+), failureCount=(\d+)ops, last exception=`)
+	// Tables used through HBase's MapReduce API (checked on the phase 5
+	// test cluster): the driver sizing a table's regions before a
+	// TableInputFormat scan, each executor task's region split and the
+	// region server holding it, and TableOutputFormat opening a table.
+	hbaseSizingRE = regexp.MustCompile(`^Calculating region sizes for table "([\w:.-]+)"`)
+	hbaseSplitRE  = regexp.MustCompile(`^Input split: Split\(tablename=([\w:.-]+), .*\bregionLocation=([\w.-]+), regionname=`)
+	hbaseOutputRE = regexp.MustCompile(`^Created table instance for ([\w:.-]+)`)
+	// The ZooKeeper client's connection line, up to its quorum: the
+	// watcher after it differs on every connection.
+	zkConnectRE = regexp.MustCompile(`^Initiating client connection, connectString=\S+`)
+
+	// A file YARN localized for the application, as the application
+	// master lists them: "    hbase-client-2.4.17-amzn-7.jar -> resource { scheme: …".
+	localizedRE = regexp.MustCompile(`^\s+([\w.+-]+) -> resource \{`)
 
 	// A class missing, or of another version, at run time. The first stack
 	// frame that names its jar (log4j adds "~[jar:version]") is the code

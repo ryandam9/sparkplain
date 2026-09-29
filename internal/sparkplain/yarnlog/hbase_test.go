@@ -1,6 +1,8 @@
 package yarnlog
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -102,5 +104,54 @@ java.lang.NoSuchMethodError: 'void com.google.common.base.Preconditions.checkArg
 				t.Errorf("fields = %v", f)
 			}
 		})
+	}
+}
+
+// How a run used HBase, from lines of the phase 5 test cluster: the
+// regions a TableInputFormat scan read, one entry per table and region
+// server; the table TableOutputFormat wrote; the jars YARN localized; and
+// ZooKeeper connections folded into one entry per quorum, whose count is
+// how many the process opened.
+func TestHBaseUse(t *testing.T) {
+	t.Parallel()
+	const drv = "containers/application_1700000000000_0001/container_1700000000000_0001_01_000001/stderr"
+	const exe = "containers/application_1700000000000_0001/container_1700000000000_0001_01_000002/stderr"
+	res := classifyText(t, exe, `26/09/29 05:14:00 INFO NewHadoopRDD: Input split: Split(tablename=sp_orders, startrow=4, endrow=6, regionLocation=ip-10-0-2-12.us-east-1.compute.internal, regionname=456201869c63248e892eb7dff56d6e04)
+26/09/29 05:14:00 INFO ZooKeeper: Initiating client connection, connectString=ip-10-0-2-11.us-east-1.compute.internal:2181 sessionTimeout=90000 watcher=org.apache.hadoop.hbase.zookeeper.ReadOnlyZKClient$$Lambda$1085/0x00007f2c3c7a1b58@1b1c5c6e
+26/09/29 05:14:05 INFO NewHadoopRDD: Input split: Split(tablename=sp_orders, startrow=6, endrow=8, regionLocation=ip-10-0-2-12.us-east-1.compute.internal, regionname=5281bb1c35007721c614947010e36c3e)
+26/09/29 05:14:05 INFO ZooKeeper: Initiating client connection, connectString=ip-10-0-2-11.us-east-1.compute.internal:2181 sessionTimeout=90000 watcher=org.apache.hadoop.hbase.zookeeper.ReadOnlyZKClient$$Lambda$1085/0x00007f2c3c7a1b58@7a0e0b2d
+26/09/29 05:14:08 INFO NewHadoopRDD: Input split: Split(tablename=sp_orders, startrow=8, endrow=, regionLocation=ip-10-0-2-10.us-east-1.compute.internal, regionname=a4cad23f9e5e08ddd8f3ff6457e1d1c5)
+26/09/29 05:14:10 INFO TableOutputFormat: Created table instance for sp_totals
+`, Options{AppID: "application_1700000000000_0001"})
+	var got []string
+	for _, l := range res.Lines {
+		got = append(got, fmt.Sprintf("%s x%d %s|%s|%s|%s|%s", l.Kind, l.Count, l.Fields["table"], l.Fields["access"], l.Fields["api"], l.Fields["server"], l.Fields["quorum"]))
+	}
+	want := []string{
+		"hbase-use x2 sp_orders|read|TableInputFormat|ip-10-0-2-12.us-east-1.compute.internal|",
+		"hbase x2 ||||ip-10-0-2-11.us-east-1.compute.internal:2181",
+		"hbase-use x1 sp_orders|read|TableInputFormat|ip-10-0-2-10.us-east-1.compute.internal|",
+		"hbase-use x1 sp_totals|write|TableOutputFormat||",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("lines =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+
+	res = classifyText(t, drv, `26/09/29 05:13:55 INFO RegionSizeCalculator: Calculating region sizes for table "sp_orders".
+26/09/29 05:13:50 INFO ApplicationMaster: 
+===============================================================================
+Default YARN executor launch context:
+  resources:
+    hbase-client-2.4.17-amzn-7.jar -> resource { scheme: "hdfs" host: "ip-10-0-2-11.us-east-1.compute.internal" port: 8020 file: "/user/hadoop/.sparkStaging/application_1700000000000_0001/hbase-client-2.4.17-amzn-7.jar" } size: 1 timestamp: 1 type: FILE visibility: PRIVATE
+    hbase-site.xml -> resource { scheme: "hdfs" host: "ip-10-0-2-11.us-east-1.compute.internal" port: 8020 file: "/user/hadoop/.sparkStaging/application_1700000000000_0001/hbase-site.xml" } size: 1 timestamp: 1 type: FILE visibility: PRIVATE
+`, Options{AppID: "application_1700000000000_0001"})
+	if got := kinds(res); got != "hbase-use/info localized/info localized/info" {
+		t.Fatalf("kinds = %q", got)
+	}
+	if f := res.Lines[0].Fields; f["table"] != "sp_orders" || f["api"] != "TableInputFormat" {
+		t.Errorf("sizing = %v", f)
+	}
+	if n := res.Lines[1].Fields["name"]; n != "hbase-client-2.4.17-amzn-7.jar" {
+		t.Errorf("localized = %q", n)
 	}
 }
