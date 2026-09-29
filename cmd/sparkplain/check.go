@@ -42,7 +42,7 @@ type checkInput struct {
 }
 
 // accessCheck finds out what the run can read before it reads anything
-// (SPEC §6): one small read-only call per source, made in parallel. It
+// (SPEC §2): one small read-only call per source, made in parallel. It
 // returns the rows in a fixed order and who the credentials are.
 func accessCheck(ctx context.Context, cloud *awsSession, in checkInput) (rows []model.AccessCheck, who string) {
 	o := in.o

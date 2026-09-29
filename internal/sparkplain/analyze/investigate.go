@@ -8,7 +8,7 @@ import (
 	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
 )
 
-// Findings from the fields phase 1c reads (SPEC §8): exclusions, scheduler
+// Findings from the fields phase 1c reads (HISTORY.md): exclusions, scheduler
 // delay, data locality, large results, executor startup, speculation, and
 // tasks still running when the log ended.
 func investigateFindings(c *ctx) {

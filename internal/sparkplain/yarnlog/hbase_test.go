@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// HBase client errors are told apart by what fixes them (SPEC §8, phase 5
+// HBase client errors are told apart by what fixes them (HISTORY.md, phase 5
 // step 2). The first five are lines from the phase 5 test cluster (HBase
 // 2.4.17, scrubbed); the rest use HBase 2.4's own exception messages, which
 // the test cluster's client never logged.

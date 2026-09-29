@@ -56,7 +56,7 @@ func (g *hbaseGroup) evidence() []model.Evidence {
 }
 
 // hbaseFindings reports each HBase problem the client logged, apart,
-// because each has its own fix (SPEC §8, phase 5 step 2). The problem is
+// because each has its own fix (HISTORY.md, phase 5 step 2). The problem is
 // the classifier's "hbase" field.
 func hbaseFindings(c *ctx) {
 	groups := map[string]*hbaseGroup{}

@@ -268,7 +268,7 @@ func TestQuartilesAndHistogram(t *testing.T) {
 	}
 }
 
-// TestExplorerBudget checks the SPEC §8 budget with explorer data on. It runs
+// TestExplorerBudget checks the SPEC §4 budget with explorer data on. It runs
 // only when SPARKPLAIN_BIG_LOG names a log, for example after `make bench-log`:
 //
 //	SPARKPLAIN_BIG_LOG=$PWD/out/big.log go test -run TestExplorerBudget -v ./internal/sparkplain/eventlog/

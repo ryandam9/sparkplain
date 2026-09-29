@@ -11,7 +11,7 @@ import (
 )
 
 // Each HBase problem is its own finding, with the table, server or
-// ZooKeeper address the client named (SPEC §8, phase 5 step 2).
+// ZooKeeper address the client named (HISTORY.md, phase 5 step 2).
 func TestHBaseFindings(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

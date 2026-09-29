@@ -1,5 +1,5 @@
 // Command benchlog writes a large synthetic event log for the performance
-// budget in SPEC §8 (a 1 GB log parsed in under 60 s using under 1 GB RAM).
+// budget in SPEC §4 (a 1 GB log parsed in under 60 s using under 1 GB RAM).
 // It stamps real events from the fixture with new IDs, times and hosts, so
 // the line mix and field layout match what Spark 3.5 writes.
 //

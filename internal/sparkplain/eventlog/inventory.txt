@@ -1,4 +1,4 @@
-# Field inventory (SPEC §8, phase 1c). Every event and field Spark 3.5 (and EMR)
+# Field inventory (HISTORY.md, phase 1c). Every event and field Spark 3.5 (and EMR)
 # writes is listed with what sparkplain does with it:
 #   used          read, and shown in the report or explorer
 #   aside         deliberately not read; the note says why

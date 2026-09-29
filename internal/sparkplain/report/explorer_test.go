@@ -112,8 +112,8 @@ func TestExplorerDataMatchesReport(t *testing.T) {
 }
 
 // The explorer makes no network requests: its charts are drawn by the
-// embedded D3, so it works on machines without internet access (SPEC §8,
-// phase 1d). Only the SVG namespace, an identifier browsers never fetch,
+// embedded D3, so it works on machines without internet access
+// (HISTORY.md, phase 1d). Only the SVG namespace, an identifier browsers never fetch,
 // may appear as a URL in the page's own markup and script.
 func TestExplorerLoadsNothingExternal(t *testing.T) {
 	t.Parallel()

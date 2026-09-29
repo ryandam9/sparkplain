@@ -32,7 +32,7 @@ jobs:
         run: make test
       - name: build
         run: go build ./cmd/sparkplain
-      - name: benchmark (SPEC §8 budget, scaled to a synthetic log)
+      - name: benchmark (SPEC §4 budget, scaled to a synthetic log)
         run: make bench
       - name: govulncheck
         run: make vuln

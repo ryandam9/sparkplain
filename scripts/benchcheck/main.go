@@ -1,6 +1,6 @@
 // Command benchcheck runs a command, typically sparkplain on a log from
 // scripts/benchlog, and fails when it takes longer or uses more memory than
-// the SPEC §8 budget allows for that log: 60 s and 1 GB of RAM per GB of
+// the SPEC §4 budget allows for that log: 60 s and 1 GB of RAM per GB of
 // event log, scaled to the log's size. CI runs it (make bench) so a change
 // that makes parsing much slower or stops it streaming turns the build red.
 //
@@ -23,8 +23,8 @@ import (
 
 func main() {
 	logPath := flag.String("log", "", "the event log the command reads, to scale the budget")
-	secPerGB := flag.Float64("seconds-per-gb", 60, "time budget per GB of log (SPEC §8: 60 s)")
-	mbPerGB := flag.Float64("rss-mb-per-gb", 1024, "peak memory budget per GB of log (SPEC §8: under 1 GB)")
+	secPerGB := flag.Float64("seconds-per-gb", 60, "time budget per GB of log (SPEC §4: 60 s)")
+	mbPerGB := flag.Float64("rss-mb-per-gb", 1024, "peak memory budget per GB of log (SPEC §4: under 1 GB)")
 	flag.Parse()
 	if *logPath == "" || flag.NArg() == 0 {
 		log.Fatal("usage: benchcheck -log <event log> -- <command> [args]")

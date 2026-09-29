@@ -9,7 +9,7 @@ import (
 	"github.com/ryandam9/sparkplain/internal/sparkplain/redact"
 )
 
-// Code locations (SPEC §8, phase 1c step 7). Spark records where in the code
+// Code locations (HISTORY.md, phase 1c step 7). Spark records where in the code
 // work ran: a short call site ("collect at /jobs/etl.py:32") and, for stages
 // and queries, the call stack. For JVM applications the stack holds the
 // user's own frames; for PySpark it holds only Spark and py4j frames, and

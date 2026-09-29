@@ -80,11 +80,11 @@ GOVULNCHECK_VERSION ?= v1.8.0
 vuln:
 	GOTOOLCHAIN=$$($(GO) env GOVERSION) $(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) $(if $(GOVULNDB),-db $(GOVULNDB)) $(PKG)
 
-# bench-log writes a large synthetic event log for the SPEC §8 performance budget.
+# bench-log writes a large synthetic event log for the SPEC §4 performance budget.
 bench-log:
 	$(GO) run ./scripts/benchlog -out out/big.log -tasks 245000
 
-# bench checks the SPEC §8 budget (60 s and 1 GB of RAM per GB of log) on a
+# bench checks the SPEC §4 budget (60 s and 1 GB of RAM per GB of log) on a
 # synthetic 150,000-task log, about 0.6 GB, with every output on (past the
 # explorer's 100,000-task sample, so sampling runs too); CI runs it.
 BENCH_TASKS ?= 150000

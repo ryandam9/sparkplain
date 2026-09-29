@@ -32,7 +32,7 @@ type Thresholds struct {
 	HBaseHotspot     float64       `yaml:"hbase-hotspot-share"` // one region server holding over this share of a table's regions read
 }
 
-// DefaultThresholds are the values in SPEC §5.
+// DefaultThresholds are the values in SPEC §6 (the config file).
 func DefaultThresholds() Thresholds {
 	return Thresholds{
 		SkewRatio: 5, SkewMinTask: time.Second, SkewMinTasks: 5,

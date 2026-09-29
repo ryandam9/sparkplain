@@ -62,7 +62,7 @@ func TestRuleStageRetried(t *testing.T) {
 	}
 }
 
-// Every finding rule is exercised by at least one test (SPEC §8, phase 4):
+// Every finding rule is exercised by at least one test (HISTORY.md, phase 4):
 // a rule named in analyze but in no test file fails the build.
 func TestEveryRuleHasATest(t *testing.T) {
 	t.Parallel()

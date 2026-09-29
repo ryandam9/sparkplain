@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// The field inventory (SPEC §8, phase 1c) lists every event and field Spark
+// The field inventory (HISTORY.md, phase 1c) lists every event and field Spark
 // 3.5 and EMR write, and what sparkplain does with each. TestFieldInventory
 // checks every fixture against it, and parsing counts anything not listed
 // as unknown, so a newer Spark's additions are visible instead of lost.

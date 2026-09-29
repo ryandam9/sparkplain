@@ -417,7 +417,7 @@ func visibleLen(s string) int {
 	return n
 }
 
-// accessCheck prints the access check a run starts with (SPEC §6): one
+// accessCheck prints the access check a run starts with (SPEC §2): one
 // line per source, marked ✓, ✗ or – (Y, N or - without colour, so a piped
 // log reads plainly), with where it looked and, when it could not read a
 // source, why and an aws command that repeats the call.

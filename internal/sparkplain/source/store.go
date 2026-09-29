@@ -47,7 +47,7 @@ type Sampler interface {
 }
 
 // Sample lists at most n objects under prefix, with st's own Sample when
-// it has one (the access check, SPEC §6).
+// it has one (the access check, SPEC §2).
 func Sample(ctx context.Context, st Store, prefix string, n int) ([]Object, error) {
 	if s, ok := st.(Sampler); ok {
 		return s.Sample(ctx, prefix, n)

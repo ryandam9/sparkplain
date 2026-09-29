@@ -310,7 +310,7 @@ func ContainerExitMeaning(code int, driver bool) string {
 }
 
 // exitSeverity ranks a container exit status on its own; joining with the
-// event log (SPEC §8 phase 2 step 5) can soften it, for example for 143 at
+// event log (HISTORY.md, phase 2 step 5) can soften it, for example for 143 at
 // the end of a successful application.
 func exitSeverity(code int) model.Severity {
 	switch code {

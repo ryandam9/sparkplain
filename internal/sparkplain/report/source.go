@@ -25,7 +25,7 @@ type SourceFile struct {
 	Cut    bool     // longer than maxSourceLines
 }
 
-// Limits on embedded source (SPEC §8, phase 1c step 7).
+// Limits on embedded source (HISTORY.md, phase 1c step 7).
 const (
 	maxSourceLines  = 5000
 	maxSourceBytes  = 4 << 20

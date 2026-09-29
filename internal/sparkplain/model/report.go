@@ -593,7 +593,7 @@ type PathStep struct {
 // DurationMs is the step's length.
 func (p PathStep) DurationMs() int64 { return p.End.Sub(p.Start).Milliseconds() }
 
-// AccessCheck is one line of the access check a run starts with (SPEC §6):
+// AccessCheck is one line of the access check a run starts with (SPEC §2):
 // whether sparkplain can read a source, where, and with which call.
 type AccessCheck struct {
 	Name string `json:"name"`
