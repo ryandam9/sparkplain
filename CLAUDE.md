@@ -2,12 +2,13 @@
 
 A Go CLI that turns one Spark application's logs into a single plain-language HTML report (plus JSON), showing what ran, on which nodes, with how much CPU, memory and storage, and under which identity. The first target is Amazon EMR on EC2 7.3.0+ (Spark 3.5.1+).
 
-- **Source of truth:** `docs/SPEC.md`. Read it before starting any task. If a decision changes, update the spec in the same change.
+- **Source of truth:** `docs/SPEC.md`, the current design. Read it before starting any task. If a decision changes, update the spec in the same change.
+- **History:** `docs/HISTORY.md` holds each phase's plan, step notes, live-check results and dated decisions. New plans and status notes go there, not in the spec.
 - **Report design reference:** `docs/sample-report.html` (fictional data). Match its structure, tone and the way it explains every metric.
 
 ## How we work
 
-- Build in the phases listed in SPEC §8. Finish and test one phase before starting the next, and don't start a new phase unless asked.
+- Build in the phases listed in SPEC §8 (plans in `docs/HISTORY.md`). Finish and test one phase before starting the next, and don't start a new phase unless asked.
 - For anything bigger than a small fix, propose a plan first and wait for approval.
 - Keep commits small, one concern each, and write messages that say why.
 - If the spec is ambiguous, ask. Don't guess about Spark or EMR behaviour; check it against a real fixture.

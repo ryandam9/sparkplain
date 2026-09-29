@@ -297,7 +297,7 @@ thresholds:            # tune when findings fire
   hbase-time-share: 0.50  # stages using HBase over half the run
 ```
 
-[SPEC §6](docs/SPEC.md#6-report-output-and-cli) lists every key and threshold.
+[SPEC §6](docs/SPEC.md#6-outputs-and-cli) lists every key and threshold.
 
 ## More options
 
@@ -345,7 +345,7 @@ Common cases:
 
 ## Develop
 
-The design, and what each phase built, is in [docs/SPEC.md](docs/SPEC.md). [docs/sample-report.html](docs/sample-report.html) is the design reference for the report.
+The design is in [docs/SPEC.md](docs/SPEC.md), and what each phase built, and why, in [docs/HISTORY.md](docs/HISTORY.md). [docs/sample-report.html](docs/sample-report.html) is the design reference for the report.
 
 ```sh
 make check     # gofmt check, go vet, tests, build and govulncheck: run before calling a task done
@@ -363,7 +363,7 @@ govulncheck ./...
 ```
 
 - Fixtures in `testdata/eventlog` come from real PySpark 3.5.1 runs, scrubbed. Regenerate them with `make fixtures` (runs `scripts/fixtures/generate.sh`; needs Java 17+, `pyspark==3.5.1` and `SP_SCRATCH`; see the script header). `testdata/emrlogs` holds scrubbed EMR cluster logs.
-- `make bench-log` writes a synthetic 1 GB log to `out/big.log`. `make bench` checks the time and memory budget in SPEC §8.
+- `make bench-log` writes a synthetic 1 GB log to `out/big.log`. `make bench` checks the time and memory budget in SPEC §4.
 - The screenshots in `docs/images` come from the fixture command in [Try it in a minute](#try-it-in-a-minute), rendered in headless Chrome at 1400 px wide with `TZ=UTC`.
 
 ## License
