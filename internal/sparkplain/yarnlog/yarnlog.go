@@ -28,6 +28,9 @@ type Options struct {
 	AppID string
 	// MaxEntries caps the distinct lines kept per file; default 500.
 	MaxEntries int
+	// From and To keep an HBase daemon's lines to the application's time:
+	// these logs hold every application's. Zero keeps all.
+	From, To time.Time
 }
 
 // Result is what one file held.
@@ -206,7 +209,7 @@ func (c *classifier) feed(line string) {
 		return
 	}
 	switch kind {
-	case NodeManager, ResourceManager, Bootstrap, StepController:
+	case NodeManager, ResourceManager, Bootstrap, StepController, HBaseMaster, HBaseRegion:
 		return // daemons quote other processes' stacks; those are read from their own logs
 	}
 	if javaExcRE.MatchString(line) || strings.HasPrefix(line, "Traceback (most recent call last):") {
@@ -240,6 +243,9 @@ func (c *classifier) header(h header, line string) {
 		if !c.capacity(h) && c.mine(line) {
 			c.nodeManager(h)
 		}
+		return
+	case HBaseMaster, HBaseRegion:
+		c.hbaseServer(h)
 		return
 	case Bootstrap:
 		if m := bootstrapFailRE.FindStringSubmatch(msg); m != nil {
@@ -492,6 +498,77 @@ func (c *classifier) header(h header, line string) {
 		return
 	}
 	c.lead(l)
+}
+
+// hbaseServer keeps what an HBase Master or region server logged while the
+// application ran. Each kind of event is one entry per table (or client),
+// whose count is how often it happened; the line's own text would not fold,
+// since it names a region or procedure each time.
+func (c *classifier) hbaseServer(h header) {
+	o := c.opt
+	if h.time.IsZero() || !o.From.IsZero() && h.time.Before(o.From.Truncate(time.Second)) || !o.To.IsZero() && h.time.After(o.To) {
+		return
+	}
+	msg := h.msg
+	host := c.res.File.Host
+	keep := func(sev model.Severity, event, text string, fields ...string) {
+		l := c.entry(model.LogHBaseServer, sev, h.time, text)
+		l.Fields["event"], l.Fields["host"] = event, host
+		for i := 0; i+1 < len(fields); i += 2 {
+			if fields[i+1] != "" {
+				l.Fields[fields[i]] = redact.Text(fields[i+1])
+			}
+		}
+		c.add(l)
+	}
+	var m []string
+	switch {
+	case hbMovedRE.MatchString(msg):
+		m = hbMovedRE.FindStringSubmatch(msg)
+		keep(model.Warning, "moved", "HBase moved a region of "+m[1], "table", m[1])
+	case hbSplitRE.MatchString(msg):
+		m = hbSplitRE.FindStringSubmatch(msg)
+		keep(model.Warning, "split", "HBase split a region of "+m[1], "table", m[1])
+	case hbCrashRE.MatchString(msg):
+		m = hbCrashRE.FindStringSubmatch(msg)
+		keep(model.Critical, "server-lost", msg, "server", m[1], "meta", m[2], "regions", m[3])
+	case hbBusyRE.MatchString(msg):
+		keep(model.Warning, "busy", "Region is too busy due to exceeding memstore size limit")
+	case hbLeaseRE.MatchString(msg):
+		m = hbLeaseRE.FindStringSubmatch(msg)
+		keep(model.Warning, "scanner", "Scanner lease expired for a client at "+m[1]+" reading "+m[3], "client", m[1], "user", m[2], "table", m[3])
+	case hbStoppedRE.MatchString(msg):
+		keep(model.Critical, "server-stopped", msg, "server", host, "reason", hbStoppedRE.FindStringSubmatch(msg)[1])
+	case hbAbortRE.MatchString(msg):
+		m = hbAbortRE.FindStringSubmatch(msg)
+		keep(model.Critical, "server-stopped", msg, "server", m[1], "reason", m[2], "aborted", "true")
+	case hbPauseRE.MatchString(msg):
+		keep(model.Warning, "pause", msg, "ms", hbPauseRE.FindStringSubmatch(msg)[1])
+	case hbSlowRE.MatchString(msg):
+		kind := "slow-call"
+		if hbSlowRE.FindStringSubmatch(msg)[1] == "TooLarge" {
+			kind = "large-response"
+		}
+		var ms, op, tbl string
+		if m := hbSlowMsRE.FindStringSubmatch(msg); m != nil {
+			ms = m[1]
+		}
+		if m := hbSlowOpRE.FindStringSubmatch(msg); m != nil {
+			op = m[1]
+		}
+		if m := hbSlowTblRE.FindStringSubmatch(msg); m != nil {
+			tbl = m[1]
+		}
+		keep(model.Warning, kind, "HBase logged a "+strings.ReplaceAll(kind, "-", " ")+" ("+op+") on "+tbl, "ms", ms, "method", op, "table", tbl)
+	case hbStoreRE.MatchString(msg):
+		m = hbStoreRE.FindStringSubmatch(msg)
+		keep(model.Warning, "store-files", "A region of "+m[1]+" had too many store files to flush", "table", m[1])
+	case hbFlushRE.MatchString(msg):
+		keep(model.Info, "flush", "HBase flushed a region's memstore to disk")
+	case hbCompactRE.MatchString(msg):
+		m = hbCompactRE.FindStringSubmatch(msg)
+		keep(model.Info, "compaction", "HBase compacted a region of "+m[1], "table", m[1])
+	}
 }
 
 func (c *classifier) controller(h header) {

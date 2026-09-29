@@ -207,7 +207,7 @@ func joinContainers(c *ctx, r *model.Report) {
 					f.Host = l.Fields["host"]
 				}
 			}
-		case f.Instance != "":
+		case f.Instance != "" && instHost[f.Instance] != "":
 			f.Host = instHost[f.Instance]
 		}
 		if a := containerAttempt(f.Container); a > 0 && final > 0 && a != final {

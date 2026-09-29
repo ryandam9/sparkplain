@@ -40,7 +40,11 @@ type Plan struct {
 	Others map[string]string
 	// Since skips NodeManager and ResourceManager logs last written before
 	// it, which end before the application started. Zero keeps all.
-	Since  time.Time
+	Since time.Time
+	// Until is when the application ended. With Since, it keeps HBase's
+	// logs, which hold every application, to the application's time; when
+	// both are zero, the container logs' first and last times are used.
+	Until  time.Time
 	Limits source.Limits
 	// MaxFiles caps the files read per kind of log; default 5000.
 	MaxFiles int
@@ -72,8 +76,111 @@ func Collect(ctx context.Context, st source.Store, p Plan) Collection {
 		return c
 	}
 	c.steps(ctx, st, p)
-	c.nodes(ctx, st, p.withDriverNodes(c.Files))
+	p = p.withDriverNodes(c.Files)
+	c.nodes(ctx, st, p)
+	c.hbase(ctx, st, p.withWindow(c.Files))
 	return c
+}
+
+// withWindow fills the application's time from its container logs, when
+// neither the event log nor the caller gave it.
+func (p Plan) withWindow(files []model.LogFile) Plan {
+	if !p.Since.IsZero() && !p.Until.IsZero() {
+		return p
+	}
+	var first, last time.Time
+	for _, f := range files {
+		if f.Container == "" {
+			continue
+		}
+		for _, l := range f.Found {
+			if l.Time.IsZero() {
+				continue
+			}
+			if first.IsZero() || l.Time.Before(first) {
+				first = l.Time
+			}
+			if l.Time.After(last) {
+				last = l.Time
+			}
+		}
+	}
+	if p.Since.IsZero() {
+		p.Since = first
+	}
+	if p.Until.IsZero() {
+		p.Until = last
+	}
+	return p
+}
+
+// hbase reads HBase's Master and region server logs on every node, for the
+// application's time only: a region server can serve the application from
+// a node that ran none of its executors.
+func (c *Collection) hbase(ctx context.Context, st source.Store, p Plan) {
+	prefix := p.Root + "node/"
+	src := model.SourceStatus{Name: "HBase logs", Location: st.Location(prefix)}
+	var objs []source.Object
+	var listErr error
+	if p.Instances == nil {
+		objs, listErr = st.List(ctx, prefix)
+	} else {
+		ids := slices.Clone(p.Instances)
+		for _, id := range p.Others {
+			if !slices.Contains(ids, id) {
+				ids = append(ids, id)
+			}
+		}
+		var mu sync.Mutex
+		forEach(ids, p.Limits.Workers, func(id string) {
+			found, err := st.List(ctx, prefix+id+"/applications/hbase/")
+			mu.Lock()
+			if err != nil && listErr == nil {
+				listErr = err
+			}
+			objs = append(objs, found...)
+			mu.Unlock()
+		})
+		sort.Slice(objs, func(i, j int) bool { return objs[i].Key < objs[j].Key })
+	}
+	g := group{st: st, plan: p}
+	for _, o := range objs {
+		f := Describe(strings.TrimPrefix(o.Key, p.Root))
+		if f.Kind != HBaseMaster && f.Kind != HBaseRegion {
+			continue
+		}
+		switch {
+		case !f.Hour.IsZero() && !p.Since.IsZero() && f.Hour.Add(time.Hour).Before(p.Since):
+			g.offer(o, f, false, "an hour before the application started")
+		case !f.Hour.IsZero() && !p.Until.IsZero() && f.Hour.After(p.Until):
+			g.offer(o, f, false, "an hour after the application ended")
+		case f.Hour.IsZero() && !p.Since.IsZero() && !o.Modified.IsZero() && o.Modified.Before(p.Since):
+			g.offer(o, f, false, "last written before the application started")
+		default:
+			g.offer(o, f, true, "")
+		}
+	}
+	if len(g.picked)+len(g.sourceFiles) == 0 {
+		if listErr != nil {
+			c.Sources = append(c.Sources, listFailed(src, listErr))
+		}
+		return // no HBase on this cluster, or none in these folders
+	}
+	g.read(ctx)
+	switch {
+	case len(g.picked) == 0:
+		src.Status = "not-supplied"
+		src.Detail = "No HBase log covers the application's time."
+	default:
+		src.Status, src.Class = g.status()
+		if listErr != nil {
+			src.Status = "partial"
+		}
+		src.Detail = g.summary() + ", kept to the application's time." + g.problems()
+	}
+	src.Files = g.sourceFiles
+	c.Files = append(c.Files, g.files...)
+	c.Sources = append(c.Sources, src)
 }
 
 // withDriverNodes adds the nodes the containers name as a driver's host
@@ -356,7 +463,7 @@ func (g *group) read(ctx context.Context) {
 		i := index[o.Key]
 		cr := &countReader{r: r}
 		// name is the key, or key!entry inside a zip: lines cite the entry.
-		res, err := Classify(cr, g.st.Location(name), g.pickedFiles[i], Options{AppID: g.plan.AppID})
+		res, err := Classify(cr, g.st.Location(name), g.pickedFiles[i], Options{AppID: g.plan.AppID, From: g.plan.Since, To: g.plan.Until})
 		bytes := o.Size // as stored, like every other log file
 		if name != o.Key {
 			bytes = cr.n // a zip entry's own size, unpacked
@@ -379,7 +486,7 @@ func (g *group) read(ctx context.Context) {
 				continue
 			}
 			g.files = append(g.files, model.LogFile{Location: res.Name, Kind: string(f.Kind), Container: f.Container, Step: f.Step,
-				Instance: f.Instance, Bytes: er.bytes, Lines: res.Read, Dropped: res.Dropped, Found: res.Lines})
+				Instance: f.Instance, Host: f.Host, Bytes: er.bytes, Lines: res.Read, Dropped: res.Dropped, Found: res.Lines})
 		}
 	}
 }
