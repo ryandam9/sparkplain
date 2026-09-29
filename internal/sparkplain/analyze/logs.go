@@ -135,6 +135,8 @@ func analyzeLogs(c *ctx, r *model.Report) {
 	lostExecutorCauses(c, r)
 	accessFindings(c, r)
 	connectionFindings(c)
+	hbaseFindings(c)
+	classpathFinding(c)
 	stepAndAttemptFindings(c, r)
 	bootstrapFinding(c, r)
 	fitFindings(c, r)
@@ -290,7 +292,7 @@ var containerRE = regexp.MustCompile(`container_(?:e\d+_)?\d+_\d+_\d+_\d+`)
 // causeKinds are the lines that can be a failure's cause; exits, reports
 // and summaries only say that something failed.
 var causeKinds = map[model.LogKind]int{
-	model.LogOutOfMemory: 0, model.LogMemoryKill: 0, model.LogAccess: 0, model.LogKerberos: 0, model.LogMetastore: 0, model.LogHBase: 0,
+	model.LogOutOfMemory: 0, model.LogMemoryKill: 0, model.LogAccess: 0, model.LogKerberos: 0, model.LogMetastore: 0, model.LogHBase: 0, model.LogClasspath: 0,
 	model.LogException: 1, model.LogTraceback: 1, model.LogTaskError: 1, model.LogLostExecutor: 2, model.LogContainerEnd: 2, model.LogBootstrap: 3,
 }
 
@@ -316,6 +318,15 @@ func firstFailure(c *ctx, r *model.Report) {
 		}
 		if _, ok := causeKinds[h.l.Kind]; ok && h.l.Severity == model.Critical {
 			cands = append(cands, h)
+		}
+	}
+	if len(cands) == 0 {
+		// Nothing critical, such as an exception the driver logged as a
+		// warning before the run ended: the earliest warning is the lead.
+		for _, h := range c.logs.hits {
+			if k := h.l.Kind; (k == model.LogException || k == model.LogTraceback || k == model.LogTaskError) && h.l.Severity == model.Warning {
+				cands = append(cands, h)
+			}
 		}
 	}
 	if len(cands) == 0 {
@@ -411,6 +422,10 @@ func firstFailureFix(c *ctx, r *model.Report, h hit) string {
 		return "See the memory finding below for what to change."
 	case l.Kind == model.LogAccess:
 		return "See the access finding below for the permission to grant."
+	case l.Kind == model.LogClasspath || l.Fields["cause"] == "missing class":
+		return "See the missing-class finding below for the jar to add."
+	case l.Kind == model.LogHBase || l.Fields["cause"] == "HBase":
+		return "See the HBase finding below for what failed and how to fix it."
 	case strings.Contains(root, "FileNotFoundException") && eventLogDirIn(c, r, msg):
 		return "Spark could not open its event log folder, so SparkContext never started. On S3 the folder must already hold an object: create one (for example an empty spark-events/ marker) or point spark.eventLog.dir at a prefix that exists."
 	case strings.Contains(root, "FileNotFoundException"):
@@ -652,8 +667,8 @@ func accessFindings(c *ctx, r *model.Report) {
 	groups := map[string]*group{}
 	var order []string
 	for _, h := range c.logs.hits {
-		if h.l.Kind != model.LogAccess {
-			continue
+		if h.l.Kind != model.LogAccess || h.l.Fields["service"] == "HBase" {
+			continue // HBase's own refusals are reported apart
 		}
 		what := h.l.Fields["action"]
 		if p := h.l.Fields["path"]; p != "" {
@@ -696,7 +711,8 @@ func accessFindings(c *ctx, r *model.Report) {
 		Fix:         "Grant " + role + " the refused action on that resource (or add the Lake Formation permission), then rerun. Check the bucket policy and any KMS key policy too."})
 }
 
-// connectionFindings reports Kerberos, metastore and HBase failures.
+// connectionFindings reports Kerberos and metastore failures; HBase's are
+// told apart in hbaseFindings.
 func connectionFindings(c *ctx) {
 	for _, k := range []struct {
 		kind              model.LogKind
@@ -707,8 +723,6 @@ func connectionFindings(c *ctx) {
 			"Check that the principal and keytab are right and not expired (kinit -kt), that clocks agree, and that the KDC is reachable from every node."},
 		{model.LogMetastore, "metastore-failure", "The table catalog could not be reached", "Spark could not talk to the Hive metastore or the Glue Data Catalog, so queries that name tables failed.",
 			"Check that the metastore is up and reachable from every node (security groups, hive.metastore.uris), or, for Glue, the role's glue: permissions."},
-		{model.LogHBase, "hbase-failure", "HBase could not be reached", "Calls to HBase (or its ZooKeeper) failed, so reads or writes to HBase did not complete.",
-			"Check hbase.zookeeper.quorum, that the HBase and ZooKeeper nodes are reachable from every node, and HBase's own logs for region server problems."},
 	} {
 		var ev []model.Evidence
 		n := 0
