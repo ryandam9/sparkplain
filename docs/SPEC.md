@@ -303,7 +303,7 @@ The biggest risk is event log availability; the rest are accuracy limits the rep
 
 ## 8. Delivery plan
 
-Four phases, each shippable on its own. Phase 1 delivers most of the value from the event log alone and needs no AWS calls.
+Five phases, each shippable on its own. Phase 1 delivers most of the value from the event log alone and needs no AWS calls.
 
 | Phase | Scope | Done when |
 | --- | --- | --- |
@@ -316,6 +316,7 @@ Four phases, each shippable on its own. Phase 1 delivers most of the value from 
 | 1e. Diagnostic views | Where stage time went; stage × executor heatmap; driver gaps (finding and shading); a unified run timeline; task scatter axis choices (plan below) | A reader can tell from the pages alone why a stage was slow, whether one executor differed, whether the cluster waited on the driver, and what else ran at the same moment |
 | 1f. Explorer curation | The second design review (`docs/SAMPLE_EXPLORER_REVIEW_2026-09-28.md`): findings before the charts over time, the heatmap first on Executors, primary tabs and a More menu; one Stages chart at a time with a Stage Health Map; a cross-stage skew chart; a real critical path drawn as a DAG; a resource utilisation panel; more task scatter choices (plan below) | From the Overview alone a reader can name the main findings, the stages worth investigating, the chain that held up completion, whether resources were constrained, and when things happened |
 | 4. Findings and polish | Full rules engine with tunable thresholds, Sources panel, redaction tests, fixture logs from EMR 7.3.0 onward | All findings rules covered by tests; CI benchmark and `govulncheck` pass |
+| 5. HBase | HBase problems that are not about authentication, told apart and explained from the container logs and the event log; the tables, regions and region servers a run used; real fixtures from a live HBase cluster (plan below) | A report on each HBase fixture names the table and the cause of its failure, with the log line as evidence |
 
 Testing: stub S3 and AWS clients, race detector on, fuzz targets for the event decoder and log classifiers.
 
@@ -508,12 +509,39 @@ Fixtures (added, not regenerated, so existing expectations hold): `0046` exercis
   - Not fixed: the attempt-1 event log was missing from S3 although its driver logged the rename, and the Sources panel does not say so; attempt 2's container `stdout`/`stderr` took several minutes to reach S3, during which the run exits 3 and says why.
 - Step 3 (built): the live check's cluster is a fixture, `j-FIXTURE0071CLUSTER`: its AWS answers recorded with `scripts/recordaws` after it ended, and its logs, the recording and three event logs scrubbed together by `scrub_emrlogs.py`: `0071` (the retried application, attempt 2's log), `0072` (NOAA, zstd-compressed from 8.1 MB to 233 KiB to stay under the 5 MB fixture limit) and `0073` (the copy that shared the cluster), with the job scripts in `testdata/emrscripts/p4/`. `TestRecordedPhase4` replays all three through the CLI: the spot reclaim, the retried attempt and its cause, spill, the driver gap, waiting for capacity, executor fit and the shared cluster, with no idle-node finding, and every worker's YARN capacity and CPU known.
 
+
+**Phase 5 plan (approved 2026-09-29).** Goal (from the table above): most production Spark applications read or write HBase, on the same (Kerberized) EMR cluster. Kerberos and authentication errors are out of scope, because once set up they rarely fail; this phase is about everything else that goes wrong with HBase. Each step is tested before the next.
+
+Checked first against a throwaway EMR 7.3.0 cluster with HBase 2.4.17 (`testdata/emrscripts/hbase/`: the hbase-spark connector 1.0.1, `TableInputFormat` and `TableOutputFormat`, a missing table, a wrong ZooKeeper port, and two runs that failed on the classpath):
+
+- Every HBase exception is one finding today, "HBase could not be reached". A missing table (`TableNotFoundException`, 6,040 lines in one run) is told the same story as a ZooKeeper port nothing listens on, though the fixes differ.
+- A run that failed with `NoClassDefFoundError: com/google/protobuf/RpcChannel` (HBase 2.4's client needs protobuf 2.5, which Spark 3.5 does not ship) had no finding at all; nor did one missing `org/slf4j/impl/StaticLoggerBinder` (the connector's slf4j 1 call).
+- The SQL plan reader turns the connector's `HBaseRelation(Map(hbase.table -> sp_totals, …))` into a table named `-> sp_totals, hbase.columns.mapping -> …`, and misses the connector's writes (`SaveIntoDataSourceCommand …hbase.spark.DefaultSource…, Map(hbase.table -> …)`).
+- The event log names tables only for the connector. The RDD API leaves just the `newAPIHadoopRDD` call site; its table, row ranges and region servers are in the container logs (`TableInputFormatBase`/`NewHadoopRDD` split lines, `TableOutputFormat: Created table instance for …`, `RegionSizeCalculator`).
+- The connector opened 215 ZooKeeper sessions in one run, about one per task.
+- The HBase quorum usually comes from an `hbase-site.xml` shipped with `--files`, so it is not in the Spark configuration; only the ZooKeeper client's `connectString` line shows it.
+
+1. **Fixtures.** The test cluster's runs (above, and step 6's), container, step and event logs scrubbed into `testdata/emrlogs/`, and the scripts that made them in `testdata/emrscripts/hbase/`.
+2. **HBase failures told apart.** Each its own kind, finding, plain explanation and fix, with the table, host and port where the line names them: table missing; ZooKeeper unreachable (the quorum and port tried); classpath or version clash (`NoClassDefFoundError`, `ClassNotFoundException`, `NoSuchMethodError` in HBase, the connector or their dependencies; the missing class and the jar that usually provides it); region server unreachable or slow (retries exhausted, "servers with issues", call timeouts); scanner lease expired; regions moved or split (usually retried, so a warning unless retries ran out); HBase pushing back (`RegionTooBusyException`, `CallQueueTooBigException`, over the memstore limit). An HBase `AccessDeniedException` stays an access error but is named as HBase, not AWS.
+3. **HBase use in the report.** Tables read and written and by which API (connector, `TableInputFormat`, `TableOutputFormat`), from SQL plans and container logs; regions scanned per region server; the ZooKeeper quorum and how many sessions the run opened; client and connector versions (from jar names in stack frames and YARN's localized resources). The Identity section's HBase facts come from the logs when the configuration lacks them.
+4. **New findings.** Many ZooKeeper sessions (one connection per task instead of per executor); one region server taking most regions, writes or failures (a hotspot); scans whose task ran away from its region's server.
+5. **SQL plans.** Parse the connector's relation and write command into table, column mapping and access, and never produce a table name from a plan's punctuation.
+6. **Live check.** The same cluster, not Kerberized (out of scope): a scan slower than the scanner lease, regions moved and split while a job writes and scans, one small region taking every write, and a region server stopped mid-job; the logs of each become step 1 fixtures.
+
+- Live check (2026-09-29, `testdata/emrscripts/hbase/scenario.sh`): every disturbed run succeeded, because HBase 2.4's client retries. What reaches the logs:
+  - Scanner lease expired: `UnknownScannerException … Scanner lease expired because of long wait between consecutive client checkins`, 6 times; the client reopened the scanner and the scan took 9 minutes.
+  - One small region taking every write: `AsyncRequestFutureImpl: id=…, table=sp_hot, attempt=n/16, failureCount=…, last exception=…RegionTooBusyException: Over memstore limit=2.0 M, regionName=…, server=…`, at INFO, then `succeeded on <server>`.
+  - Regions moved and split (5 to 10) while a job wrote and scanned them, and a region server stopped mid-job: nothing at all. The only trace is time (one job took 30 s instead of 20 s). No rule can see these from Spark's side, and none is written; the report does not claim to.
+  - A connector run that waited 4½ minutes looked like HBase trouble but was waiting for executors (`Initial job has not accepted any resources`) while another application held the cluster, which the existing waiting-for-capacity rule covers.
+  - `TableInputFormat` gave no splits for a table whose rows were all still in the memstore (never flushed), so a scan of 20,000 rows read none and succeeded; the scenario flushes first.
+- Step 1 (built): `testdata/emrlogs/j-FIXTURE0083CLUSTER` holds nine runs' container and step logs, scrubbed by `scrub_emrlogs.py`, and `testdata/eventlog/` their event logs (the last attempt of a failed run, named `<app>_<attempt>`; the connector's zstd-compressed): `0081` and `0082` classpath clashes, `0083` connector, `0084` `TableInputFormat`/`TableOutputFormat`, `0085` missing table, `0086` wrong ZooKeeper port, `0088` scanner leases, `0090` `RegionTooBusyException`, `0092` a region server stopped (silent). `TestHBaseFixtures` runs each through the CLI. Today the report gets `0081` no finding, `0082` only "job failed", `0085` and `0086` the same "HBase could not be reached", `0088` (which succeeded) a critical "could not be reached", and `0090` nothing; step 2 changes these.
+
 ## 9. Open questions
 
 - [ ] Where is the S3 copy of the event logs that the History Server reads (`s3a://…/sparklogs`), and can your AWS profile read it?
 - [ ] Is EMR on EC2 the only target? (Minimum release settled: EMR 7.3.0.)
 - [x] Should the offline `-from` mode accept any folder layout, or only one mirroring the S3 structure? Decided in phase 2: the S3 layout of the cluster's log folder, a folder of such copies, or one application's container folders (§2).
-- [ ] Are Kerberos, Lake Formation or Ranger enabled, and is HBase on the same cluster or external?
+- [ ] Are Lake Formation or Ranger enabled? (Answered 2026-09-29: production HBase runs on the same EMR cluster as Spark, and the clusters are Kerberized.)
 - [ ] Does a CloudTrail trail record S3 data events for the log and data buckets?
 - [ ] Is the CloudWatch agent configured on your clusters? (Not on the test clusters, so node memory and disk come out as "not recorded" there.)
 - [ ] Who reads the reports: just you, or shared with a team?
