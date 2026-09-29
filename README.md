@@ -47,9 +47,12 @@ The rules look for:
 | Memory | out-of-memory errors and memory kills (exit 137), spill to disk, GC pressure, heap near its limit, memory given but never used |
 | Executors and nodes | lost, decommissioned or excluded executors, spot interruptions, executors too big to fit the nodes, idle worker nodes, slow executor start-up, waiting for cluster capacity, clusters shared with other applications |
 | Time and CPU | task skew, low CPU use, idle executor cores, long gaps where only the driver worked, scheduler delay, poor data locality, speculation, host CPU or memory saturated (CloudWatch) |
-| Settings and access | `AccessDenied` (CloudTrail and logs), static AWS keys in the Spark configuration, unlimited `spark.driver.maxResultSize`, dynamic allocation without a shuffle service, AQE turned off, results large enough to hurt the driver |
+| Settings and access | `AccessDenied` (CloudTrail and logs), static AWS keys in the Spark configuration, unlimited `spark.driver.maxResultSize`, dynamic allocation without a shuffle service, AQE turned off, results large enough to hurt the driver, classes missing at run time (with the jar that needed them) |
+| HBase | a missing table, an unreachable ZooKeeper (and the port tried), region servers not answering, calls that ran out of retries, expired scanner leases, writes refused for a full memstore, regions moved or split during the run, a region server lost or paused, slow calls, HBase stages taking most of the run while their tasks waited, a ZooKeeper connection per task, one region server holding most of a table's regions, regions read from another node |
 
 The report also covers the timeline, cluster and nodes, executors, memory, CPU, storage and I/O, jobs and stages, SQL queries, the runtime environment and configuration, identity and access (user, queue, instance profile, EMR roles, security configuration, Hive and HBase connections), and a Sources panel. Every section says whether its data is complete or partial and what is missing.
+
+**HBase.** For applications that read or write HBase, Storage and I/O adds an HBase block: the tables read and written and how (the hbase-spark connector, `TableInputFormat`, `TableOutputFormat`), the regions each scan read on each region server, the ZooKeeper quorum and how many connections the run opened, the client and connector versions, the stages that used HBase with their time, CPU share and the retries logged while they ran, and what HBase's own Master and region servers logged during the run. HBase trouble mostly shows as a slower job rather than a failure, and its client often logs nothing when a region server is lost or a region moves, so those come from the servers' logs, which EMR keeps beside the YARN logs when HBase runs on the cluster. The event log names only the connector's tables; everything else comes from the container and node logs.
 
 **The explorer** is for digging in. It has a zoomable timeline of queries, jobs, stages, executors and running tasks. It has stage pages with task-time percentiles, histograms and task scatter plots, executor tables, SQL plan graphs with each operator's metrics, and your source code next to the stages that ran it.
 
@@ -184,7 +187,7 @@ sparkplain -from ./logs/j-1ABCDEF -app-id application_1700000000000_0042 \
   -eventlog ./application_1700000000000_0042.zip
 ```
 
-`-from` accepts a cluster's log folder (`containers/`, `steps/`, `node/`), a folder holding several of those (the one with the application wins), or one application's `container_*` folders.
+`-from` accepts a cluster's log folder (`containers/`, `steps/`, `node/`), a folder holding several of those (the one with the application wins), or one application's `container_*` folders. For HBase, copy `node/` too: HBase's own logs are under `node/<instance>/applications/hbase/`, and only the hours the application ran are read.
 
 ## Get more out of your runs
 
@@ -267,6 +270,7 @@ thresholds:            # tune when findings fire
   low-cpu-share: 0.30
   memory-used-share: 0.40
   driver-gap-share: 0.25
+  hbase-time-share: 0.50  # stages using HBase over half the run
 ```
 
 [SPEC §6](docs/SPEC.md#6-report-output-and-cli) lists every key and threshold.
