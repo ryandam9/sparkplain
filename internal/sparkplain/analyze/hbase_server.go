@@ -214,7 +214,7 @@ func hbaseServerFindings(c *ctx, h *model.HBaseSection, mine map[string][]hit) {
 		expl += held + " Until each region reopened, calls to it waited and retried; HBase's client logs nothing about this at its default settings, so only the servers' logs show it." + whileRan(stagesWith(h, "server-lost", "server-stopped"))
 		c.add(model.Finding{Rule: "hbase-server-lost", Severity: model.Warning, Section: "stages",
 			Title:       fmt.Sprintf("Region server %s stopped while the run was using HBase", strings.Join(servers, ", ")),
-			Explanation: expl, Evidence: serverEvidence(lost, 4),
+			Explanation: expl, Evidence: append(serverEvidence(lost, 4), serverRefs(servers)...),
 			Fix: "Read that region server's log before it stopped for why, and its node's health at that time. Restarts and rolling upgrades of HBase belong outside the hours heavy jobs run."})
 	}
 	// Regions of the run's tables moved or split.
@@ -249,7 +249,7 @@ func hbaseServerFindings(c *ctx, h *model.HBaseSection, mine map[string][]hit) {
 		c.add(model.Finding{Rule: "hbase-server-pause", Severity: model.Warning, Section: "stages",
 			Title:       fmt.Sprintf("Region server %s paused for %s while the run was using HBase", on, model.Duration(int64(longest))),
 			Explanation: fmt.Sprintf("HBase's JVM pause monitor saw the whole region server stop for that long (%s in all), usually for Java garbage collection, and every call to it waited.", model.Plural(len(xs), "pause", "pauses")) + whileRan(stagesWith(h, "pause")),
-			Evidence:    serverEvidence(xs, 4),
+			Evidence:    append(serverEvidence(xs, 4), serverRefs([]string{on})...),
 			Fix:         "Check the region server's heap and garbage collector (HBASE_REGIONSERVER_OPTS) against its node's memory. Long pauses can also make ZooKeeper think the server died."})
 	}
 	// Calls the region servers logged as slow or too large.

@@ -71,6 +71,7 @@
   function status(s) { return el("span", { cls: "st" }, el("span", { cls: "statusdot " + (s || "") }), STATUS[s] || s || "Unknown"); }
   var REF = { stage: "#stage/", job: "#job/", executor: "#executor/", query: "#query/" };
   function refHref(ref) {
+    if ((ref || "").indexOf("node:") === 0) return "#cluster"; // the nodes
     var i = (ref || "").indexOf(":");
     return i > 0 && REF[ref.slice(0, i)] ? REF[ref.slice(0, i)] + encodeURIComponent(ref.slice(i + 1)) : null;
   }

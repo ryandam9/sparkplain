@@ -58,11 +58,18 @@ func TestAnatomyShowsWhatDidNotFit(t *testing.T) {
 func TestAnatomyPinsFindings(t *testing.T) {
 	t.Parallel()
 	r := anatReport()
+	var exeHost string
+	for _, n := range buildAnatomy(r).Nodes {
+		if n.DriverBytes == 0 {
+			exeHost = n.Short + ".another-domain.internal" // matched by its short name
+		}
+	}
 	r.Findings = []model.Finding{
 		{Rule: "waited-for-capacity", Severity: model.Warning, Title: "waited"},
 		{Rule: "executor-memory-kill", Severity: model.Critical, Title: "killed", Evidence: []model.Evidence{{Ref: "executor:1"}}},
 		{Rule: "idle-nodes", Severity: model.Warning, Title: "idle", Evidence: []model.Evidence{{Text: "ip-10-0-0-2.internal ran no executors"}}},
 		{Rule: "stage-skew", Severity: model.Warning, Title: "skew"},
+		{Rule: "hbase-server-lost", Severity: model.Warning, Title: "region server lost", Evidence: []model.Evidence{{Ref: model.NodeRef(exeHost)}}},
 	}
 	a := buildAnatomy(r)
 	a.pinDetail()
@@ -82,6 +89,9 @@ func TestAnatomyPinsFindings(t *testing.T) {
 	}
 	if !hasInt(drv.Badges, 3) {
 		t.Errorf("idle-nodes should pin to the node its evidence names: %v", drv.Badges)
+	}
+	if !hasInt(exe.Badges, 5) {
+		t.Errorf("a finding whose evidence refers to a node should pin to it: %v", exe.Badges)
 	}
 	if len(a.Unpinned) != 1 || a.Unpinned[0] != 4 {
 		t.Errorf("unpinned = %v", a.Unpinned)

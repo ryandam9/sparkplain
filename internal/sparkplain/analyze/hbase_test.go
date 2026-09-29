@@ -2,6 +2,7 @@ package analyze
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -218,6 +219,13 @@ org.apache.hadoop.hbase.UnknownScannerException: org.apache.hadoop.hbase.Unknown
 	if got["hbase-time"].Severity != model.Warning {
 		t.Errorf("hbase-time severity %s", got["hbase-time"].Severity)
 	}
+	// The diagram pins these to the executor and the node they are about.
+	if ev := got["hbase-remote-regions"].Evidence; len(ev) != 1 || ev[0].Text != "container container_1_1_01_000002 on rs1.example.internal read 3 of its 4 regions from another node" {
+		t.Errorf("remote-regions evidence = %+v", ev)
+	}
+	if ev := got["hbase-hotspot"].Evidence; ev[len(ev)-1].Ref != model.NodeRef("rs2.example.internal") {
+		t.Errorf("hotspot evidence = %+v", ev)
+	}
 
 	// A short run, a shared connection and an even spread: none of them.
 	l.Application.DurationMs, stage.Completed = 50_000, start.Add(40*time.Second)
@@ -286,6 +294,12 @@ org.apache.hadoop.hbase.UnknownScannerException: org.apache.hadoop.hbase.Unknown
 			if !strings.Contains(text, w) {
 				t.Errorf("%s: %q lacks %q", rule, text, w)
 			}
+		}
+	}
+	for rule, host := range map[string]string{"hbase-server-lost": "ip-10-0-0-7.example.internal", "hbase-server-pause": "ip-10-0-0-6.example.internal", "hbase-busy": "ip-10-0-0-6.example.internal"} {
+		ev := got[rule].Evidence
+		if !slices.ContainsFunc(ev, func(e model.Evidence) bool { return e.Ref == model.NodeRef(host) }) {
+			t.Errorf("%s evidence should refer to node %s: %+v", rule, host, ev)
 		}
 	}
 	mine := map[string]bool{}

@@ -97,6 +97,10 @@ func StageRef(id, attempt int) string {
 func JobRef(id int) string         { return "job:" + strconv.Itoa(id) }
 func ExecutorRef(id string) string { return "executor:" + id }
 
+// NodeRef is the Evidence.Ref of a node, by host name, so the at-a-glance
+// diagram can pin a finding about it there.
+func NodeRef(host string) string { return "node:" + host }
+
 // Finding is one problem or notable fact, with evidence and a suggested fix.
 type Finding struct {
 	Rule        string     `json:"rule"`

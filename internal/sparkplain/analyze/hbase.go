@@ -114,7 +114,7 @@ func hbaseFindings(c *ctx) {
 		c.add(model.Finding{Rule: "hbase-server", Severity: model.Critical, Section: "stages",
 			Title:       fmt.Sprintf("%s (%s in the logs)", title, errs(g)),
 			Explanation: "Calls to a region server timed out, or it closed the connection or was stopping, so reads and writes to the regions it serves stalled or failed until HBase moved them.",
-			Evidence:    g.evidence(),
+			Evidence:    append(g.evidence(), serverRefs(g.servers)...),
 			Fix:         "Read that region server's own log, and check its node's memory, garbage-collection pauses and disks at that time. hbase.rpc.timeout and hbase.client.operation.timeout set how long the client waits."})
 	}
 	if g := groups["retries"]; g != nil {
@@ -151,7 +151,7 @@ func hbaseFindings(c *ctx) {
 		c.add(model.Finding{Rule: "hbase-busy", Severity: model.Warning, Section: "stages",
 			Title:       fmt.Sprintf("HBase pushed back on writes%s (%s in the logs)", on, model.Plural(g.n, "time", "times")),
 			Explanation: fmt.Sprintf("%s refused writes because %s. %s Writes pile onto one region when row keys share a prefix or arrive in order, or when the table has few regions.", where, why, retried),
-			Evidence:    g.evidence(),
+			Evidence:    append(g.evidence(), serverRefs(g.servers)...),
 			Fix:         "Spread the writes: pre-split the table into more regions, and avoid row keys that share a prefix or keep increasing (salt or hash a prefix). Fewer tasks writing at once also helps. The region server's own log shows whether flushes or compactions held it up."})
 	}
 	if g := groups["scanner"]; g != nil {
@@ -176,6 +176,16 @@ func hbaseFindings(c *ctx) {
 			Fix:         "Read the first error for its cause, and HBase's own logs for that time."})
 	}
 	hbaseAccessFinding(c)
+}
+
+// serverRefs points at region servers' nodes, so the at-a-glance diagram
+// marks them.
+func serverRefs(servers []string) []model.Evidence {
+	var ev []model.Evidence
+	for _, s := range servers {
+		ev = append(ev, model.Evidence{Ref: model.NodeRef(s), Text: "region server " + s})
+	}
+	return ev
 }
 
 // hbaseAccessFinding reports HBase's own access control refusing the job,

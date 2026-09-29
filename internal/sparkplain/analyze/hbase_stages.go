@@ -336,8 +336,9 @@ func hbaseSlowFindings(c *ctx, h *model.HBaseSection) {
 		c.add(model.Finding{Rule: "hbase-hotspot", Severity: model.Warning, Section: "stages",
 			Title:       fmt.Sprintf("Region server %s held %d of the %d regions of %s the run read", top.Server, top.Regions, total, tb.Name),
 			Explanation: fmt.Sprintf("Each task of a TableInputFormat scan reads one region from the region server holding it, so %s answered %s of the scan while the other region servers the run used (%d in all) did little.", top.Server, model.Percent(share(int64(top.Regions), int64(total))), len(servers)),
-			Evidence:    []model.Evidence{{Source: tb.Source, Text: fmt.Sprintf("%s: regions read per region server, from the executors' split lines", tb.Name)}},
-			Fix:         "Spread the table's regions across region servers (the HBase balancer, or move regions by hand), and split large regions; a table with few regions should be pre-split."})
+			Evidence: []model.Evidence{{Source: tb.Source, Text: fmt.Sprintf("%s: regions read per region server, from the executors' split lines", tb.Name)},
+				{Ref: model.NodeRef(top.Server), Text: fmt.Sprintf("region server %s: %d of %d regions", top.Server, top.Regions, total)}},
+			Fix: "Spread the table's regions across region servers (the HBase balancer, or move regions by hand), and split large regions; a table with few regions should be pre-split."})
 		break
 	}
 	// Regions read from another node.
@@ -345,9 +346,43 @@ func hbaseSlowFindings(c *ctx, h *model.HBaseSection) {
 		c.add(model.Finding{Rule: "hbase-remote-regions", Severity: model.Info, Section: "stages",
 			Title:       fmt.Sprintf("%d of %d HBase regions were read from another node", h.RemoteRegions, n),
 			Explanation: "TableInputFormat tells Spark which node holds each region, and Spark prefers to run the task there. These tasks ran on other nodes, so every row they read crossed the network between nodes. Spark does this when no executor on the region's node is free within spark.locality.wait.",
-			Evidence:    []model.Evidence{{Text: "each executor's host against the regionLocation of the splits it read"}},
+			Evidence:    remoteReaders(c),
 			Fix:         "Run executors on the nodes that serve regions (with HBase on the same cluster, the core nodes). If tasks are short, a longer spark.locality.wait lets Spark wait for a local slot."})
 	}
+}
+
+// remoteReaders cites each executor that read regions held on another
+// node, so the report can point at it.
+func remoteReaders(c *ctx) []model.Evidence {
+	type reader struct {
+		h       hit
+		n, from int
+	}
+	var order []string
+	by := map[string]*reader{}
+	for _, x := range c.logs.hits {
+		srv := x.l.Fields["server"]
+		if x.l.Kind != model.LogHBaseUse || srv == "" || x.f.Host == "" {
+			continue
+		}
+		k := x.f.Location
+		if by[k] == nil {
+			by[k] = &reader{h: x}
+			order = append(order, k)
+		}
+		by[k].n += x.l.Count
+		if shortHost(srv) != shortHost(x.f.Host) {
+			by[k].from += x.l.Count
+		}
+	}
+	var ev []model.Evidence
+	for _, k := range order {
+		r := by[k]
+		if r.from > 0 {
+			ev = append(ev, r.h.evidence(fmt.Sprintf("%s on %s read %d of its %d regions from another node", processOf(r.h), r.h.f.Host, r.from, r.n)))
+		}
+	}
+	return ev
 }
 
 func upperFirst(s string) string {

@@ -251,6 +251,9 @@ func funcs(loc *time.Location) template.FuncMap {
 		// the explorer ("explorer.html#stage/27.0").
 		"explorerURL": func(href, ref string) template.URL {
 			kind, id, _ := strings.Cut(ref, ":")
+			if kind == "node" {
+				return template.URL(href + "#cluster") // the explorer's nodes
+			}
 			return template.URL(href + "#" + url.PathEscape(kind) + "/" + url.PathEscape(id))
 		},
 		"add":   func(a, b int) int { return a + b },

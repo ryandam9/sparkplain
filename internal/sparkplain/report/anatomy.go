@@ -446,6 +446,14 @@ func pinFindings(a *anatomy, r *model.Report) {
 					pinned = true
 				}
 			}
+			if host, ok := strings.CutPrefix(e.Ref, "node:"); ok {
+				for _, n := range nodes {
+					if (n.Name == host || n.Short == shortHost(host)) && !hasInt(n.Badges, num) {
+						n.Badges = append(n.Badges, num)
+						pinned = true
+					}
+				}
+			}
 		}
 		switch f.Rule {
 		case "waited-for-capacity", "shared-cluster":
