@@ -180,22 +180,23 @@ func (out *clusterLogs) readLogs(ctx context.Context, cloud *awsSession, log *mo
 
 // readHBaseCluster reads only HBase Master and region-server logs from a
 // separate EMR cluster. Spark/YARN metadata remains attached to out.cluster.
-func (out *clusterLogs) readHBaseCluster(ctx context.Context, cloud *awsSession, clusterID string, log *model.EventLog, lim source.Limits) {
+func (out *clusterLogs) readHBaseCluster(ctx context.Context, cloud *awsSession, clusterID, clusterName string, log *model.EventLog, lim source.Limits) {
+	where := firstNonEmpty(clusterID, clusterName)
 	cfg, err := cloud.config(ctx)
 	if err != nil {
 		out.sources = append(out.sources, model.SourceStatus{Name: "HBase server logs", Status: "error", Class: source.ClassAccessDenied,
-			Location: clusterID, Detail: err.Error()})
+			Location: where, Detail: err.Error()})
 		return
 	}
-	cl, err := cloud.cluster(ctx, clusterID, "")
+	cl, err := cloud.hbaseCluster(ctx, clusterID, clusterName)
 	if err != nil {
 		out.sources = append(out.sources, model.SourceStatus{Name: "HBase server logs", Status: "error", Class: awsmeta.ErrorClass(err),
-			Location: clusterID, Detail: "Could not describe the HBase cluster: " + err.Error()})
+			Location: where, Detail: "Could not find or describe the HBase cluster: " + err.Error()})
 		return
 	}
 	if !clusterHasHBase(&cl) {
-		out.sources = append(out.sources, model.SourceStatus{Name: "HBase server logs", Status: "not-supplied", Location: clusterID,
-			Detail: "The cluster specified by -hbase-cluster-id does not have HBase installed."})
+		out.sources = append(out.sources, model.SourceStatus{Name: "HBase server logs", Status: "not-supplied", Location: cl.ID,
+			Detail: "The HBase cluster given (" + where + ") does not have HBase installed."})
 		return
 	}
 	bucket, root, ok := yarnlog.LogRoot(cl.LogURI, cl.ID)

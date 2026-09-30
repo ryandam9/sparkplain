@@ -19,6 +19,13 @@ import (
 // fileConfig is the YAML defaults file (SPEC §6), by default
 // ~/.config/sparkplain/config.yaml. Flags override it.
 type fileConfig struct {
+	// The clusters, by name, and the AWS profile and region: with them
+	// here, a run needs only -app-id. Flags override each.
+	ClusterName      string `yaml:"cluster-name"`
+	HBaseClusterName string `yaml:"hbase-cluster-name"`
+	Profile          string `yaml:"profile"`
+	Region           string `yaml:"region"`
+
 	EventLogPrefix string               `yaml:"eventlog-prefix"`
 	TimeZone       string               `yaml:"timezone"`
 	Out            string               `yaml:"out"`

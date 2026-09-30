@@ -642,6 +642,9 @@ func (c *console) accessCheck(chk checked, profile, region string, online bool) 
 	}
 	if online {
 		field("Cluster", chk.cluster)
+		if chk.picked != "" {
+			c.wrap(w, "           ", "           ", chk.picked, func(s string) string { return paint(col, dim, numbers(col, s)) })
+		}
 		field("As", strings.Join(nonEmpty(chk.who, "profile "+profile, region), " · "))
 	} else {
 		field("As", "offline: local files only, no AWS calls")

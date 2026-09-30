@@ -147,7 +147,8 @@ Rules that judge CPU, GC and memory size skip runs with less than `min-run-time`
 | Flag | Purpose |
 | --- | --- |
 | `-app-id` | The application (required) |
-| `-profile`, `-region`, `-cluster-id`, `-cluster-name` | Online runs (`-cluster-name`: the newest cluster of that name) |
+| `-profile`, `-region`, `-cluster-id`, `-cluster-name` | Online runs. `-cluster-name` (or `cluster-name` in the config file): of the clusters with that name, the one up when the application's YARN started, the time in its ID (`application_<ms>_<n>`), whether running or ended since; of several up then, the last created before it, unless another was created within ten minutes of it; with no time in the ID, the one running now, else the newest. Anything else stops with the clusters of that name listed (ID, state, created, ended). The access check prints which cluster the name found and why |
+| `-hbase-cluster-id`, `-hbase-cluster-name` | HBase on a separate EMR cluster (by name also `hbase-cluster-name` in the config file): the cluster of that name up when the application's YARN started, else the one running now |
 | `-eventlog` | The event log (§2) |
 | `-from` | An offline copy of the cluster's logs; not with `-cluster-id` |
 | `-out`, `-format`, `-config` | Output folder; `html`, `json`, `explorer` (default all; `both` means `html,json`); config file |
@@ -176,6 +177,10 @@ Explorer data is collected while streaming, within the memory budget: per-stage 
 **Config file** (`-config`, default `~/.config/sparkplain/config.yaml`; flags win; unknown keys are rejected):
 
 ```yaml
+cluster-name: nightly-etl        # as -cluster-name; not for a run given -eventlog or -from and no cluster
+hbase-cluster-name: hbase-prod   # as -hbase-cluster-name
+profile: prod-emr                # as -profile and -region
+region: us-east-1
 eventlog-prefix: s3://my-logs/spark-events/   # used when -eventlog is not given
 timezone: Australia/Sydney
 out: ~/reports

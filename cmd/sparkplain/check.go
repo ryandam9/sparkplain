@@ -50,6 +50,7 @@ type checked struct {
 	rows    []model.AccessCheck
 	who     string // the credentials' principal, such as user/ryandam
 	cluster string // "j-… · name · emr-7.3.0 · terminated"
+	picked  string // how a named cluster was found, or ""
 	logRoot string // s3://bucket/prefix/<cluster-id>/, or the -from folder
 }
 
@@ -91,12 +92,19 @@ func accessCheck(ctx context.Context, cloud *awsSession, in checkInput) checked 
 			emrRow.Status = "denied"
 		}
 		emrRow.Try = try("aws emr describe-cluster --cluster-id " + firstNonEmpty(o.clusterID, "<cluster-id>"))
+		if o.clusterID == "" {
+			emrRow.Call = "ListClusters, to find the cluster named " + o.clusterName
+			emrRow.Try = try("aws emr list-clusters --query \"Clusters[?Name=='" + o.clusterName + "'].[Id,Status.State,Status.Timeline.CreationDateTime]\" --output table")
+		}
 		c.rows = append(local, emrRow, model.AccessCheck{Name: "Logs and the rest", Status: "skipped",
 			Detail: "Where the logs are comes from DescribeCluster. Pass -from with a copy of the cluster's logs, or -eventlog, to run without it."})
 		c.rows = orderChecks(c.rows)
 		return c
 	}
 	c.cluster = strings.Join(nonEmpty(cl.ID, cl.Name, cl.Release, strings.ToLower(cl.State)), " · ")
+	if o.clusterID == "" {
+		c.picked = cloud.pickWhy(o.clusterName)
+	}
 	api := awsDeps.emr(cfg)
 	var steps []model.Step
 	var stepsErr, instErr, groupsErr, stepErr error
@@ -197,7 +205,8 @@ func accessCheck(ctx context.Context, cloud *awsSession, in checkInput) checked 
 		{"Step logs", root + "steps/", ""},
 		{"Node logs", root + "node/", ""},
 	}
-	if o.hbaseClusterID == "" {
+	separateHBase := o.hbaseClusterID != "" || o.hbaseClusterName != ""
+	if !separateHBase {
 		if clusterHasHBase(&cl) {
 			host := primary
 			if host == "" && len(instances) > 0 {
@@ -206,7 +215,7 @@ func accessCheck(ctx context.Context, cloud *awsSession, in checkInput) checked 
 			logRows = append(logRows, logRow{"HBase server logs", root + "node/" + host + "/applications/hbase/", host})
 		} else {
 			c.rows = append(c.rows, model.AccessCheck{Name: "HBase server logs", Status: "skipped",
-				Detail: "HBase is not installed on this Spark cluster. If HBase runs on another EMR cluster, pass -hbase-cluster-id <id>."})
+				Detail: "HBase is not installed on this Spark cluster. If HBase runs on another EMR cluster, pass -hbase-cluster-name <name> (or set hbase-cluster-name in the config file)."})
 		}
 	}
 	if !ok {
@@ -237,12 +246,16 @@ func accessCheck(ctx context.Context, cloud *awsSession, in checkInput) checked 
 		})
 	}
 
-	if o.hbaseClusterID != "" {
+	if separateHBase {
 		jobs = append(jobs, func(x context.Context) {
-			r := model.AccessCheck{Name: "HBase server logs", Location: o.hbaseClusterID,
+			r := model.AccessCheck{Name: "HBase server logs", Location: firstNonEmpty(o.hbaseClusterID, o.hbaseClusterName),
 				Call: "DescribeCluster, ListInstances, ListObjectsV2 and GetObject (one byte)",
-				Try:  try("aws emr describe-cluster --cluster-id " + o.hbaseClusterID)}
-			hcl, err := cloud.cluster(x, o.hbaseClusterID, "")
+				Try:  try("aws emr describe-cluster --cluster-id " + firstNonEmpty(o.hbaseClusterID, "<cluster-id>"))}
+			if o.hbaseClusterID == "" {
+				r.Call = "ListClusters, then " + r.Call
+				r.Try = try("aws emr list-clusters --query \"Clusters[?Name=='" + o.hbaseClusterName + "'].[Id,Status.State,Status.Timeline.CreationDateTime]\" --output table")
+			}
+			hcl, err := cloud.hbaseCluster(x, o.hbaseClusterID, o.hbaseClusterName)
 			if err != nil {
 				r.Status, r.Class, r.Detail = "error", awsmeta.ErrorClass(err), "Could not describe the HBase cluster: "+err.Error()
 				if r.Class == "accessDenied" {
@@ -252,7 +265,7 @@ func accessCheck(ctx context.Context, cloud *awsSession, in checkInput) checked 
 				return
 			}
 			if !clusterHasHBase(&hcl) {
-				r.Status, r.Detail = "error", "The cluster specified by -hbase-cluster-id does not have HBase installed."
+				r.Status, r.Detail = "error", "The HBase cluster given ("+firstNonEmpty(o.hbaseClusterID, o.hbaseClusterName)+") does not have HBase installed."
 				add(r)
 				return
 			}
@@ -295,6 +308,9 @@ func accessCheck(ctx context.Context, cloud *awsSession, in checkInput) checked 
 			r = readable(x, st, r, prefix, emptyWhy(r.Name))
 			if r.Status == "ok" {
 				r.Detail = "Checked on HBase cluster " + hcl.ID + ", primary node " + host + ". List, read."
+				if why := cloud.pickWhy(o.hbaseClusterName); o.hbaseClusterID == "" && why != "" {
+					r.Detail = "HBase cluster " + hcl.ID + ", " + why + ". Checked on its primary node, " + host + ". List, read."
+				}
 			}
 			add(r)
 		})

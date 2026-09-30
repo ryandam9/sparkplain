@@ -231,6 +231,7 @@ func TestSourceFlag(t *testing.T) {
 // stubEMR answers DescribeCluster from a map. Tests never call real AWS.
 type stubEMR struct {
 	clusters  map[string]*emrtypes.Cluster
+	summaries []emrtypes.ClusterSummary // what ListClusters returns
 	steps     []emrtypes.StepSummary
 	instances []emrtypes.Instance
 	groups    []emrtypes.InstanceGroup
@@ -243,8 +244,8 @@ func (s stubEMR) DescribeCluster(_ context.Context, in *emr.DescribeClusterInput
 	}
 	return &emr.DescribeClusterOutput{Cluster: c}, nil
 }
-func (stubEMR) ListClusters(context.Context, *emr.ListClustersInput, ...func(*emr.Options)) (*emr.ListClustersOutput, error) {
-	return &emr.ListClustersOutput{}, nil
+func (s stubEMR) ListClusters(context.Context, *emr.ListClustersInput, ...func(*emr.Options)) (*emr.ListClustersOutput, error) {
+	return &emr.ListClustersOutput{Clusters: s.summaries}, nil
 }
 func (s stubEMR) ListSteps(context.Context, *emr.ListStepsInput, ...func(*emr.Options)) (*emr.ListStepsOutput, error) {
 	return &emr.ListStepsOutput{Steps: s.steps}, nil

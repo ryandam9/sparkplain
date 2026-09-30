@@ -186,15 +186,20 @@ sparkplain -profile default -cluster-id j-1ABCDEF -app-id application_1700000000
 sparkplain -profile default -cluster-id j-1ABCDEF -app-id application_1700000000000_0042 -eventlog s3://my-logs/spark-events/
 sparkplain -profile default -cluster-id j-1ABCDEF -app-id application_1700000000000_0042 -eventlog ./application_1700000000000_0042.zip
 
-# By cluster name (the newest cluster with that name), in another region
+# By cluster name instead of ID, in another region
 sparkplain -profile prod-emr -region us-east-1 -cluster-name nightly-etl -app-id application_1700000000000_0042
 
-# Spark and HBase on separate EMR clusters
-sparkplain -profile default -cluster-id j-SPARK123 -hbase-cluster-id j-HBASE456 \
+# Spark and HBase on separate EMR clusters, by name
+sparkplain -profile default -cluster-name nightly-etl -hbase-cluster-name hbase-prod \
   -app-id application_1700000000000_0042 -eventlog s3://my-logs/spark-events/
+
+# With the names and the profile in the config file (below), only the application
+sparkplain -app-id application_1700000000000_0042
 ```
 
-If HBase runs on a different EMR cluster, pass its ID with `-hbase-cluster-id`. sparkplain continues to read YARN, step, node, CloudWatch and CloudTrail data from the Spark cluster, but reads HBase Master and region-server logs from the HBase cluster's S3 log URI. The HBase cluster currently uses the same `-profile` and `-region` as the Spark cluster.
+**Clusters by name.** EMR often has several clusters with one name, such as yesterday's (terminated) and today's. `-cluster-name` picks the one that ran the application: the one up when its YARN started, which is the time in the application's ID (`application_<ms>_<n>`), whether it is still running or has ended. `-hbase-cluster-name` picks the HBase cluster of that name up then, or else the one running now. When two could be the one, or none fits, the run lists them with their IDs, states and times, and you pass the ID instead. The access check prints which cluster a name found and why. Only `ListClusters` is added, which is read-only.
+
+If HBase runs on a different EMR cluster, pass its name with `-hbase-cluster-name` (or its ID with `-hbase-cluster-id`). sparkplain continues to read YARN, step, node, CloudWatch and CloudTrail data from the Spark cluster, but reads HBase Master and region-server logs from the HBase cluster's S3 log URI. The HBase cluster currently uses the same `-profile` and `-region` as the Spark cluster.
 
 **Access check.** Every run starts by checking what it can read, with small read-only calls, and prints a line for each source before it reads anything. It checks every access the run will need: each EMR call, listing *and* reading each log folder (a one-byte read, since a bucket policy or KMS key can allow the one and refuse the other), the event log and the job's script wherever they are, CloudWatch metrics, EC2, CloudTrail, the output folder and `-source` paths. A source it cannot read says why, what permission or file it needs, and an `aws` command that repeats the call. Add `-check` to stop there, which is a quick way to try a new profile or cluster: it exits 0 when everything is readable and 3 when something is not.
 
@@ -316,6 +321,10 @@ Add `kms:Decrypt` on the key if the log bucket uses SSE-KMS. A refused permissio
 Defaults can live in `~/.config/sparkplain/config.yaml` (or pass `-config`). Command-line flags win, and unknown keys are rejected. Every key is optional:
 
 ```yaml
+cluster-name: nightly-etl                     # the Spark cluster, found by name (see "Clusters by name")
+hbase-cluster-name: hbase-prod                # HBase on a separate cluster, if so
+profile: prod-emr                             # the AWS profile, and region, for online runs
+region: us-east-1
 eventlog-prefix: s3://my-logs/spark-events/   # used when -eventlog is not given
 timezone: Australia/Sydney                    # for times in the report (default: this machine's zone)
 out: ~/reports                                # default ~/sparkplain/<yyyy-mm-dd>/<app-id>/

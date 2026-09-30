@@ -97,29 +97,132 @@ func flattenConfig(cl *model.Cluster, cfgs []types.Configuration, prefix string)
 	}
 }
 
-// FindByName returns the ID of the most recently created cluster with this
-// name, in any state.
-func FindByName(ctx context.Context, api EMRAPI, name string) (string, error) {
-	var best types.ClusterSummary
+// Pick is the cluster PickByName chose, and why, in words for the console.
+type Pick struct {
+	ID, Name string
+	Why      string
+}
+
+// Candidate is one cluster with the name asked for, as an ambiguous or
+// failed pick lists it.
+type Candidate struct {
+	ID, State      string
+	Created, Ended time.Time
+}
+
+func (c Candidate) String() string {
+	s := fmt.Sprintf("%s (%s, created %s", c.ID, strings.ToLower(c.State), c.Created.UTC().Format("2006-01-02 15:04 MST"))
+	if !c.Ended.IsZero() {
+		s += ", ended " + c.Ended.UTC().Format("2006-01-02 15:04 MST")
+	}
+	return s + ")"
+}
+
+// PickError says why no single cluster could be picked by name, and lists
+// the clusters that have it, so the user can pass -cluster-id instead.
+type PickError struct {
+	Name       string
+	Why        string
+	Candidates []Candidate
+}
+
+func (e *PickError) Error() string {
+	var ids []string
+	for _, c := range e.Candidates {
+		ids = append(ids, c.String())
+	}
+	return fmt.Sprintf("clusters named %q: %s: %s. Pass the ID of the one you mean", e.Name, e.Why, strings.Join(ids, "; "))
+}
+
+// Cluster states in which a cluster is up now.
+var upNow = map[types.ClusterState]bool{types.ClusterStateStarting: true, types.ClusterStateBootstrapping: true, types.ClusterStateRunning: true, types.ClusterStateWaiting: true}
+
+// PickByName finds the cluster with this name that was up at at, the time
+// the application's YARN ResourceManager started (from its ID,
+// application_<start ms>_<n>): the one that ran it, whether it is still
+// running or has ended since. EMR often has several clusters with one
+// name, such as yesterday's and today's, so the newest is not always it.
+//
+//   - Up at at: created before it, and not ended before it. Of those, the
+//     one created last; when another was created within ten minutes of it,
+//     either could be the one, and the pick fails.
+//   - With at unknown, or with nothing up at at and upNowFallback set (a
+//     separate HBase cluster, which the application's ID says nothing
+//     about), the one cluster up now; with none up now either, and at
+//     unknown, the newest.
+//
+// Anything else fails with a PickError listing the clusters with the name.
+func PickByName(ctx context.Context, api EMRAPI, name string, at time.Time, upNowFallback bool) (Pick, error) {
+	var all []types.ClusterSummary
 	p := emr.NewListClustersPaginator(api, &emr.ListClustersInput{})
 	for p.HasMorePages() {
 		page, err := p.NextPage(ctx)
 		if err != nil {
-			return "", fmt.Errorf("ListClusters: %w", err)
+			return Pick{}, fmt.Errorf("ListClusters: %w", err)
 		}
 		for _, c := range page.Clusters {
-			if aws.ToString(c.Name) != name {
-				continue
-			}
-			if best.Id == nil || created(c).After(created(best)) {
-				best = c
+			if aws.ToString(c.Name) == name {
+				all = append(all, c)
 			}
 		}
 	}
-	if best.Id == nil {
-		return "", fmt.Errorf("no cluster named %q: %w", name, ErrNotFound)
+	if len(all) == 0 {
+		return Pick{}, fmt.Errorf("no cluster named %q: %w", name, ErrNotFound)
 	}
-	return aws.ToString(best.Id), nil
+	sort.Slice(all, func(i, j int) bool { return created(all[i]).After(created(all[j])) })
+	cands := make([]Candidate, len(all))
+	for i, c := range all {
+		cands[i] = Candidate{ID: aws.ToString(c.Id), Created: created(c), Ended: ended(c)}
+		if c.Status != nil {
+			cands[i].State = string(c.Status.State)
+		}
+	}
+	pick := func(c types.ClusterSummary, why string) (Pick, error) {
+		return Pick{ID: aws.ToString(c.Id), Name: name, Why: why}, nil
+	}
+	fail := func(why string) (Pick, error) { return Pick{}, &PickError{Name: name, Why: why, Candidates: cands} }
+
+	if !at.IsZero() {
+		var up []types.ClusterSummary
+		for _, c := range all {
+			if !created(c).After(at) && (ended(c).IsZero() || !ended(c).Before(at)) {
+				up = append(up, c)
+			}
+		}
+		when := at.UTC().Format("2006-01-02 15:04 MST")
+		switch {
+		case len(up) == 1:
+			return pick(up[0], "the one up when the application's YARN started, "+when)
+		case len(up) > 1 && created(up[0]).Sub(created(up[1])) < 10*time.Minute:
+			return fail("more than one was up when the application's YARN started, " + when + ", created minutes apart")
+		case len(up) > 1:
+			return pick(up[0], "the last created before the application's YARN started, "+when)
+		case !upNowFallback:
+			return fail("none was up when the application's YARN started, " + when)
+		}
+	}
+	var now []types.ClusterSummary
+	for _, c := range all {
+		if c.Status != nil && upNow[c.Status.State] {
+			now = append(now, c)
+		}
+	}
+	switch {
+	case len(now) == 1:
+		return pick(now[0], "the one running now")
+	case len(now) > 1:
+		return fail("more than one is running now")
+	case at.IsZero():
+		return pick(all[0], "the newest; none is running now")
+	}
+	return fail("none was up when the application ran, and none is running now")
+}
+
+func ended(c types.ClusterSummary) time.Time {
+	if c.Status != nil && c.Status.Timeline != nil {
+		return aws.ToTime(c.Status.Timeline.EndDateTime)
+	}
+	return time.Time{}
 }
 
 func created(c types.ClusterSummary) time.Time {
