@@ -633,10 +633,11 @@ var awsDeps = struct {
 type awsSession struct {
 	profile, region string
 	cfg             *aws.Config
-	// described is the cluster the access check described, so the run
-	// does not ask again.
-	described *model.Cluster
-	descErr   error
+	// described caches each cluster the access check described, so the run
+	// does not ask again. Multiple entries are needed when Spark and HBase
+	// run on different EMR clusters.
+	described map[string]model.Cluster
+	descErr   map[string]error
 }
 
 // regionName is the region the credentials use, once loaded.
@@ -669,17 +670,24 @@ func (a *awsSession) config(ctx context.Context) (aws.Config, error) {
 
 // cluster finds the cluster by ID or name and describes it.
 func (a *awsSession) cluster(ctx context.Context, id, name string) (model.Cluster, error) {
-	if a.described != nil || a.descErr != nil {
-		if a.described == nil {
-			return model.Cluster{}, a.descErr
-		}
-		return *a.described, nil
+	key := id + "\x00" + name
+	if c, ok := a.described[key]; ok {
+		return c, nil
+	}
+	if err, ok := a.descErr[key]; ok {
+		return model.Cluster{}, err
 	}
 	c, err := a.describe(ctx, id, name)
 	if err == nil {
-		a.described = &c
+		if a.described == nil {
+			a.described = map[string]model.Cluster{}
+		}
+		a.described[key] = c
 	} else if !errors.Is(err, errNoProfile) {
-		a.descErr = err
+		if a.descErr == nil {
+			a.descErr = map[string]error{}
+		}
+		a.descErr[key] = err
 	}
 	return c, err
 }
