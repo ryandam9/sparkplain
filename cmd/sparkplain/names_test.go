@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -186,5 +187,28 @@ func TestExpandHome(t *testing.T) {
 		if got := expandHome(in); got != want {
 			t.Errorf("expandHome(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// The default config file is where the docs say, ~/.config/sparkplain, on
+// macOS too, where os.UserConfigDir would give ~/Library/Application Support.
+func TestDefaultConfigPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows keeps %AppData%")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	if got, want := defaultConfigPath(), filepath.Join(home, ".config", "sparkplain", "config.yaml"); got != want {
+		t.Errorf("defaultConfigPath() = %q, want %q", got, want)
+	}
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	if got, want := defaultConfigPath(), filepath.Join(xdg, "sparkplain", "config.yaml"); got != want {
+		t.Errorf("with XDG_CONFIG_HOME: defaultConfigPath() = %q, want %q", got, want)
+	}
+	t.Setenv("XDG_CONFIG_HOME", "relative/dir") // not absolute: ignored, as the XDG spec says
+	if got, want := defaultConfigPath(), filepath.Join(home, ".config", "sparkplain", "config.yaml"); got != want {
+		t.Errorf("with a relative XDG_CONFIG_HOME: defaultConfigPath() = %q, want %q", got, want)
 	}
 }

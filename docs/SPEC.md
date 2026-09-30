@@ -176,7 +176,7 @@ Explorer data is collected while streaming, within the memory budget: per-stage 
 
 **JSON.** Mirrors the model package, with a `schemaVersion`.
 
-**Config file** (`-config`, default `~/.config/sparkplain/config.yaml`; flags win; unknown keys are rejected):
+**Config file** (`-config`, default `~/.config/sparkplain/config.yaml` on macOS and Linux, or under `$XDG_CONFIG_HOME` when set, `%AppData%` on Windows; flags win; unknown keys are rejected):
 
 ```yaml
 cluster-name: nightly-etl        # as -cluster-name; not for a run given -eventlog or -from and no cluster

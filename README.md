@@ -328,7 +328,7 @@ Add `kms:Decrypt` on the key if the log bucket uses SSE-KMS. A refused permissio
 
 ## Configuration file
 
-Defaults can live in `~/.config/sparkplain/config.yaml` (or pass `-config`). Command-line flags win, and unknown keys are rejected. Every key is optional.
+Defaults can live in `~/.config/sparkplain/config.yaml` (or pass `-config`). That is the path on macOS and Linux alike (`$XDG_CONFIG_HOME/sparkplain/config.yaml` when that is set); on Windows it is `%AppData%\sparkplain\config.yaml`. Command-line flags win, and unknown keys are rejected. Every key is optional.
 
 The quickest start is to let sparkplain write one for you, with every key explained:
 
