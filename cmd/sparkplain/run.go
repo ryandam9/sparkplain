@@ -51,11 +51,11 @@ var appIDRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.\-]{0,127}$`)
 
 type options struct {
 	profile, region, configPath, clusterID, clusterName, hbaseClusterID, appID string
-	eventLog, from, out, format, maxSize, maxUnpacked, show    string
-	workers                                                    int
-	timeout, windowPad                                         time.Duration
-	noCloudWatch, noCloudTrail, showVersion, check             bool
-	sources                                                    []string
+	eventLog, from, out, format, maxSize, maxUnpacked, show                    string
+	workers                                                                    int
+	timeout, windowPad                                                         time.Duration
+	noCloudWatch, noCloudTrail, showVersion, check                             bool
+	sources                                                                    []string
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
