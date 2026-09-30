@@ -126,8 +126,9 @@ func TestEveryChartExplainsItself(t *testing.T) {
 	}
 	for _, c := range charts {
 		head := strings.TrimSpace(c)[:min(len(strings.TrimSpace(c)), 80)]
-		if !strings.HasPrefix(strings.TrimSpace(c), "<h4>") || !strings.Contains(c, `<p class="read"><b>How to read it</b>`) {
-			t.Errorf("report chart lacks a title or reading guide: %q", head)
+		if !strings.HasPrefix(strings.TrimSpace(c), "<h4>") || !strings.Contains(c, `<dl class="axes"><div><dt>`) ||
+			!regexp.MustCompile(`class="read"><b>How to read it</b>`).MatchString(c) {
+			t.Errorf("report chart lacks a title, what its axes are, or how to read it: %q", head)
 		}
 	}
 	guides := regexp.MustCompile(`\{ t: [^}]*?\}`).FindAllString(explorerJS, -1)
@@ -135,9 +136,15 @@ func TestEveryChartExplainsItself(t *testing.T) {
 		t.Fatalf("found %d chart guides in explorer.js", len(guides))
 	}
 	for _, g := range guides {
-		if !strings.Contains(g, "shows: ") || !strings.Contains(g, "read: ") {
-			t.Errorf("explorer chart guide lacks shows or read: %.90s", g)
+		if strings.HasPrefix(g, "{ t: g.t,") {
+			continue // the timeline helper passing its caller's guide on
 		}
+		if !strings.Contains(g, "axes: [[") || !strings.Contains(g, "read: ") || strings.Contains(g, "shows: ") {
+			t.Errorf("explorer chart guide lacks axes or read, or still has a caption: %.90s", g)
+		}
+	}
+	if strings.Contains(explorerJS, "guideNodes({ shows") {
+		t.Error("a guide in explorer.js still passes a caption instead of axes")
 	}
 	if n := regexp.MustCompile(`frame\(c, "|drawGraph\([^;]*\}, "|hbarChart\([^;]*\], "`).FindAllString(explorerJS, -1); len(n) > 0 {
 		t.Errorf("charts still passed a bare caption: %v", n)

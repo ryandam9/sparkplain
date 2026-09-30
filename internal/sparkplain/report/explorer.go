@@ -116,6 +116,7 @@ type xData struct {
 	KPIs       []model.KPI          `json:"kpis"`
 	Findings   []xFinding           `json:"findings"`
 	Anatomy    string               `json:"anatomy,omitempty"` // the diagram's SVG, drawn in Go
+	AnatGuide  *chartGuide          `json:"anatomyGuide,omitempty"`
 	Files      []string             `json:"files"`
 	Execs      []string             `json:"execs"` // executor IDs; task and cell rows use their index
 	Executors  table                `json:"executors"`
@@ -258,6 +259,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		PlanLays: map[string]xLayout{}, JobDags: map[string]xJobDag{}, StageOps: map[string]xStageOps{}, Adaptive: map[string][][]any{},
 	}
 	d.Resources = resourceUse(r, buildAnatomy(r))
+	d.AnatGuide = &anatGuide
 	d.Anatomy = anatomySVG(buildAnatomy(r), anatLinks{
 		Finding: func(n int) string { return fmt.Sprintf("#finding/%d", n) },
 		Ref: func(ref string) string {

@@ -109,7 +109,7 @@
             <span><svg width="12" height="12" aria-hidden="true"><rect x="1" y="1" width="10" height="10" fill="var(--crit)"/></svg>Job failed</span>
             <span><svg width="12" height="12" aria-hidden="true"><rect x="2" y="2" width="8" height="8" transform="rotate(45 6 6)" fill="var(--warn)"/></svg>Stage retried</span>
           </div>
-          {{guide "Executors running at each moment, rebuilt from when Spark added and removed each one. Markers show executors that died, jobs that failed and stages that were retried; hover for details." "A line that stays level at the top means Spark had the executors it wanted. Drops while work was still running mean executors were lost or released; red markers are the first thing to check."}}
+          {{guide (axes "Across" "Time of day, while the application ran." "Up" "Executors alive at that moment, rebuilt from when Spark added and removed each one." "Markers" "An executor that died, a job that failed or a stage that was retried; hover for details.") (points "A line that stays level at the top: Spark had the executors it wanted." "Drops while work was still running: executors were lost or released." "Red markers are the first thing to check.") ""}}
         </div>
         <div class="chart">
           <h4>Jobs over time</h4>
@@ -120,7 +120,7 @@
             <span><i class="sw" style="background:var(--na)"></i>Running when the log ends</span>
             {{if $r.Jobs.DriverGaps}}<span><i class="sw gapsw"></i>No job running ({{dur $r.Jobs.DriverGapMs}} in all)</span>{{end}}
           </div>
-          {{guide (printf "Each bar is a job, from submission to completion; the thin lines under it are its stages.%s" (or (and (gt (len $r.Timeline.Jobs) 80) (printf " Showing the 80 longest of %d jobs." (len $r.Timeline.Jobs))) "")) "Longer bars took longer. Shaded stretches are when no job ran: the executors waited while the driver worked alone (planning, listing files, Python code or handling collected results). Bars that overlap ran at the same time."}}
+          {{guide (axes "Across" "Time of day, while the application ran." "Rows" "One job each: its bar runs from when it was submitted to when it finished, and the thin lines under it are its stages." "Shading" "Stretches when no job was running.") (points "Longer bars took longer." "Shaded stretches are time the executors sat waiting while the driver worked alone: planning, listing files, Python code, or handling results it collected." "Bars that overlap ran at the same time.") (or (and (gt (len $r.Timeline.Jobs) 80) (printf "Showing the 80 longest of %d jobs." (len $r.Timeline.Jobs))) "")}}
         </div>
         <div class="tbl"><table>
           <thead><tr><th>Time (<span class="tzlabel">{{.Zone}}</span>)</th><th>Event</th><th>Source</th></tr></thead>
@@ -155,7 +155,7 @@
         <div class="facts">{{range .Summary}}<div class="fact"><span class="l">{{.Label}}</span><span class="v">{{.Value}}</span><span class="x">{{.Explain}}</span></div>{{end}}</div>
         {{with clusterChart $r}}<div class="chart"><h4>Containers on the cluster</h4>{{.}}
           <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>Containers allocated</span><span><i class="sw" style="background:var(--warn)"></i>Containers waiting</span><span><i class="sw" style="background:var(--accent);opacity:.2"></i>This application's run</span></div>
-          {{guide "Containers YARN had placed and containers waiting for room, across the whole cluster, every minute; the shaded band is this application's run." "Waiting should stay at zero. Waiting while YARN memory is free means the containers were too big to fit on any node; waiting with memory full means the cluster was too small or busy."}}</div>{{end}}
+          {{guide (axes "Across" "Time of day; the shaded band is when this application ran." "Up" "Containers across the whole cluster, every minute: those YARN had placed, and those waiting for room.") (points "Waiting should stay at zero." "Waiting while YARN memory is free: the containers were too big to fit on any one node." "Waiting with memory full: the cluster was too small, or busy with other applications.") ""}}</div>{{end}}
         {{if .Missing}}<div class="missing"><h3>Not in CloudWatch</h3><ul>{{range .Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}{{end}}{{end}}
         {{nodeMemoryChart $r}}{{nodeCPUChart $r}}
         {{if $r.Nodes.Missing}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $r.Nodes.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
@@ -204,7 +204,7 @@
         </div>
         {{if $m.HeapKnown}}<div class="chart"><h4>Peak heap against the configured heap</h4>{{memChart $r}}
           <div class="legend"><span><i class="sw" style="background:var(--surface-2);border:1px solid var(--line)"></i>Configured heap</span><span><i class="sw" style="background:var(--accent)"></i>Peak heap used</span><span><i class="sw" style="background:var(--crit)"></i>Over 90% of the heap</span></div>
-          {{guide "Each executor's highest sampled Java heap use against the heap it was given. Samples are peaks, so short spikes can be missed." "Bars close to the end (red, over 90%) risk running out of memory. Bars that stay well short mean executors had more heap than they used and could be smaller."}}
+          {{guide (axes "Rows" "One executor each." "Bar length" "The most Java heap it used, against the heap it was given (the full row).") (points "Bars close to the end (red, over 90%) risk running out of memory." "Bars that stay well short: executors had more heap than they used and could be smaller.") "Heap is sampled, so short spikes can be missed."}}
         </div>{{end}}
         {{spillChart $r}}
         <p class="explain"><b>These are peaks, not continuous readings.</b> Spark samples executor memory on heartbeats and at the end of each task, so short spikes can be missed.{{if not $m.HeapKnown}} <b>This run recorded no executor memory samples</b>, so peak heap, off-heap and execution memory show as —; set spark.eventLog.logStageExecutorMetrics=true to record them.{{end}}{{if not $m.RSSKnown}} Whole-process memory (RSS, including Python) was not recorded; set spark.executor.processTreeMetrics.enabled=true to get it.{{end}}</p>
