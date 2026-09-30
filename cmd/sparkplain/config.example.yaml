@@ -36,14 +36,13 @@ environments:
     profile: prod-readonly
     region: us-east-1
 
-    # Where to find the application's event log when -eventlog is not
-    # given: a folder on S3 that Spark writes event logs to, or a local
-    # folder you save History Server downloads in (eventLogs-<app id>.zip
-    # is found there by the application ID). Leave it out when the
-    # cluster's spark.eventLog.dir is already on S3. A single downloaded
-    # zip can always be given on the command line with -eventlog.
+    # Where to find the application's event log when there is no -eventlog
+    # on the command line. Either a folder on S3 that Spark writes event
+    # logs to, or a local folder you save History Server downloads in, such
+    # as ~/Downloads (eventLogs-<app id>.zip is found there by the
+    # application ID). Leave it out when the cluster's spark.eventLog.dir is
+    # already on S3. One downloaded zip can always be given with -eventlog.
     # eventlog-prefix: s3://my-prod-logs/spark-events/
-    # eventlog-prefix: ~/Downloads
 
   nonprod:
     cluster-name: my-spark-cluster-dev
