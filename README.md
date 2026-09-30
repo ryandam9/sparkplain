@@ -84,7 +84,7 @@ It checks what it can read, reads it, prints a summary like this and writes the 
   Logs     testdata/emrlogs/j-FIXTURE0071CLUSTER/
 
 ▸ Access check
-  - AWS                    EMR API, CloudWatch and CloudTrail: not asked for.
+  ? AWS                    EMR API, CloudWatch and CloudTrail: not asked for.
                            Pass -profile and -cluster-id to read from AWS.
   Y Container logs         containers/application_1790380000000_0071/
   Y Step logs              steps/
@@ -228,7 +228,7 @@ If HBase runs on a different EMR cluster, pass its name with `-hbase-cluster-nam
   ✓ Node logs              node/  list, read
   ✓ HBase server logs      node/*/applications/hbase/
                            Checked on the primary node, i-0abc123def4567890 · list, read
-  ✗ Spark event log        The cluster keeps the event log on HDFS (EMR's default,
+  ? Spark event log        The cluster keeps the event log on HDFS (EMR's default,
                            hdfs:///var/log/spark/apps), which sparkplain cannot read.
                            Supply it with -eventlog: the Spark History Server's
                            "Download", or a copy in S3.
@@ -241,7 +241,7 @@ If HBase runs on a different EMR cluster, pass its name with `-hbase-cluster-nam
   ✓ Output folder          ~/sparkplain/2026-09-29/application_1700000000000_0042  Will be created
 ```
 
-On a terminal the marks are coloured dots: green ● (readable), red ● (refused or failed), amber ◐ (empty) and ○ (not asked for); piped or with `NO_COLOR` they are Y, N, ! and -. A colour terminal also animates the run: what is being read spins with a running clock, each mark settles into its dot, and sections arrive a beat apart, which adds a few seconds. Set `SPARKPLAIN_NO_ANIMATION=1` (or run under `CI`) for a still console; the text is the same. Offline runs check the local paths instead. The rows are also in the JSON report, as `accessCheck`.
+On a terminal the marks are coloured dots: green ● (readable), red ● (refused or failed), amber ◐ (empty), pink ● (needed for a full report but not given to this run, such as AWS on an offline run, or an event log kept on HDFS) and ○ (turned off, or not needed); piped or with `NO_COLOR` they are Y, N, !, ? and -. A colour terminal also animates the run: what is being read spins with a running clock, each mark settles into its dot, and sections arrive a beat apart, which adds a few seconds. Set `SPARKPLAIN_NO_ANIMATION=1` (or run under `CI`) for a still console; the text is the same. Offline runs check the local paths instead. The rows are also in the JSON report, as `accessCheck`.
 
 Use `-no-cloudwatch` or `-no-cloudtrail` to skip those calls when you lack the permissions. Only their sections are affected.
 

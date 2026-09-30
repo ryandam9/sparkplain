@@ -22,8 +22,8 @@ func TestConsoleSummaryPiped(t *testing.T) {
 	}
 	for _, want := range []string{
 		"◆ sparkplain " + version + " · application_1790380000000_0042\n",
-		"\n▸ Access check\n  - AWS                    EMR API, CloudWatch and CloudTrail: not asked for.",
-		"  - Cluster logs           Container, step, node and HBase logs: not asked for.",
+		"\n▸ Access check\n  ? AWS                    EMR API, CloudWatch and CloudTrail: not asked for.",
+		"  ? Cluster logs           Container, step, node and HBase logs: not asked for.",
 		"  Y Spark event log\n    ../../testdata/eventlog/application_1790380000000_0042\n",
 		"\n▸ Read\n  Y Spark event log        ",
 		"\n    from ../../testdata/eventlog/application_1790380000000_0042\n", // the file itself, not just its size
@@ -84,6 +84,11 @@ func TestConsoleLive(t *testing.T) {
 		}
 		if strings.Contains(plainOut, "\n▸ Read\n") || !strings.Contains(plainOut, "▸ Access check") || !strings.Contains(plainOut, "What happened") || !strings.Contains(plainOut, "● Done in ") && noColor == "" || !strings.Contains(plainOut, "complete (exit 0)") {
 			t.Errorf("NO_COLOR=%q: stdout should have the summary without the sources:\n%s", noColor, out)
+		}
+		// AWS is needed for a full report but was not given: a pink dot,
+		// not the grey of something turned off on purpose.
+		if noColor == "" && !strings.Contains(out, "\x1b[35m●\x1b[0m AWS ") {
+			t.Errorf("the AWS row lacks its pink not-given dot:\n%q", out)
 		}
 		coloured := regexp.MustCompile(`\x1b\[3\dm`).MatchString(out + errs)
 		if coloured != (noColor == "") {

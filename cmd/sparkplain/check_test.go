@@ -63,7 +63,7 @@ func TestAccessCheckOnline(t *testing.T) {
 		"  Y Step logs              steps/  list, read\n",
 		"  Y Node logs              node/  list, read\n",
 		"  Y HBase server logs      node/*/applications/hbase/ Checked on the primary node, i-0fee0000000000001 · list, read\n",
-		"  N Spark event log        The cluster keeps the event log on HDFS (EMR's default, hdfs:///var/log/spark/apps), which sparkplain cannot read.",
+		"  ? Spark event log        The cluster keeps the event log on HDFS (EMR's default, hdfs:///var/log/spark/apps), which sparkplain cannot read.",
 		"  Y EC2 instance types     m5.xlarge\n",
 		"  N CloudTrail             Access denied: needs cloudtrail:LookupEvents",
 		"\n                           try: aws cloudtrail lookup-events --max-results 1 --profile test --region us-east-1\n",
@@ -139,7 +139,7 @@ func TestAccessCheckOffline(t *testing.T) {
 	stdout = flat(stdout)
 	if code != exitPartial || !strings.Contains(stdout, "As offline: local files only, no AWS calls") ||
 		!strings.Contains(stdout, "N Spark event log stat /no/such/log: no such file or directory") ||
-		!strings.Contains(stdout, "Y HBase server logs") || !strings.Contains(stdout, "- AWS EMR API, CloudWatch and CloudTrail: not asked for.") {
+		!strings.Contains(stdout, "Y HBase server logs") || !strings.Contains(stdout, "? AWS EMR API, CloudWatch and CloudTrail: not asked for.") {
 		t.Errorf("exit %d:\n%s", code, stdout)
 	}
 	code, _, _ = runCLI(t, "-app-id", "application_1790380000000_0092", "-from", filepath.Join(emrlogs, hbaseCluster), "-eventlog", filepath.Join(fx, "application_1790380000000_0092.zstd"), "-check")

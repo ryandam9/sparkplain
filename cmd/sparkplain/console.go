@@ -126,6 +126,7 @@ const (
 	green = "32"
 	amber = "33"
 	blue  = "34"
+	pink  = "35"
 )
 
 // numberColour is the colour numbers and their units are shown in. It
@@ -233,22 +234,25 @@ func (c *console) clusterFound(cl model.Cluster) {
 }
 
 // Marks, the same everywhere: a dot, green when read, red when refused or
-// failed, half-filled amber when partial or empty, and hollow when not
-// asked for; without colour (piped, NO_COLOR) Y, N, ! and -, so logs and
-// scripts stay plain.
+// failed, half-filled amber when partial or empty, pink when the report
+// needs it but this run was not given it (no AWS profile, no cluster logs,
+// an event log on HDFS), and hollow when not asked for or not needed;
+// without colour (piped, NO_COLOR) Y, N, !, ? and -, so logs and scripts
+// stay plain.
 const (
 	markOK = iota
 	markBad
 	markPartial
 	markOff
+	markNotGiven
 )
 
 func (c *console) mark(col bool, m int) string {
-	sym := [...]string{"●", "●", "◐", "○"}[m]
+	sym := [...]string{"●", "●", "◐", "○", "●"}[m]
 	if !col {
-		return [...]string{"Y", "N", "!", "-"}[m]
+		return [...]string{"Y", "N", "!", "-", "?"}[m]
 	}
-	return paint(true, [...]string{green, red, amber, dim}[m], sym)
+	return paint(true, [...]string{green, red, amber, dim, pink}[m], sym)
 }
 
 // heading is a section's title line.
@@ -351,8 +355,10 @@ func (c *console) sourceLine(w io.Writer, col bool, s model.SourceStatus) {
 	switch s.Status {
 	case "read":
 		m = markOK
-	case "partial", "not-supplied":
+	case "partial":
 		m = markPartial
+	case "not-supplied":
+		m = markNotGiven
 	case "error":
 		m = markBad
 	}
@@ -680,6 +686,9 @@ func (c *console) accessCheck(chk checked, profile, region string, online bool) 
 			m = markPartial
 		case "denied", "error":
 			m = markBad
+		}
+		if r.NotGiven {
+			m = markNotGiven
 		}
 		lead := "  " + c.mark(col, m) + " " + fmt.Sprintf("%-*s", nameCol, r.Name) + " "
 		indent := strings.Repeat(" ", nameCol+5)

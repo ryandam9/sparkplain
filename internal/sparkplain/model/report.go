@@ -607,4 +607,8 @@ type AccessCheck struct {
 	Call     string `json:"call,omitempty"`   // the read-only call made
 	Detail   string `json:"detail,omitempty"` // what was found, or why not and what to do
 	Try      string `json:"try,omitempty"`    // an aws command that repeats the call
+	// NotGiven marks a source the report needs that this run was not
+	// given (no AWS profile, no cluster logs, an event log on HDFS), as
+	// against one refused, broken or turned off on purpose.
+	NotGiven bool `json:"notGiven,omitempty"`
 }
