@@ -225,7 +225,7 @@ If HBase runs on a different EMR cluster, pass its ID with `-hbase-cluster-id`. 
   ✓ Output folder          ~/sparkplain/2026-09-29/application_1700000000000_0042  Will be created
 ```
 
-On a terminal the marks are coloured ✓ (readable), ✗ (refused or failed), ! (empty) and ○ (not asked for); piped or with `NO_COLOR` they are Y, N, ! and -. Offline runs check the local paths instead. The rows are also in the JSON report, as `accessCheck`.
+On a terminal the marks are coloured dots: green ● (readable), red ● (refused or failed), amber ◐ (empty) and ○ (not asked for); piped or with `NO_COLOR` they are Y, N, ! and -. A colour terminal also animates the run: what is being read spins with a running clock, each mark settles into its dot, and sections arrive a beat apart, which adds a few seconds. Set `SPARKPLAIN_NO_ANIMATION=1` (or run under `CI`) for a still console; the text is the same. Offline runs check the local paths instead. The rows are also in the JSON report, as `accessCheck`.
 
 Use `-no-cloudwatch` or `-no-cloudtrail` to skip those calls when you lack the permissions. Only their sections are affected.
 
