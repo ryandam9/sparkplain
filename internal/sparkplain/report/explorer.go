@@ -106,61 +106,62 @@ var (
 )
 
 type xData struct {
-	V          int                  `json:"v"`
-	Tool       string               `json:"tool"`
-	Generated  int64                `json:"generated"`
-	ReportHref string               `json:"reportHref,omitempty"`
-	T0         int64                `json:"t0"` // Unix ms that task launch offsets count from
-	App        xApp                 `json:"app"`
-	Summary    []string             `json:"summary"`
-	KPIs       []model.KPI          `json:"kpis"`
-	Findings   []xFinding           `json:"findings"`
-	Anatomy    string               `json:"anatomy,omitempty"` // the diagram's SVG, drawn in Go
-	AnatGuide  *chartGuide          `json:"anatomyGuide,omitempty"`
-	Files      []string             `json:"files"`
-	Execs      []string             `json:"execs"` // executor IDs; task and cell rows use their index
-	Executors  table                `json:"executors"`
-	HeapBytes  int64                `json:"heapBytes"`
-	Jobs       table                `json:"jobs"`
-	Stages     table                `json:"stages"`
-	Detail     map[string]xDetail   `json:"detail"` // by "id.attempt"
-	TaskCols   []string             `json:"taskCols"`
-	CellCols   []string             `json:"cellCols"`
-	Running    *xRunning            `json:"running,omitempty"`
-	SQL        table                `json:"sql"`
-	Graphs     map[string][]xNode   `json:"graphs"`      // by query ID
-	PlanLays   map[string]xLayout   `json:"planLayouts"` // by query ID, for graphs small enough to draw
-	JobDags    map[string]xJobDag   `json:"jobDags"`     // by job ID, for jobs with 2 to maxGraphNodes stages
-	RunPath    *xRunPath            `json:"runPath,omitempty"`
-	Resources  []xUse               `json:"resources"` // the Overview's utilisation panel
-	StageOps   map[string]xStageOps `json:"stageOps"`  // by "id.attempt": the RDDs each stage computes, laid out as a graph
-	Adaptive   map[string][][]any   `json:"adaptive"`  // by query ID: metrics adaptive execution added, rows as in a plan node
-	RDDs       table                `json:"rdds"`
-	Runtime    table                `json:"runtime"`
-	Config     []xConfigGroup       `json:"config"`
-	Exclusions table                `json:"exclusions"`
-	RunTasks   table                `json:"runningTasks"`
-	RunCapped  bool                 `json:"runningCapped"`
-	Gaps       [][4]any             `json:"gaps"` // driver gaps: start and end (Unix ms), the jobs before and after (null at either end)
-	BlockKinds table                `json:"blockKinds"`
-	Data       table                `json:"data"`
-	Profiles   table                `json:"profiles"`
-	Critical   []int                `json:"critical"`
-	CritJob    int                  `json:"criticalJob"`
-	LogStats   *model.EventLogStats `json:"logStats,omitempty"`
-	Sources    []xSource            `json:"sources"`
-	SourceNote []string             `json:"sourceNotes"`
-	Logs       []xLogFile           `json:"logs"`
-	LogCols    []string             `json:"logCols"`
-	LogSources []xLogSource         `json:"logSources"`
-	Cluster    *xCluster            `json:"cluster,omitempty"`
-	AWS        *xAWS                `json:"aws,omitempty"`
-	AccessGaps []model.AccessGap    `json:"accessGaps,omitempty"`
-	Collected  bool                 `json:"collected"` // explorer data was gathered
-	Limits     model.ExplorerLimits `json:"limits"`
-	Shrinks    int                  `json:"shrinks"`
-	CellsCap   bool                 `json:"cellsCapped"`
-	Notes      []string             `json:"notes"`
+	V          int                   `json:"v"`
+	Tool       string                `json:"tool"`
+	Generated  int64                 `json:"generated"`
+	ReportHref string                `json:"reportHref,omitempty"`
+	T0         int64                 `json:"t0"` // Unix ms that task launch offsets count from
+	App        xApp                  `json:"app"`
+	Summary    []string              `json:"summary"`
+	KPIs       []model.KPI           `json:"kpis"`
+	Findings   []xFinding            `json:"findings"`
+	Anatomy    string                `json:"anatomy,omitempty"` // the diagram's SVG, drawn in Go
+	AnatGuide  *chartGuide           `json:"anatomyGuide,omitempty"`
+	RunNotes   map[string][]runPoint `json:"runNotes,omitempty"` // each chart's "In this run"
+	Files      []string              `json:"files"`
+	Execs      []string              `json:"execs"` // executor IDs; task and cell rows use their index
+	Executors  table                 `json:"executors"`
+	HeapBytes  int64                 `json:"heapBytes"`
+	Jobs       table                 `json:"jobs"`
+	Stages     table                 `json:"stages"`
+	Detail     map[string]xDetail    `json:"detail"` // by "id.attempt"
+	TaskCols   []string              `json:"taskCols"`
+	CellCols   []string              `json:"cellCols"`
+	Running    *xRunning             `json:"running,omitempty"`
+	SQL        table                 `json:"sql"`
+	Graphs     map[string][]xNode    `json:"graphs"`      // by query ID
+	PlanLays   map[string]xLayout    `json:"planLayouts"` // by query ID, for graphs small enough to draw
+	JobDags    map[string]xJobDag    `json:"jobDags"`     // by job ID, for jobs with 2 to maxGraphNodes stages
+	RunPath    *xRunPath             `json:"runPath,omitempty"`
+	Resources  []xUse                `json:"resources"` // the Overview's utilisation panel
+	StageOps   map[string]xStageOps  `json:"stageOps"`  // by "id.attempt": the RDDs each stage computes, laid out as a graph
+	Adaptive   map[string][][]any    `json:"adaptive"`  // by query ID: metrics adaptive execution added, rows as in a plan node
+	RDDs       table                 `json:"rdds"`
+	Runtime    table                 `json:"runtime"`
+	Config     []xConfigGroup        `json:"config"`
+	Exclusions table                 `json:"exclusions"`
+	RunTasks   table                 `json:"runningTasks"`
+	RunCapped  bool                  `json:"runningCapped"`
+	Gaps       [][4]any              `json:"gaps"` // driver gaps: start and end (Unix ms), the jobs before and after (null at either end)
+	BlockKinds table                 `json:"blockKinds"`
+	Data       table                 `json:"data"`
+	Profiles   table                 `json:"profiles"`
+	Critical   []int                 `json:"critical"`
+	CritJob    int                   `json:"criticalJob"`
+	LogStats   *model.EventLogStats  `json:"logStats,omitempty"`
+	Sources    []xSource             `json:"sources"`
+	SourceNote []string              `json:"sourceNotes"`
+	Logs       []xLogFile            `json:"logs"`
+	LogCols    []string              `json:"logCols"`
+	LogSources []xLogSource          `json:"logSources"`
+	Cluster    *xCluster             `json:"cluster,omitempty"`
+	AWS        *xAWS                 `json:"aws,omitempty"`
+	AccessGaps []model.AccessGap     `json:"accessGaps,omitempty"`
+	Collected  bool                  `json:"collected"` // explorer data was gathered
+	Limits     model.ExplorerLimits  `json:"limits"`
+	Shrinks    int                   `json:"shrinks"`
+	CellsCap   bool                  `json:"cellsCapped"`
+	Notes      []string              `json:"notes"`
 }
 
 type xApp struct {
@@ -260,6 +261,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 	}
 	d.Resources = resourceUse(r, buildAnatomy(r))
 	d.AnatGuide = &anatGuide
+	d.RunNotes = runNotes(r)
 	d.Anatomy = anatomySVG(buildAnatomy(r), anatLinks{
 		Finding: func(n int) string { return fmt.Sprintf("#finding/%d", n) },
 		Ref: func(ref string) string {

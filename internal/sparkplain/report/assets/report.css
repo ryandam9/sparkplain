@@ -229,6 +229,9 @@ a.themebtn{text-decoration:none}
 .read{font-size:12.5px;color:var(--ink);margin:4px 4px 2px;max-width:100ch}
 .read b{font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ok);margin-right:6px}
 div.read b{display:block;margin-bottom:2px} .read ul{margin:0 0 0 1.25em;padding:0} .read li{margin:1px 0}
+.run{font-size:12.5px;color:var(--ink);margin:6px 4px 2px;max-width:100ch;border-left:3px solid var(--accent);padding:2px 0 2px 10px}
+.run b{font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin-right:6px}
+div.run b{display:block;margin-bottom:2px} .run ul{margin:0 0 0 1.25em;padding:0} .run li{margin:1px 0}
 .axes{display:grid;gap:3px;margin:8px 4px 4px;font-size:12.5px;max-width:100ch}
 .axes div{display:grid;grid-template-columns:8.5em 1fr;gap:10px}
 .axes dt{font-weight:600;color:var(--ink)} .axes dd{margin:0;color:var(--muted)}
