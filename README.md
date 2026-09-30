@@ -98,6 +98,7 @@ It checks what it can read, reads it, prints a summary like this and writes the 
 
 ▸ Read
   Y Spark event log        490 events, 1.6 MiB
+                           from testdata/eventlog/application_1790380000000_0071
   Y Container logs         22 files from 12 containers
   Y Step logs              step s-FIXTURESTEP0001 submitted it
   Y Node logs              5 files from 4 nodes

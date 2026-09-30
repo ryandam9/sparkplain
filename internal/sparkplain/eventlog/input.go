@@ -100,6 +100,29 @@ type Input struct {
 	limits      Limits
 }
 
+// Where names what is read, for people: the log file, the zip and the
+// log inside it, or the rolling folder and how many parts it holds.
+func (in *Input) Where() string {
+	switch {
+	case in.Layout == "zip" && len(in.parts) == 1:
+		if _, entry, ok := strings.Cut(in.parts[0].name, "!"); ok {
+			return in.Location + " › " + entry
+		}
+	case in.Layout == "zip-rolling" && len(in.parts) > 0:
+		return fmt.Sprintf("%s › %s/ (%s)", in.Location, path.Dir(in.parts[0].name), plural(len(in.parts), "part"))
+	case in.Layout == "rolling" && len(in.parts) > 0:
+		return fmt.Sprintf("%s (%s)", in.Location, plural(len(in.parts), "part"))
+	}
+	return in.Location
+}
+
+func plural(n int, what string) string {
+	if n == 1 {
+		return "1 " + what
+	}
+	return fmt.Sprintf("%d %ss", n, what)
+}
+
 // Close releases the zip file, if any.
 func (in *Input) Close() error {
 	if in.closer != nil {
@@ -240,6 +263,7 @@ func (in *Input) resolveDir(dir, appID string) error {
 	if err != nil {
 		return err
 	}
+	in.Location = full
 	if st.IsDir() {
 		return in.resolveDir(full, appID)
 	}

@@ -30,14 +30,18 @@ func TestResolveLayouts(t *testing.T) {
 		name, path, app, layout string
 		parts                   int
 		inProgress              bool
+		where                   string // what the console says was read, under the fixtures folder
 	}{
-		{"plain file", mainApp, mainApp, "single", 1, false},
-		{"lz4 file", mainApp + ".lz4", mainApp, "single", 1, false},
-		{"history server zip", mainApp + ".zip", mainApp, "zip", 1, false},
-		{"rolling folder", "eventlog_v2_application_1790380000000_0043", "application_1790380000000_0043", "rolling", 6, false},
-		{"rolling zip", "application_1790380000000_0043_rolling.zip", "application_1790380000000_0043", "zip-rolling", 6, false},
-		{"folder of logs, rolling match", ".", "application_1790380000000_0043", "rolling", 6, false},
-		{"folder of logs, in progress", ".", "application_1790380000000_0045", "single", 1, true},
+		{"plain file", mainApp, mainApp, "single", 1, false, mainApp},
+		{"lz4 file", mainApp + ".lz4", mainApp, "single", 1, false, mainApp + ".lz4"},
+		{"history server zip", mainApp + ".zip", mainApp, "zip", 1, false, mainApp + ".zip › " + mainApp + ".lz4"},
+		{"rolling folder", "eventlog_v2_application_1790380000000_0043", "application_1790380000000_0043", "rolling", 6, false,
+			"eventlog_v2_application_1790380000000_0043 (6 parts)"},
+		{"rolling zip", "application_1790380000000_0043_rolling.zip", "application_1790380000000_0043", "zip-rolling", 6, false,
+			"application_1790380000000_0043_rolling.zip › eventlog_v2_application_1790380000000_0043/ (6 parts)"},
+		{"folder of logs, rolling match", ".", "application_1790380000000_0043", "rolling", 6, false,
+			"eventlog_v2_application_1790380000000_0043 (6 parts)"},
+		{"folder of logs, in progress", ".", "application_1790380000000_0045", "single", 1, true, "application_1790380000000_0045.inprogress"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -48,6 +52,10 @@ func TestResolveLayouts(t *testing.T) {
 			defer in.Close()
 			if in.Layout != c.layout || len(in.parts) != c.parts || in.InProgress != c.inProgress {
 				t.Fatalf("layout %q parts %v inProgress %v", in.Layout, in.PartNames(), in.InProgress)
+			}
+			// The file found, not the folder it was looked for in.
+			if want := filepath.Clean(fixtures) + string(filepath.Separator) + c.where; in.Where() != want {
+				t.Errorf("Where() = %q, want %q", in.Where(), want)
 			}
 			n, files, trunc := countLines(t, in)
 			if n == 0 || len(files) != c.parts {

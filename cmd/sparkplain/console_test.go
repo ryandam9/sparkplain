@@ -26,6 +26,7 @@ func TestConsoleSummaryPiped(t *testing.T) {
 		"  - Cluster logs           Container, step, node and HBase logs: not asked for.",
 		"  Y Spark event log\n    ../../testdata/eventlog/application_1790380000000_0042\n",
 		"\n▸ Read\n  Y Spark event log        ",
+		"\n    from ../../testdata/eventlog/application_1790380000000_0042\n", // the file itself, not just its size
 		"\n▸ What happened\n  ",
 		"\n▸ Findings  1 critical · ",
 		"\n  !! ",

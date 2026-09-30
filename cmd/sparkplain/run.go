@@ -278,7 +278,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return exitOK
 	}
 
-	src := model.SourceStatus{Name: "Spark event log", Location: evPath}
+	src := model.SourceStatus{Name: eventLogSource, Location: evPath}
 	var log *model.EventLog
 	var in *eventlog.Input
 	var stepDirs []string
@@ -325,6 +325,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		src.Status, src.Class, src.Detail = "error", eventlog.ErrorClass(err), err.Error()
 		con.note("could not read the event log (%s): %v", src.Class, err)
 	default:
+		src.Location = in.Where()
+		for _, n := range in.Notes { // which of several logs was read, and why
+			con.note("%s", n)
+		}
 		start := time.Now()
 		opt := eventlog.Options{}
 		if outputs["explorer"] {
