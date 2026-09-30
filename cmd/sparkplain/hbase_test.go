@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+
+	"github.com/ryandam9/sparkplain/internal/sparkplain/awsmeta"
 	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
 )
 
@@ -129,4 +132,64 @@ func hbaseSummary(r model.Report) string {
 		out = append(out, s)
 	}
 	return strings.Join(out, "; ")
+}
+
+func TestHBaseOnSeparateEMRCluster(t *testing.T) {
+	bucket, stub := hbaseCluster0083(t, true)
+	const sparkCluster = "j-FIXTURE0083SPARK"
+	copyTree(t, filepath.Join(emrlogs, hbaseCluster), filepath.Join(bucket, "emr", sparkCluster))
+	stub.clusters[sparkCluster] = cluster(sparkCluster, "")
+	fakeAWS(t, map[string]string{"logs": bucket}, stub.clusters)
+	awsDeps.emr = func(aws.Config) awsmeta.EMRAPI { return stub }
+
+	out := t.TempDir()
+	code, stdout, errs := runCLI(t,
+		"-app-id", "application_1790380000000_0092",
+		"-profile", "test",
+		"-cluster-id", sparkCluster,
+		"-hbase-cluster-id", hbaseCluster,
+		"-eventlog", filepath.Join(fx, "application_1790380000000_0092.zstd"),
+		"-no-cloudwatch", "-no-cloudtrail",
+		"-format", "json",
+		"-out", out,
+	)
+	if code == exitFatal {
+		t.Fatalf("separate HBase cluster: exit %d: %s\n%s", code, errs, stdout)
+	}
+	if strings.Contains(stdout, "HBase is not installed on this Spark cluster") {
+		t.Fatalf("separate HBase cluster was ignored:\n%s", stdout)
+	}
+	r := readReport(t, out)
+	var found bool
+	for _, f := range r.Findings {
+		if f.Rule == "hbase-server-lost" && strings.Contains(f.Title, "Region server") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("report did not use HBase server logs from %s", hbaseCluster)
+	}
+	var checked bool
+	for _, row := range r.AccessCheck {
+		if row.Name == "HBase server logs" {
+			checked = row.Status == "ok" && strings.Contains(row.Location, hbaseCluster)
+			break
+		}
+	}
+	if !checked {
+		t.Errorf("access check did not verify HBase logs on %s: %+v", hbaseCluster, r.AccessCheck)
+	}
+}
+
+func TestHBaseClusterRequiresSparkCluster(t *testing.T) {
+	code, _, errs := runCLI(t,
+		"-app-id", "application_1790380000000_0092",
+		"-profile", "test",
+		"-hbase-cluster-id", hbaseCluster,
+		"-eventlog", filepath.Join(fx, "application_1790380000000_0092.zstd"),
+	)
+	if code != exitFatal || !strings.Contains(errs, "-hbase-cluster-id requires -cluster-id or -cluster-name") {
+		t.Errorf("exit %d, stderr %q", code, errs)
+	}
 }

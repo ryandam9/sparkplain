@@ -107,7 +107,7 @@ func TestAccessCheckEmptyMissingAndOff(t *testing.T) {
 	}
 	for _, want := range []string{
 		"  ! Container logs         containers/application_1790380000000_0999/ Readable, but no logs for this application yet",
-		"  - HBase server logs      HBase is not installed on this cluster.\n",
+		"  - HBase server logs      HBase is not installed on this Spark cluster. If HBase runs on another EMR cluster, pass -hbase-cluster-id <id>.\n",
 		"  Y Spark event log        steps/ From -eventlog · list, read\n",
 		"  - CloudWatch             Not asked for (-no-cloudwatch).\n",
 		"  - CloudTrail             Not asked for (-no-cloudtrail).\n",

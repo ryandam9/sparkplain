@@ -52,6 +52,9 @@ type Plan struct {
 	// both are zero, the container logs' first and last times are used.
 	Until  time.Time
 	Limits source.Limits
+	// SkipHBase leaves HBase Master and region-server logs for a separate
+	// collector, for example when HBase runs on another EMR cluster.
+	SkipHBase bool
 	// MaxFiles caps the files read per kind of log; default 5000.
 	MaxFiles int
 }
@@ -84,7 +87,20 @@ func Collect(ctx context.Context, st source.Store, p Plan) Collection {
 	c.steps(ctx, st, p)
 	p = p.withDriverNodes(c.Files)
 	c.nodes(ctx, st, p)
-	c.hbase(ctx, st, p.withWindow(c.Files))
+	if !p.SkipHBase {
+		c.hbase(ctx, st, p.withWindow(c.Files))
+	}
+	return c
+}
+
+// CollectHBase reads only HBase Master and region-server logs. It is used
+// when those logs live under a different EMR cluster's log root.
+func CollectHBase(ctx context.Context, st source.Store, p Plan) Collection {
+	if p.MaxFiles <= 0 {
+		p.MaxFiles = 5000
+	}
+	var c Collection
+	c.hbase(ctx, st, p)
 	return c
 }
 
