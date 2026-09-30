@@ -2,8 +2,8 @@ package main
 
 import (
 	"io"
-	"runtime"
 	"path/filepath"
+	"runtime"
 	"regexp"
 	"strings"
 	"testing"
