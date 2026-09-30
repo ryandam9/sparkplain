@@ -554,13 +554,54 @@ func splitChart(r *model.Report, explorer string) template.HTML {
 		hbars(rows, msF), shown(rows, []legendItem{{cSpill, "Starting"}, {cInput, "Computing"}, {cShRead, "Garbage collection"}, {cShWrite, "Shuffle"}, {cOutput, "Sending the result"}, {cNeutral, "Other"}}))
 }
 
+// ranHere says what of the application ran on a host: "the driver and 2
+// executors", or "" when nothing did.
+func ranHere(h model.Host) string {
+	var parts []string
+	if h.Driver {
+		parts = append(parts, "the driver")
+	}
+	if n := len(h.Executors); n > 0 {
+		parts = append(parts, model.Plural(n, "executor", "executors"))
+	}
+	return strings.Join(parts, " and ")
+}
+
+// unknownCapacity lists the hosts that ran part of the application but
+// have no YARN capacity to draw, as "ip-10-0-2-13 (the driver and 2
+// executors)", so the node chart never leaves one out silently. Without
+// the cluster's logs no node has a capacity, and the Sources panel already
+// says the logs were not read, so it lists none.
+func unknownCapacity(r *model.Report) []string {
+	if r.Logs == nil {
+		return nil
+	}
+	var out []string
+	for _, h := range r.Nodes.Hosts {
+		if ran := ranHere(h); h.YARNMemoryBytes <= 0 && ran != "" {
+			short, _, _ := strings.Cut(h.Name, ".")
+			out = append(out, short+" ("+ran+")")
+		}
+	}
+	return out
+}
+
+// unknownNote names the nodes that ran part of the application but whose
+// YARN capacity is not in the logs read, so they are not drawn.
+func unknownNote(nodes []string) string {
+	if len(nodes) == 0 {
+		return ""
+	}
+	return "Not drawn, because the logs read do not say how much memory their NodeManager offered YARN (its registration and container placement lines may have rotated out of the ResourceManager's log): " + strings.Join(nodes, "; ") + "."
+}
+
 // nodeMemoryChart shows what YARN placed on each node against what the
 // node offered: the executor-fit problem in one picture.
 func nodeMemoryChart(r *model.Report) template.HTML {
 	var rows []hbar
 	for _, h := range r.Nodes.Hosts {
 		if h.YARNMemoryBytes <= 0 {
-			continue
+			continue // named in the note (unknownCapacity)
 		}
 		n := h.PeakExecutors
 		if n == 0 {
@@ -576,8 +617,14 @@ func nodeMemoryChart(r *model.Report) template.HTML {
 			{float64(free), "transparent", fmt.Sprintf("free: %s of the %s YARN offered on %s", model.Bytes(free), model.Bytes(h.YARNMemoryBytes), h.Name)},
 		}, note: note})
 	}
+	unknown := unknownCapacity(r)
 	if len(rows) == 0 {
-		return ""
+		if len(unknown) == 0 {
+			return ""
+		}
+		// Nothing to draw, but nodes ran the application: say so, rather
+		// than leave the chart out as if there were nothing to see.
+		return template.HTML(`<div class="chart"><h4>What YARN placed on each node</h4><p class="cap">` + esc(unknownNote(unknown)) + `</p></div>`)
 	}
 	return chartBox("What YARN placed on each node", chartGuide{
 		Axes: [][2]string{
@@ -589,6 +636,7 @@ func nodeMemoryChart(r *model.Report) template.HTML {
 			"Free space helps only if it is at least one executor container wide; smaller gaps are memory paid for but unusable.",
 			"A mostly free node did little work for this run.",
 		},
+		Note: unknownNote(unknown),
 	}, hbars(rows, bytesF),
 		[]legendItem{{cShRead, "Driver container"}, {cInput, "Executor containers"}, {"var(--surface-2)", "Free"}})
 }

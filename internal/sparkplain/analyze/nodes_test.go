@@ -227,3 +227,29 @@ func TestIdleNodesUpForMostOfTheRun(t *testing.T) {
 		t.Errorf("shared = %+v", sh)
 	}
 }
+
+// A node whose registration line was not read still gets its YARN capacity
+// from the lines placing the application's containers on it: what was in
+// use plus what was left. The phase 3 replay's busy nodes had only these.
+func TestNodeCapacityFromContainerPlacements(t *testing.T) {
+	t.Parallel()
+	rm := logFile(t, rmLog, `2024-01-01 10:00:00,000 INFO org.apache.hadoop.yarn.server.resourcemanager.ResourceTrackerService (IPC Server handler 0 on default port 8025): NodeManager from node ip-10-0-0-2.ec2.internal(cmPort: 8041 httpPort: 8042) registered with capability: <memory:12288, vCores:4>, assigned nodeId ip-10-0-0-2.ec2.internal:8041
+2024-01-01 10:01:00,000 INFO org.apache.hadoop.yarn.server.resourcemanager.scheduler.common.fica.FiCaSchedulerNode (SchedulerEventDispatcher:Event Processor): Assigned container container_1_1_01_000001 of capacity <memory:2432, max memory:12288, vCores:1, max vCores:4> on host ip-10-0-0-3.ec2.internal:8041, which has 1 containers, <memory:2432, vCores:1> used and <memory:13952, vCores:7> available after allocation
+2024-01-01 10:01:05,000 INFO org.apache.hadoop.yarn.server.resourcemanager.scheduler.common.fica.FiCaSchedulerNode (SchedulerEventDispatcher:Event Processor): Assigned container container_1_1_01_000002 of capacity <memory:5632, max memory:12288, vCores:1, max vCores:4> on host ip-10-0-0-3.ec2.internal:8041, which has 2 containers, <memory:8064, vCores:2> used and <memory:8320, vCores:6> available after allocation
+`)
+	l := synthetic(nil, &model.Executor{ID: "1", Host: "ip-10-0-0-3.ec2.internal", Cores: 4}, &model.Executor{ID: "2", Host: "ip-10-0-0-2.ec2.internal", Cores: 4})
+	l.Driver = &model.Executor{ID: "driver", Host: "ip-10-0-0-3.ec2.internal"}
+	r := runWithLogs(l, nil, rm)
+	got := map[string]model.Host{}
+	for _, h := range r.Nodes.Hosts {
+		got[h.Name] = h
+	}
+	// Registered: its own line wins.
+	if h := got["ip-10-0-0-2.ec2.internal"]; h.YARNMemoryBytes != 12288<<20 || h.YARNVCores != 4 {
+		t.Errorf("registered node = %d MiB, %d vcores", h.YARNMemoryBytes>>20, h.YARNVCores)
+	}
+	// Not registered in the logs: 2432 + 13952 MB and 1 + 7 vcores.
+	if h := got["ip-10-0-0-3.ec2.internal"]; h.YARNMemoryBytes != 16384<<20 || h.YARNVCores != 8 || h.DriverContainerBytes != 2432<<20 {
+		t.Errorf("node from placements = %d MiB, %d vcores, driver %d MiB", h.YARNMemoryBytes>>20, h.YARNVCores, h.DriverContainerBytes>>20)
+	}
+}

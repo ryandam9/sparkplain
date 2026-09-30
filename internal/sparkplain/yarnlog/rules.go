@@ -133,7 +133,7 @@ var (
 	// Capacity and requests (ResourceManager, NodeManager, driver, step).
 	rmCapacityRE  = regexp.MustCompile(`^NodeManager from node ([^\s(]+)\(.*registered with capability: <memory:(\d+), vCores:(\d+)`)
 	nmCapacityRE  = regexp.MustCompile(`^Registered with ResourceManager as ([^\s:]+):\d+ with total resource of <memory:(\d+), vCores:(\d+)`)
-	assignedRE    = regexp.MustCompile(`^Assigned container (\S+) of capacity <memory:(\d+), max memory:(\d+), vCores:(\d+), max vCores:(\d+)> on host ([^\s:]+)(?::\d+)?, which has (\d+) containers, <memory:(\d+), vCores:\d+> used and <memory:(\d+), vCores:\d+> available`)
+	assignedRE    = regexp.MustCompile(`^Assigned container (\S+) of capacity <memory:(\d+), max memory:(\d+), vCores:(\d+), max vCores:(\d+)> on host ([^\s:]+)(?::\d+)?, which has (\d+) containers, <memory:(\d+), vCores:(\d+)> used and <memory:(\d+), vCores:(\d+)> available`)
 	willRequestRE = regexp.MustCompile(`^Will request (\d+) executor container\(s\) for\s+ResourceProfile Id: (\d+), each with (\d+) core\(s\) and (\d+) MB memory`)
 	cancelRE      = regexp.MustCompile(`^Canceling requests for (\d+) executor container\(s\) to have a new desired total (\d+) executors`)
 	desiredRE     = regexp.MustCompile(`^Driver requested a total number of (\d+) executor\(s\)`)
