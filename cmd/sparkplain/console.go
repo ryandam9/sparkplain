@@ -361,9 +361,28 @@ func (c *console) sourceLine(w io.Writer, col bool, s model.SourceStatus) {
 		detail = firstNonEmpty(s.Brief, parenRE.ReplaceAllString(firstSentence(detail), ""))
 	}
 	lead := "  " + c.mark(col, m) + " " + fmt.Sprintf("%-*s", nameCol, s.Name) + " "
+	indent := strings.Repeat(" ", nameCol+5)
 	c.settle(w, "  ", settleFrames)
-	c.wrapLimited(w, col, lead, strings.Repeat(" ", nameCol+5), detail, s.Status == "read")
+	c.wrapLimited(w, col, lead, indent, detail, s.Status == "read")
+	// The event log may have been found in a folder, or inside a zip:
+	// name the file itself, whole, on a line of its own.
+	if loc := c.tilde(s.Location); s.Name == eventLogSource && loc != "" && !strings.Contains(detail, s.Location) {
+		lines := []string{"from " + loc}
+		if zip, inside, ok := strings.Cut(loc, " › "); ok && len(indent)+utf8.RuneCountInString(lines[0]) > c.width {
+			lines = []string{"from " + zip, "  › " + inside}
+		}
+		for _, l := range lines {
+			pad := indent
+			if len(pad)+utf8.RuneCountInString(l) > c.width { // a long path: less indent, as in the access check
+				pad = "    "
+			}
+			fmt.Fprintln(w, pad+paint(col, dim, l))
+		}
+	}
 }
+
+// eventLogSource is the event log's name in the Sources list.
+const eventLogSource = "Spark event log"
 
 // parenRE is an aside in brackets, which a source read as expected can do
 // without on the console: "Read 22 files (127 KiB compressed, …) from 7
