@@ -552,7 +552,7 @@ func eventLogCheck(ctx context.Context, cfg aws.Config, o options, prefix string
 		if dir == "" {
 			dir, where = "hdfs:///var/log/spark/apps", "EMR's default, hdfs:///var/log/spark/apps"
 		}
-		r.Status, r.Location = "denied", dir
+		r.Status, r.Location, r.NotGiven = "denied", dir, true
 		r.Detail = "The cluster keeps the event log on HDFS (" + where + "), which sparkplain cannot read. Supply it with -eventlog: the Spark History Server's \"Download\", or a copy in S3."
 		return r
 	}
@@ -626,12 +626,12 @@ func offlineCheck(o options, prefix string) checked {
 	if o.from != "" {
 		c.logRoot = strings.TrimSuffix(o.from, "/") + "/"
 	}
-	c.rows = []model.AccessCheck{{Name: "AWS", Status: "skipped", Detail: "EMR API, CloudWatch and CloudTrail: not asked for. Pass -profile and -cluster-id to read from AWS."}}
+	c.rows = []model.AccessCheck{{Name: "AWS", Status: "skipped", NotGiven: true, Detail: "EMR API, CloudWatch and CloudTrail: not asked for. Pass -profile and -cluster-id to read from AWS."}}
 	loc := firstNonEmpty(o.eventLog, prefix)
 	ev := model.AccessCheck{Name: "Spark event log", Location: loc}
 	switch {
 	case loc == "":
-		ev.Status, ev.Detail = "skipped", "Not supplied: pass -eventlog to add jobs, stages and resource use."
+		ev.Status, ev.Detail, ev.NotGiven = "skipped", "Not supplied: pass -eventlog to add jobs, stages and resource use.", true
 	case isS3(loc):
 		ev.Status, ev.Detail = "skipped", "On S3: checked when the run reads it."
 	default:
@@ -643,7 +643,7 @@ func offlineCheck(o options, prefix string) checked {
 	}
 	c.rows = append(c.rows, ev)
 	if o.from == "" {
-		c.rows = append(c.rows, model.AccessCheck{Name: "Cluster logs", Status: "skipped",
+		c.rows = append(c.rows, model.AccessCheck{Name: "Cluster logs", Status: "skipped", NotGiven: true,
 			Detail: "Container, step, node and HBase logs: not asked for. Pass -from with a copy of the cluster's logs, or -cluster-id."})
 		return c
 	}
