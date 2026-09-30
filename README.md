@@ -321,7 +321,15 @@ Add `kms:Decrypt` on the key if the log bucket uses SSE-KMS. A refused permissio
 
 ## Configuration file
 
-Defaults can live in `~/.config/sparkplain/config.yaml` (or pass `-config`). Command-line flags win, and unknown keys are rejected. Every key is optional:
+Defaults can live in `~/.config/sparkplain/config.yaml` (or pass `-config`). Command-line flags win, and unknown keys are rejected. Every key is optional.
+
+The quickest start is to let sparkplain write one for you, with every key explained:
+
+```sh
+sparkplain -init-config          # writes ~/.config/sparkplain/config.yaml, never over an existing file
+```
+
+Then fill in the `prod` and `nonprod` blocks and check it with `sparkplain -app-id <id> -env prod -check`. The same file is in the repository as [`cmd/sparkplain/config.example.yaml`](cmd/sparkplain/config.example.yaml). In short:
 
 ```yaml
 cluster-name: nightly-etl                     # the Spark cluster, found by name (see "Clusters by name")

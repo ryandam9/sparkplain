@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	_ "embed"
 	"errors"
 	"fmt"
 	"io"
@@ -151,6 +152,43 @@ func defaultConfigPath() string {
 		return filepath.Join(dir, "sparkplain", "config.yaml")
 	}
 	return ""
+}
+
+// starterConfig is the config file -init-config writes: every key, with
+// what it does, most of them commented out. A test reads it with the
+// same strict reader as the real file, so it cannot drift from it.
+//
+//go:embed config.example.yaml
+var starterConfig string
+
+// writeStarterConfig writes the starter config to path, never over a file
+// that is already there.
+func writeStarterConfig(path string, stdout, stderr io.Writer) int {
+	if path == "" {
+		fmt.Fprintln(stderr, "sparkplain: no home folder for the config file; pass -config <path>")
+		return exitFatal
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		fmt.Fprintf(stderr, "sparkplain: %v\n", err)
+		return exitFatal
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if errors.Is(err, fs.ErrExist) {
+		fmt.Fprintf(stderr, "sparkplain: %s already exists; it was left as it is. Move it aside to write a fresh one.\n", path)
+		return exitFatal
+	}
+	if err == nil {
+		_, err = io.WriteString(f, starterConfig)
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "sparkplain: writing %s: %v\n", path, err)
+		return exitFatal
+	}
+	fmt.Fprintf(stdout, "Wrote %s.\nEdit the prod and nonprod blocks (cluster names, profile, region), then run:\n  sparkplain -app-id <application id> -env prod -check\n", path)
+	return exitOK
 }
 
 // loadConfig reads path. A missing file is fine only when it is the default.

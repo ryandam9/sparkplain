@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -11,7 +12,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/emr/types"
 
+	"github.com/ryandam9/sparkplain/internal/sparkplain/analyze"
 	"github.com/ryandam9/sparkplain/internal/sparkplain/awsmeta"
+	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
 )
 
 // With the cluster's name (and the profile) in the config file, a run needs
@@ -121,5 +124,56 @@ environments:
 	if code, _, errs := runCLI(t, "-app-id", "application_1790380000000_0092", "-config", cfg, "-env", "staging"); code != exitFatal ||
 		!strings.Contains(errs, "no environment of that name; it has nonprod, prod") {
 		t.Errorf("-env staging: exit %d: %s", code, errs)
+	}
+}
+
+// The starter config parses with the strict reader as written, and again
+// with every commented-out setting switched on; the thresholds and
+// explorer limits it lists are the defaults. -init-config writes it and
+// never over an existing file.
+func TestStarterConfig(t *testing.T) {
+	dir := t.TempDir()
+	parse := func(text string) fileConfig {
+		t.Helper()
+		p := filepath.Join(dir, "c.yaml")
+		if err := os.WriteFile(p, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		c, err := loadConfig(p, true)
+		if err != nil {
+			t.Fatalf("%v\n%s", err, text)
+		}
+		return c
+	}
+	c := parse(starterConfig)
+	if c.Envs["prod"].ClusterName == "" || c.Envs["nonprod"].Profile == "" {
+		t.Errorf("starter environments = %+v", c.Envs)
+	}
+	on := regexp.MustCompile(`(?m)^(\s*)# (\s*[a-z-]+:.*)$`).ReplaceAllString(starterConfig, "$1$2")
+	all := parse(on)
+	if all.ClusterName == "" || all.TimeZone == "" || all.MaxSize == "" || all.Envs["prod"].HBaseClusterName == "" {
+		t.Errorf("uncommented settings missing: %+v", all)
+	}
+	if got := all.Thresholds.apply(analyze.Thresholds{}); got != analyze.DefaultThresholds() {
+		t.Errorf("starter thresholds %+v differ from the defaults %+v", got, analyze.DefaultThresholds())
+	}
+	if all.Explorer != model.DefaultExplorerLimits() {
+		t.Errorf("starter explorer limits %+v differ from the defaults", all.Explorer)
+	}
+
+	path := filepath.Join(dir, "sub", "config.yaml")
+	code, out, _ := runCLI(t, "-init-config", "-config", path)
+	written, _ := os.ReadFile(path)
+	if code != exitOK || string(written) != starterConfig || !strings.Contains(out, "-env prod -check") {
+		t.Errorf("-init-config: exit %d\n%s", code, out)
+	}
+	if err := os.WriteFile(path, []byte("out: ~/mine\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, errs := runCLI(t, "-init-config", "-config", path); code != exitFatal || !strings.Contains(errs, "already exists") {
+		t.Errorf("-init-config over an existing file: exit %d: %s", code, errs)
+	}
+	if kept, _ := os.ReadFile(path); string(kept) != "out: ~/mine\n" {
+		t.Error("-init-config overwrote an existing file")
 	}
 }

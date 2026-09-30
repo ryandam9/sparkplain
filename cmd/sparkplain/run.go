@@ -55,7 +55,7 @@ type options struct {
 	eventLog, from, out, format, maxSize, maxUnpacked, show                                           string
 	workers                                                                                           int
 	timeout, windowPad                                                                                time.Duration
-	noCloudWatch, noCloudTrail, showVersion, check                                                    bool
+	noCloudWatch, noCloudTrail, showVersion, check, initConfig                                        bool
 	sources                                                                                           []string
 }
 
@@ -84,6 +84,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.BoolVar(&o.noCloudTrail, "no-cloudtrail", false, "skip CloudTrail lookups (fewer permissions needed)")
 	fs.DurationVar(&o.windowPad, "window-pad", 5*time.Minute, "padding around the run's time window for CloudWatch and CloudTrail queries")
 	fs.BoolVar(&o.showVersion, "version", false, "print the version and exit")
+	fs.BoolVar(&o.initConfig, "init-config", false, "write a starter config file, every key explained, to ~/.config/sparkplain/config.yaml (or -config) and exit")
 	fs.BoolVar(&o.check, "check", false, "check what the run can read, print it, and exit (0 all readable, 3 not)")
 	fs.StringVar(&o.show, "show", "", "print the event at file:line (as the pages cite it), redacted, and exit")
 	fs.Func("source", "the application's source file or folder, shown beside jobs and stages in the explorer (repeatable; redacted)", func(v string) error {
@@ -105,6 +106,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if o.showVersion {
 		fmt.Fprintln(stdout, "sparkplain", version)
 		return exitOK
+	}
+	if o.initConfig {
+		return writeStarterConfig(firstNonEmpty(o.configPath, defaultConfigPath()), stdout, stderr)
 	}
 	con := newConsole(stdout, stderr)
 	fail := func(format string, a ...any) int {

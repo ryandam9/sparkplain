@@ -1,0 +1,100 @@
+# sparkplain config file.
+#
+# sparkplain reads this from ~/.config/sparkplain/config.yaml (or the file
+# given with -config). Every key is optional. Command-line flags win over
+# this file. A key sparkplain does not know stops the run, so a typo
+# does not pass unnoticed.
+#
+# Lines starting with "#" are comments. To use a setting, remove the "# "
+# in front of it and put in your value.
+
+# ---------------------------------------------------------------------
+# Environments
+#
+# One block per set of clusters, such as prod and nonprod. Pick one with
+# -env, and a run needs nothing else:
+#
+#     sparkplain -app-id application_1790562795039_0001 -env prod
+#
+# A block's keys override the same keys at the top of this file. Each one
+# can set cluster-name, hbase-cluster-name, profile, region,
+# eventlog-prefix, timezone and out.
+# ---------------------------------------------------------------------
+environments:
+  prod:
+    # The EMR cluster that runs Spark, by name. Of the clusters with this
+    # name, sparkplain picks the one that was up when the application
+    # started (the time is in the application ID), even if it has ended.
+    cluster-name: my-spark-cluster-prod
+
+    # HBase on a separate EMR cluster, by name. Leave it out when HBase
+    # runs on the Spark cluster, or is not used.
+    # hbase-cluster-name: my-hbase-cluster-prod
+
+    # The AWS profile (from ~/.aws/config) and region to read with. Access
+    # is read-only: sparkplain never changes anything in AWS.
+    profile: prod-readonly
+    region: us-east-1
+
+    # Where Spark writes its event logs on S3, when the cluster keeps them
+    # on HDFS (EMR's default). Leave it out when the cluster's
+    # spark.eventLog.dir is already on S3.
+    # eventlog-prefix: s3://my-prod-logs/spark-events/
+
+  nonprod:
+    cluster-name: my-spark-cluster-dev
+    profile: dev-readonly
+    region: us-east-1
+
+# ---------------------------------------------------------------------
+# Defaults for every run (and for any environment that does not set them)
+# ---------------------------------------------------------------------
+
+# The same keys as in an environment, for a run without -env:
+# cluster-name: my-spark-cluster
+# hbase-cluster-name: my-hbase-cluster
+# profile: default
+# region: us-east-1
+# eventlog-prefix: s3://my-logs/spark-events/
+
+# The time zone the report shows times in (default: this machine's).
+# timezone: Australia/Sydney
+
+# Where reports are written (default ~/sparkplain/<yyyy-mm-dd>/<app-id>/).
+# out: ~/reports
+
+# Which files to write: html, json and explorer (default all three).
+# format: html,json,explorer
+
+# Safety limits: the largest file to read as stored, the most one
+# compressed file may unpack to, and the longest a run may take.
+# max-size: 10GiB
+# max-unpacked: 50GiB
+# overall-timeout: 30m
+
+# When findings fire. The values shown are the defaults.
+# thresholds:
+#   skew-ratio: 5             # a stage's slowest task over 5x its median
+#   skew-min-task: 1s         # ... when that task took at least this long
+#   skew-min-tasks: 5         # ... in a stage with at least this many tasks
+#   spill-share: 0.10         # disk spill over 10% of the shuffle written
+#   gc-share: 0.10            # garbage collection over 10% of task time
+#   low-cpu-share: 0.30       # CPU time under 30% of task run time
+#   memory-used-share: 0.40   # peak heap under 40% of the heap given
+#   min-run-time: 1m          # less task time than this skips the CPU and GC rules
+#   sched-delay-share: 0.20   # scheduler delay over 20% of task time
+#   locality-any-share: 0.30  # over 30% of input tasks away from their data's node
+#   result-share: 0.50        # a stage's results over 50% of spark.driver.maxResultSize
+#   slow-startup: 1m          # executors taking longer than this to register
+#   driver-gap-share: 0.25    # no job running for over 25% of the run
+#   driver-gap-min: 1m        # ... and at least this long in all
+#   hbase-time-share: 0.50    # stages reading or writing HBase over 50% of the run
+#   hbase-connections: 50     # one process opening over this many ZooKeeper connections
+#   hbase-hotspot-share: 0.75 # one region server holding over 75% of a table's regions read
+
+# How much task detail the explorer page keeps (larger means a bigger page).
+# explorer:
+#   slowest-per-stage: 100
+#   sample-per-stage: 1000
+#   max-sampled-tasks: 100000
+#   max-stage-executor-cells: 1000000
