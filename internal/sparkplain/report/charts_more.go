@@ -75,6 +75,9 @@ type chartGuide struct {
 	Axes [][2]string `json:"axes"`
 	Read []string    `json:"read"`
 	Note string      `json:"note,omitempty"`
+	// Run says what this run's chart shows (runNotes), with links to the
+	// findings it is evidence for.
+	Run []runPoint `json:"run,omitempty"`
 }
 
 // html renders the guide. The explorer's guideNodes draws the same shape.
@@ -88,6 +91,7 @@ func (g chartGuide) html() template.HTML {
 		b.WriteString(`</dl>`)
 	}
 	b.WriteString(string(pointList("read", "How to read it", g.Read)))
+	b.WriteString(string(runList(g.Run)))
 	if g.Note != "" {
 		fmt.Fprintf(&b, `<p class="cap">%s</p>`, esc(g.Note))
 	}
@@ -107,6 +111,30 @@ func pointList(cls, title string, points []string) template.HTML {
 	fmt.Fprintf(&b, `<div class="%s"><b>%s</b><ul>`, cls, esc(title))
 	for _, p := range points {
 		fmt.Fprintf(&b, `<li>%s</li>`, esc(p))
+	}
+	b.WriteString(`</ul></div>`)
+	return template.HTML(b.String())
+}
+
+// runList renders a chart's "In this run": a paragraph for one point, or a
+// bullet list, with each finding linked to the report's findings list.
+func runList(points []runPoint) template.HTML {
+	item := func(p runPoint) string {
+		if p.Finding > 0 {
+			return fmt.Sprintf(`<a href="#finding-%d">%s</a>`, p.Finding, esc(p.Text))
+		}
+		return esc(p.Text)
+	}
+	switch len(points) {
+	case 0:
+		return ""
+	case 1:
+		return template.HTML(`<p class="run"><b>In this run</b> ` + item(points[0]) + `</p>`)
+	}
+	var b strings.Builder
+	b.WriteString(`<div class="run"><b>In this run</b><ul>`)
+	for _, p := range points {
+		b.WriteString(`<li>` + item(p) + `</li>`)
 	}
 	b.WriteString(`</ul></div>`)
 	return template.HTML(b.String())
@@ -344,6 +372,7 @@ func stagesChart(r *model.Report, explorer string) template.HTML {
 			note: model.Duration(int64(stageMs(s)))})
 	}
 	return chartBox("The longest stages", chartGuide{
+		Run: runNotes(r)["stages"],
 		Axes: [][2]string{
 			{"Rows", "One stage each, the longest at the top."},
 			{"Bar length", "How long the stage ran, from when it was submitted to when it finished."},
@@ -374,6 +403,7 @@ func spreadChart(r *model.Report, explorer string) template.HTML {
 			note: "slowest " + model.Duration(d.Max)})
 	}
 	return chartBox("Task time spread", chartGuide{
+		Run: runNotes(r)["spread"],
 		Axes: [][2]string{
 			{"Rows", "The stages whose slowest task took longest."},
 			{"Across", "How long a task took."},
@@ -407,6 +437,7 @@ func dataChart(r *model.Report, explorer string) template.HTML {
 		}, note: model.Bytes(int64(moved(s)))})
 	}
 	return chartBox("Data each stage moved", chartGuide{
+		Run: runNotes(r)["data"],
 		Axes: [][2]string{
 			{"Rows", "The stages that moved the most data."},
 			{"Bar length", "Bytes, split into what the stage read, shuffled in (shuffle read), shuffled out (shuffle write), wrote and spilled to disk."},
@@ -454,6 +485,7 @@ func dataOverTime(r *model.Report, loc *time.Location) template.HTML {
 		return ""
 	}
 	return chartBox("Data over time", chartGuide{
+		Run: runNotes(r)["dataOverTime"],
 		Axes: [][2]string{
 			{"Across", "Time of day, while the application ran."},
 			{"Up", "Bytes so far: a running total of data read, shuffled out and written, added as each stage finished."},
@@ -477,6 +509,7 @@ func spillChart(r *model.Report) template.HTML {
 		}, note: model.Bytes(s.DiskBytes) + " to disk"})
 	}
 	return chartBox("Spill by stage", chartGuide{
+		Run: runNotes(r)["spill"],
 		Axes: [][2]string{
 			{"Rows", "The stages that spilled, most first."},
 			{"Bar length", "Bytes spilled: the data's size as it was held in memory, and what it came to on disk (smaller, because it is compressed)."},
@@ -507,6 +540,7 @@ func timeChart(r *model.Report) template.HTML {
 		}, note: model.Duration(t.RunTimeMs)})
 	}
 	return chartBox("Where executor time went", chartGuide{
+		Run: runNotes(r)["execTime"],
 		Axes: [][2]string{
 			{"Rows", "One executor each."},
 			{"Bar length", "The run time of all its tasks added up, split into computing on the JVM, garbage collection, and other or waiting (for shuffle data, storage or Python workers)."},
@@ -538,6 +572,7 @@ func splitChart(r *model.Report, explorer string) template.HTML {
 		}})
 	}
 	return chartBox("Where stage time went", chartGuide{
+		Run: runNotes(r)["split"],
 		Axes: [][2]string{
 			{"Rows", "The stages with the most task time."},
 			{"Bar length", "Every task's time added up, split by what it was spent on: starting (scheduler delay and unpacking the task), computing, garbage collection, shuffle (waiting for data from other executors and writing it out), sending the result, and other (reading files, waiting on Python)."},
@@ -627,6 +662,7 @@ func nodeMemoryChart(r *model.Report) template.HTML {
 		return template.HTML(`<div class="chart"><h4>What YARN placed on each node</h4><p class="cap">` + esc(unknownNote(unknown)) + `</p></div>`)
 	}
 	return chartBox("What YARN placed on each node", chartGuide{
+		Run: runNotes(r)["nodeMemory"],
 		Axes: [][2]string{
 			{"Rows", "One worker node each."},
 			{"Bar length", "The memory the node offered YARN, split into the driver's container, this application's executor containers at its busiest, and what was left free."},
@@ -680,6 +716,7 @@ func nodeCPUChart(r *model.Report, loc *time.Location) template.HTML {
 		legend = append(legend, legendItem{c, label})
 	}
 	return chartBox("Node CPU", chartGuide{
+		Run: runNotes(r)["nodeCPU"],
 		Axes: [][2]string{
 			{"Across", "Time of day, while the application ran."},
 			{"Up", "CPU use of the whole machine, from 0 to 100%, one line per node, averaged over EC2's 5-minute periods."},
@@ -714,6 +751,7 @@ func queriesChart(r *model.Report, explorer string) template.HTML {
 			segs: []seg{{dur(q), color, q.Description}}, note: model.Duration(int64(dur(q)))})
 	}
 	return chartBox("The longest queries", chartGuide{
+		Run: runNotes(r)["queries"],
 		Axes: [][2]string{
 			{"Rows", "One SQL statement or DataFrame action each, the longest at the top."},
 			{"Bar length", "How long it ran."},
@@ -736,9 +774,10 @@ func chartFuncs(loc *time.Location, explorer string) template.FuncMap {
 		"dataChart":    func(r *model.Report) template.HTML { return dataChart(r, explorer) },
 		"dataOverTime": func(r *model.Report) template.HTML { return dataOverTime(r, loc) },
 		"spillChart":   spillChart,
-		"guide": func(axes [][2]string, read []string, note string) template.HTML {
-			return chartGuide{Axes: axes, Read: read, Note: note}.html()
+		"guide": func(axes [][2]string, read []string, note string, run []runPoint) template.HTML {
+			return chartGuide{Axes: axes, Read: read, Note: note, Run: run}.html()
 		},
+		"runNotes": func(r *model.Report, chart string) []runPoint { return runNotes(r)[chart] },
 		"axes": func(kv ...string) [][2]string {
 			var out [][2]string
 			for i := 0; i+1 < len(kv); i += 2 {
