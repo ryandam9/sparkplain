@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,5 +77,49 @@ func TestAppClusterStart(t *testing.T) {
 	}
 	if !appClusterStart("app-20260925-0001").IsZero() {
 		t.Error("an ID with no time gave one")
+	}
+}
+
+// A config file can hold a set of keys per environment; with -env the run
+// takes that set's clusters, profile and region over the top-level ones,
+// so -app-id and -env are all it needs.
+func TestEnvironmentsInConfig(t *testing.T) {
+	bucket, stub := hbaseCluster0083(t, false)
+	fakeAWS(t, map[string]string{"logs": bucket}, stub.clusters)
+	var profiles []string
+	awsDeps.config = func(_ context.Context, profile, region string) (aws.Config, error) {
+		profiles = append(profiles, profile+"/"+region)
+		return aws.Config{Region: firstNonEmpty(region, "us-east-1")}, nil
+	}
+	yarnStart := appClusterStart("application_1790380000000_0092")
+	up := func(id, name string) types.ClusterSummary {
+		return types.ClusterSummary{Id: aws.String(id), Name: aws.String(name),
+			Status: &types.ClusterStatus{State: types.ClusterStateWaiting, Timeline: &types.ClusterTimeline{CreationDateTime: aws.Time(yarnStart.Add(-time.Hour))}}}
+	}
+	stub.summaries = []types.ClusterSummary{up(hbaseCluster, "etl-prod"), up("j-NONPROD", "etl-nonprod")}
+	awsDeps.emr = func(aws.Config) awsmeta.EMRAPI { return stub }
+	cfg := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(cfg, []byte(`profile: default
+region: us-east-1
+environments:
+  prod:
+    cluster-name: etl-prod
+    profile: prod-emr
+    region: ap-southeast-2
+  nonprod:
+    cluster-name: etl-nonprod
+    profile: dev-emr
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errs := runCLI(t, "-app-id", "application_1790380000000_0092", "-config", cfg, "-env", "prod", "-check")
+	if code == exitFatal || !strings.Contains(flat(out), "Cluster "+hbaseCluster) || !strings.Contains(flat(out), "found by name etl-prod") ||
+		len(profiles) == 0 || profiles[0] != "prod-emr/ap-southeast-2" {
+		t.Errorf("-env prod: exit %d, profiles %v\n%s\n%s", code, profiles, out, errs)
+	}
+	// An environment that is not there names the ones that are.
+	if code, _, errs := runCLI(t, "-app-id", "application_1790380000000_0092", "-config", cfg, "-env", "staging"); code != exitFatal ||
+		!strings.Contains(errs, "no environment of that name; it has nonprod, prod") {
+		t.Errorf("-env staging: exit %d: %s", code, errs)
 	}
 }

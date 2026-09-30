@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -26,6 +28,11 @@ type fileConfig struct {
 	Profile          string `yaml:"profile"`
 	Region           string `yaml:"region"`
 
+	// Envs are named sets of the keys above that differ between
+	// environments, such as prod and nonprod; -env picks one, whose keys
+	// override the top-level ones.
+	Envs map[string]envConfig `yaml:"environments"`
+
 	EventLogPrefix string               `yaml:"eventlog-prefix"`
 	TimeZone       string               `yaml:"timezone"`
 	Out            string               `yaml:"out"`
@@ -35,6 +42,51 @@ type fileConfig struct {
 	OverallTimeout time.Duration        `yaml:"overall-timeout"`
 	Thresholds     thresholds           `yaml:"thresholds"`
 	Explorer       model.ExplorerLimits `yaml:"explorer"`
+}
+
+// envConfig is one environment's keys: where its clusters and logs are,
+// and how to reach them. Keys it leaves out keep the top-level values.
+type envConfig struct {
+	ClusterName      string `yaml:"cluster-name"`
+	HBaseClusterName string `yaml:"hbase-cluster-name"`
+	Profile          string `yaml:"profile"`
+	Region           string `yaml:"region"`
+	EventLogPrefix   string `yaml:"eventlog-prefix"`
+	TimeZone         string `yaml:"timezone"`
+	Out              string `yaml:"out"`
+}
+
+// withEnv is the config with environment name's keys laid over the
+// top-level ones; "" is the config as it is.
+func (c fileConfig) withEnv(name string) (fileConfig, error) {
+	if name == "" {
+		return c, nil
+	}
+	e, ok := c.Envs[name]
+	if !ok {
+		if len(c.Envs) == 0 {
+			return c, fmt.Errorf("-env %s: the config file has no environments (add them under environments:)", name)
+		}
+		names := make([]string, 0, len(c.Envs))
+		for n := range c.Envs {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		return c, fmt.Errorf("-env %s: the config file has no environment of that name; it has %s", name, strings.Join(names, ", "))
+	}
+	set := func(dst *string, v string) {
+		if v != "" {
+			*dst = v
+		}
+	}
+	set(&c.ClusterName, e.ClusterName)
+	set(&c.HBaseClusterName, e.HBaseClusterName)
+	set(&c.Profile, e.Profile)
+	set(&c.Region, e.Region)
+	set(&c.EventLogPrefix, e.EventLogPrefix)
+	set(&c.TimeZone, e.TimeZone)
+	set(&c.Out, e.Out)
+	return c, nil
 }
 
 // thresholds mirrors analyze.Thresholds with optional fields, so a file

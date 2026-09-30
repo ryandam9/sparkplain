@@ -51,12 +51,12 @@ const (
 var appIDRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.\-]{0,127}$`)
 
 type options struct {
-	profile, region, configPath, clusterID, clusterName, hbaseClusterID, hbaseClusterName, appID string
-	eventLog, from, out, format, maxSize, maxUnpacked, show                                      string
-	workers                                                                                      int
-	timeout, windowPad                                                                           time.Duration
-	noCloudWatch, noCloudTrail, showVersion, check                                               bool
-	sources                                                                                      []string
+	profile, region, configPath, env, clusterID, clusterName, hbaseClusterID, hbaseClusterName, appID string
+	eventLog, from, out, format, maxSize, maxUnpacked, show                                           string
+	workers                                                                                           int
+	timeout, windowPad                                                                                time.Duration
+	noCloudWatch, noCloudTrail, showVersion, check                                                    bool
+	sources                                                                                           []string
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
@@ -66,6 +66,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&o.profile, "profile", "", "named AWS profile for online runs (default for the default chain)")
 	fs.StringVar(&o.region, "region", "", "AWS region override (online runs)")
 	fs.StringVar(&o.configPath, "config", "", "YAML defaults file (default ~/.config/sparkplain/config.yaml)")
+	fs.StringVar(&o.env, "env", "", "environment in the config file, such as prod or nonprod: its clusters, profile, region and event log location")
 	fs.StringVar(&o.clusterID, "cluster-id", "", "EMR cluster ID: read its metadata and logs from AWS (needs -profile)")
 	fs.StringVar(&o.clusterName, "cluster-name", "", "EMR cluster name, instead of -cluster-id: the cluster of that name that ran the application (also cluster-name in the config file)")
 	fs.StringVar(&o.hbaseClusterID, "hbase-cluster-id", "", "EMR cluster ID that runs HBase when it is separate from the Spark cluster")
@@ -130,12 +131,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return fail("%v", err)
 	}
+	if cfg, err = cfg.withEnv(o.env); err != nil {
+		return fail("%v", err)
+	}
 	// The config file names the clusters, the profile and the region when
-	// the flags do not. Its cluster names stand aside for a -from or
-	// -eventlog run that names no cluster: those are asked to read local
-	// files only.
+	// the flags do not. Its cluster names stand aside for a -from run, and
+	// for an -eventlog run that names no cluster and no -env: those are
+	// asked to read local files only.
 	o.profile, o.region = firstNonEmpty(o.profile, cfg.Profile), firstNonEmpty(o.region, cfg.Region)
-	if o.clusterID == "" && o.clusterName == "" && o.from == "" && o.eventLog == "" {
+	if o.clusterID == "" && o.clusterName == "" && o.from == "" && (o.eventLog == "" || o.env != "") {
 		o.clusterName = cfg.ClusterName
 	}
 	if o.hbaseClusterID == "" && o.hbaseClusterName == "" && (o.clusterID != "" || o.clusterName != "") {

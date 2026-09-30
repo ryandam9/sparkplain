@@ -195,6 +195,9 @@ sparkplain -profile default -cluster-name nightly-etl -hbase-cluster-name hbase-
 
 # With the names and the profile in the config file (below), only the application
 sparkplain -app-id application_1700000000000_0042
+
+# With an environment per set of clusters in the config file: the application and which one
+sparkplain -app-id application_1700000000000_0042 -env prod
 ```
 
 **Clusters by name.** EMR often has several clusters with one name, such as yesterday's (terminated) and today's. `-cluster-name` picks the one that ran the application: the one up when its YARN started, which is the time in the application's ID (`application_<ms>_<n>`), whether it is still running or has ended. `-hbase-cluster-name` picks the HBase cluster of that name up then, or else the one running now. When two could be the one, or none fits, the run lists them with their IDs, states and times, and you pass the ID instead. The access check prints which cluster a name found and why. Only `ListClusters` is added, which is read-only.
@@ -326,6 +329,16 @@ hbase-cluster-name: hbase-prod                # HBase on a separate cluster, if 
 profile: prod-emr                             # the AWS profile, and region, for online runs
 region: us-east-1
 eventlog-prefix: s3://my-logs/spark-events/   # used when -eventlog is not given
+environments:          # named sets picked with -env; their keys override the ones above
+  prod:
+    cluster-name: nightly-etl
+    hbase-cluster-name: hbase-prod
+    profile: prod-emr
+    region: us-east-1
+    eventlog-prefix: s3://prod-logs/spark-events/
+  nonprod:
+    cluster-name: nightly-etl-dev
+    profile: dev-emr
 timezone: Australia/Sydney                    # for times in the report (default: this machine's zone)
 out: ~/reports                                # default ~/sparkplain/<yyyy-mm-dd>/<app-id>/
 format: html,json,explorer

@@ -148,6 +148,7 @@ Rules that judge CPU, GC and memory size skip runs with less than `min-run-time`
 | --- | --- |
 | `-app-id` | The application (required) |
 | `-profile`, `-region`, `-cluster-id`, `-cluster-name` | Online runs. `-cluster-name` (or `cluster-name` in the config file): of the clusters with that name, the one up when the application's YARN started, the time in its ID (`application_<ms>_<n>`), whether running or ended since; of several up then, the last created before it, unless another was created within ten minutes of it; with no time in the ID, the one running now, else the newest. Anything else stops with the clusters of that name listed (ID, state, created, ended). The access check prints which cluster the name found and why |
+| `-env` | An environment in the config file, such as `prod` or `nonprod`: its keys (`cluster-name`, `hbase-cluster-name`, `profile`, `region`, `eventlog-prefix`, `timezone`, `out`) override the top-level ones, and flags override both, so `-app-id` and `-env` are enough. An unknown name stops the run and names the environments there are. With `-env`, the environment's cluster is read even when `-eventlog` is given |
 | `-hbase-cluster-id`, `-hbase-cluster-name` | HBase on a separate EMR cluster (by name also `hbase-cluster-name` in the config file): the cluster of that name up when the application's YARN started, else the one running now |
 | `-eventlog` | The event log (§2) |
 | `-from` | An offline copy of the cluster's logs; not with `-cluster-id` |
@@ -181,6 +182,9 @@ cluster-name: nightly-etl        # as -cluster-name; not for a run given -eventl
 hbase-cluster-name: hbase-prod   # as -hbase-cluster-name
 profile: prod-emr                # as -profile and -region
 region: us-east-1
+environments:                    # picked with -env; each may set cluster-name, hbase-cluster-name, profile, region, eventlog-prefix, timezone and out
+  prod: {cluster-name: nightly-etl, profile: prod-emr}
+  nonprod: {cluster-name: nightly-etl-dev, profile: dev-emr}
 eventlog-prefix: s3://my-logs/spark-events/   # used when -eventlog is not given
 timezone: Australia/Sydney
 out: ~/reports
