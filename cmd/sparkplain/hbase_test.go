@@ -134,7 +134,6 @@ func hbaseSummary(r model.Report) string {
 	return strings.Join(out, "; ")
 }
 
-
 func TestHBaseOnSeparateEMRCluster(t *testing.T) {
 	bucket, stub := hbaseCluster0083(t, true)
 	const sparkCluster = "j-FIXTURE0083SPARK"
