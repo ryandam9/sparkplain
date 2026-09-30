@@ -163,3 +163,25 @@ func TestConsoleAnimated(t *testing.T) {
 
 // Tests run with the console still; TestConsoleAnimated turns it on.
 func init() { animPace = 0 }
+
+// Numbers and their units are coloured; digits in names and paths are not.
+func TestNumbersColoured(t *testing.T) {
+	c := func(s string) string { return "\x1b[" + numberColour + "m" + s + "\x1b[39m" }
+	for in, want := range map[string]string{
+		"527 events, 1.7 MiB":                            c("527") + " events, " + c("1.7 MiB"),
+		"ran for 39 s as hadoop":                         "ran for " + c("39 s") + " as hadoop",
+		"one task ran 17× longer (86%).":                 "one task ran " + c("17×") + " longer (" + c("86%") + ").",
+		"1 critical · 4 warnings":                        c("1") + " critical · " + c("4") + " warnings",
+		"2 stages spilled 337 MiB to disk":               c("2") + " stages spilled " + c("337 MiB") + " to disk",
+		"application_1790380000000_0042 on ip-10-0-2-13": "application_1790380000000_0042 on ip-10-0-2-13",
+		"/tmp/out/001 and 3rd":                           "/tmp/out/001 and 3rd",
+		"2 min 15 s":                                     c("2 min") + " " + c("15 s"),
+	} {
+		if got := numbers(true, in); got != want {
+			t.Errorf("numbers(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if numbers(false, "527 events") != "527 events" {
+		t.Error("coloured without colour")
+	}
+}

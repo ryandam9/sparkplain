@@ -128,6 +128,56 @@ const (
 	blue  = "34"
 )
 
+// numberColour is the colour numbers and their units are shown in. It
+// resets only the foreground, so a number in a dim or bold line stays so.
+const numberColour = "36"
+
+// numbers colours each number in s, with its unit ("1.7 MiB", "39 s",
+// "17×", "86%"), when on. Digits that are part of a name or a path, such
+// as application_1790380000000_0042, ip-10-0-2-13 or /out/001, stay as
+// they are: a number starts the text or follows a space, a bracket or a
+// "·", and ends before a space or punctuation.
+func numbers(on bool, s string) string {
+	if !on {
+		return s
+	}
+	digit := func(i int) bool { return i < len(s) && s[i] >= '0' && s[i] <= '9' }
+	before := func(i int) bool {
+		return i == 0 || strings.ContainsRune(" ([", rune(s[i-1])) || strings.HasSuffix(s[:i], "·")
+	}
+	after := func(i int) bool { return i >= len(s) || strings.ContainsRune(" ,.;:)]", rune(s[i])) }
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		if !digit(i) || !before(i) {
+			b.WriteByte(s[i])
+			i++
+			continue
+		}
+		j := i
+		for digit(j) || j+1 < len(s) && (s[j] == '.' || s[j] == ',') && digit(j+1) {
+			j++
+		}
+		end := -1
+		for _, u := range []string{"%", "×", " TiB", " GiB", " MiB", " KiB", " B", " ms", " min", " s", " h"} {
+			if strings.HasPrefix(s[j:], u) && after(j+len(u)) {
+				end = j + len(u)
+				break
+			}
+		}
+		if end < 0 && after(j) {
+			end = j
+		}
+		if end < 0 { // part of a word, such as 3rd or 10-0
+			b.WriteString(s[i:j])
+			i = j
+			continue
+		}
+		b.WriteString("\x1b[" + numberColour + "m" + s[i:end] + "\x1b[39m")
+		i = end
+	}
+	return b.String()
+}
+
 func paint(on bool, code, s string) string {
 	if !on || s == "" {
 		return s
@@ -216,7 +266,7 @@ func (c *console) note(format string, a ...any) {
 		return
 	}
 	c.clear()
-	c.wrap(c.err, "  ", "  ", msg, func(s string) string { return paint(c.colErr, dim, s) })
+	c.wrap(c.err, "  ", "  ", msg, func(s string) string { return paint(c.colErr, dim, numbers(c.colErr, s)) })
 }
 
 // status shows what sparkplain is doing until the next line replaces it;
@@ -239,7 +289,7 @@ func (c *console) status(doing string) {
 		tick := time.NewTicker(time.Duration(float64(spinTick) * animPace))
 		defer tick.Stop()
 		for i := 0; ; i++ {
-			fmt.Fprint(c.err, "\r\x1b[2K  "+paint(true, blue, spinFrames[i%len(spinFrames)])+" "+paint(true, dim, doing+"…  "+elapsed(time.Since(start))))
+			fmt.Fprint(c.err, "\r\x1b[2K  "+paint(true, blue, spinFrames[i%len(spinFrames)])+" "+paint(true, dim, doing+"…  ")+numbers(true, elapsed(time.Since(start))))
 			select {
 			case <-stop:
 				return
@@ -312,7 +362,7 @@ func (c *console) sourceLine(w io.Writer, col bool, s model.SourceStatus) {
 	}
 	lead := "  " + c.mark(col, m) + " " + fmt.Sprintf("%-*s", nameCol, s.Name) + " "
 	c.settle(w, "  ", settleFrames)
-	c.wrapLimited(w, lead, strings.Repeat(" ", nameCol+5), detail, s.Status == "read")
+	c.wrapLimited(w, col, lead, strings.Repeat(" ", nameCol+5), detail, s.Status == "read")
 }
 
 // parenRE is an aside in brackets, which a source read as expected can do
@@ -369,7 +419,7 @@ func (c *console) summary(r *model.Report, written map[string]string, order []st
 		c.section(w, col, "What happened", "")
 		for _, s := range said {
 			c.pause(4 * frameGap)
-			c.wrap(w, "  ", "  ", s, nil)
+			c.wrap(w, "  ", "  ", s, func(l string) string { return numbers(col, l) })
 		}
 	}
 
@@ -389,7 +439,7 @@ func (c *console) summary(r *model.Report, written map[string]string, order []st
 	if len(parts) == 0 {
 		parts = []string{"none"}
 	}
-	c.section(w, col, "Findings", "  "+strings.Join(parts, " · "))
+	c.section(w, col, "Findings", "  "+numbers(col, strings.Join(parts, " · ")))
 	for _, f := range r.Findings {
 		// A dot coloured by severity; without colour, !! critical, ! warning, - note.
 		mark := map[model.Severity]string{model.Critical: "!!", model.Warning: "!"}[f.Severity]
@@ -407,7 +457,7 @@ func (c *console) summary(r *model.Report, written map[string]string, order []st
 			c.settle(w, "  ", frames)
 		}
 		lead := "  " + mark + " "
-		c.wrap(w, lead, strings.Repeat(" ", visibleLen(lead)), f.Title, nil)
+		c.wrap(w, lead, strings.Repeat(" ", visibleLen(lead)), f.Title, func(l string) string { return numbers(col, l) })
 	}
 
 	// The folder once, then the files in it.
@@ -427,7 +477,7 @@ func (c *console) summary(r *model.Report, written map[string]string, order []st
 	if p := written["Report"]; p != "" {
 		fmt.Fprintf(w, "  %s %s %s\n", paint(col, dim, "Open it"), c.opener, shellQuote(p))
 	}
-	done := fmt.Sprintf("Done in %s · ", elapsed(time.Since(c.started)))
+	done := fmt.Sprintf("Done in %s · ", numbers(col, elapsed(time.Since(c.started))))
 	m := -1
 	switch exit {
 	case exitOK:
@@ -504,7 +554,7 @@ func (c *console) wrap(w io.Writer, lead, indent, text string, style func(string
 
 // wrapLimited is wrap for a source's line: up to two lines when the
 // source was read as expected, three when it says what is missing.
-func (c *console) wrapLimited(w io.Writer, lead, indent, text string, oneLine bool) {
+func (c *console) wrapLimited(w io.Writer, col bool, lead, indent, text string, oneLine bool) {
 	width := c.width - visibleLen(lead)
 	lines := wrapWords(text, width)
 	max := 3
@@ -523,9 +573,9 @@ func (c *console) wrapLimited(w io.Writer, lead, indent, text string, oneLine bo
 	if len(lines) == 0 {
 		lines = []string{""}
 	}
-	fmt.Fprintln(w, lead+lines[0])
+	fmt.Fprintln(w, lead+numbers(col, lines[0]))
 	for _, l := range lines[1:] {
-		fmt.Fprintln(w, indent+l)
+		fmt.Fprintln(w, indent+numbers(col, l))
 	}
 }
 
@@ -649,15 +699,15 @@ func (c *console) accessCheck(chk checked, profile, region string, online bool) 
 			fmt.Fprintln(w, strings.TrimRight(lead, " "))
 			fmt.Fprintln(w, "    "+first)
 		case r.Status == "ok" && rest != "" && visibleLen(lead)+len(first)+3+len(rest) <= c.width:
-			fmt.Fprintln(w, lead+first+"  "+paint(col, dim, rest))
+			fmt.Fprintln(w, lead+first+"  "+paint(col, dim, numbers(col, rest)))
 			rest = ""
 		default:
 			c.wrap(w, lead, indent, first, nil)
 		}
 		if rest != "" {
-			style := func(s string) string { return s }
+			style := func(s string) string { return numbers(col, s) }
 			if r.Status == "ok" {
-				style = func(s string) string { return paint(col, dim, s) }
+				style = func(s string) string { return paint(col, dim, numbers(col, s)) }
 			}
 			c.wrap(w, indent, indent, rest, style)
 		}
