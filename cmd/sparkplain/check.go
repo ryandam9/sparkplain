@@ -241,7 +241,7 @@ func accessCheck(ctx context.Context, cloud *awsSession, in checkInput) checked 
 		jobs = append(jobs, func(x context.Context) {
 			r := model.AccessCheck{Name: "HBase server logs", Location: o.hbaseClusterID,
 				Call: "DescribeCluster, ListInstances, ListObjectsV2 and GetObject (one byte)",
-				Try: try("aws emr describe-cluster --cluster-id " + o.hbaseClusterID)}
+				Try:  try("aws emr describe-cluster --cluster-id " + o.hbaseClusterID)}
 			hcl, err := cloud.cluster(x, o.hbaseClusterID, "")
 			if err != nil {
 				r.Status, r.Class, r.Detail = "error", awsmeta.ErrorClass(err), "Could not describe the HBase cluster: "+err.Error()
