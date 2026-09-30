@@ -21,6 +21,12 @@ import (
 // read, with a note of what is being read in the meantime, and markers
 // are coloured (not with NO_COLOR or TERM=dumb). Piped, the summary lists
 // the sources itself and notes keep their "sparkplain:" prefix on stderr.
+//
+// On a colour terminal the console is also animated: the note of what is
+// being read spins and counts the seconds, each mark settles into its dot,
+// sections arrive a beat apart and lines one after another. Piped output,
+// NO_COLOR, a CI environment or SPARKPLAIN_NO_ANIMATION=1 turn it off, and
+// the text is the same either way.
 type console struct {
 	out, err     io.Writer
 	live         bool // stdout and stderr are both a terminal
@@ -35,7 +41,31 @@ type console struct {
 	headed       bool            // the access check printed the cluster and the sources checked
 	working      bool            // a transient "reading …" line is on screen
 	home, opener string
+
+	animate  bool          // spin, settle and pace (see the type)
+	spinStop chan struct{} // stops the status line's spinner
+	spinDone chan struct{} // closed once the spinner has stopped writing
 }
+
+// animPace scales every pause and frame of the animation; tests set it to
+// 0, which turns the animation off.
+var animPace = 1.0
+
+// The animation's timing: a beat before each section, the frames a mark
+// or a finding's dot spins through before it settles, and how often the
+// status line redraws.
+const (
+	sectionGap = time.Second
+	frameGap   = 45 * time.Millisecond
+	spinTick   = 90 * time.Millisecond
+)
+
+var (
+	spinFrames   = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	settleFrames = []string{"⠋", "⠹", "⠼"}
+	growFrames   = []string{"∙", "•"}
+	headerFrames = []string{"◇", "◈"}
+)
 
 // isTerminal reports whether w is a terminal; tests replace it.
 var isTerminal = func(w io.Writer) bool {
@@ -59,7 +89,34 @@ func newConsole(out, err io.Writer) *console {
 	if runtime.GOOS == "darwin" {
 		c.opener = "open"
 	}
+	c.animate = c.live && c.colOut && c.colErr && animPace > 0 && os.Getenv("CI") == "" && os.Getenv("SPARKPLAIN_NO_ANIMATION") == ""
 	return c
+}
+
+// pause waits d when animating.
+func (c *console) pause(d time.Duration) {
+	if c.animate {
+		time.Sleep(time.Duration(float64(d) * animPace))
+	}
+}
+
+// settle draws frames in place after prefix, one after another, then
+// clears the line so the real one can be printed over it.
+func (c *console) settle(w io.Writer, prefix string, frames []string) {
+	if !c.animate {
+		return
+	}
+	for _, f := range frames {
+		fmt.Fprint(w, "\r\x1b[2K"+prefix+f)
+		c.pause(frameGap)
+	}
+	fmt.Fprint(w, "\r\x1b[2K")
+}
+
+// section prints a section's heading, a beat after what came before.
+func (c *console) section(w io.Writer, col bool, title, rest string) {
+	c.pause(sectionGap)
+	fmt.Fprintln(w, heading(col, title)+rest)
 }
 
 const (
@@ -71,6 +128,56 @@ const (
 	blue  = "34"
 )
 
+// numberColour is the colour numbers and their units are shown in. It
+// resets only the foreground, so a number in a dim or bold line stays so.
+const numberColour = "36"
+
+// numbers colours each number in s, with its unit ("1.7 MiB", "39 s",
+// "17×", "86%"), when on. Digits that are part of a name or a path, such
+// as application_1790380000000_0042, ip-10-0-2-13 or /out/001, stay as
+// they are: a number starts the text or follows a space, a bracket or a
+// "·", and ends before a space or punctuation.
+func numbers(on bool, s string) string {
+	if !on {
+		return s
+	}
+	digit := func(i int) bool { return i < len(s) && s[i] >= '0' && s[i] <= '9' }
+	before := func(i int) bool {
+		return i == 0 || strings.ContainsRune(" ([", rune(s[i-1])) || strings.HasSuffix(s[:i], "·")
+	}
+	after := func(i int) bool { return i >= len(s) || strings.ContainsRune(" ,.;:)]", rune(s[i])) }
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		if !digit(i) || !before(i) {
+			b.WriteByte(s[i])
+			i++
+			continue
+		}
+		j := i
+		for digit(j) || j+1 < len(s) && (s[j] == '.' || s[j] == ',') && digit(j+1) {
+			j++
+		}
+		end := -1
+		for _, u := range []string{"%", "×", " TiB", " GiB", " MiB", " KiB", " B", " ms", " min", " s", " h"} {
+			if strings.HasPrefix(s[j:], u) && after(j+len(u)) {
+				end = j + len(u)
+				break
+			}
+		}
+		if end < 0 && after(j) {
+			end = j
+		}
+		if end < 0 { // part of a word, such as 3rd or 10-0
+			b.WriteString(s[i:j])
+			i = j
+			continue
+		}
+		b.WriteString("\x1b[" + numberColour + "m" + s[i:end] + "\x1b[39m")
+		i = end
+	}
+	return b.String()
+}
+
 func paint(on bool, code, s string) string {
 	if !on || s == "" {
 		return s
@@ -79,16 +186,34 @@ func paint(on bool, code, s string) string {
 }
 
 // clear removes the transient "reading …" line before anything else is
-// printed on the terminal.
+// printed on the terminal, stopping its spinner first so nothing else
+// writes to the terminal meanwhile.
 func (c *console) clear() {
-	if c.working {
-		fmt.Fprint(c.err, "\r\x1b[2K")
-		c.working = false
+	if !c.working {
+		return
 	}
+	if c.spinStop != nil {
+		close(c.spinStop)
+		<-c.spinDone
+		c.spinStop, c.spinDone = nil, nil
+	}
+	fmt.Fprint(c.err, "\r\x1b[2K")
+	c.working = false
 }
 
-// begin names the run, on stdout, before anything else.
+// begin names the run, on stdout, before anything else; animated, its
+// diamond fills in first.
 func (c *console) begin(appID string) {
+	for _, f := range headerFrames {
+		if !c.animate {
+			break
+		}
+		fmt.Fprint(c.out, "\r"+paint(true, blue, f)+" "+paint(true, bold, "sparkplain"))
+		c.pause(3 * frameGap)
+	}
+	if c.animate {
+		fmt.Fprint(c.out, "\r\x1b[2K")
+	}
 	fmt.Fprintf(c.out, "%s %s\n", paint(c.colOut, bold, "◆ sparkplain "+version), paint(c.colOut, dim, "· "+appID))
 }
 
@@ -107,9 +232,10 @@ func (c *console) clusterFound(cl model.Cluster) {
 	}
 }
 
-// Marks, the same everywhere: ✓ read, ✗ refused or failed, ! partial or
-// empty, ○ not asked for; without colour (piped, NO_COLOR) Y, N, ! and -,
-// so logs and scripts stay plain.
+// Marks, the same everywhere: a dot, green when read, red when refused or
+// failed, half-filled amber when partial or empty, and hollow when not
+// asked for; without colour (piped, NO_COLOR) Y, N, ! and -, so logs and
+// scripts stay plain.
 const (
 	markOK = iota
 	markBad
@@ -118,7 +244,7 @@ const (
 )
 
 func (c *console) mark(col bool, m int) string {
-	sym := [...]string{"✓", "✗", "!", "○"}[m]
+	sym := [...]string{"●", "●", "◐", "○"}[m]
 	if !col {
 		return [...]string{"Y", "N", "!", "-"}[m]
 	}
@@ -140,17 +266,37 @@ func (c *console) note(format string, a ...any) {
 		return
 	}
 	c.clear()
-	c.wrap(c.err, "  ", "  ", msg, func(s string) string { return paint(c.colErr, dim, s) })
+	c.wrap(c.err, "  ", "  ", msg, func(s string) string { return paint(c.colErr, dim, numbers(c.colErr, s)) })
 }
 
-// status shows what sparkplain is doing until the next line replaces it.
+// status shows what sparkplain is doing until the next line replaces it;
+// animated, a spinner turns beside it and the seconds count up.
 func (c *console) status(doing string) {
 	if !c.live {
 		return
 	}
 	c.clear()
-	fmt.Fprint(c.err, paint(c.colErr, dim, "  "+doing+"…"))
 	c.working = true
+	if !c.animate {
+		fmt.Fprint(c.err, paint(c.colErr, dim, "  "+doing+"…"))
+		return
+	}
+	stop, done := make(chan struct{}), make(chan struct{})
+	c.spinStop, c.spinDone = stop, done
+	start := time.Now()
+	go func() {
+		defer close(done)
+		tick := time.NewTicker(time.Duration(float64(spinTick) * animPace))
+		defer tick.Stop()
+		for i := 0; ; i++ {
+			fmt.Fprint(c.err, "\r\x1b[2K  "+paint(true, blue, spinFrames[i%len(spinFrames)])+" "+paint(true, dim, doing+"…  ")+numbers(true, elapsed(time.Since(start))))
+			select {
+			case <-stop:
+				return
+			case <-tick.C:
+			}
+		}
+	}()
 }
 
 // sources lists sources as they finish, on a terminal.
@@ -215,7 +361,8 @@ func (c *console) sourceLine(w io.Writer, col bool, s model.SourceStatus) {
 		detail = firstNonEmpty(s.Brief, parenRE.ReplaceAllString(firstSentence(detail), ""))
 	}
 	lead := "  " + c.mark(col, m) + " " + fmt.Sprintf("%-*s", nameCol, s.Name) + " "
-	c.wrapLimited(w, lead, strings.Repeat(" ", nameCol+5), detail, s.Status == "read")
+	c.settle(w, "  ", settleFrames)
+	c.wrapLimited(w, col, lead, strings.Repeat(" ", nameCol+5), detail, s.Status == "read")
 }
 
 // parenRE is an aside in brackets, which a source read as expected can do
@@ -269,9 +416,10 @@ func (c *console) summary(r *model.Report, written map[string]string, order []st
 		}
 	}
 	if len(said) > 0 {
-		fmt.Fprintln(w, heading(col, "What happened"))
+		c.section(w, col, "What happened", "")
 		for _, s := range said {
-			c.wrap(w, "  ", "  ", s, nil)
+			c.pause(4 * frameGap)
+			c.wrap(w, "  ", "  ", s, func(l string) string { return numbers(col, l) })
 		}
 	}
 
@@ -291,7 +439,7 @@ func (c *console) summary(r *model.Report, written map[string]string, order []st
 	if len(parts) == 0 {
 		parts = []string{"none"}
 	}
-	fmt.Fprintln(w, heading(col, "Findings")+"  "+strings.Join(parts, " · "))
+	c.section(w, col, "Findings", "  "+numbers(col, strings.Join(parts, " · ")))
 	for _, f := range r.Findings {
 		// A dot coloured by severity; without colour, !! critical, ! warning, - note.
 		mark := map[model.Severity]string{model.Critical: "!!", model.Warning: "!"}[f.Severity]
@@ -299,10 +447,17 @@ func (c *console) summary(r *model.Report, written map[string]string, order []st
 			mark = "-"
 		}
 		if col {
-			mark = paint(true, map[model.Severity]string{model.Critical: red, model.Warning: amber, model.Info: blue}[f.Severity], "●")
+			colour := map[model.Severity]string{model.Critical: red, model.Warning: amber, model.Info: blue}[f.Severity]
+			mark = paint(true, colour, "●")
+			// The dot grows into place.
+			var frames []string
+			for _, g := range growFrames {
+				frames = append(frames, paint(true, colour, g))
+			}
+			c.settle(w, "  ", frames)
 		}
 		lead := "  " + mark + " "
-		c.wrap(w, lead, strings.Repeat(" ", visibleLen(lead)), f.Title, nil)
+		c.wrap(w, lead, strings.Repeat(" ", visibleLen(lead)), f.Title, func(l string) string { return numbers(col, l) })
 	}
 
 	// The folder once, then the files in it.
@@ -316,13 +471,13 @@ func (c *console) summary(r *model.Report, written map[string]string, order []st
 				names = append(names, c.tilde(written[k]))
 			}
 		}
-		fmt.Fprintln(w, heading(col, "Written")+"  "+c.tilde(dir)+string(os.PathSeparator))
+		c.section(w, col, "Written", "  "+c.tilde(dir)+string(os.PathSeparator))
 		c.wrap(w, "  ", "  ", strings.Join(names, " · "), func(s string) string { return paint(col, dim, s) })
 	}
 	if p := written["Report"]; p != "" {
 		fmt.Fprintf(w, "  %s %s %s\n", paint(col, dim, "Open it"), c.opener, shellQuote(p))
 	}
-	done := fmt.Sprintf("Done in %s · ", elapsed(time.Since(c.started)))
+	done := fmt.Sprintf("Done in %s · ", numbers(col, elapsed(time.Since(c.started))))
 	m := -1
 	switch exit {
 	case exitOK:
@@ -343,7 +498,18 @@ func (c *console) summary(r *model.Report, written map[string]string, order []st
 	if col && m >= 0 {
 		done = c.mark(true, m) + " " + done
 	}
-	fmt.Fprintln(w, "\n"+done)
+	fmt.Fprintln(w)
+	if c.animate {
+		// A rule sweeps across before the last line.
+		c.pause(sectionGap / 2)
+		n := min(c.width, 64)
+		for i := 4; i <= n; i += 4 {
+			fmt.Fprint(w, "\r"+paint(true, dim, strings.Repeat("─", i)))
+			c.pause(frameGap / 3)
+		}
+		fmt.Fprintln(w)
+	}
+	fmt.Fprintln(w, done)
 	if exit == exitPartial && !c.live {
 		fmt.Fprintln(c.err, "sparkplain: partial report (exit 3): see the Sources panel for what is missing")
 	}
@@ -388,7 +554,7 @@ func (c *console) wrap(w io.Writer, lead, indent, text string, style func(string
 
 // wrapLimited is wrap for a source's line: up to two lines when the
 // source was read as expected, three when it says what is missing.
-func (c *console) wrapLimited(w io.Writer, lead, indent, text string, oneLine bool) {
+func (c *console) wrapLimited(w io.Writer, col bool, lead, indent, text string, oneLine bool) {
 	width := c.width - visibleLen(lead)
 	lines := wrapWords(text, width)
 	max := 3
@@ -407,9 +573,9 @@ func (c *console) wrapLimited(w io.Writer, lead, indent, text string, oneLine bo
 	if len(lines) == 0 {
 		lines = []string{""}
 	}
-	fmt.Fprintln(w, lead+lines[0])
+	fmt.Fprintln(w, lead+numbers(col, lines[0]))
 	for _, l := range lines[1:] {
-		fmt.Fprintln(w, indent+l)
+		fmt.Fprintln(w, indent+numbers(col, l))
 	}
 }
 
@@ -481,8 +647,9 @@ func (c *console) accessCheck(chk checked, profile, region string, online bool) 
 		field("As", "offline: local files only, no AWS calls")
 	}
 	field("Logs", c.tilde(chk.logRoot))
-	fmt.Fprintln(w, heading(col, "Access check"))
+	c.section(w, col, "Access check", "")
 	for _, r := range chk.rows {
+		c.settle(w, "  ", settleFrames)
 		m := markOff
 		switch r.Status {
 		case "ok":
@@ -532,15 +699,15 @@ func (c *console) accessCheck(chk checked, profile, region string, online bool) 
 			fmt.Fprintln(w, strings.TrimRight(lead, " "))
 			fmt.Fprintln(w, "    "+first)
 		case r.Status == "ok" && rest != "" && visibleLen(lead)+len(first)+3+len(rest) <= c.width:
-			fmt.Fprintln(w, lead+first+"  "+paint(col, dim, rest))
+			fmt.Fprintln(w, lead+first+"  "+paint(col, dim, numbers(col, rest)))
 			rest = ""
 		default:
 			c.wrap(w, lead, indent, first, nil)
 		}
 		if rest != "" {
-			style := func(s string) string { return s }
+			style := func(s string) string { return numbers(col, s) }
 			if r.Status == "ok" {
-				style = func(s string) string { return paint(col, dim, s) }
+				style = func(s string) string { return paint(col, dim, numbers(col, s)) }
 			}
 			c.wrap(w, indent, indent, rest, style)
 		}
