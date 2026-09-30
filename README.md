@@ -188,7 +188,13 @@ sparkplain -profile default -cluster-id j-1ABCDEF -app-id application_1700000000
 
 # By cluster name (the newest cluster with that name), in another region
 sparkplain -profile prod-emr -region us-east-1 -cluster-name nightly-etl -app-id application_1700000000000_0042
+
+# Spark and HBase on separate EMR clusters
+sparkplain -profile default -cluster-id j-SPARK123 -hbase-cluster-id j-HBASE456 \
+  -app-id application_1700000000000_0042 -eventlog s3://my-logs/spark-events/
 ```
+
+If HBase runs on a different EMR cluster, pass its ID with `-hbase-cluster-id`. sparkplain continues to read YARN, step, node, CloudWatch and CloudTrail data from the Spark cluster, but reads HBase Master and region-server logs from the HBase cluster's S3 log URI. The HBase cluster currently uses the same `-profile` and `-region` as the Spark cluster.
 
 **Access check.** Every run starts by checking what it can read, with small read-only calls, and prints a line for each source before it reads anything. It checks every access the run will need: each EMR call, listing *and* reading each log folder (a one-byte read, since a bucket policy or KMS key can allow the one and refuse the other), the event log and the job's script wherever they are, CloudWatch metrics, EC2, CloudTrail, the output folder and `-source` paths. A source it cannot read says why, what permission or file it needs, and an `aws` command that repeats the call. Add `-check` to stop there, which is a quick way to try a new profile or cluster: it exits 0 when everything is readable and 3 when something is not.
 
