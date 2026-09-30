@@ -3,8 +3,8 @@ package main
 import (
 	"io"
 	"path/filepath"
-	"runtime"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"unicode/utf8"
