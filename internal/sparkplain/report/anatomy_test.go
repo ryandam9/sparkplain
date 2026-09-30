@@ -174,7 +174,7 @@ func TestAnatomyChipLabelsFit(t *testing.T) {
 	for _, id := range []string{"5", "25", "1234", "12345678"} {
 		for _, kind := range []string{model.RemovalMemoryKill, model.RemovalLost, model.RemovalDecommissioned, model.RemovalIdle, model.RemovalKilledByDriver} {
 			var b svgw
-			drawChip(&b, &anatomy{}, anatExec{ID: id, Cores: 2, Heap: 10 * gib, PeakHeap: 6 * gib, Kind: kind}, 0, 0, noLinks)
+			drawChip(&b, &anatomy{}, anatExec{ID: id, Cores: 2, Heap: 10 * gib, PeakHeap: 6 * gib, Kind: kind}, 3*gib, 0, 0, noLinks)
 			name, status := nameRE.FindStringSubmatch(b.String()), statusRE.FindStringSubmatch(b.String())
 			if name == nil || status == nil {
 				t.Fatalf("%s %s: no name or status in %s", id, kind, b.String())
@@ -274,5 +274,27 @@ func TestAnatomyNodesNotThereForTheRun(t *testing.T) {
 	}
 	if strings.Count(svg, "room for") != 0 { // the other nodes are full
 		t.Errorf("room claimed on a node that was not there: %d claims", strings.Count(svg, "room for"))
+	}
+}
+
+// Each executor says what it was given, and the diagram has a key for every
+// colour and mark it uses, and none for what it does not.
+func TestAnatomyShowsExecutorSizeAndKey(t *testing.T) {
+	gib := int64(1 << 30)
+	n := &anatNode{Name: "ip-10-0-0-2", YARNBytes: 12 * gib, YARNCores: 4, DriverBytes: 2 * gib, ExecBytes: 3 * gib, AtOnce: 2,
+		Execs: []anatExec{{ID: "1", Cores: 2, Heap: 2 * gib, PeakHeap: gib}, {ID: "2", Cores: 2, Heap: 2 * gib, PeakHeap: gib}}}
+	svg := anatomySVG(&anatomy{Cluster: "c", Nodes: []*anatNode{n}}, noLinks)
+	for _, want := range []string{"2 cores · 3.0 GiB container", ">Executor 3.0 GiB<", "Driver&#39;s container", "Executor container", "Free YARN memory",
+		"Executor heap: fill is its peak", "One core each; darker is busier"} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("diagram lacks %q", want)
+		}
+	}
+	if strings.Contains(svg, "killed or lost") {
+		t.Error("key explains red outlines, but no executor was killed or lost")
+	}
+	n.Execs[1].Kind = model.RemovalLost
+	if svg := anatomySVG(&anatomy{Cluster: "c", Nodes: []*anatNode{n}}, noLinks); !strings.Contains(svg, "Red outline: executor killed or lost") {
+		t.Error("a lost executor, but no key for its red outline")
 	}
 }

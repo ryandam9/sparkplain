@@ -263,6 +263,7 @@ a.themebtn{text-decoration:none}
 .anat .chip.gone .cbox{stroke-dasharray:4 3} .anat .chip.bad .st{fill:var(--crit);font-weight:600}
 .anat .heap{fill:var(--surface-2);stroke:var(--line)} .anat .hpeak{fill:var(--viz-1)} .anat .hpeak.hot{fill:var(--crit)}
 .anat .core{fill:var(--viz-3)}
+.anat .key{font-size:11px;fill:var(--ink)} .anat .bad-key{fill:var(--surface);stroke:var(--crit);stroke-width:2}
 .anat .sq .sqbox{fill:var(--surface-2);stroke:var(--line)} .anat .sq .sqfill{fill:var(--viz-1);opacity:.8}
 .anat .sq.bad .sqbox{stroke:var(--crit);stroke-width:2} .anat .sq.bad .sqfill{fill:var(--crit)} .anat .sq.gone .sqbox{stroke-dasharray:3 2}
 .anat .r-res{fill:var(--na-soft);stroke:var(--line)} .anat .r-user{fill:var(--surface-2);stroke:var(--line)} .anat .r-uni{fill:var(--accent-soft);stroke:var(--line)}

@@ -601,7 +601,7 @@ const (
 	anPad     = 16.0
 	anGap     = 14.0
 	anChipW   = 168.0
-	anChipH   = 62.0
+	anChipH   = 76.0
 	anSquare  = 20.0
 	anMinWide = 900 // phones scroll the diagram rather than shrink its text
 )
@@ -694,6 +694,7 @@ func anatomySVG(a *anatomy, l anatLinks) string {
 		body.text(anW-anPad-14, y+22, "m", "end", a.ClusterNote)
 	}
 	y += 40
+	y = drawKey(body, a, y)
 
 	// Top row: the primary node with the ResourceManager, and YARN's totals.
 	topH := 118.0
@@ -753,15 +754,7 @@ func anatomySVG(a *anatomy, l anatLinks) string {
 
 	// Worker nodes.
 	if len(a.Nodes) > 0 {
-		cols := 2
-		if len(a.Nodes) > 6 {
-			cols = 3
-		}
-		if len(a.Nodes) == 1 {
-			cols = 1
-		}
-		inner := anW - 2*(anPad+14)
-		nw := (inner - float64(cols-1)*anGap) / float64(cols)
+		cols, nw := nodeCols(len(a.Nodes)), nodeWidth(len(a.Nodes))
 		maxYARN := int64(0)
 		for _, n := range a.Nodes {
 			maxYARN = max(maxYARN, n.YARNBytes, n.DriverBytes+int64(n.AtOnce)*n.ExecBytes)
@@ -833,6 +826,121 @@ func instanceLine(n *anatNode) string {
 }
 
 // Executor chips per node before they shrink to squares.
+// sameCores is the executors' core count when they all have the same, else 0.
+func sameCores(xs []anatExec) int {
+	c := 0
+	for i, x := range xs {
+		if i > 0 && x.Cores != c {
+			return 0
+		}
+		c = x.Cores
+	}
+	return c
+}
+
+// nodeCols is how many node boxes go in a row, for n nodes: two, three
+// past six, one alone.
+func nodeCols(n int) int {
+	switch {
+	case n == 1:
+		return 1
+	case n > 6:
+		return 3
+	}
+	return 2
+}
+
+// nodeWidth is how wide each of n node boxes is drawn.
+func nodeWidth(n int) float64 {
+	cols := nodeCols(n)
+	return (anW - 2*(anPad+14) - float64(cols-1)*anGap) / float64(cols)
+}
+
+// drawKey says what each colour and mark in the node boxes means, for the
+// ones this diagram uses, in a row (or two) under the cluster's name.
+func drawKey(b *svgw, a *anatomy, y float64) float64 {
+	var drv, exe, free, chips, squares, spark, bad bool
+	for _, n := range a.Nodes {
+		for _, e := range n.Execs {
+			bad = bad || e.bad()
+		}
+		drv = drv || n.DriverBytes > 0
+		exe = exe || n.AtOnce > 0 && n.ExecBytes > 0
+		if f, _ := n.free(); f > 0 && n.YARNBytes > 0 {
+			free = true
+		}
+		if len(n.Execs) > 0 {
+			if compact(n, nodeWidth(len(a.Nodes))) {
+				squares = true
+			} else {
+				chips = true
+			}
+		}
+		spark = spark || n.HasCPU && len(n.CPU) > 1
+	}
+	type item struct {
+		draw  func(x, y float64)
+		label string
+	}
+	var items []item
+	swatch := func(cls string) func(x, y float64) {
+		return func(x, y float64) {
+			b.f(`<rect class="%s" x="%.1f" y="%.1f" width="18" height="12" rx="2"/>`, cls, x, y-10)
+		}
+	}
+	if drv {
+		items = append(items, item{swatch("drv"), "Driver's container"})
+	}
+	if exe {
+		items = append(items, item{swatch("exc"), "Executor container"})
+	}
+	if free {
+		unused := "Free YARN memory"
+		if a.Shared {
+			unused = "Not used by this application"
+		}
+		items = append(items, item{swatch("freeh"), unused})
+	}
+	if chips {
+		items = append(items, item{func(x, y float64) {
+			b.f(`<rect class="heap" x="%.1f" y="%.1f" width="22" height="8" rx="2"/><rect class="hpeak" x="%.1f" y="%.1f" width="15" height="8" rx="2"/>`, x, y-8, x, y-8)
+		}, "Executor heap: fill is its peak"})
+		items = append(items, item{func(x, y float64) {
+			b.f(`<rect class="core" x="%.1f" y="%.1f" width="7" height="7" rx="1.5" style="opacity:.4"/><rect class="core" x="%.1f" y="%.1f" width="7" height="7" rx="1.5"/>`, x, y-8, x+9, y-8)
+		}, "One core each; darker is busier"})
+	}
+	if squares {
+		items = append(items, item{func(x, y float64) {
+			b.f(`<g class="sq"><rect class="sqbox" x="%.1f" y="%.1f" width="12" height="12" rx="2"/><rect class="sqfill" x="%.1f" y="%.1f" width="12" height="7" rx="1.5"/></g>`, x, y-10, x, y-5)
+		}, "Executor, when many: fill is peak heap"})
+	}
+	if spark {
+		items = append(items, item{func(x, y float64) {
+			b.f(`<polyline class="spark" points="%.1f,%.1f %.1f,%.1f %.1f,%.1f %.1f,%.1f"/>`, x, y-2, x+6, y-8, x+12, y-4, x+20, y-9)
+		}, "Node CPU over the run"})
+	}
+	if bad {
+		items = append(items, item{func(x, y float64) {
+			b.f(`<rect class="bad-key" x="%.1f" y="%.1f" width="18" height="12" rx="3"/>`, x, y-10)
+		}, "Red outline: executor killed or lost"})
+	}
+	if len(items) == 0 {
+		return y
+	}
+	x, left, right := anPad+14, anPad+14, anW-anPad-14
+	y += 4
+	for _, it := range items {
+		w := 26 + textW(it.label, 11, false) + 18
+		if x+w > right && x > left {
+			x, y = left, y+18
+		}
+		it.draw(x, y)
+		b.text(x+26, y, "s key", "", it.label)
+		x += w
+	}
+	return y + 16
+}
+
 func chipsPerRow(nw float64) int { return max(1, int((nw-24+8)/(anChipW+8))) }
 
 func compact(n *anatNode, nw float64) bool { return len(n.Execs) > 2*chipsPerRow(nw) }
@@ -910,8 +1018,11 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 		for i := 0; i < n.AtOnce; i++ {
 			ew := float64(n.ExecBytes) * scale
 			b.f(`<rect class="exc" x="%.1f" y="%.1f" width="%.1f" height="22" rx="3"><title>Executor container: %s</title></rect>`, cx+1, by, math.Max(ew-2, 1), model.Bytes(n.ExecBytes))
-			if ew > 70 && n.AtOnce <= 6 {
-				b.text(cx+6, by+15, "cl", "", fitText("Executor "+model.Bytes(n.ExecBytes), ew-10, 11))
+			switch label := "Executor " + model.Bytes(n.ExecBytes); {
+			case ew-10 >= textW(label, 11, false):
+				b.text(cx+6, by+15, "cl", "", label)
+			case ew-10 >= textW(model.Bytes(n.ExecBytes), 11, false):
+				b.text(cx+6, by+15, "cl", "", model.Bytes(n.ExecBytes))
 			}
 			cx += ew
 		}
@@ -961,7 +1072,11 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 		if n.Alike > 0 {
 			each = " (on each)"
 		}
-		b.text(x+12, ey+12, "m", "", fmt.Sprintf("%s ran here%s, %d at once; fill is peak heap", model.Plural(len(n.Execs), "executor", "executors"), each, n.AtOnce))
+		size := ""
+		if s := execSize(sameCores(n.Execs), n.ExecBytes); s != "" {
+			size = ", each " + s
+		}
+		b.text(x+12, ey+12, "m", "", fitText(fmt.Sprintf("%s ran here%s, %d at once%s; fill is peak heap", model.Plural(len(n.Execs), "executor", "executors"), each, n.AtOnce, size), w-24, 12))
 		per := max(1, int((w-24)/(anSquare+4)))
 		for i, e := range n.Execs {
 			sx := x + 12 + float64(i%per)*(anSquare+4)
@@ -988,10 +1103,23 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 		for i, e := range n.Execs {
 			cx := x + 12 + float64(i%per)*(anChipW+8)
 			cy := ey + 22 + float64(i/per)*(anChipH+8)
-			drawChip(b, a, e, cx, cy, l)
+			drawChip(b, a, e, n.ExecBytes, cx, cy, l)
 		}
 	}
 	b.WriteString(`</g>`)
+}
+
+// execSize is what an executor was given, as its chip shows it: "2 cores ·
+// 1.5 GiB container", or whichever half is known.
+func execSize(cores int, container int64) string {
+	var parts []string
+	if cores > 0 {
+		parts = append(parts, model.Plural(cores, "core", "cores"))
+	}
+	if container > 0 {
+		parts = append(parts, model.Bytes(container)+" container")
+	}
+	return strings.Join(parts, " · ")
 }
 
 func execTip(e anatExec) string {
@@ -1016,7 +1144,7 @@ func execTip(e anatExec) string {
 
 // drawChip draws one executor: its heap's peak against its size, a square
 // per core shaded by CPU share, and how it ended.
-func drawChip(b *svgw, a *anatomy, e anatExec, x, y float64, l anatLinks) {
+func drawChip(b *svgw, a *anatomy, e anatExec, container int64, x, y float64, l anatLinks) {
 	cls := "chip"
 	status := ""
 	switch {
@@ -1065,12 +1193,16 @@ func drawChip(b *svgw, a *anatomy, e anatExec, x, y float64, l anatLinks) {
 	} else {
 		b.text(x+8, y+43, "s", "", "heap peak not logged")
 	}
+	// What it was given: cores and the container YARN placed.
+	if size := execSize(e.Cores, container); size != "" {
+		b.text(x+8, y+57, "s", "", size)
+	}
 	// Cores, shaded by CPU share.
 	for i := 0; i < min(e.Cores, 16); i++ {
-		b.f(`<rect class="core" x="%.1f" y="%.1f" width="7" height="7" rx="1.5" style="opacity:%.2f"/>`, x+8+float64(i)*9, y+49, 0.25+0.75*e.CPUShare)
+		b.f(`<rect class="core" x="%.1f" y="%.1f" width="7" height="7" rx="1.5" style="opacity:%.2f"/>`, x+8+float64(i)*9, y+63, 0.25+0.75*e.CPUShare)
 	}
 	if e.CPUShare > 0 {
-		b.text(x+anChipW-8, y+56, "s", "end", fmt.Sprintf("CPU %.0f%%", 100*e.CPUShare))
+		b.text(x+anChipW-8, y+70, "s", "end", fmt.Sprintf("CPU %.0f%%", 100*e.CPUShare))
 	}
 	b.badges(a, e.Badges, x+anChipW-4, y-2, l)
 	b.WriteString(`</g>`)

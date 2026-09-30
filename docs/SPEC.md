@@ -109,7 +109,7 @@ A pipeline: resolve (cluster, application, window) → access check → collect 
 | Section | Answers | Main sources |
 | --- | --- | --- |
 | What happened | Two to four plain sentences: outcome, scale, data moved, what needs attention | All |
-| The run at a glance | A diagram of the run at its busiest: the cluster, what YARN offered and held, each node with its containers to scale (unused space hatched), executors' peak heap, one executor and the driver region by region; findings pinned as numbered badges on the part they concern | Event log, logs, EMR, CloudWatch |
+| The run at a glance | A diagram of the run at its busiest: the cluster, what YARN offered and held, a key naming each colour and mark it uses, each node with its containers to scale and labelled with their size (unused space hatched), each executor's cores, container size and peak heap, one executor and the driver region by region; findings pinned as numbered badges on the part they concern | Event log, logs, EMR, CloudWatch |
 | Findings | Every finding, most severe first, each with explanation, evidence and fix | All |
 | Timeline | Jobs and stages over time, executors alive, periods with no job running | Event log |
 | Cluster and nodes | Every node up during the run: type, size, market, group, lifetime, what it offered YARN, its executors, CPU; nodes that ran nothing | Event log, EMR, EC2, CloudWatch, logs |
