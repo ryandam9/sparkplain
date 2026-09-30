@@ -168,7 +168,7 @@ func TestHBaseOnSeparateEMRCluster(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("report did not use HBase server logs from %s; sources=%+v logs=%+v hbase=%+v", hbaseCluster, r.Sources, r.Logs, r.HBase)
+		t.Fatalf("report did not use HBase server logs from %s", hbaseCluster)
 	}
 	var checked bool
 	for _, row := range r.AccessCheck {
