@@ -50,7 +50,7 @@ const (
 var appIDRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.\-]{0,127}$`)
 
 type options struct {
-	profile, region, configPath, clusterID, clusterName, appID string
+	profile, region, configPath, clusterID, clusterName, hbaseClusterID, appID string
 	eventLog, from, out, format, maxSize, maxUnpacked, show    string
 	workers                                                    int
 	timeout, windowPad                                         time.Duration
@@ -67,6 +67,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&o.configPath, "config", "", "YAML defaults file (default ~/.config/sparkplain/config.yaml)")
 	fs.StringVar(&o.clusterID, "cluster-id", "", "EMR cluster ID: read its metadata and logs from AWS (needs -profile)")
 	fs.StringVar(&o.clusterName, "cluster-name", "", "EMR cluster name, instead of -cluster-id (the newest cluster of that name)")
+	fs.StringVar(&o.hbaseClusterID, "hbase-cluster-id", "", "EMR cluster ID that runs HBase when it is separate from the Spark cluster")
 	fs.StringVar(&o.appID, "app-id", "", "Spark application ID, e.g. application_1700000000000_0042 (required)")
 	fs.StringVar(&o.eventLog, "eventlog", "", "event log: local file, rolling eventlog_v2_* folder, folder of logs, or History Server zip")
 	fs.StringVar(&o.from, "from", "", "local copy of the cluster's logs (containers/, steps/, node/) or of one application's container folders")
@@ -120,6 +121,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return fail("-app-id %q does not look like a Spark application ID", o.appID)
 	}
 	online := o.clusterID != "" || o.clusterName != ""
+	if o.hbaseClusterID != "" && !online {
+		return fail("-hbase-cluster-id requires -cluster-id or -cluster-name for the Spark cluster")
+	}
 	if online && o.from != "" {
 		return fail("-from reads a local copy of the cluster's logs, and -cluster-id reads them from S3: pass one or the other")
 	}
@@ -346,7 +350,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case online:
 		mode = "online"
 		con.status("reading container, step and node logs")
-		logs.readLogs(ctx, cloud, log, o.appID, lim)
+		logs.readLogs(ctx, cloud, log, o.appID, lim, o.hbaseClusterID == "")
+		if o.hbaseClusterID != "" {
+			con.status("reading HBase server logs from " + o.hbaseClusterID)
+			logs.readHBaseCluster(ctx, cloud, o.hbaseClusterID, log, lim)
+		}
 		con.sources(logs.sources...)
 		con.status("reading CloudWatch metrics")
 		logs.readMetrics(ctx, cloud, log, o.noCloudWatch, o.windowPad)
