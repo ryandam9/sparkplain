@@ -35,7 +35,7 @@ The current design. How it got here (phase plans, live checks, dated decisions) 
 | S3 object | Reads that object; a location without a trailing `/` is checked as an exact key first, then as a prefix |
 | Local file | Plain, `.lz4` (lz4-java block stream), `.zstd`, `.snappy` (snappy-java stream) or `.inprogress` |
 | Folder | A rolling log (parts in order), or a folder of logs, where the highest attempt wins, preferring finished logs |
-| History Server zip | The Download zip, unpacked in memory within limits |
+| History Server zip | The Download zip, unpacked in memory within limits. Given as a file, or as the folder it was saved in (`eventLogs-<app>.zip`, `eventLogs-<app>-<attempt>.zip`, or a browser's ` (1)` copy; the newest when there are several), by `-eventlog` or a local `eventlog-prefix`. A leading `~/` in paths from flags or the config file is the home folder |
 
 `-app-id` must match the ID inside the event log (a mismatch exits 2). A zip with several logs, none named after the application, is "not found"; a log whose name does not match and that has no application start event is refused.
 

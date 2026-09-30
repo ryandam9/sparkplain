@@ -198,6 +198,13 @@ sparkplain -app-id application_1700000000000_0042
 
 # With an environment per set of clusters in the config file: the application and which one
 sparkplain -app-id application_1700000000000_0042 -env prod
+
+# The same, with an event log downloaded from the Spark History Server ("Download" gives a zip)
+sparkplain -app-id application_1700000000000_0042 -env prod -eventlog ~/Downloads/eventLogs-application_1700000000000_0042.zip
+
+# Or point at the folder: sparkplain finds eventLogs-<app-id>.zip there (the newest, if you saved it twice).
+# Set eventlog-prefix: ~/Downloads in the config file to never type it.
+sparkplain -app-id application_1700000000000_0042 -env prod -eventlog ~/Downloads
 ```
 
 **Clusters by name.** EMR often has several clusters with one name, such as yesterday's (terminated) and today's. `-cluster-name` picks the one that ran the application: the one up when its YARN started, which is the time in the application's ID (`application_<ms>_<n>`), whether it is still running or has ended. `-hbase-cluster-name` picks the HBase cluster of that name up then, or else the one running now. When two could be the one, or none fits, the run lists them with their IDs, states and times, and you pass the ID instead. The access check prints which cluster a name found and why. Only `ListClusters` is added, which is read-only.

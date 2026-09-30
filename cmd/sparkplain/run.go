@@ -127,6 +127,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if !appIDRE.MatchString(o.appID) {
 		return fail("-app-id %q does not look like a Spark application ID", o.appID)
 	}
+	// A leading ~/ means the home folder, in the config file and in
+	// quoted flags alike, which no shell expands.
+	o.configPath, o.eventLog, o.from, o.out = expandHome(o.configPath), expandHome(o.eventLog), expandHome(o.from), expandHome(o.out)
 	cfgPath, explicit := o.configPath, o.configPath != ""
 	if !explicit {
 		cfgPath = defaultConfigPath()
@@ -138,6 +141,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if cfg, err = cfg.withEnv(o.env); err != nil {
 		return fail("%v", err)
 	}
+	cfg.Out, cfg.EventLogPrefix = expandHome(cfg.Out), expandHome(cfg.EventLogPrefix)
 	// The config file names the clusters, the profile and the region when
 	// the flags do not. Its cluster names stand aside for a -from run, and
 	// for an -eventlog run that names no cluster and no -env: those are

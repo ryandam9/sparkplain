@@ -9,9 +9,11 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/source"
 )
@@ -142,6 +144,13 @@ func Resolve(p, appID string, lim Limits) (*Input, error) {
 	return in, nil
 }
 
+// historyZipRE matches the name the Spark History Server gives an
+// application's "Download": eventLogs-<app>.zip, or with the attempt,
+// eventLogs-<app>-<attempt>.zip, and a browser's " (1)" on a second copy.
+func historyZipRE(appID string) *regexp.Regexp {
+	return regexp.MustCompile(`^eventLogs-` + regexp.QuoteMeta(appID) + `(-\d+)?( \(\d+\))?\.zip$`)
+}
+
 func isZip(p string) bool {
 	f, err := os.Open(p)
 	if err != nil {
@@ -188,7 +197,38 @@ func (in *Input) resolveDir(dir, appID string) error {
 		}
 	}
 	if len(cands) == 0 {
-		return &SourceError{ClassNotFound, fmt.Errorf("no event log for %s in %s (looked for %s[.codec] or eventlog_v2_%s/)", appID, dir, appID, appID)}
+		// A History Server "Download", saved as it came: eventLogs-<app>.zip
+		// or eventLogs-<app>-<attempt>.zip, perhaps with a browser's " (1)".
+		// The newest wins when there are several.
+		var zips []os.DirEntry
+		for _, e := range entries {
+			if !e.IsDir() && historyZipRE(appID).MatchString(e.Name()) {
+				zips = append(zips, e)
+			}
+		}
+		if len(zips) > 0 {
+			newest, when := zips[0], time.Time{}
+			for _, z := range zips {
+				if info, err := z.Info(); err == nil && info.ModTime().After(when) {
+					newest, when = z, info.ModTime()
+				}
+			}
+			if len(zips) > 1 {
+				names := make([]string, len(zips))
+				for i, z := range zips {
+					names[i] = z.Name()
+				}
+				in.Notes = append(in.Notes, fmt.Sprintf("Found %d History Server downloads for this application (%s); read %s, the newest.", len(zips), strings.Join(names, ", "), newest.Name()))
+			}
+			full := filepath.Join(dir, newest.Name())
+			info, err := newest.Info()
+			if err != nil {
+				return err
+			}
+			in.Location = full
+			return in.resolveZip(full, info.Size(), appID)
+		}
+		return &SourceError{ClassNotFound, fmt.Errorf("no event log for %s in %s (looked for %s[.codec], eventlog_v2_%s/ and a History Server download, eventLogs-%s.zip)", appID, dir, appID, appID, appID)}
 	}
 	pick := pickAttempt(cands)
 	if len(cands) > 1 {

@@ -57,6 +57,19 @@ type envConfig struct {
 	Out              string `yaml:"out"`
 }
 
+// expandHome turns a leading ~/ (or a lone ~) into the home folder; any
+// other path, and s3:// locations, stay as they are.
+func expandHome(p string) string {
+	if p != "~" && !strings.HasPrefix(p, "~/") {
+		return p
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return p
+	}
+	return filepath.Join(home, strings.TrimPrefix(p, "~"))
+}
+
 // withEnv is the config with environment name's keys laid over the
 // top-level ones; "" is the config as it is.
 func (c fileConfig) withEnv(name string) (fileConfig, error) {

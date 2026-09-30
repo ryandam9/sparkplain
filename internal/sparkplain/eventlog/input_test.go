@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
 )
@@ -222,5 +223,43 @@ func TestResolveZipNeverGuesses(t *testing.T) {
 		if f.Error != "" {
 			t.Fatalf("part %s failed: %s", f.Name, f.Error)
 		}
+	}
+}
+
+// A folder holding a History Server download, saved as it came
+// (eventLogs-<app>.zip, or -<attempt>, or a browser's " (1)" copy), is read
+// like the zip itself; with several, the newest, and a note says so.
+func TestResolveHistoryServerDownloadInFolder(t *testing.T) {
+	t.Parallel()
+	zip, err := os.ReadFile(filepath.Join(fixtures, mainApp+".zip"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	old, newer := filepath.Join(dir, "eventLogs-"+mainApp+".zip"), filepath.Join(dir, "eventLogs-"+mainApp+" (1).zip")
+	for _, p := range []string{old, newer, filepath.Join(dir, "eventLogs-"+mainApp+"0.zip"), filepath.Join(dir, "notes.txt")} {
+		if err := os.WriteFile(p, zip, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	past := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(old, past, past); err != nil {
+		t.Fatal(err)
+	}
+	in, err := Resolve(dir, mainApp, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if in.Location != newer || len(in.Notes) != 1 || !strings.Contains(in.Notes[0], "read eventLogs-"+mainApp+" (1).zip, the newest") {
+		t.Errorf("location %s, notes %q", in.Location, in.Notes)
+	}
+	l, err := Parse(context.Background(), in, Options{})
+	if err != nil || l.Application.ID != mainApp {
+		t.Errorf("parsed %v, %v", l.Application.ID, err)
+	}
+	// A different application's download is not taken for this one.
+	if _, err := Resolve(dir, "application_1790380000000_0099", Limits{}); err == nil || !strings.Contains(err.Error(), "eventLogs-application_1790380000000_0099.zip") {
+		t.Errorf("other application: %v", err)
 	}
 }

@@ -177,3 +177,14 @@ func TestStarterConfig(t *testing.T) {
 		t.Error("-init-config overwrote an existing file")
 	}
 }
+
+func TestExpandHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	for in, want := range map[string]string{"~/Downloads": filepath.Join(home, "Downloads"), "~": home,
+		"s3://b/p/": "s3://b/p/", "/abs/x": "/abs/x", "rel/~x": "rel/~x", "~other/x": "~other/x", "": ""} {
+		if got := expandHome(in); got != want {
+			t.Errorf("expandHome(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
