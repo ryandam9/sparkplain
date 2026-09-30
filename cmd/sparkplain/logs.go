@@ -230,7 +230,7 @@ func (out *clusterLogs) readHBaseCluster(ctx context.Context, cloud *awsSession,
 	if len(col.Sources) == 0 {
 		row := model.SourceStatus{Name: "HBase server logs", Status: "not-supplied",
 			Location: "s3://" + bucket + "/" + root + "node/*/applications/hbase/",
-			Detail: "No HBase Master or region-server logs were found on the cluster specified by -hbase-cluster-id."}
+			Detail:   "No HBase Master or region-server logs were found on the cluster specified by -hbase-cluster-id."}
 		if instErr != nil {
 			row.Detail += " ListInstances also failed: " + instErr.Error()
 		}
