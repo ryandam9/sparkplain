@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -160,9 +161,22 @@ func (t thresholds) apply(d analyze.Thresholds) analyze.Thresholds {
 	return d
 }
 
+// defaultConfigPath is ~/.config/sparkplain/config.yaml, or under
+// $XDG_CONFIG_HOME when that is set, on macOS as on Linux: the place the
+// docs name, not os.UserConfigDir's ~/Library/Application Support.
+// Windows keeps %AppData%.
 func defaultConfigPath() string {
-	if dir, err := os.UserConfigDir(); err == nil {
+	if runtime.GOOS == "windows" {
+		if dir, err := os.UserConfigDir(); err == nil {
+			return filepath.Join(dir, "sparkplain", "config.yaml")
+		}
+		return ""
+	}
+	if dir := os.Getenv("XDG_CONFIG_HOME"); filepath.IsAbs(dir) {
 		return filepath.Join(dir, "sparkplain", "config.yaml")
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".config", "sparkplain", "config.yaml")
 	}
 	return ""
 }
