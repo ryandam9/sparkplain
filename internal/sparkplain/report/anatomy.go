@@ -1384,6 +1384,24 @@ func drawBadgeKey(b *svgw, a *anatomy, y float64, l anatLinks) float64 {
 }
 
 // anatomyHTML is the report's section content.
+// anatGuide explains the run-at-a-glance diagram; the explorer shows the same.
+var anatGuide = chartGuide{
+	Axes: [][2]string{
+		{"Boxes", "The cluster's nodes: the primary node runs YARN's ResourceManager, and each worker node below shows what it did for this application."},
+		{"Bar in each node", "The memory the node offered YARN, to scale, with this application's driver and executor containers placed on it at the application's busiest moment."},
+		{"Cards", "One per executor on the node: its peak heap against the heap it was given, its cores and container size, and how busy its cores were."},
+		{"Bottom panels", "Inside one executor (the one with the highest heap) and the driver: the Java heap's regions, to scale, with how far each peaked."},
+		{"Badges", "Numbered findings, pinned to the part they are about."},
+	},
+	Read: []string{
+		"Read it top down: the cluster, then each node, then inside one executor.",
+		"Hatched space on a node is memory nobody used; if it is narrower than an executor, it could not hold one.",
+		"Red outlines are executors that were killed or lost.",
+		"Inside an executor, a peak line near the end of the heap means it nearly ran out; a short execution bar with spill elsewhere means each task had too little memory.",
+	},
+	Note: "Hover anything for exact values; click a badge to read its finding.",
+}
+
 func anatomyHTML(r *model.Report, explorer string) template.HTML {
 	a := buildAnatomy(r)
 	svg := anatomySVG(a, anatLinks{
@@ -1404,7 +1422,5 @@ func anatomyHTML(r *model.Report, explorer string) template.HTML {
 	if svg == "" {
 		return ""
 	}
-	return template.HTML(`<div class="chart anatbox">` + svg + string(guide(
-		"The cluster as it ran this application: each node, what its NodeManager offered YARN, the containers YARN placed there (to scale), and inside an executor the Java heap's regions with how far each peaked. Numbered badges are findings, pinned to the part they are about; hover anything for exact values.",
-		"Read it top down. Hatched space on a node is memory nobody used: if it is narrower than an executor, it could not hold one. Red outlines are executors that were killed or lost. Inside the executor, a peak line near the end of the heap means it nearly ran out; a short execution bar with spill elsewhere means tasks had too little memory each.")) + `</div>`)
+	return template.HTML(`<div class="chart anatbox">` + svg + string(anatGuide.html()) + `</div>`)
 }

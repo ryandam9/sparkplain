@@ -65,21 +65,55 @@ func shown(rows []hbar, legend []legendItem) []legendItem {
 	return out
 }
 
-// chartBox wraps a chart with a title, a legend, what the chart shows and
-// how to read it (which way is good, and what pattern to look for).
-// guide is a chart's explanation: what it shows, and how to read it.
-func guide(shows, read string) template.HTML {
+// chartGuide explains a chart under it, the same way everywhere:
+//   - Axes names what each axis or mark stands for ("Across", "Up", "Rows",
+//     "Bar length", "Colour", ...), one line each;
+//   - Read says how to read it: what a good picture looks like and what a
+//     bad one means, one point each, shown as bullets when there are several;
+//   - Note is fine print: sampling, what was left out, what clicking does.
+type chartGuide struct {
+	Axes [][2]string `json:"axes"`
+	Read []string    `json:"read"`
+	Note string      `json:"note,omitempty"`
+}
+
+// html renders the guide. The explorer's guideNodes draws the same shape.
+func (g chartGuide) html() template.HTML {
 	var b strings.Builder
-	if shows != "" {
-		fmt.Fprintf(&b, `<p class="cap">%s</p>`, esc(shows))
+	if len(g.Axes) > 0 {
+		b.WriteString(`<dl class="axes">`)
+		for _, a := range g.Axes {
+			fmt.Fprintf(&b, `<div><dt>%s</dt><dd>%s</dd></div>`, esc(a[0]), esc(a[1]))
+		}
+		b.WriteString(`</dl>`)
 	}
-	if read != "" {
-		fmt.Fprintf(&b, `<p class="read"><b>How to read it</b> %s</p>`, esc(read))
+	b.WriteString(string(pointList("read", "How to read it", g.Read)))
+	if g.Note != "" {
+		fmt.Fprintf(&b, `<p class="cap">%s</p>`, esc(g.Note))
 	}
 	return template.HTML(b.String())
 }
 
-func chartBox(title, shows, read string, svg string, legend []legendItem) template.HTML {
+// pointList is a titled paragraph for one point, or a titled bullet list
+// for several.
+func pointList(cls, title string, points []string) template.HTML {
+	switch len(points) {
+	case 0:
+		return ""
+	case 1:
+		return template.HTML(fmt.Sprintf(`<p class="%s"><b>%s</b> %s</p>`, cls, esc(title), esc(points[0])))
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, `<div class="%s"><b>%s</b><ul>`, cls, esc(title))
+	for _, p := range points {
+		fmt.Fprintf(&b, `<li>%s</li>`, esc(p))
+	}
+	b.WriteString(`</ul></div>`)
+	return template.HTML(b.String())
+}
+
+// chartBox wraps a chart with a title, a legend and its guide.
+func chartBox(title string, g chartGuide, svg string, legend []legendItem) template.HTML {
 	if svg == "" {
 		return ""
 	}
@@ -96,7 +130,7 @@ func chartBox(title, shows, read string, svg string, legend []legendItem) templa
 		}
 		b.WriteString(`</div>`)
 	}
-	b.WriteString(string(guide(shows, read)))
+	b.WriteString(string(g.html()))
 	b.WriteString(`</div>`)
 	return template.HTML(b.String())
 }
@@ -309,8 +343,17 @@ func stagesChart(r *model.Report, explorer string) template.HTML {
 			segs: []seg{{stageMs(s), color, fmt.Sprintf("%s ran for %s, %s tasks", stageLabel(s), model.Duration(int64(stageMs(s))), model.Num(s.Totals.Tasks))}},
 			note: model.Duration(int64(stageMs(s)))})
 	}
-	return chartBox("The longest stages", "Each bar is how long a stage ran, from submission to completion. Red means it failed.",
-		"Shorter is better. The top few bars are where speeding things up helps most.", hbars(rows, msF),
+	return chartBox("The longest stages", chartGuide{
+		Axes: [][2]string{
+			{"Rows", "One stage each, the longest at the top."},
+			{"Bar length", "How long the stage ran, from when it was submitted to when it finished."},
+			{"Colour", "Red: the stage failed."},
+		},
+		Read: []string{
+			"Shorter is better.",
+			"The top few bars are where speeding things up shortens the run most.",
+		},
+	}, hbars(rows, msF),
 		shown(rows, []legendItem{{cInput, "Stage run time"}, {cFail, "Failed stage"}}))
 }
 
@@ -330,8 +373,18 @@ func spreadChart(r *model.Report, explorer string) template.HTML {
 			lo:   float64(d.Min), hi: float64(d.Max), mid: float64(d.P50),
 			note: "slowest " + model.Duration(d.Max)})
 	}
-	return chartBox("Task time spread", "For the stages with the slowest tasks: the tick is the median task, the box runs from the median to the 95th percentile, and the line from the fastest to the slowest task.",
-		"Short lines and boxes are better: tasks took similar times. A line reaching far past its box is a straggler, a task that held the stage up, usually because of skewed data.", hbars(rows, msF),
+	return chartBox("Task time spread", chartGuide{
+		Axes: [][2]string{
+			{"Rows", "The stages whose slowest task took longest."},
+			{"Across", "How long a task took."},
+			{"Marks", "The tick is the median task. The box runs from the median to the 95th percentile (the time 19 tasks in 20 beat). The line runs from the fastest task to the slowest."},
+		},
+		Read: []string{
+			"A short line and a narrow box: the stage's tasks took similar times, which is what you want.",
+			"A line reaching far past its box: one or two tasks (stragglers) took much longer than the rest and held the stage up, usually because their data was skewed.",
+			"A wide box: many tasks were slow, not just one; the stage may need more, smaller partitions.",
+		},
+	}, hbars(rows, msF),
 		[]legendItem{{cInput, "Median to 95th percentile"}, {"var(--ink)", "Fastest to slowest task, and the median"}})
 }
 
@@ -353,8 +406,17 @@ func dataChart(r *model.Report, explorer string) template.HTML {
 			{float64(t.DiskSpillBytes), cSpill, "spilled to disk: " + model.Bytes(t.DiskSpillBytes)},
 		}, note: model.Bytes(int64(moved(s)))})
 	}
-	return chartBox("Data each stage moved", "The stages that moved the most data, split into what they read, shuffled between executors, wrote out and spilled to disk.",
-		"Longer bars moved more data. Shuffle (orange and green) is the costly part, since it crosses disk and network; spill (pink) should be absent.", hbars(rows, bytesF),
+	return chartBox("Data each stage moved", chartGuide{
+		Axes: [][2]string{
+			{"Rows", "The stages that moved the most data."},
+			{"Bar length", "Bytes, split into what the stage read, shuffled in (shuffle read), shuffled out (shuffle write), wrote and spilled to disk."},
+		},
+		Read: []string{
+			"Longer bars moved more data. Moving a lot of data is not a problem in itself.",
+			"Shuffle is the costly part: it goes through local disk and across the network between executors.",
+			"Spilled to disk should be absent: it means the data did not fit in memory.",
+		},
+	}, hbars(rows, bytesF),
 		shown(rows, []legendItem{{cInput, "Read"}, {cShRead, "Shuffle read"}, {cShWrite, "Shuffle write"}, {cOutput, "Written"}, {cSpill, "Spilled to disk"}}))
 }
 
@@ -391,8 +453,16 @@ func dataOverTime(r *model.Report, loc *time.Location) template.HTML {
 	if in+sh+out == 0 {
 		return ""
 	}
-	return chartBox("Data over time", "Bytes read, shuffled and written, added up as each stage finished.",
-		"Steep rises are where the work happened. Long flat stretches are time spent on something other than moving data, such as driver code or waiting for executors.", lines(series, start, end, bytesF, loc),
+	return chartBox("Data over time", chartGuide{
+		Axes: [][2]string{
+			{"Across", "Time of day, while the application ran."},
+			{"Up", "Bytes so far: a running total of data read, shuffled out and written, added as each stage finished."},
+		},
+		Read: []string{
+			"Steep rises are when the work happened.",
+			"Long flat stretches are time spent not moving data: driver code, planning, or waiting for executors.",
+		},
+	}, lines(series, start, end, bytesF, loc),
 		[]legendItem{{cInput, "Read"}, {cShWrite, "Shuffle write"}, {cOutput, "Written"}})
 }
 
@@ -406,8 +476,17 @@ func spillChart(r *model.Report) template.HTML {
 			{float64(s.DiskBytes), cSpill, "written to disk: " + model.Bytes(s.DiskBytes)},
 		}, note: model.Bytes(s.DiskBytes) + " to disk"})
 	}
-	return chartBox("Spill by stage", "Data Spark had to move out of memory while running each stage (as held in memory), and what that came to on disk.",
-		"Smaller is better, and none is ideal. Spill means tasks had less memory than their data needed; more partitions or more memory per task help.", hbars(rows, bytesF),
+	return chartBox("Spill by stage", chartGuide{
+		Axes: [][2]string{
+			{"Rows", "The stages that spilled, most first."},
+			{"Bar length", "Bytes spilled: the data's size as it was held in memory, and what it came to on disk (smaller, because it is compressed)."},
+		},
+		Read: []string{
+			"None is ideal.",
+			"Spill means tasks had less memory than their data needed, so Spark wrote part of it to disk and read it back, which is slow.",
+			"More partitions (less data per task) or more memory per executor core help.",
+		},
+	}, hbars(rows, bytesF),
 		shown(rows, []legendItem{{cShRead, "Spilled (size in memory)"}, {cSpill, "Written to disk"}}))
 }
 
@@ -427,8 +506,17 @@ func timeChart(r *model.Report) template.HTML {
 			{other, cNeutral, "other (waiting on shuffle, I/O or Python): " + model.Duration(int64(other))},
 		}, note: model.Duration(t.RunTimeMs)})
 	}
-	return chartBox("Where executor time went", "Task run time on each executor: computing on the JVM, collecting garbage, or neither, which is waiting for shuffle data, storage or Python workers.",
-		"More computing is better. Garbage collection above about 10% of a bar means memory pressure; a large grey part means tasks waited instead of computing.", hbars(rows, msF),
+	return chartBox("Where executor time went", chartGuide{
+		Axes: [][2]string{
+			{"Rows", "One executor each."},
+			{"Bar length", "The run time of all its tasks added up, split into computing on the JVM, garbage collection, and other or waiting (for shuffle data, storage or Python workers)."},
+		},
+		Read: []string{
+			"More computing is better.",
+			"Garbage collection above about 10% of a bar means memory pressure.",
+			"A large other-or-waiting part means tasks waited instead of computing. In PySpark, time spent in Python counts there.",
+		},
+	}, hbars(rows, msF),
 		shown(rows, []legendItem{{cInput, "Computing"}, {cShRead, "Garbage collection"}, {cNeutral, "Other or waiting"}}))
 }
 
@@ -449,8 +537,20 @@ func splitChart(r *model.Report, explorer string) template.HTML {
 			{float64(p.OtherMs), cNeutral, "other (file I/O, Python workers, waiting): " + d(p.OtherMs)},
 		}})
 	}
-	return chartBox("Where stage time went", "For the stages with the most task time (every task's time added up): how the tasks spent it. Starting is scheduler delay and unpacking the task; shuffle is waiting for data from other executors and writing it out; other is the rest of run time, such as reading files or waiting on Python.",
-		"More computing is better. A large starting share means tasks were too small or the driver was busy; shuffle means data moving between executors; garbage collection above about 10% means memory pressure; a large grey part means waiting on files, S3 or Python. Spark measures these separately and they can overlap a little, so the split is approximate.",
+	return chartBox("Where stage time went", chartGuide{
+		Axes: [][2]string{
+			{"Rows", "The stages with the most task time."},
+			{"Bar length", "Every task's time added up, split by what it was spent on: starting (scheduler delay and unpacking the task), computing, garbage collection, shuffle (waiting for data from other executors and writing it out), sending the result, and other (reading files, waiting on Python)."},
+		},
+		Read: []string{
+			"More computing is better.",
+			"A large starting share: tasks were too small, or the driver was busy.",
+			"A large shuffle share: a lot of data moved between executors.",
+			"Garbage collection above about 10%: memory pressure.",
+			"A large other share: waiting on files, S3 or Python.",
+		},
+		Note: "Spark measures these separately and they can overlap a little, so the split is approximate.",
+	},
 		hbars(rows, msF), shown(rows, []legendItem{{cSpill, "Starting"}, {cInput, "Computing"}, {cShRead, "Garbage collection"}, {cShWrite, "Shuffle"}, {cOutput, "Sending the result"}, {cNeutral, "Other"}}))
 }
 
@@ -479,8 +579,17 @@ func nodeMemoryChart(r *model.Report) template.HTML {
 	if len(rows) == 0 {
 		return ""
 	}
-	return chartBox("What YARN placed on each node", "Each node's YARN memory, and the containers of this application on it.",
-		"Free space helps only if it is at least one executor container wide: smaller gaps are memory paid for but unusable. A node that is mostly free did little work for this run.", hbars(rows, bytesF),
+	return chartBox("What YARN placed on each node", chartGuide{
+		Axes: [][2]string{
+			{"Rows", "One worker node each."},
+			{"Bar length", "The memory the node offered YARN, split into the driver's container, this application's executor containers at its busiest, and what was left free."},
+		},
+		Read: []string{
+			"A full bar: the node was used well.",
+			"Free space helps only if it is at least one executor container wide; smaller gaps are memory paid for but unusable.",
+			"A mostly free node did little work for this run.",
+		},
+	}, hbars(rows, bytesF),
 		[]legendItem{{cShRead, "Driver container"}, {cInput, "Executor containers"}, {"var(--surface-2)", "Free"}})
 }
 
@@ -522,8 +631,17 @@ func nodeCPUChart(r *model.Report, loc *time.Location) template.HTML {
 		series = append(series, line{label: label, color: c, points: s.Points})
 		legend = append(legend, legendItem{c, label})
 	}
-	return chartBox("Node CPU", "Each node's CPU from CloudWatch, averaged over EC2's 5-minute periods; the whole machine, so daemons and other applications count too.",
-		"Higher means busier. Staying above about 85% means tasks queued for CPU. Low CPU on a node that ran executors suggests its tasks waited on disk, network or Python.", lines(series, m.From, m.To, pctF, loc), legend)
+	return chartBox("Node CPU", chartGuide{
+		Axes: [][2]string{
+			{"Across", "Time of day, while the application ran."},
+			{"Up", "CPU use of the whole machine, from 0 to 100%, one line per node, averaged over EC2's 5-minute periods."},
+		},
+		Read: []string{
+			"Above about 85% for long: tasks queued for CPU.",
+			"Low CPU on a node that ran executors: its tasks were waiting on disk, the network or Python rather than computing.",
+			"Daemons and other applications on the node count too.",
+		},
+	}, lines(series, m.From, m.To, pctF, loc), legend)
 }
 
 // queriesChart shows the longest SQL and DataFrame queries.
@@ -547,8 +665,17 @@ func queriesChart(r *model.Report, explorer string) template.HTML {
 		rows = append(rows, hbar{label: fmt.Sprintf("Query %d: %s", q.ID, q.Description), href: href,
 			segs: []seg{{dur(q), color, q.Description}}, note: model.Duration(int64(dur(q)))})
 	}
-	return chartBox("The longest queries", "Each SQL statement or DataFrame action, by how long it ran. Red means it failed.",
-		"Shorter is better. The longest queries are where tuning pays off; open one in the explorer to see its plan.", hbars(rows, msF),
+	return chartBox("The longest queries", chartGuide{
+		Axes: [][2]string{
+			{"Rows", "One SQL statement or DataFrame action each, the longest at the top."},
+			{"Bar length", "How long it ran."},
+			{"Colour", "Red: the query failed."},
+		},
+		Read: []string{
+			"Shorter is better.",
+			"The longest queries are where tuning pays off; open one in the explorer to see its plan.",
+		},
+	}, hbars(rows, msF),
 		shown(rows, []legendItem{{cInput, "Query run time"}, {cFail, "Failed query"}}))
 }
 
@@ -556,12 +683,22 @@ func queriesChart(r *model.Report, explorer string) template.HTML {
 // chart rows to the explorer's pages when it was written.
 func chartFuncs(loc *time.Location, explorer string) template.FuncMap {
 	return template.FuncMap{
-		"stagesChart":     func(r *model.Report) template.HTML { return stagesChart(r, explorer) },
-		"spreadChart":     func(r *model.Report) template.HTML { return spreadChart(r, explorer) },
-		"dataChart":       func(r *model.Report) template.HTML { return dataChart(r, explorer) },
-		"dataOverTime":    func(r *model.Report) template.HTML { return dataOverTime(r, loc) },
-		"spillChart":      spillChart,
-		"guide":           guide,
+		"stagesChart":  func(r *model.Report) template.HTML { return stagesChart(r, explorer) },
+		"spreadChart":  func(r *model.Report) template.HTML { return spreadChart(r, explorer) },
+		"dataChart":    func(r *model.Report) template.HTML { return dataChart(r, explorer) },
+		"dataOverTime": func(r *model.Report) template.HTML { return dataOverTime(r, loc) },
+		"spillChart":   spillChart,
+		"guide": func(axes [][2]string, read []string, note string) template.HTML {
+			return chartGuide{Axes: axes, Read: read, Note: note}.html()
+		},
+		"axes": func(kv ...string) [][2]string {
+			var out [][2]string
+			for i := 0; i+1 < len(kv); i += 2 {
+				out = append(out, [2]string{kv[i], kv[i+1]})
+			}
+			return out
+		},
+		"points":          func(p ...string) []string { return p },
 		"anatomy":         func(r *model.Report) template.HTML { return anatomyHTML(r, explorer) },
 		"timeChart":       timeChart,
 		"splitChart":      func(r *model.Report) template.HTML { return splitChart(r, explorer) },

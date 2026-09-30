@@ -228,6 +228,11 @@ a.themebtn{text-decoration:none}
 /* How to read a chart: which way is good, and what to look for */
 .read{font-size:12.5px;color:var(--ink);margin:4px 4px 2px;max-width:100ch}
 .read b{font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ok);margin-right:6px}
+div.read b{display:block;margin-bottom:2px} .read ul{margin:0 0 0 1.25em;padding:0} .read li{margin:1px 0}
+.axes{display:grid;gap:3px;margin:8px 4px 4px;font-size:12.5px;max-width:100ch}
+.axes div{display:grid;grid-template-columns:8.5em 1fr;gap:10px}
+.axes dt{font-weight:600;color:var(--ink)} .axes dd{margin:0;color:var(--muted)}
+@media (max-width:560px){.axes div{grid-template-columns:1fr;gap:0}}
 /* categorical series, validated for colour-blind separation (dataviz reference palette, slots 1-5) */
 :root{--viz-1:#2a78d6;--viz-2:#eb6834;--viz-3:#1baf7a;--viz-4:#eda100;--viz-5:#e87ba4}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--viz-1:#3987e5;--viz-2:#d95926;--viz-3:#199e70;--viz-4:#c98500;--viz-5:#d55181}}

@@ -641,8 +641,9 @@
         var r = ops.rdds[i];
         return { title: r[2] || r[1], sub: "RDD " + r[0] + (r[2] ? " · " + r[1] : "") + (r[5] ? " · " + num(r[5]) + " cached" : ""),
           cls: r[6] ? "hot" : "", tip: "RDD " + r[0] + " (" + r[1] + ")" + (r[2] ? ", made by " + r[2] : "") + "\n" + (r[3] || "") + "\n" + num(r[4]) + " partitions" + (r[6] ? ", cached as " + r[6] : "") + (r[8] && r[8] !== "DETERMINATE" ? ", output " + r[8].toLowerCase() : "") + (r[7] ? ", barrier" : "") };
-      }, { t: "What this stage computes", shows: "The RDDs this stage computes, named by the operation that made each (Spark's stage graph). Data flows down the arrows. Cached RDDs are outlined.",
-        read: "Read it top to bottom, like the code. A long chain is fine; what matters is which step is slow, which the task table below shows." });
+      }, { t: "What this stage computes",
+          axes: [["Boxes", "The RDDs (datasets) this stage computes, each named by the operation that made it. Cached ones are outlined."], ["Arrows", "Data flows down the arrows, from what the stage reads to what it produces."]],
+          read: ["Read it top to bottom, like the code.", "A long chain is fine; what matters is which step is slow, which the task table below shows."] });
     }
     s.appendChild(codePanel(st.code, st.submitted, null));
     if (st.details) s.appendChild(el("details", null, el("summary", { text: "Where in the code: the full call stack Spark recorded" }), el("div", { cls: "inner" }, el("pre", { cls: "plan", text: st.details }))));
@@ -1120,10 +1121,11 @@
       return { title: "Stage " + st.id + (st.attempt ? " (attempt " + (st.attempt + 1) + ")" : ""), sub: (x ? "" : "finished earlier · ") + dur(d) + " · " + (st.name || "").split(" at ")[0],
         href: "#stage/" + st.key, cls: (x ? "onpath" : "ctx") + (st.status === "failed" ? " failed" : ""), tip: "Stage " + st.id + ": " + st.name + (x ? "" : "\nAnother parent of a stage on the chain; it finished first, so it did not hold anything up.") };
     };
-    var g = { t: "The chain", shows: "Read down: each box waited for the one above it, its slowest parent stage or, at a job's start, the job before. Shaded boxes are time with no stage on the chain running. " +
-        (P.extra.length ? "Muted boxes to the right are other parents of stages on the chain; they finished first. " : "") +
-        (hidden ? num(hidden) + " pauses shorter than " + dur(Math.max(1000, run / 100)) + " are left out of the drawing but counted above. " : "") + "Click a stage to open it.",
-      read: "Shorten the longest boxes on the chain to shorten the run. A long driver box is time the cluster waited on the driver (the driver gaps finding says more); a long stage box is where the stage's own charts help.",
+    var g = { t: "The chain",
+      axes: [["Boxes", "Read down. Each box is a stage, or a pause, that waited for the box above it: its slowest parent stage or, at a job's start, the job before."],
+        ["Shaded boxes", "Pauses: time with no stage on the chain running (the driver working alone, or Spark between stages)."]].concat(P.extra.length ? [["Muted boxes", "Other parents of stages on the chain. They finished first, so they held nothing up."]] : []),
+      read: ["The boxes add up to the whole run, so shortening the longest ones shortens the run.", "A long driver pause is time the cluster waited on the driver; the driver gaps finding says more.", "A long stage box: open the stage to see where its time went."],
+      note: (hidden ? num(hidden) + " pauses shorter than " + dur(Math.max(1000, run / 100)) + " are left out of the drawing but counted above. " : "") + "Click a stage to open it.",
       edgeCls: function (e) { return e[0] < drawn.length && e[1] < drawn.length ? "chain" : "branch"; } };
     var wrap = el("div", { cls: "dagwrap" });
     if (P.graph) drawGraph(wrap, P.graph, info, g);
@@ -1142,8 +1144,10 @@
       if (!st) return { title: "Stage " + sid, sub: "not logged", cls: "skipped" };
       return { title: "Stage " + sid + (st.attempt ? " (attempt " + (st.attempt + 1) + ")" : ""), sub: STATUS[st.status] + " · " + dur(span(st.submitted, st.completed)) + " · " + num(st.tasks) + " tasks",
         href: "#stage/" + st.key, cls: (sid === hot ? "hot" : "") + (st.status === "failed" ? " failed" : "") + (st.status === "skipped" ? " skipped" : ""), tip: "Stage " + sid + ": " + st.name };
-    }, { t: "Job " + jobID + "'s stages", shows: "Arrows point from a stage to the stages that read its output. " + (hot != null ? "This stage is outlined. " : "") + "Failed stages have a red outline and skipped ones (their output already existed) a dashed one; click a stage to open it.",
-      read: "Each arrow is a shuffle: data written by one stage and read over the network by the next, so fewer arrows usually means less data moved. Skipped stages are good news: Spark reused output it already had." });
+    }, { t: "Job " + jobID + "'s stages",
+      axes: [["Boxes", "The job's stages." + (hot != null ? " This stage is outlined." : "") + " Red outline: failed. Dashed: skipped, because its output already existed."], ["Arrows", "From a stage to the stages that read its output. Each arrow is a shuffle: data written by one stage and read over the network by the next."]],
+      read: ["Fewer arrows usually means less data moved.", "Skipped stages are good news: Spark reused output it already had."],
+      note: "Click a stage to open it." });
     return true;
   }
   function planGraph(wrap, qid) {
@@ -1159,8 +1163,10 @@
       var sub = rows != null ? num(rows) + " rows" : "";
       if (time != null) sub += (sub ? " · " : "") + dur(time);
       return { title: n.n, sub: sub || " ", tip: n.n + (n.d ? "\n" + n.d : "") };
-    }, { t: "Query plan", shows: "Data flows down the arrows, from the scans at the top to the result at the bottom. Rows and time are totals across tasks; the table below lists every metric.",
-      read: "Row counts should shrink as filters and aggregations apply. A step whose rows jump up (often a join) or that takes most of the time is where to look first." });
+    }, { t: "Query plan",
+      axes: [["Boxes", "The query's steps (operators), with the rows each produced and the time it took, added up across tasks."], ["Arrows", "Data flows down, from the scans at the top to the result at the bottom."]],
+      read: ["Row counts should shrink as filters and aggregations apply.", "A step whose rows jump up (often a join), or that takes most of the time, is where to look first."],
+      note: "The table below lists every metric." });
     return true;
   }
 
@@ -1168,14 +1174,25 @@
   // Every chart is drawn by the D3 kit below from the page's own data, so
   // the explorer makes no network requests.
   function waitText(c, text) { var w = c.el.querySelector(".wait"); if (w) w.textContent = text; }
-  // guideNodes explains a chart: what it shows, and how to read it (which
-  // way is good, and what pattern to look for).
+  // guideNodes explains a chart, the same way as the report's chartGuide:
+  // axes names what each axis or mark stands for ([label, meaning] pairs:
+  // "Across", "Up", "Rows", "Bar length"...), read says how to read it (a
+  // string, or a list shown as bullets), and note is fine print.
   function guideNodes(g) {
-    return [g.shows ? el("p", { cls: "cap", text: g.shows }) : null,
-      g.read ? el("p", { cls: "read" }, el("b", { text: "How to read it " }), g.read) : null];
+    return [g.axes && g.axes.length ? el("dl", { cls: "axes" }, g.axes.map(function (a) { return el("div", null, el("dt", { text: a[0] }), el("dd", { text: a[1] })); })) : null,
+      pointNodes("read", "How to read it", g.read),
+      g.note ? el("p", { cls: "cap", text: g.note }) : null];
+  }
+  // pointNodes is a titled paragraph for one point, or a titled bullet list
+  // for several.
+  function pointNodes(cls, title, pts) {
+    pts = pts == null ? [] : [].concat(pts).filter(Boolean);
+    if (!pts.length) return null;
+    if (pts.length === 1) return el("p", { cls: cls }, el("b", { text: title + " " }), pts[0]);
+    return el("div", { cls: cls }, el("b", { text: title }), el("ul", null, pts.map(function (p) { return el("li", { text: p }); })));
   }
   // frame replaces the slot's placeholder with a titled plot area and its
-  // guide: g has t (the title), shows and read.
+  // guide: g has t (the title), axes, read and note.
   function frame(c, g) {
     c.el.textContent = "";
     if (g.t) c.el.appendChild(el("h4", { text: g.t }));
@@ -1194,7 +1211,7 @@
   function timeline(c, rows, g, emptyText) {
     if (!rows.length) { waitText(c, emptyText); return; }
     var capRows = rows.slice(0, 600);
-    var plot = frame(c, { t: g.t, read: g.read, shows: g.shows + (rows.length > capRows.length ? " Showing the first " + num(capRows.length) + " of " + num(rows.length) + "." : "") });
+    var plot = frame(c, { t: g.t, axes: g.axes, read: g.read, note: [g.note, rows.length > capRows.length ? "Showing the first " + num(capRows.length) + " of " + num(rows.length) + "." : ""].filter(Boolean).join(" ") });
     c.el.classList.add("scrolly");
     var rowH = 28, axH = 26, w = Math.max(plot.clientWidth || 0, 280);
     var labelW = Math.min(170, Math.round(w * 0.3)), right = w - 18;
@@ -1525,9 +1542,9 @@
       list = all.filter(function (st) { return keep[st.key] || st.status === "failed" || crit[st.id]; });
     }
     var plot = frame(c, { t: "Which stages deserve attention?",
-      shows: "Each bubble is a stage: how long it ran, across, against the data it handled (read, shuffled in and out, written), up; bigger bubbles ran more tasks. Both axes are logarithmic: equal steps multiply rather than add, so small and large stages both show. " +
-        (list.length < all.length ? "Showing the " + num(list.length) + " longest of " + num(all.length) + " stages, and every failed or critical-path one. " : "") + "Click a bubble to open the stage.",
-      read: "Far right and low: a long stage that handled little data, so look at where its time went (scheduler delay, garbage collection, Python) or whether it had too few tasks. Far right and high: big work that took its time. A small bubble far right is a few tasks doing a lot each; more partitions may help. Handling a lot of data is not a problem in itself." });
+      axes: [["Across", "How long the stage ran (logarithmic: each step multiplies)."], ["Up", "The data it handled: read, shuffled in and out, and written (logarithmic)."], ["Bubbles", "One per stage; bigger bubbles ran more tasks. Outlines and marks flag failed, skewed, spilled and critical-path stages."]],
+      read: ["Far right and low: a long stage that handled little data. Look at where its time went (scheduler delay, garbage collection, Python), or whether it had too few tasks.", "Far right and high: big work that took its time.", "A small bubble far right: a few tasks each doing a lot; more partitions may help.", "Handling a lot of data is not a problem in itself."],
+      note: (list.length < all.length ? "Showing the " + num(list.length) + " longest of " + num(all.length) + " stages, and every failed or critical-path one. " : "") + "Click a bubble to open the stage." });
     var mark = function (sym, color, text) { return el("span", null, el("b", { cls: "hmk", style: "color:" + color, text: sym }), text); };
     plot.parentNode.insertBefore(el("div", { cls: "legend" }, mark("●", V.series, "Stage (size: tasks)"), mark("○", V.fail, "Red outline: failed"),
       mark("◎", "var(--accent)", "Thick outline: on the critical path"), mark("▲", "var(--warn)", "Skewed: slowest task over 5× the median"), mark("■", V.viz[4], "Spilled to disk")), plot);
@@ -1589,10 +1606,9 @@
     if (!rows.length) { waitText(c, "No stage had three or more successful tasks, so there is no spread to compare."); return; }
     var shown = skewAll ? rows.slice(0, 300) : rows.slice(0, SKEW_ROWS);
     var plot = frame(c, { t: "Which stages have straggler tasks?",
-      shows: "One row per stage, its task times drawn as multiples of that stage's median task (the line at 1×): the line runs from the fastest to the slowest task, the box from the quarter to the three-quarter mark, the dot is the 95th percentile. Sorted by 95th percentile over median. " +
-        (shown.length < rows.length ? "Showing the " + num(shown.length) + " most skewed of " + num(rows.length) + ". " : "") +
-        (dropped ? num(dropped) + " stages with fewer than three successful tasks are left out. " : "") + "Every successful task counts, not a sample. Click a row to open the stage.",
-      read: "Short rows around 1× are even stages. A dot far right means one task in twenty took several times the median: 2× is mild, 3× strong, 5× severe (a guide, not a rule). A line reaching far past the dot is one or two stragglers; open the stage and compare the slowest tasks' rows read to see whether the data was skewed." });
+      axes: [["Rows", "One stage each, the most skewed at the top (by 95th percentile over median)."], ["Across", "Task time as a multiple of the stage's median task; the line at 1× is the median."], ["Marks", "The line runs from the fastest task to the slowest, the box from the quarter to the three-quarter mark, and the dot is the 95th percentile (the time 19 tasks in 20 beat)."]],
+      read: ["Short rows around 1×: the stage's tasks took similar times.", "A dot far right: one task in twenty took several times the median. 2× is mild, 3× strong, 5× severe (a guide, not a rule).", "A line reaching far past the dot: one or two stragglers. Open the stage and compare the slowest tasks' rows read to see whether the data was skewed."],
+      note: (shown.length < rows.length ? "Showing the " + num(shown.length) + " most skewed of " + num(rows.length) + ". " : "") + (dropped ? num(dropped) + " stages with fewer than three successful tasks are left out. " : "") + "Every successful task counts, not a sample. Click a row to open the stage." });
     if (rows.length > SKEW_ROWS) {
       var btn = el("button", { type: "button", cls: "more", text: skewAll ? "Show the " + SKEW_ROWS + " most skewed" : "Show all " + num(Math.min(rows.length, 300)) + " stages" });
       btn.addEventListener("click", function () { skewAll = !skewAll; drawSlot(c); });
@@ -1684,12 +1700,9 @@
     var top = d3.max(cells, function (d) { return d.shown; }) || 0;
     var trimmed = cols.length < withCells.length || rows.length < execIdx.length;
     var plot = frame(c, { t: "Which executor behaved differently?",
-      shows: "Each square is one executor's part of one stage: rows are executors, columns are stages. " +
-        (trimmed ? "Showing the " + num(cols.length) + " of " + num(withCells.length) + " stages with the most task time and the " + num(rows.length) + " of " + num(execIdx.length) + " executors with the most task time. " : "Every stage and executor. ") +
-        (D.cellsCapped ? "Collection stopped per-executor totals partway (the app-wide cap), so later stages have none. " : "") +
-        "Click a square to open the stage with that executor's row marked.",
-      read: rel ? "Each square is a multiple of the stage's median executor: pale is typical, dark is 3× or more. A dark square in an otherwise pale column is one executor that got more data or ran slower in that stage (skew); a row dark across many columns points at that executor or its node."
-        : "Darker is more. A row darker than the rest across many stages is an executor, or its node, that was slower or got more data; one dark square in an even column is skew in that stage. Empty squares ran no tasks there." });
+      axes: [["Rows", "One executor each."], ["Columns", "One stage each."], ["Squares", rel ? "The executor's share of that stage, as a multiple of the stage's median executor: pale is typical, dark is 3× or more. Empty: it ran no tasks there." : "The executor's share of that stage: darker is more. Empty: it ran no tasks there."]],
+      read: ["A dark square in an otherwise pale column: one executor got more data, or ran slower, in that stage (skew).", "A row dark across many columns: that executor, or its node, was slower or got more data throughout."],
+      note: (trimmed ? "Showing the " + num(cols.length) + " of " + num(withCells.length) + " stages with the most task time and the " + num(rows.length) + " of " + num(execIdx.length) + " executors with the most task time. " : "Every stage and executor. ") + (D.cellsCapped ? "Collection stopped per-executor totals partway (the app-wide cap), so later stages have none. " : "") + "Click a square to open the stage with that executor's row marked." });
     // controls
     var pick = el("select", { "aria-label": "What to compare" });
     HEAT_METRICS.forEach(function (x) { pick.appendChild(el("option", { value: x[0], text: x[1], selected: x[0] === HEAT.metric })); });
@@ -1814,11 +1827,9 @@
     var H = y;
     var dropped = packs.query.dropped + packs.job.dropped + packs.stage.dropped;
     var plot = frame(c, { t: "What happened when",
-      shows: "Every query, job and stage on one time axis, above the executors alive, the tasks running against the task slots (executor cores)" + (cpu.length ? ", node CPU" : "") + (waiting.length ? ", containers waiting for room" : "") +
-        ". Shaded stretches are driver gaps: no job was running. Red marks are failed stages and executors lost or killed." +
-        (dropped ? " " + num(dropped) + " bars that overlapped too many others are left out; zoom in or use the Jobs and Stages tabs." : "") +
-        " The event log has garbage collection per task, not over time, so it is on the stage pages instead.",
-      read: "Drag across any track to zoom all of them; hover to see everything at that moment and to fade what is unrelated to the bar under the pointer; click a bar to open it. Look for shaded stretches (the cluster waited on the driver), tasks running well under the slots (idle cores), and executors dropping while work still ran." });
+      axes: [["Across", "Time of day, shared by every track; drag across any track to zoom them all."], ["Tracks", "Queries, jobs and stages as bars; then the executors alive, the tasks running against the task slots (executor cores)" + (cpu.length ? ", node CPU" : "") + (waiting.length ? ", and containers waiting for room" : "") + "."], ["Shading and red", "Shaded stretches are driver gaps, when no job was running. Red marks are failed stages and executors lost or killed."]],
+      read: ["Shaded stretches: the cluster waited on the driver.", "Tasks running well under the slots: idle cores.", "Executors dropping while work still ran: capacity was lost."],
+      note: (dropped ? num(dropped) + " bars that overlapped too many others are left out; zoom in or use the Jobs and Stages tabs. " : "") + "Hover to see everything at that moment; click a bar to open it. Garbage collection is per task in the event log, not over time, so it is on the stage pages." });
     var tools = el("div", { cls: "bar-tools" });
     if (TL.zoom) {
       var reset = el("button", { type: "button", cls: "more", text: "Show the whole run" });
@@ -1945,7 +1956,8 @@
     { label: "Sending the result", color: V.viz[3], value: function (r) { return r.st.split[6]; } },
     { label: "Other", color: V.neutral, value: function (r) { return r.st.split[7]; } }
   ];
-  var SPLIT_READ = "More computing is better. A large starting share means tasks were too small or the driver was busy; shuffle means data moving between executors; garbage collection above about 10% means memory pressure; a large grey part means waiting on files, S3 or Python. Spark measures these separately and they can overlap a little, so the split is approximate.";
+  var SPLIT_READ = ["More computing is better.", "A large starting share: tasks were too small, or the driver was busy.", "A large shuffle share: a lot of data moved between executors.",
+    "Garbage collection above about 10%: memory pressure.", "A large other share: waiting on files, S3 or Python."];
   function splitTotal(st) { return st.split ? st.split.reduce(function (x, y) { return x + y; }, 0) : 0; }
   function topBy(list, n, key) { return list.filter(function (x) { return key(x) > 0; }).sort(function (a2, b2) { return key(b2) - key(a2); }).slice(0, n); }
   var DRAW = {
@@ -1954,8 +1966,10 @@
       hbarChart(c, rows.map(function (st) { return { label: stageName(st), st: st }; }), [
         { label: "Succeeded", color: V.viz[0], value: function (r) { return r.st.status === "failed" ? 0 : span(r.st.submitted, r.st.completed); } },
         { label: "Failed", color: V.fail, value: function (r) { return r.st.status === "failed" ? span(r.st.submitted, r.st.completed) : 0; } }
-      ], { t: "The longest stages", shows: "The longest stages, from submission to completion. Click a bar to open the stage.",
-        read: "Shorter is better. The top few bars are where speeding things up helps most; red bars failed." }, "ms", function (r) { return "#stage/" + r.st.key; });
+      ], { t: "The longest stages",
+          axes: [["Rows", "One stage each, the longest at the top."], ["Bar length", "How long the stage ran, from when it was submitted to when it finished. Red: it failed."]],
+          read: ["Shorter is better.", "The top few bars are where speeding things up shortens the run most."],
+          note: "Click a bar to open the stage." }, "ms", function (r) { return "#stage/" + r.st.key; });
     },
     stageData: function (c) {
       var moved = function (st) { return st.input + st.shRead + st.shWrite + st.output + st.diskSpill; };
@@ -1965,23 +1979,25 @@
         { label: "Read", color: V.viz[0], value: field("input") }, { label: "Shuffle read", color: V.viz[1], value: field("shRead") },
         { label: "Shuffle write", color: V.viz[2], value: field("shWrite") }, { label: "Written", color: V.viz[3], value: field("output") },
         { label: "Spilled to disk", color: V.viz[4], value: field("diskSpill") }
-      ], { t: "Data each stage moved", shows: "The stages that moved the most data: read, shuffled between executors, written out and spilled to disk.",
-        read: "Longer bars moved more data. Shuffle (orange and green) is the costly part, since it crosses disk and network; spill (pink) should be absent." }, "bytes", function (r) { return "#stage/" + r.st.key; });
+      ], { t: "Data each stage moved",
+          axes: [["Rows", "The stages that moved the most data."], ["Bar length", "Bytes, split into what the stage read, shuffled in, shuffled out, wrote and spilled to disk."]],
+          read: ["Longer bars moved more data; moving a lot of data is not a problem in itself.", "Shuffle is the costly part: it goes through local disk and across the network between executors.", "Spill should be absent: it means the data did not fit in memory."] }, "bytes", function (r) { return "#stage/" + r.st.key; });
     },
     stageSpill: function (c) {
       var rows = topBy(stages, 20, function (st) { return st.memSpill + st.diskSpill; }).map(function (st) { return { label: stageName(st), st: st }; });
       hbarChart(c, rows, [
         { label: "Spilled (size in memory)", color: V.viz[1], value: function (r) { return r.st.memSpill; } },
         { label: "Written to disk", color: V.viz[4], value: function (r) { return r.st.diskSpill; } }
-      ], { t: "Spill by stage", shows: "Spill by stage: data that did not fit in memory while the stage ran, and what it came to on disk.",
-        read: "Smaller is better, and none is ideal. Large spill means the stage's data did not fit in memory; more partitions or more memory per task help." }, "bytes", function (r) { return "#stage/" + r.st.key; });
+      ], { t: "Spill by stage",
+          axes: [["Rows", "The stages that spilled, most first."], ["Bar length", "Bytes spilled: the data's size as it was held in memory, and what it came to on disk (smaller, because it is compressed)."]],
+          read: ["None is ideal.", "Spill means tasks had less memory than their data needed, so Spark wrote part of it to disk and read it back, which is slow.", "More partitions (less data per task) or more memory per executor core help."] }, "bytes", function (r) { return "#stage/" + r.st.key; });
     },
     stageSplit: function (c, key) {
       var list = key ? stages.filter(function (st) { return st.key === key; }) : topBy(stages, 20, splitTotal);
       var rows = list.filter(function (st) { return splitTotal(st) > 0; }).map(function (st) { return { label: stageName(st), st: st }; });
       hbarChart(c, rows, SPLIT, { t: "Where stage time went", read: SPLIT_READ,
-        shows: (key ? "How this stage's tasks spent their time, added up over every task." : "For the stages with the most task time (every task's time added up): how the tasks spent it. Click a bar to open the stage.") +
-          " Starting is scheduler delay and unpacking the task; shuffle is waiting for data from other executors and writing it out; other is the rest of run time, such as reading files or waiting on Python." },
+          axes: [["Rows", key ? "This stage." : "The stages with the most task time."], ["Bar length", "Every task's time added up, split by what it was spent on: starting (scheduler delay and unpacking the task), computing, garbage collection, shuffle (waiting for data from other executors and writing it out), sending the result, and other (reading files, waiting on Python)."]],
+          note: "Spark measures these separately and they can overlap a little, so the split is approximate." + (key ? "" : " Click a bar to open the stage.") },
         "ms", key ? null : function (r) { return "#stage/" + r.st.key; });
     },
     heatmap: function (c) { heatmap(c); },
@@ -1997,8 +2013,9 @@
         { label: "Read", color: V.viz[0], points: inB, step: true, area: 0.08 },
         { label: "Shuffle write", color: V.viz[2], points: sh, step: true, area: 0.08 },
         { label: "Written", color: V.viz[3], points: out, step: true, area: 0.08 }
-      ], { t: "Data over time", shows: "Data read, shuffled and written, added up as each stage finished.",
-        read: "Steep rises are where the work happened. Long flat stretches are time spent on something other than moving data, such as driver code or waiting for executors." }, "bytes");
+      ], { t: "Data over time",
+          axes: [["Across", "Time of day, while the application ran."], ["Up", "Bytes so far: a running total of data read, shuffled and written, added as each stage finished."]],
+          read: ["Steep rises are when the work happened.", "Long flat stretches are time spent not moving data: driver code, planning, or waiting for executors."] }, "bytes");
     },
     execTime: function (c) {
       var rows = topBy(execs.filter(function (x) { return x.id !== "driver"; }), 30, function (x) { return x.run; }).map(function (x) { return { label: "Executor " + x.id, x: x }; });
@@ -2006,8 +2023,9 @@
         { label: "Computing", color: V.viz[0], value: function (r) { return r.x.cpuNs / 1e6; } },
         { label: "Garbage collection", color: V.viz[1], value: function (r) { return r.x.gc; } },
         { label: "Other or waiting", color: V.neutral, value: function (r) { return r.x.run - r.x.cpuNs / 1e6 - r.x.gc; } }
-      ], { t: "Where executor time went", shows: "Task run time on each executor: computing on the JVM, collecting garbage, or neither (waiting for shuffle data, storage or Python workers).",
-        read: "More computing is better. Garbage collection above about 10% of the bar means memory pressure; a large grey part means tasks waited instead of computing." }, "ms", function (r) { return "#executor/" + encodeURIComponent(r.x.id); });
+      ], { t: "Where executor time went",
+          axes: [["Rows", "One executor each."], ["Bar length", "The run time of all its tasks added up, split into computing on the JVM, garbage collection, and other or waiting (for shuffle data, storage or Python workers)."]],
+          read: ["More computing is better.", "Garbage collection above about 10% of a bar means memory pressure.", "A large other-or-waiting part means tasks waited instead of computing. In PySpark, time spent in Python counts there."] }, "ms", function (r) { return "#executor/" + encodeURIComponent(r.x.id); });
     },
     execHeapAll: function (c) {
       if (!D.heapBytes) { waitText(c, "The executors' heap size is not known."); return; }
@@ -2015,8 +2033,10 @@
       hbarChart(c, rows, [
         { label: "Peak heap", color: V.viz[0], value: function (r) { return r.x.peakHeap; } },
         { label: "Heap not used at peak", color: V.line, rest: true, value: function (r) { return D.heapBytes - r.x.peakHeap; } }
-      ], { t: "Peak heap per executor", shows: "Each executor's peak Java heap against the " + bytes(D.heapBytes) + " it had. Peaks are sampled, so short spikes can be missed.",
-        read: "A bar that nearly fills its row (over 90%) risks running out of memory. Bars that stay well short mean executors had more heap than they used and could be smaller." }, "bytes", function (r) { return "#executor/" + encodeURIComponent(r.x.id); });
+      ], { t: "Peak heap per executor",
+          axes: [["Rows", "One executor each."], ["Bar length", "The most Java heap it used, against the " + bytes(D.heapBytes) + " it was given (the full row)."]],
+          read: ["Over 90% of the row: it risked running out of memory.", "Bars that stay well short: executors had more heap than they used and could be smaller."],
+          note: "Heap is sampled, so short spikes can be missed." }, "bytes", function (r) { return "#executor/" + encodeURIComponent(r.x.id); });
     },
     nodeMemory: function (c) {
       var rows = D.aws.nodes.filter(function (n) { return n.yarnMem; }).map(function (n) { return { label: n.host.split(".")[0], n: n }; });
@@ -2025,8 +2045,9 @@
         { label: "Driver container", color: V.viz[1], value: function (r) { return r.n.driverMem || 0; } },
         { label: "Executor containers (at once)", color: V.viz[0], value: function (r) { return execBytes(r.n); } },
         { label: "Free", color: V.line, rest: true, value: function (r) { return r.n.yarnMem - (r.n.driverMem || 0) - execBytes(r.n); } }
-      ], { t: "What YARN placed on each node", shows: "What YARN placed on each node, against the memory the node offered.",
-        read: "Free space helps only if it is at least one executor container wide: smaller gaps are memory paid for but unusable. A node that is mostly free did little work for this run." }, "bytes");
+      ], { t: "What YARN placed on each node",
+          axes: [["Rows", "One worker node each."], ["Bar length", "The memory the node offered YARN, split into the driver's container, this application's executor containers at its busiest, and what was left free."]],
+          read: ["A full bar: the node was used well.", "Free space helps only if it is at least one executor container wide; smaller gaps are memory paid for but unusable.", "A mostly free node did little work for this run."] }, "bytes");
     },
     clusterContainers: function (c) {
       var list = metric("ContainerAllocated").concat(metric("ContainerPending"));
@@ -2034,8 +2055,9 @@
       timeChart(c, list.map(function (s) {
         var waiting = s.name === "ContainerPending";
         return { label: waiting ? "Waiting" : "Allocated", color: waiting ? V.fail : V.series, points: s.points, step: true, area: 0.12 };
-      }), { t: "Containers on the cluster", shows: "Containers YARN had placed and containers waiting for room, across the whole cluster, every minute. This application ran from " + (a.start ? tfmt.format(new Date(a.start)) : "?") + " to " + (a.end ? tfmt.format(new Date(a.end)) : "?") + ".",
-        read: "Waiting should stay at zero. Waiting while YARN memory is free means the containers were too big to fit on any node; waiting with memory full means the cluster was too small or busy." }, "count");
+      }), { t: "Containers on the cluster",
+          axes: [["Across", "Time of day. This application ran from " + (a.start ? tfmt.format(new Date(a.start)) : "?") + " to " + (a.end ? tfmt.format(new Date(a.end)) : "?") + "."], ["Up", "Containers across the whole cluster, every minute: those YARN had placed, and those waiting for room."]],
+          read: ["Waiting should stay at zero.", "Waiting while YARN memory is free: the containers were too big to fit on any one node.", "Waiting with memory full: the cluster was too small, or busy with other applications."] }, "count");
     },
     nodeCPU: function (c) {
       var list = metric("CPUUtilization", "Average");
@@ -2043,8 +2065,9 @@
       var name = {};
       D.aws.nodes.forEach(function (n) { if (n.instance) name[n.instance.id] = n.instance.id + (n.driver ? " (driver)" : n.executors.length ? " (" + n.executors.length + " executors)" : n.instance.role === "MASTER" ? " (primary)" : " (idle)"); });
       timeChart(c, list.map(function (s, i) { return { label: name[s.scope] || s.scope, color: V.viz[i % V.viz.length], dash: i >= V.viz.length ? "5 3" : null, points: s.points, dots: true }; }),
-        { t: "Node CPU", shows: "Each node's CPU, averaged over EC2's 5-minute periods: the whole machine, so daemons and other applications count too.",
-          read: "Higher means busier. Staying above about 85% means tasks queued for CPU. Low CPU on a node that ran executors suggests its tasks waited on disk, network or Python." }, "pct", { max: 100 });
+        { t: "Node CPU",
+          axes: [["Across", "Time of day, while the application ran."], ["Up", "CPU use of the whole machine, from 0 to 100%, one line per node, averaged over EC2's 5-minute periods."]],
+          read: ["Above about 85% for long: tasks queued for CPU.", "Low CPU on a node that ran executors: its tasks were waiting on disk, the network or Python rather than computing.", "Daemons and other applications on the node count too."] }, "pct", { max: 100 });
     },
     running: function (c) {
       var R = D.running;
@@ -2056,8 +2079,10 @@
       timeChart(c, [
         { label: "Tasks running (average)", color: V.series, points: busy, area: 0.25 },
         { label: "Task slots (executor cores)", color: V.neutral, points: slots, step: true, dash: "4 4" }
-      ], { t: "Tasks running against task slots", shows: "Average tasks running in each " + dur(R.bucketMs) + " bucket, against the cores of the executors alive then. Task times are stamped by the driver, so running tasks can briefly exceed the slots.",
-        read: "The filled area should reach the dashed line: every core busy. Gaps below it are idle cores, often from the driver working alone, one slow task holding a stage, or too few partitions." }, "count");
+      ], { t: "Tasks running against task slots",
+        axes: [["Across", "Time of day, while the application ran."], ["Up", "Tasks. The filled area is the tasks running, averaged over each " + dur(R.bucketMs) + "; the dashed line is the task slots: the cores of the executors alive then."]],
+        read: ["The filled area should reach the dashed line: every core busy.", "Space between them is idle cores you are paying for. Common causes: the driver working alone, one slow task holding up a stage, or too few partitions."],
+        note: "Task times are stamped by the driver, so running tasks can briefly go past the slots." }, "count");
     },
     jobsTimeline: function (c) {
       c.link = function (r) { return "#job/" + r.id; };
@@ -2065,8 +2090,10 @@
         var end = j.completed || appEnd;
         return { id: j.id, row: "Job " + j.id, bar: (j.desc || j.name || "").slice(0, 80), color: statusColor(j.status), start: j.submitted, end: end,
           tip: "Job " + j.id + ": " + (j.desc || j.name) + "\n" + (STATUS[j.status] || j.status) + ", " + dur(end - j.submitted) };
-      }), { t: "Jobs over time", shows: "When each job ran. Click a bar to open the job." + STATUS_NOTE,
-        read: "Longer bars took longer. Gaps between bars are time the driver spent outside Spark jobs (planning, Python code or waiting); bars that overlap ran at the same time." }, "No job has a start time.");
+      }), { t: "Jobs over time",
+        axes: [["Across", "Time of day, while the application ran."], ["Rows", "One job each: its bar runs from when it was submitted to when it finished."], ["Colour", STATUS_NOTE.trim()]],
+        read: ["Longer bars took longer.", "Gaps between bars are time the driver spent outside Spark jobs: planning, Python code or waiting.", "Bars that overlap ran at the same time."],
+        note: "Click a bar to open the job." }, "No job has a start time.");
     },
     executorsTimeline: function (c) {
       c.link = function (r) { return "#executor/" + encodeURIComponent(r.id); };
@@ -2079,8 +2106,10 @@
         var end = x.lifted || appEnd;
         return { id: x.kind === "executor" ? x.target : "", row: (x.kind === "executor" ? "Executor " : "Node ") + x.target + " excluded", bar: num(x.failures) + " failures", color: V.fail, start: x.time, end: end,
           tip: (x.kind === "executor" ? "Executor " : "Node ") + x.target + " excluded after " + num(x.failures) + " failures" + (x.lifted ? ", lifted after " + dur(x.lifted - x.time) : "") };
-      })), { t: "Executor lifetimes", shows: "How long each executor lived. Blue: ran to the end. Red: killed or lost, or a period it was excluded. Grey: removed for another reason, such as being idle. Click one to open it.",
-        read: "Long blue bars are healthy. Any red deserves a look. Many short grey bars mean dynamic allocation added and removed executors often, which costs start-up time." }, "No executor was logged.");
+      })), { t: "Executor lifetimes",
+        axes: [["Across", "Time of day, while the application ran."], ["Rows", "One executor each, from when it was added to when it was removed."], ["Colour", "Blue: ran to the end. Red: killed or lost, or a period it was excluded. Grey: removed for another reason, such as being idle."]],
+        read: ["Long blue bars are healthy.", "Any red deserves a look.", "Many short grey bars: dynamic allocation added and removed executors often, which costs start-up time."],
+        note: "Click one to open it." }, "No executor was logged.");
     },
     sqlTimeline: function (c) {
       c.link = function (r) { return "#query/" + r.id; };
@@ -2088,8 +2117,10 @@
         var st = queryStatus(q), end = q.end || appEnd;
         return { id: q.id, row: "Query " + q.id, bar: (q.desc || "").slice(0, 80), color: statusColor(st), start: q.start, end: end,
           tip: "Query " + q.id + ": " + q.desc + "\n" + (STATUS[st] || st) + ", " + dur(end - q.start) };
-      }), { t: "Queries over time", shows: "When each query ran. Click a bar to open its plan." + STATUS_NOTE,
-        read: "Longer bars took longer, so they are where tuning pays off; bars that overlap ran at the same time." }, "No query was logged.");
+      }), { t: "Queries over time",
+        axes: [["Across", "Time of day, while the application ran."], ["Rows", "One SQL statement or DataFrame action each, from when it started to when it finished."], ["Colour", STATUS_NOTE.trim()]],
+        read: ["Longer bars took longer, so they are where tuning pays off.", "Bars that overlap ran at the same time."],
+        note: "Click a bar to open its plan." }, "No query was logged.");
     },
     durationHistogram: function (c, key) {
       var det = D.detail[key];
@@ -2097,8 +2128,9 @@
       colChart(c, det.h.map(function (b) {
         var range = b[0] === b[1] ? dur(b[0]) : dur(b[0]) + " to " + dur(b[1]);
         return { label: dur(b[0]), value: b[2], tip: range + ": " + num(b[2]) + " tasks" };
-      }), { t: "Task durations", shows: "Successful tasks by how long they took (every task, not a sample). Each column is a range of durations, labelled by where it starts.",
-        read: "One tall group on the left is ideal: tasks took similar, short times. A long tail to the right means a few tasks held the stage up, usually because of skewed data." }, "count", { color: V.series });
+      }), { t: "Task durations",
+        axes: [["Across", "How long a task took, in ranges; each column is labelled by where its range starts."], ["Up", "How many successful tasks fell in that range (every task, not a sample)."]],
+        read: ["One tall group on the left is ideal: tasks took similar, short times.", "A long tail to the right: a few tasks held the stage up, usually because of skewed data."] }, "count", { color: V.series });
     },
     taskScatter: function (c, key) {
       var det = D.detail[key];
@@ -2137,11 +2169,11 @@
           tip: "Task " + r[T.task] + " (partition " + r[T.index] + ") on executor " + execName(r[T.exec]) + "\nStarted " + dur(started(r)) + " into the stage, took " + dur(r[T.dur]) +
             (isDefault ? "\n" + num(r[T.rows]) + " rows read" : "\n" + xa.label + ": " + fmtOf(xa.kind, xv) + "\n" + ya.label + ": " + fmtOf(ya.kind, yv)) };
       }), { t: isDefault ? "When tasks started and how long they took" : SCATTER.x === "start" ? ya.label + ", by when each task started" : ya.label + " against " + xa.label.toLowerCase(),
-        shows: "Each mark is a task" + (isDefault ? ": when it started, counted from the start of the stage, and how long it took. " : ": " + xa.label.toLowerCase() + " across, " + ya.label.toLowerCase() + " up. ") +
-          (det.sample.length < det.from ? "From a sample of " + num(det.sample.length) + " of " + num(det.from) + " tasks plus the slowest " + num(det.slow.length) + "." : "Every task of this stage."),
-        read: isDefault ? "Dots should form a low, even band. Dots far above the rest are stragglers (check whether they read more rows); triangles failed. Vertical stripes are waves: one per round of task slots."
-          : SCATTER.x === "start" ? ya.read + " Vertical stripes are waves, one per round of task slots; triangles failed."
-          : "Marks that climb from left to right mean " + xa.label.toLowerCase() + " explains the " + ya.label.toLowerCase() + ": a few far to the right are skew in the data. Marks high up at the left are slow for another reason, such as a busy node, garbage collection or waiting. " + ya.read + " Triangles failed." },
+        axes: [["Across", SCATTER.x === "start" ? "When the task started, counted from the start of the stage." : xa.label + "."], ["Up", ya.label + "."], ["Marks", "One per task. Triangles failed; the colour picker above chooses what colour shows."]],
+        read: isDefault ? ["Dots should form a low, even band.", "Dots far above the rest are stragglers; check whether they read more rows.", "Vertical stripes are waves: one per round of task slots."]
+          : SCATTER.x === "start" ? [ya.read, "Vertical stripes are waves, one per round of task slots."]
+          : ["Marks that climb from left to right: " + xa.label.toLowerCase() + " explains the " + ya.label.toLowerCase() + ", and a few far to the right are skew in the data.", "Marks high up at the left are slow for another reason, such as a busy node, garbage collection or waiting.", ya.read],
+        note: det.sample.length < det.from ? "From a sample of " + num(det.sample.length) + " of " + num(det.from) + " tasks, plus the slowest " + num(det.slow.length) + "." : "Every task of this stage." },
         xa.kind, ya.kind, ["Succeeded", "Failed or killed", xa.label + (SCATTER.x === "start" ? ", after the stage began" : ""), ya.label], groups);
       if (!plot) return;
       // axis choices, above the chart
@@ -2165,8 +2197,10 @@
       if (!pts.length) { waitText(c, "No heap samples were logged for this executor (spark.eventLog.logStageExecutorMetrics turns them on)."); return; }
       colChart(c, pts.map(function (p) {
         return { label: "Stage " + p[0].key, value: p[1], href: "#stage/" + p[0].key, tip: "Stage " + p[0].key + " (" + p[0].name + "): peak heap " + bytes(p[1]) + (D.heapBytes ? " of " + bytes(D.heapBytes) : "") };
-      }), { t: "Peak heap by stage", shows: "The highest Java heap use sampled while each stage ran on this executor, against the heap it was given (dashed). Samples are peaks, so short spikes can be missed. Click a column to open the stage.",
-        read: "Bars close to the dashed line risk running out of memory; bars well below it for every stage mean the heap is bigger than this work needs." }, "bytes",
+      }), { t: "Peak heap by stage",
+        axes: [["Across", "One column per stage this executor ran."], ["Up", "The most Java heap sampled while the stage ran here; the dashed line is the heap the executor was given."]],
+        read: ["Columns close to the dashed line risked running out of memory.", "Columns well below it for every stage: the heap is bigger than this work needs."],
+        note: "Heap is sampled, so short spikes can be missed. Click a column to open the stage." }, "bytes",
         { series: "Peak heap", ref: D.heapBytes ? { value: D.heapBytes, label: "Configured heap (" + bytes(D.heapBytes) + ")" } : null });
     }
   };
@@ -2538,8 +2572,7 @@
     var tools = el("div", { cls: "bar-tools anattools" });
     s.appendChild(tools);
     s.appendChild(wrap);
-    add(s, guideNodes({ shows: "Numbered badges are findings, pinned to the part they are about; click one to read it. Hover anything for exact values.",
-      read: "Hatched space on a node is memory nobody used: narrower than an executor, it could not hold one. Red outlines are executors killed or lost. Inside the executor, a peak line near the end of the heap means it nearly ran out." }));
+    add(s, guideNodes(D.anatomyGuide || {}));
     anatomyZoom(wrap, tools);
     return s;
   };
