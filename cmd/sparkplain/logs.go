@@ -34,6 +34,15 @@ type clusterLogs struct {
 	sources   []model.SourceStatus
 }
 
+// clusterHasHBase reports whether DescribeCluster lists HBase among the
+// applications installed on the EMR cluster.
+func clusterHasHBase(cl *model.Cluster) bool {
+	return cl != nil && slices.ContainsFunc(cl.Applications, func(a string) bool {
+		name, _, _ := strings.Cut(a, " ")
+		return strings.EqualFold(name, "HBase")
+	})
+}
+
 // maxStepsSearched bounds how many steps' stderr are read to find the
 // one that submitted the application when the event log cannot narrow
 // them by time.
@@ -105,7 +114,7 @@ func emrMetadata(ctx context.Context, cloud *awsSession, cl *model.Cluster) clus
 
 // readLogs reads the logs under the cluster's log URI. It never fails the
 // run: what it cannot read is reported in the Sources rows.
-func (out *clusterLogs) readLogs(ctx context.Context, cloud *awsSession, log *model.EventLog, appID string, lim source.Limits) {
+func (out *clusterLogs) readLogs(ctx context.Context, cloud *awsSession, log *model.EventLog, appID string, lim source.Limits, includeHBase bool) {
 	cl := out.cluster
 	cfg, err := cloud.config(ctx)
 	if err != nil {
@@ -133,7 +142,7 @@ func (out *clusterLogs) readLogs(ctx context.Context, cloud *awsSession, log *mo
 		}
 		return
 	}
-	plan := yarnlog.Plan{Root: root, AppID: appID, Limits: lim}
+	plan := yarnlog.Plan{Root: root, AppID: appID, Limits: lim, SkipHBase: !includeHBase}
 	plan.Steps, plan.Instances, plan.Since = narrow(out.steps, out.instances, log)
 	if log != nil {
 		plan.Until = log.Application.End
@@ -167,6 +176,72 @@ func (out *clusterLogs) readLogs(ctx context.Context, cloud *awsSession, log *mo
 			}
 		}
 	}
+}
+
+// readHBaseCluster reads only HBase Master and region-server logs from a
+// separate EMR cluster. Spark/YARN metadata remains attached to out.cluster.
+func (out *clusterLogs) readHBaseCluster(ctx context.Context, cloud *awsSession, clusterID string, log *model.EventLog, lim source.Limits) {
+	cfg, err := cloud.config(ctx)
+	if err != nil {
+		out.sources = append(out.sources, model.SourceStatus{Name: "HBase server logs", Status: "error", Class: source.ClassAccessDenied,
+			Location: clusterID, Detail: err.Error()})
+		return
+	}
+	cl, err := cloud.cluster(ctx, clusterID, "")
+	if err != nil {
+		out.sources = append(out.sources, model.SourceStatus{Name: "HBase server logs", Status: "error", Class: awsmeta.ErrorClass(err),
+			Location: clusterID, Detail: "Could not describe the HBase cluster: " + err.Error()})
+		return
+	}
+	if !clusterHasHBase(&cl) {
+		out.sources = append(out.sources, model.SourceStatus{Name: "HBase server logs", Status: "not-supplied", Location: clusterID,
+			Detail: "The cluster specified by -hbase-cluster-id does not have HBase installed."})
+		return
+	}
+	bucket, root, ok := yarnlog.LogRoot(cl.LogURI, cl.ID)
+	if !ok {
+		why := "The HBase cluster has no log URI on S3, so its server logs cannot be read."
+		if cl.LogURI != "" {
+			why = fmt.Sprintf("The HBase cluster's log URI %s is not on S3.", cl.LogURI)
+		}
+		out.sources = append(out.sources, model.SourceStatus{Name: "HBase server logs", Status: "not-supplied", Location: cl.ID, Detail: why})
+		return
+	}
+	st, err := awsDeps.s3(ctx, cfg, bucket)
+	if err != nil {
+		out.sources = append(out.sources, model.SourceStatus{Name: "HBase server logs", Status: "error", Class: source.ClassOf(err),
+			Location: "s3://" + bucket + "/" + root + "node/", Detail: "Could not open the HBase cluster's log bucket: " + err.Error()})
+		return
+	}
+
+	plan := yarnlog.Plan{Root: root, Limits: lim}
+	if log != nil {
+		plan.Since, plan.Until = log.Application.Start, log.Application.End
+	}
+	instances, instErr := awsmeta.Instances(ctx, awsDeps.emr(cfg), cl)
+	if instErr == nil {
+		plan.Lifetimes = map[string][2]time.Time{}
+		for _, in := range instances {
+			plan.Instances = append(plan.Instances, in.ID)
+			plan.Lifetimes[in.ID] = [2]time.Time{in.Created, in.Ended}
+		}
+	}
+	col := yarnlog.CollectHBase(ctx, st, plan)
+	if len(col.Sources) == 0 {
+		row := model.SourceStatus{Name: "HBase server logs", Status: "not-supplied",
+			Location: "s3://" + bucket + "/" + root + "node/*/applications/hbase/",
+			Detail: "No HBase Master or region-server logs were found on the cluster specified by -hbase-cluster-id."}
+		if instErr != nil {
+			row.Detail += " ListInstances also failed: " + instErr.Error()
+		}
+		out.sources = append(out.sources, row)
+		return
+	}
+	for i := range col.Sources {
+		col.Sources[i].Detail = strings.TrimSpace(col.Sources[i].Detail + " Source cluster: " + cl.ID + ".")
+	}
+	out.files = append(out.files, col.Files...)
+	out.sources = append(out.sources, col.Sources...)
 }
 
 // stepEventLogDirs returns the S3 spark.eventLog.dir values the steps'
