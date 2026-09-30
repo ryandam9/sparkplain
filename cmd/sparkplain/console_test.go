@@ -2,6 +2,7 @@ package main
 
 import (
 	"io"
+	"runtime"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -30,7 +31,7 @@ func TestConsoleSummaryPiped(t *testing.T) {
 		"\n  !! ",
 		"\n▸ Written  " + dir + "/\n  application_1790380000000_0042-report.html ·",
 		"application_1790380000000_0042-explorer.html ·",
-		"  Open it xdg-open " + outPath(dir, "report.html") + "\n",
+		"  Open it " + map[bool]string{true: "open", false: "xdg-open"}[runtime.GOOS == "darwin"] + " " + outPath(dir, "report.html") + "\n",
 		"\nDone in ",
 		"· complete (exit 0)\n",
 	} {
