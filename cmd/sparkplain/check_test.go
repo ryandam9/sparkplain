@@ -260,29 +260,25 @@ func TestAccessCheckCoversEveryAccess(t *testing.T) {
 			for _, w := range tc.want {
 				if !strings.Contains(flat(stdout), flat(w)) {
 					t.Errorf("stdout lacks %q:\n%s", w, stdout)
-				}
+			}
 			}
 		})
 	}
 }
 
-// unwritableDir is a folder nothing can be written in, for the output check,
-// or "" when this system has none. It is found by asking the system rather
-// than by assuming: /proc is one on Linux for a normal user, but root can
-// write there in some containers, and macOS has no /proc at all. Failing
-// that, a temporary folder made read-only works for everyone but root.
+// unwritableDir creates a temporary directory, makes it non-writable for the
+// test user, and returns it. Root can bypass these permission bits, so in that
+// environment the local-path case is omitted rather than producing a false
+// failure.
 func unwritableDir(t *testing.T) string {
 	t.Helper()
-	if syscall.Access("/proc", 2) != nil {
-		return "/proc"
-	}
 	dir := t.TempDir()
 	if err := os.Chmod(dir, 0o500); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chmod(dir, 0o700) })
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
 	if syscall.Access(dir, 2) == nil {
-		return "" // root, which can write anywhere
+		return ""
 	}
 	return dir
 }
