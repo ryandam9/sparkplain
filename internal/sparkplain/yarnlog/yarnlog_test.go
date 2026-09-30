@@ -547,7 +547,8 @@ func TestCapacityAndRequests(t *testing.T) {
 	if got := kinds(rm); got != "container-assigned/info" {
 		t.Fatalf("resourcemanager = %s", got)
 	}
-	if f := rm.Lines[0].Fields; f["memoryMB"] != "11264" || f["availableMB"] != "1024" || f["host"] != "ip-10-0-0-2.ec2.internal" || f["vcores"] != "1" {
+	if f := rm.Lines[0].Fields; f["memoryMB"] != "11264" || f["availableMB"] != "1024" || f["host"] != "ip-10-0-0-2.ec2.internal" || f["vcores"] != "1" ||
+		f["usedMB"] == "" || f["usedVcores"] == "" || f["availableVcores"] == "" {
 		t.Errorf("assigned = %+v", f)
 	}
 	drv := classifyText(t, "containers/application_1700000000000_0001/container_1700000000000_0001_01_000001/stderr", `24/01/01 10:01:10 INFO YarnAllocator: Will request 50 executor container(s) for  ResourceProfile Id: 0, each with 4 core(s) and 11264 MB memory. with custom resources: <memory:11264>

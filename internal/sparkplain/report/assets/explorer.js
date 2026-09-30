@@ -2040,6 +2040,7 @@
     },
     nodeMemory: function (c) {
       var rows = D.aws.nodes.filter(function (n) { return n.yarnMem; }).map(function (n) { return { label: n.host.split(".")[0], n: n }; });
+      if (!rows.length) { waitText(c, D.aws.nodeMemNote); return; }
       var execBytes = function (n) { return (n.execMem || 0) * (n.peakExecs || n.executors.length); };
       hbarChart(c, rows, [
         { label: "Driver container", color: V.viz[1], value: function (r) { return r.n.driverMem || 0; } },
@@ -2047,7 +2048,8 @@
         { label: "Free", color: V.line, rest: true, value: function (r) { return r.n.yarnMem - (r.n.driverMem || 0) - execBytes(r.n); } }
       ], { t: "What YARN placed on each node",
           axes: [["Rows", "One worker node each."], ["Bar length", "The memory the node offered YARN, split into the driver's container, this application's executor containers at its busiest, and what was left free."]],
-          read: ["A full bar: the node was used well.", "Free space helps only if it is at least one executor container wide; smaller gaps are memory paid for but unusable.", "A mostly free node did little work for this run."] }, "bytes");
+          read: ["A full bar: the node was used well.", "Free space helps only if it is at least one executor container wide; smaller gaps are memory paid for but unusable.", "A mostly free node did little work for this run."],
+          note: D.aws.nodeMemNote }, "bytes");
     },
     clusterContainers: function (c) {
       var list = metric("ContainerAllocated").concat(metric("ContainerPending"));
@@ -2474,7 +2476,7 @@
         { h: "Node CPU", num: true, v: function (n) { return n.cpuAvg == null ? -1 : n.cpuAvg; }, f: function (n) { return n.cpuAvg == null ? "—" : el("span", null, Math.round(n.cpuAvg) + "% avg", el("span", { cls: "sub", text: Math.round(n.cpuPeak) + "% peak" })); } }
       ]
     }));
-    if (A.nodes.some(function (n) { return n.yarnMem; })) s.appendChild(chartSlot("", "nodeMemory"));
+    if (A.nodes.some(function (n) { return n.yarnMem; }) || A.nodeMemNote) s.appendChild(chartSlot("", "nodeMemory"));
     if ((A.metricFacts || []).length) s.appendChild(el("div", { cls: "facts" }, A.metricFacts.map(function (f) { return fact(f.label, f.value, f.explain); })));
     if (A.metrics.length) { s.appendChild(chartSlot("", "clusterContainers")); s.appendChild(chartSlot("", "nodeCPU")); }
     if ((A.metricsGaps || []).length) s.appendChild(el("div", { cls: "missing" }, el("h3", { text: "Not in CloudWatch" }), el("ul", null, A.metricsGaps.map(function (g) { return el("li", { text: g }); }))));

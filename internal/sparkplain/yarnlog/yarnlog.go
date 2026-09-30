@@ -611,7 +611,8 @@ func (c *classifier) resourceManager(h header) {
 	if m := assignedRE.FindStringSubmatch(h.msg); m != nil {
 		l := c.entry(model.LogContainerAssigned, model.Info, h.time, h.msg)
 		l.Fields["container"], l.Fields["memoryMB"], l.Fields["nodeMaxMB"], l.Fields["vcores"] = m[1], m[2], m[3], m[4]
-		l.Fields["host"], l.Fields["containersOnNode"], l.Fields["usedMB"], l.Fields["availableMB"] = m[6], m[7], m[8], m[9]
+		l.Fields["host"], l.Fields["containersOnNode"], l.Fields["usedMB"], l.Fields["availableMB"] = m[6], m[7], m[8], m[10]
+		l.Fields["usedVcores"], l.Fields["availableVcores"] = m[9], m[11]
 		c.add(l)
 		return
 	}

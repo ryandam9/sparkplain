@@ -182,6 +182,7 @@ type xAWS struct {
 	CallEvents  int                    `json:"callEvents,omitempty"`
 	Security    *model.SecurityPosture `json:"security,omitempty"`
 	Groups      []model.InstanceGroup  `json:"groups,omitempty"`
+	NodeMemNote string                 `json:"nodeMemNote,omitempty"` // nodes that ran part of the application but whose YARN capacity is unknown
 }
 
 // awsData encodes the cluster's nodes, metrics and AWS calls.
@@ -193,6 +194,7 @@ func awsData(r *model.Report) *xAWS {
 	if r.Cluster != nil {
 		a.Security, a.Groups = r.Cluster.Security, r.Cluster.Groups
 	}
+	a.NodeMemNote = unknownNote(unknownCapacity(r))
 	for _, h := range r.Nodes.Hosts {
 		row := xNodeRow{Host: h.Name, Instance: h.Instance, Driver: h.Driver, Executors: orEmpty(h.Executors), YARNMem: h.YARNMemoryBytes, YARNCores: h.YARNVCores,
 			DriverMem: h.DriverContainerBytes, ExecMem: h.ExecutorContainerBytes, PeakExecs: h.PeakExecutors, NoRoom: h.NoRoomBesideDriver()}

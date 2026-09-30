@@ -167,3 +167,30 @@ func TestSplitChart(t *testing.T) {
 		}
 	}
 }
+
+// A node that ran the driver or executors is never left out of the node
+// chart silently: when its YARN capacity is unknown, the chart names it,
+// and when no node can be drawn the chart still says why.
+func TestNodeChartNamesNodesItCannotDraw(t *testing.T) {
+	t.Parallel()
+	gib := int64(1 << 30)
+	r := &model.Report{Logs: &model.LogsSection{}}
+	r.Nodes.Hosts = []model.Host{
+		{Name: "ip-10-0-2-10.ec2.internal", YARNMemoryBytes: 12 * gib, ExecutorContainerBytes: 3 * gib, Executors: []string{"1"}},
+		{Name: "ip-10-0-2-13.ec2.internal", Driver: true, Executors: []string{"2", "3"}},
+		{Name: "ip-10-0-2-11.ec2.internal"}, // ran nothing: not named
+	}
+	out := string(nodeMemoryChart(r))
+	if !strings.Contains(out, "ip-10-0-2-13 (the driver and 2 executors)") || strings.Contains(out, "ip-10-0-2-11") {
+		t.Errorf("chart note = %s", out)
+	}
+	r.Nodes.Hosts[0].YARNMemoryBytes = 0
+	if out := string(nodeMemoryChart(r)); !strings.Contains(out, "<h4>What YARN placed on each node</h4>") || !strings.Contains(out, "ip-10-0-2-10 (1 executor); ip-10-0-2-13") {
+		t.Errorf("with no node drawable, chart = %s", out)
+	}
+	// Without the cluster's logs, nothing is said: no node has a capacity.
+	r.Logs = nil
+	if out := string(nodeMemoryChart(r)); out != "" {
+		t.Errorf("without logs, chart = %s", out)
+	}
+}

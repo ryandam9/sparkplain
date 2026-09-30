@@ -27,6 +27,7 @@ type fitNode struct {
 // vCores:1 for executors that asked for 4), so memory decides the fit.
 func fitFindings(c *ctx, r *model.Report) {
 	nodes := map[string]*fitNode{}
+	assigned := map[string]*fitNode{} // capacity from container placements, when registration is missing
 	var execMB, heapMB, overheadMB int64
 	var execCores, wanted, desired int
 	var desiredSrc model.Source
@@ -73,6 +74,19 @@ func fitFindings(c *ctx, r *model.Report) {
 			if strings.HasSuffix(f["container"], "_000001") {
 				amMB, amHost, amSrc = num("memoryMB"), f["host"], h.l.Source
 			}
+			// What the node had in use plus what it had left is its whole
+			// capacity: a stand-in for when its registration line was not
+			// read (rotated out of the ResourceManager's log, or the node's
+			// own log not collected).
+			if k := hostKey(f["host"]); assigned[k] == nil && f["availableMB"] != "" {
+				assigned[k] = &fitNode{host: f["host"], memMB: num("usedMB") + num("availableMB"),
+					vcores: int(num("usedVcores") + num("availableVcores")), src: h.l.Source}
+			}
+		}
+	}
+	for k, n := range assigned {
+		if nodes[k] == nil && n.memMB > 0 {
+			nodes[k] = n
 		}
 	}
 	if desired > 0 {
