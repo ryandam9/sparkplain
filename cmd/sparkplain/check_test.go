@@ -260,7 +260,6 @@ func TestAccessCheckCoversEveryAccess(t *testing.T) {
 			for _, w := range tc.want {
 				if !strings.Contains(flat(stdout), flat(w)) {
 					t.Errorf("stdout lacks %q:\n%s", w, stdout)
-			}
 				}
 			}
 		})
