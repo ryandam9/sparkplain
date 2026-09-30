@@ -100,17 +100,66 @@ func TestDescribe(t *testing.T) {
 	}
 }
 
-func TestFindByNamePicksNewest(t *testing.T) {
-	now := time.Now()
-	api := &stubEMR{pages: [][]types.ClusterSummary{
-		{summary("j-old", "etl", now.Add(-48*time.Hour)), summary("j-x", "other", now)},
-		{summary("j-new", "etl", now.Add(-time.Hour))},
-	}}
-	if id, err := FindByName(context.Background(), api, "etl"); err != nil || id != "j-new" {
-		t.Errorf("FindByName = %q, %v", id, err)
+// cluster is a summary with a state and, when ended is set, an end time.
+func cluster(id, name string, state types.ClusterState, created, ended time.Time) types.ClusterSummary {
+	c := summary(id, name, created)
+	c.Status.State = state
+	if !ended.IsZero() {
+		c.Status.Timeline.EndDateTime = aws.Time(ended)
 	}
-	if _, err := FindByName(context.Background(), api, "none"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("no match: %v", err)
+	return c
+}
+
+// A name picks the cluster that was up when the application's YARN
+// started, whatever has happened since; failing that, the one running now;
+// and it says why, or lists the candidates when it cannot choose.
+func TestPickByName(t *testing.T) {
+	day := time.Date(2026, 9, 29, 0, 0, 0, 0, time.UTC)
+	at := day.Add(9*time.Hour + 5*time.Minute) // the application's YARN started at 09:05
+	yesterday := cluster("j-yesterday", "etl", types.ClusterStateTerminated, day.Add(-15*time.Hour), day.Add(-2*time.Hour))
+	morning := cluster("j-morning", "etl", types.ClusterStateTerminated, day.Add(9*time.Hour), day.Add(11*time.Hour))
+	now := cluster("j-now", "etl", types.ClusterStateWaiting, day.Add(13*time.Hour), time.Time{})
+	pick := func(at time.Time, fallback bool, cs ...types.ClusterSummary) (Pick, error) {
+		return PickByName(context.Background(), &stubEMR{pages: [][]types.ClusterSummary{append(cs, cluster("j-other", "other", types.ClusterStateRunning, day, time.Time{}))}}, "etl", at, fallback)
+	}
+	for _, c := range []struct {
+		name     string
+		at       time.Time
+		fallback bool
+		cs       []types.ClusterSummary
+		id, why  string
+	}{
+		{"the one that ran it, though ended and not the newest", at, false, []types.ClusterSummary{yesterday, morning, now}, "j-morning", "the one up when the application's YARN started, 2026-09-29 09:05 UTC"},
+		{"no application time: the one running now", time.Time{}, false, []types.ClusterSummary{yesterday, now}, "j-now", "the one running now"},
+		{"no application time, none running: the newest", time.Time{}, false, []types.ClusterSummary{yesterday, morning}, "j-morning", "the newest; none is running now"},
+		{"HBase, not up then: the one running now", at, true, []types.ClusterSummary{yesterday, now}, "j-now", "the one running now"},
+		{"two up then, hours apart: the later", at, false, []types.ClusterSummary{morning, cluster("j-long", "etl", types.ClusterStateWaiting, day.Add(-30*time.Hour), time.Time{})}, "j-morning", "the last created before the application's YARN started, 2026-09-29 09:05 UTC"},
+	} {
+		p, err := pick(c.at, c.fallback, c.cs...)
+		if err != nil || p.ID != c.id || p.Why != c.why || p.Name != "etl" {
+			t.Errorf("%s: %+v, %v", c.name, p, err)
+		}
+	}
+	for _, c := range []struct {
+		name     string
+		at       time.Time
+		fallback bool
+		cs       []types.ClusterSummary
+		want     string
+	}{
+		{"Spark: none up then", at, false, []types.ClusterSummary{yesterday, now}, "none was up when the application's YARN started"},
+		{"two up then, minutes apart", at, false, []types.ClusterSummary{morning, cluster("j-twin", "etl", types.ClusterStateWaiting, day.Add(9*time.Hour+3*time.Minute), time.Time{})}, "more than one was up"},
+		{"two running now", time.Time{}, false, []types.ClusterSummary{now, cluster("j-now2", "etl", types.ClusterStateRunning, day.Add(14*time.Hour), time.Time{})}, "more than one is running now"},
+		{"HBase: none then, none now", at, true, []types.ClusterSummary{yesterday}, "none was up when the application ran, and none is running now"},
+	} {
+		_, err := pick(c.at, c.fallback, c.cs...)
+		var pe *PickError
+		if !errors.As(err, &pe) || !strings.Contains(err.Error(), c.want) || len(pe.Candidates) != len(c.cs) || !strings.Contains(err.Error(), aws.ToString(c.cs[0].Id)) {
+			t.Errorf("%s: %v", c.name, err)
+		}
+	}
+	if _, err := pick(at, false); !errors.Is(err, ErrNotFound) {
+		t.Errorf("no cluster with the name: %v", err)
 	}
 }
 

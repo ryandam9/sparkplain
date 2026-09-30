@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -50,12 +51,12 @@ const (
 var appIDRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.\-]{0,127}$`)
 
 type options struct {
-	profile, region, configPath, clusterID, clusterName, hbaseClusterID, appID string
-	eventLog, from, out, format, maxSize, maxUnpacked, show                    string
-	workers                                                                    int
-	timeout, windowPad                                                         time.Duration
-	noCloudWatch, noCloudTrail, showVersion, check                             bool
-	sources                                                                    []string
+	profile, region, configPath, env, clusterID, clusterName, hbaseClusterID, hbaseClusterName, appID string
+	eventLog, from, out, format, maxSize, maxUnpacked, show                                           string
+	workers                                                                                           int
+	timeout, windowPad                                                                                time.Duration
+	noCloudWatch, noCloudTrail, showVersion, check, initConfig                                        bool
+	sources                                                                                           []string
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
@@ -65,9 +66,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&o.profile, "profile", "", "named AWS profile for online runs (default for the default chain)")
 	fs.StringVar(&o.region, "region", "", "AWS region override (online runs)")
 	fs.StringVar(&o.configPath, "config", "", "YAML defaults file (default ~/.config/sparkplain/config.yaml)")
+	fs.StringVar(&o.env, "env", "", "environment in the config file, such as prod or nonprod: its clusters, profile, region and event log location")
 	fs.StringVar(&o.clusterID, "cluster-id", "", "EMR cluster ID: read its metadata and logs from AWS (needs -profile)")
-	fs.StringVar(&o.clusterName, "cluster-name", "", "EMR cluster name, instead of -cluster-id (the newest cluster of that name)")
+	fs.StringVar(&o.clusterName, "cluster-name", "", "EMR cluster name, instead of -cluster-id: the cluster of that name that ran the application (also cluster-name in the config file)")
 	fs.StringVar(&o.hbaseClusterID, "hbase-cluster-id", "", "EMR cluster ID that runs HBase when it is separate from the Spark cluster")
+	fs.StringVar(&o.hbaseClusterName, "hbase-cluster-name", "", "EMR cluster name, instead of -hbase-cluster-id: the cluster of that name up when the application ran (also hbase-cluster-name in the config file)")
 	fs.StringVar(&o.appID, "app-id", "", "Spark application ID, e.g. application_1700000000000_0042 (required)")
 	fs.StringVar(&o.eventLog, "eventlog", "", "event log: local file, rolling eventlog_v2_* folder, folder of logs, or History Server zip")
 	fs.StringVar(&o.from, "from", "", "local copy of the cluster's logs (containers/, steps/, node/) or of one application's container folders")
@@ -81,6 +84,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.BoolVar(&o.noCloudTrail, "no-cloudtrail", false, "skip CloudTrail lookups (fewer permissions needed)")
 	fs.DurationVar(&o.windowPad, "window-pad", 5*time.Minute, "padding around the run's time window for CloudWatch and CloudTrail queries")
 	fs.BoolVar(&o.showVersion, "version", false, "print the version and exit")
+	fs.BoolVar(&o.initConfig, "init-config", false, "write a starter config file, every key explained, to ~/.config/sparkplain/config.yaml (or -config) and exit")
 	fs.BoolVar(&o.check, "check", false, "check what the run can read, print it, and exit (0 all readable, 3 not)")
 	fs.StringVar(&o.show, "show", "", "print the event at file:line (as the pages cite it), redacted, and exit")
 	fs.Func("source", "the application's source file or folder, shown beside jobs and stages in the explorer (repeatable; redacted)", func(v string) error {
@@ -103,6 +107,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "sparkplain", version)
 		return exitOK
 	}
+	if o.initConfig {
+		return writeStarterConfig(firstNonEmpty(o.configPath, defaultConfigPath()), stdout, stderr)
+	}
 	con := newConsole(stdout, stderr)
 	fail := func(format string, a ...any) int {
 		con.clear()
@@ -120,14 +127,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if !appIDRE.MatchString(o.appID) {
 		return fail("-app-id %q does not look like a Spark application ID", o.appID)
 	}
-	online := o.clusterID != "" || o.clusterName != ""
-	if o.hbaseClusterID != "" && !online {
-		return fail("-hbase-cluster-id requires -cluster-id or -cluster-name for the Spark cluster")
-	}
-	if online && o.from != "" {
-		return fail("-from reads a local copy of the cluster's logs, and -cluster-id reads them from S3: pass one or the other")
-	}
-
+	// A leading ~/ means the home folder, in the config file and in
+	// quoted flags alike, which no shell expands.
+	o.configPath, o.eventLog, o.from, o.out = expandHome(o.configPath), expandHome(o.eventLog), expandHome(o.from), expandHome(o.out)
 	cfgPath, explicit := o.configPath, o.configPath != ""
 	if !explicit {
 		cfgPath = defaultConfigPath()
@@ -135,6 +137,28 @@ func run(args []string, stdout, stderr io.Writer) int {
 	cfg, err := loadConfig(cfgPath, explicit)
 	if err != nil {
 		return fail("%v", err)
+	}
+	if cfg, err = cfg.withEnv(o.env); err != nil {
+		return fail("%v", err)
+	}
+	cfg.Out, cfg.EventLogPrefix = expandHome(cfg.Out), expandHome(cfg.EventLogPrefix)
+	// The config file names the clusters, the profile and the region when
+	// the flags do not. Its cluster names stand aside for a -from run, and
+	// for an -eventlog run that names no cluster and no -env: those are
+	// asked to read local files only.
+	o.profile, o.region = firstNonEmpty(o.profile, cfg.Profile), firstNonEmpty(o.region, cfg.Region)
+	if o.clusterID == "" && o.clusterName == "" && o.from == "" && (o.eventLog == "" || o.env != "") {
+		o.clusterName = cfg.ClusterName
+	}
+	if o.hbaseClusterID == "" && o.hbaseClusterName == "" && (o.clusterID != "" || o.clusterName != "") {
+		o.hbaseClusterName = cfg.HBaseClusterName
+	}
+	online := o.clusterID != "" || o.clusterName != ""
+	if (o.hbaseClusterID != "" || o.hbaseClusterName != "") && !online {
+		return fail("-hbase-cluster-id and -hbase-cluster-name need -cluster-id or -cluster-name for the Spark cluster")
+	}
+	if online && o.from != "" {
+		return fail("-from reads a local copy of the cluster's logs, and -cluster-id reads them from S3: pass one or the other")
 	}
 	outputs, err := parseFormats(firstNonEmpty(o.format, cfg.Format, "html,json,explorer"))
 	if err != nil {
@@ -175,7 +199,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	defer stop()
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cloud := &awsSession{profile: o.profile, region: o.region}
+	cloud := &awsSession{profile: o.profile, region: o.region, at: appClusterStart(o.appID)}
 	if online && o.profile == "" {
 		return fail("%v", errNoProfile)
 	}
@@ -350,10 +374,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case online:
 		mode = "online"
 		con.status("reading container, step and node logs")
-		logs.readLogs(ctx, cloud, log, o.appID, lim, o.hbaseClusterID == "")
-		if o.hbaseClusterID != "" {
-			con.status("reading HBase server logs from " + o.hbaseClusterID)
-			logs.readHBaseCluster(ctx, cloud, o.hbaseClusterID, log, lim)
+		separate := o.hbaseClusterID != "" || o.hbaseClusterName != ""
+		logs.readLogs(ctx, cloud, log, o.appID, lim, !separate)
+		if separate {
+			con.status("reading HBase server logs from " + firstNonEmpty(o.hbaseClusterID, o.hbaseClusterName))
+			logs.readHBaseCluster(ctx, cloud, o.hbaseClusterID, o.hbaseClusterName, log, lim)
 		}
 		con.sources(logs.sources...)
 		con.status("reading CloudWatch metrics")
@@ -636,8 +661,42 @@ type awsSession struct {
 	// described caches each cluster the access check described, so the run
 	// does not ask again. Multiple entries are needed when Spark and HBase
 	// run on different EMR clusters.
+	mu        sync.Mutex // the maps below: the access check describes clusters in parallel
 	described map[string]model.Cluster
 	descErr   map[string]error
+	// at is when the application's YARN started, from its ID; a cluster
+	// named rather than given by ID is the one of that name up then.
+	at time.Time
+	// picked says which cluster each name found, and why.
+	picked map[string]awsmeta.Pick
+}
+
+// appIDStartRE is the ResourceManager's start time in an application ID.
+var appIDStartRE = regexp.MustCompile(`^application_(\d{13})_\d+$`)
+
+// appClusterStart is when the application's YARN ResourceManager started:
+// the time in its ID. Zero when the ID does not carry one.
+func appClusterStart(appID string) time.Time {
+	m := appIDStartRE.FindStringSubmatch(appID)
+	if m == nil {
+		return time.Time{}
+	}
+	ms, err := strconv.ParseInt(m[1], 10, 64)
+	if err != nil {
+		return time.Time{}
+	}
+	return time.UnixMilli(ms)
+}
+
+// pickWhy says how a named cluster was found, for the console and the
+// access check: "found by name etl: the one up when …", or "".
+func (a *awsSession) pickWhy(name string) string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if p, ok := a.picked[name]; ok {
+		return fmt.Sprintf("found by name %s: %s", p.Name, p.Why)
+	}
+	return ""
 }
 
 // regionName is the region the credentials use, once loaded.
@@ -670,14 +729,32 @@ func (a *awsSession) config(ctx context.Context) (aws.Config, error) {
 
 // cluster finds the cluster by ID or name and describes it.
 func (a *awsSession) cluster(ctx context.Context, id, name string) (model.Cluster, error) {
-	key := id + "\x00" + name
-	if c, ok := a.described[key]; ok {
+	return a.clusterFor(ctx, id, name, false)
+}
+
+// hbaseCluster is a separate HBase cluster, by ID or by name. The
+// application's ID says nothing about it, so a name also finds the one
+// running now when none of that name was up when the application's YARN
+// started.
+func (a *awsSession) hbaseCluster(ctx context.Context, id, name string) (model.Cluster, error) {
+	return a.clusterFor(ctx, id, name, true)
+}
+
+func (a *awsSession) clusterFor(ctx context.Context, id, name string, upNowFallback bool) (model.Cluster, error) {
+	key := id + "\x00" + name + "\x00" + strconv.FormatBool(upNowFallback)
+	a.mu.Lock()
+	c, ok := a.described[key]
+	err, failed := a.descErr[key]
+	a.mu.Unlock()
+	if ok {
 		return c, nil
 	}
-	if err, ok := a.descErr[key]; ok {
+	if failed {
 		return model.Cluster{}, err
 	}
-	c, err := a.describe(ctx, id, name)
+	c, err = a.describe(ctx, id, name, upNowFallback)
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if err == nil {
 		if a.described == nil {
 			a.described = map[string]model.Cluster{}
@@ -692,16 +769,24 @@ func (a *awsSession) cluster(ctx context.Context, id, name string) (model.Cluste
 	return c, err
 }
 
-func (a *awsSession) describe(ctx context.Context, id, name string) (model.Cluster, error) {
+func (a *awsSession) describe(ctx context.Context, id, name string, upNowFallback bool) (model.Cluster, error) {
 	cfg, err := a.config(ctx)
 	if err != nil {
 		return model.Cluster{}, err
 	}
 	api := awsDeps.emr(cfg)
 	if id == "" {
-		if id, err = awsmeta.FindByName(ctx, api, name); err != nil {
+		p, err := awsmeta.PickByName(ctx, api, name, a.at, upNowFallback)
+		if err != nil {
 			return model.Cluster{}, err
 		}
+		a.mu.Lock()
+		if a.picked == nil {
+			a.picked = map[string]awsmeta.Pick{}
+		}
+		a.picked[name] = p
+		a.mu.Unlock()
+		id = p.ID
 	}
 	return awsmeta.Describe(ctx, api, id)
 }

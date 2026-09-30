@@ -5,8 +5,10 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/emr/types"
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/awsmeta"
 	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
@@ -140,19 +142,38 @@ func TestHBaseOnSeparateEMRCluster(t *testing.T) {
 	copyTree(t, filepath.Join(emrlogs, hbaseCluster), filepath.Join(bucket, "emr", sparkCluster))
 	stub.clusters[sparkCluster] = cluster(sparkCluster, "")
 	fakeAWS(t, map[string]string{"logs": bucket}, stub.clusters)
+	// The HBase cluster by name too: the one of that name running now,
+	// since the application's ID says nothing about it and the one up when
+	// its YARN started has ended.
+	yarnStart := appClusterStart("application_1790380000000_0092")
+	stub.summaries = []types.ClusterSummary{
+		{Id: aws.String("j-HBASEOLD"), Name: aws.String("hbase-prod"), Status: &types.ClusterStatus{State: types.ClusterStateTerminated,
+			Timeline: &types.ClusterTimeline{CreationDateTime: aws.Time(yarnStart.Add(-48 * time.Hour)), EndDateTime: aws.Time(yarnStart.Add(-24 * time.Hour))}}},
+		{Id: aws.String(hbaseCluster), Name: aws.String("hbase-prod"), Status: &types.ClusterStatus{State: types.ClusterStateWaiting,
+			Timeline: &types.ClusterTimeline{CreationDateTime: aws.Time(yarnStart.Add(time.Hour))}}},
+	}
 	awsDeps.emr = func(aws.Config) awsmeta.EMRAPI { return stub }
 
-	out := t.TempDir()
-	code, stdout, errs := runCLI(t,
-		"-app-id", "application_1790380000000_0092",
-		"-profile", "test",
-		"-cluster-id", sparkCluster,
-		"-hbase-cluster-id", hbaseCluster,
-		"-eventlog", filepath.Join(fx, "application_1790380000000_0092.zstd"),
-		"-no-cloudwatch", "-no-cloudtrail",
-		"-format", "json",
-		"-out", out,
-	)
+	for _, by := range [][]string{{"-hbase-cluster-id", hbaseCluster}, {"-hbase-cluster-name", "hbase-prod"}} {
+		out := t.TempDir()
+		code, stdout, errs := runCLI(t, append([]string{
+			"-app-id", "application_1790380000000_0092",
+			"-profile", "test",
+			"-cluster-id", sparkCluster,
+			"-eventlog", filepath.Join(fx, "application_1790380000000_0092.zstd"),
+			"-no-cloudwatch", "-no-cloudtrail",
+			"-format", "json",
+			"-out", out,
+		}, by...)...)
+		separateHBaseChecks(t, by[0], code, stdout, errs, out)
+	}
+}
+
+func separateHBaseChecks(t *testing.T, by string, code int, stdout, errs, out string) {
+	t.Helper()
+	if by == "-hbase-cluster-name" && !strings.Contains(flat(stdout), flat("found by name hbase-prod: the one running now")) {
+		t.Errorf("the HBase cluster found by name does not say how:\n%s", stdout)
+	}
 	if code == exitFatal {
 		t.Fatalf("separate HBase cluster: exit %d: %s\n%s", code, errs, stdout)
 	}
@@ -189,7 +210,7 @@ func TestHBaseClusterRequiresSparkCluster(t *testing.T) {
 		"-hbase-cluster-id", hbaseCluster,
 		"-eventlog", filepath.Join(fx, "application_1790380000000_0092.zstd"),
 	)
-	if code != exitFatal || !strings.Contains(errs, "-hbase-cluster-id requires -cluster-id or -cluster-name") {
+	if code != exitFatal || !strings.Contains(errs, "-hbase-cluster-id and -hbase-cluster-name need -cluster-id or -cluster-name") {
 		t.Errorf("exit %d, stderr %q", code, errs)
 	}
 }

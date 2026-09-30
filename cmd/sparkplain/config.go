@@ -2,12 +2,15 @@ package main
 
 import (
 	"bytes"
+	_ "embed"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -19,6 +22,18 @@ import (
 // fileConfig is the YAML defaults file (SPEC §6), by default
 // ~/.config/sparkplain/config.yaml. Flags override it.
 type fileConfig struct {
+	// The clusters, by name, and the AWS profile and region: with them
+	// here, a run needs only -app-id. Flags override each.
+	ClusterName      string `yaml:"cluster-name"`
+	HBaseClusterName string `yaml:"hbase-cluster-name"`
+	Profile          string `yaml:"profile"`
+	Region           string `yaml:"region"`
+
+	// Envs are named sets of the keys above that differ between
+	// environments, such as prod and nonprod; -env picks one, whose keys
+	// override the top-level ones.
+	Envs map[string]envConfig `yaml:"environments"`
+
 	EventLogPrefix string               `yaml:"eventlog-prefix"`
 	TimeZone       string               `yaml:"timezone"`
 	Out            string               `yaml:"out"`
@@ -28,6 +43,64 @@ type fileConfig struct {
 	OverallTimeout time.Duration        `yaml:"overall-timeout"`
 	Thresholds     thresholds           `yaml:"thresholds"`
 	Explorer       model.ExplorerLimits `yaml:"explorer"`
+}
+
+// envConfig is one environment's keys: where its clusters and logs are,
+// and how to reach them. Keys it leaves out keep the top-level values.
+type envConfig struct {
+	ClusterName      string `yaml:"cluster-name"`
+	HBaseClusterName string `yaml:"hbase-cluster-name"`
+	Profile          string `yaml:"profile"`
+	Region           string `yaml:"region"`
+	EventLogPrefix   string `yaml:"eventlog-prefix"`
+	TimeZone         string `yaml:"timezone"`
+	Out              string `yaml:"out"`
+}
+
+// expandHome turns a leading ~/ (or a lone ~) into the home folder; any
+// other path, and s3:// locations, stay as they are.
+func expandHome(p string) string {
+	if p != "~" && !strings.HasPrefix(p, "~/") {
+		return p
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return p
+	}
+	return filepath.Join(home, strings.TrimPrefix(p, "~"))
+}
+
+// withEnv is the config with environment name's keys laid over the
+// top-level ones; "" is the config as it is.
+func (c fileConfig) withEnv(name string) (fileConfig, error) {
+	if name == "" {
+		return c, nil
+	}
+	e, ok := c.Envs[name]
+	if !ok {
+		if len(c.Envs) == 0 {
+			return c, fmt.Errorf("-env %s: the config file has no environments (add them under environments:)", name)
+		}
+		names := make([]string, 0, len(c.Envs))
+		for n := range c.Envs {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		return c, fmt.Errorf("-env %s: the config file has no environment of that name; it has %s", name, strings.Join(names, ", "))
+	}
+	set := func(dst *string, v string) {
+		if v != "" {
+			*dst = v
+		}
+	}
+	set(&c.ClusterName, e.ClusterName)
+	set(&c.HBaseClusterName, e.HBaseClusterName)
+	set(&c.Profile, e.Profile)
+	set(&c.Region, e.Region)
+	set(&c.EventLogPrefix, e.EventLogPrefix)
+	set(&c.TimeZone, e.TimeZone)
+	set(&c.Out, e.Out)
+	return c, nil
 }
 
 // thresholds mirrors analyze.Thresholds with optional fields, so a file
@@ -92,6 +165,43 @@ func defaultConfigPath() string {
 		return filepath.Join(dir, "sparkplain", "config.yaml")
 	}
 	return ""
+}
+
+// starterConfig is the config file -init-config writes: every key, with
+// what it does, most of them commented out. A test reads it with the
+// same strict reader as the real file, so it cannot drift from it.
+//
+//go:embed config.example.yaml
+var starterConfig string
+
+// writeStarterConfig writes the starter config to path, never over a file
+// that is already there.
+func writeStarterConfig(path string, stdout, stderr io.Writer) int {
+	if path == "" {
+		fmt.Fprintln(stderr, "sparkplain: no home folder for the config file; pass -config <path>")
+		return exitFatal
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		fmt.Fprintf(stderr, "sparkplain: %v\n", err)
+		return exitFatal
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if errors.Is(err, fs.ErrExist) {
+		fmt.Fprintf(stderr, "sparkplain: %s already exists; it was left as it is. Move it aside to write a fresh one.\n", path)
+		return exitFatal
+	}
+	if err == nil {
+		_, err = io.WriteString(f, starterConfig)
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "sparkplain: writing %s: %v\n", path, err)
+		return exitFatal
+	}
+	fmt.Fprintf(stdout, "Wrote %s.\nEdit the prod and nonprod blocks (cluster names, profile, region), then run:\n  sparkplain -app-id <application id> -env prod -check\n", path)
+	return exitOK
 }
 
 // loadConfig reads path. A missing file is fine only when it is the default.
