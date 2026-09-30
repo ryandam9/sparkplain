@@ -197,18 +197,17 @@ func accessCheck(ctx context.Context, cloud *awsSession, in checkInput) checked 
 		{"Step logs", root + "steps/", ""},
 		{"Node logs", root + "node/", ""},
 	}
-	hbase := slices.ContainsFunc(cl.Applications, func(a string) bool {
-		name, _, _ := strings.Cut(a, " ") // DescribeCluster gives "HBase 2.4.17-amzn-7"
-		return strings.EqualFold(name, "HBase")
-	})
-	if hbase {
-		host := primary
-		if host == "" && len(instances) > 0 {
-			host = instances[0]
+	if o.hbaseClusterID == "" {
+		if clusterHasHBase(&cl) {
+			host := primary
+			if host == "" && len(instances) > 0 {
+				host = instances[0]
+			}
+			logRows = append(logRows, logRow{"HBase server logs", root + "node/" + host + "/applications/hbase/", host})
+		} else {
+			c.rows = append(c.rows, model.AccessCheck{Name: "HBase server logs", Status: "skipped",
+				Detail: "HBase is not installed on this Spark cluster. If HBase runs on another EMR cluster, pass -hbase-cluster-id <id>."})
 		}
-		logRows = append(logRows, logRow{"HBase server logs", root + "node/" + host + "/applications/hbase/", host})
-	} else {
-		c.rows = append(c.rows, model.AccessCheck{Name: "HBase server logs", Status: "skipped", Detail: "HBase is not installed on this cluster."})
 	}
 	if !ok {
 		for _, lr := range logRows {
@@ -235,6 +234,69 @@ func accessCheck(ctx context.Context, cloud *awsSession, in checkInput) checked 
 				}
 				add(r)
 			}
+		})
+	}
+
+	if o.hbaseClusterID != "" {
+		jobs = append(jobs, func(x context.Context) {
+			r := model.AccessCheck{Name: "HBase server logs", Location: o.hbaseClusterID,
+				Call: "DescribeCluster, ListInstances, ListObjectsV2 and GetObject (one byte)",
+				Try: try("aws emr describe-cluster --cluster-id " + o.hbaseClusterID)}
+			hcl, err := cloud.cluster(x, o.hbaseClusterID, "")
+			if err != nil {
+				r.Status, r.Class, r.Detail = "error", awsmeta.ErrorClass(err), "Could not describe the HBase cluster: "+err.Error()
+				if r.Class == "accessDenied" {
+					r.Status = "denied"
+				}
+				add(r)
+				return
+			}
+			if !clusterHasHBase(&hcl) {
+				r.Status, r.Detail = "error", "The cluster specified by -hbase-cluster-id does not have HBase installed."
+				add(r)
+				return
+			}
+			hinstances, err := awsmeta.Instances(x, api, hcl)
+			if err != nil {
+				r = apiFailed(r, err, "elasticmapreduce:ListInstances")
+				r.Detail = "Could not list the HBase cluster's instances: " + r.Detail
+				add(r)
+				return
+			}
+			var host string
+			for _, in := range hinstances {
+				if in.Primary {
+					host = in.ID
+					break
+				}
+			}
+			if host == "" && len(hinstances) > 0 {
+				host = hinstances[0].ID
+			}
+			if host == "" {
+				r.Status, r.Detail = "error", "The HBase cluster has no instances to inspect."
+				add(r)
+				return
+			}
+			hbucket, hroot, ok := yarnlog.LogRoot(hcl.LogURI, hcl.ID)
+			if !ok {
+				r.Status, r.Detail = "error", "The HBase cluster has no S3 log URI, so its server logs cannot be checked."
+				add(r)
+				return
+			}
+			prefix := hroot + "node/" + host + "/applications/hbase/"
+			r.Location = "s3://" + hbucket + "/" + hroot + "node/*/applications/hbase/"
+			r.Try = try("aws s3 ls s3://" + hbucket + "/" + prefix)
+			st, err := awsDeps.s3(x, cfg, hbucket)
+			if err != nil {
+				add(probed(r, nil, nil, err, ""))
+				return
+			}
+			r = readable(x, st, r, prefix, emptyWhy(r.Name))
+			if r.Status == "ok" {
+				r.Detail = "Checked on HBase cluster " + hcl.ID + ", primary node " + host + ". List, read."
+			}
+			add(r)
 		})
 	}
 
