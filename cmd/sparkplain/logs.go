@@ -231,7 +231,7 @@ func (out *clusterLogs) readHBaseCluster(ctx context.Context, cloud *awsSession,
 	if len(col.Sources) == 0 {
 		row := model.SourceStatus{Name: "HBase server logs", Status: "not-supplied",
 			Location: "s3://" + bucket + "/" + root + "node/*/applications/hbase/",
-			Detail:   "No HBase Master or region-server logs were found on the cluster specified by -hbase-cluster-id."}
+			Detail:   hbaseNoneFound(cl, clusterID, col)}
 		if instErr != nil {
 			row.Detail += " ListInstances also failed: " + instErr.Error()
 		}
@@ -243,6 +243,33 @@ func (out *clusterLogs) readHBaseCluster(ctx context.Context, cloud *awsSession,
 	}
 	out.files = append(out.files, col.Files...)
 	out.sources = append(out.sources, col.Sources...)
+}
+
+// hbaseNoneFound says why no HBase server log was read from a separate
+// HBase cluster: which cluster that was and how it was chosen, where
+// sparkplain looked, and what it found there instead, so a wrong cluster,
+// logs not yet copied to S3 and logs named otherwise can be told apart.
+func hbaseNoneFound(cl model.Cluster, byID string, col yarnlog.Collection) string {
+	which := cl.ID
+	switch {
+	case byID != "" && cl.Name != "":
+		which += fmt.Sprintf(" (%q, given by -hbase-cluster-id)", cl.Name)
+	case byID != "":
+		which += " (given by -hbase-cluster-id)"
+	default:
+		which += fmt.Sprintf(" (picked by its name, %q)", cl.Name)
+	}
+	where := "under its node/ folder"
+	if col.HBaseNodes > 0 {
+		where = "in node/<instance>/applications/hbase/ on " + model.Plural(col.HBaseNodes, "node", "nodes") + " up during the run"
+	}
+	msg := "No HBase Master or region server logs were found on the HBase cluster " + which + ". Looked " + where
+	if n := len(col.HBaseOther); n > 0 {
+		ex := col.HBaseOther[:min(n, 3)]
+		return msg + fmt.Sprintf(", and found %s there, such as %s, but none named hbase-<user>-master-<host>.log or hbase-<user>-regionserver-<host>.log (with an hourly .<yyyy-mm-dd-hh>, gzipped).",
+			model.Plural(n, "other file", "other files"), strings.Join(ex, ", "))
+	}
+	return msg + ", and found nothing there: check that this is the cluster HBase ran on, and that EMR copies its logs to S3 (it does about every 5 minutes while the cluster runs, given a log URI)."
 }
 
 // stepEventLogDirs returns the S3 spark.eventLog.dir values the steps'

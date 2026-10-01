@@ -12,6 +12,7 @@ import (
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/awsmeta"
 	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
+	"github.com/ryandam9/sparkplain/internal/sparkplain/yarnlog"
 )
 
 // hbaseCluster holds the phase 5 test cluster's runs: Spark jobs that read
@@ -212,5 +213,33 @@ func TestHBaseClusterRequiresSparkCluster(t *testing.T) {
 	)
 	if code != exitFatal || !strings.Contains(errs, "-hbase-cluster-id and -hbase-cluster-name need -cluster-id or -cluster-name") {
 		t.Errorf("exit %d, stderr %q", code, errs)
+	}
+}
+
+// With no HBase server log on the HBase cluster, the run says which
+// cluster it read and how it was chosen, never naming a flag that was not
+// used, and what it found in place of the logs.
+func TestHBaseNoneFoundSaysWhy(t *testing.T) {
+	cl := model.Cluster{ID: "j-HBASE", Name: "hbase-prod"}
+	for _, c := range []struct {
+		byID string
+		col  yarnlog.Collection
+		want []string
+		not  string
+	}{
+		{"", yarnlog.Collection{HBaseNodes: 4, HBaseOther: []string{"a.out.gz", "b.out.gz", "c.out.gz", "d.out.gz"}},
+			[]string{`j-HBASE (picked by its name, "hbase-prod")`, "on 4 nodes up during the run", "found 4 other files there, such as a.out.gz, b.out.gz, c.out.gz, but none named"}, "-hbase-cluster-id"},
+		{"j-HBASE", yarnlog.Collection{HBaseNodes: 1},
+			[]string{`j-HBASE ("hbase-prod", given by -hbase-cluster-id)`, "on 1 node up", "found nothing there: check that this is the cluster HBase ran on"}, "picked by"},
+	} {
+		got := hbaseNoneFound(cl, c.byID, c.col)
+		for _, w := range c.want {
+			if !strings.Contains(got, w) {
+				t.Errorf("lacks %q:\n%s", w, got)
+			}
+		}
+		if strings.Contains(got, c.not) {
+			t.Errorf("says %q:\n%s", c.not, got)
+		}
 	}
 }
