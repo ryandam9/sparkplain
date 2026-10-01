@@ -3,6 +3,7 @@ package yarnlog
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -180,5 +181,25 @@ func TestHBaseLogsOnlyFromNodesUpDuringTheRun(t *testing.T) {
 	want := []string{"node/i-0fee0000000000001/applications/hbase/", "node/i-0fee0000000000002/applications/hbase/", "node/i-0fee0000000000003/applications/hbase/"}
 	if strings.Join(hbase, " ") != strings.Join(want, " ") {
 		t.Errorf("listed %v, want %v", hbase, want)
+	}
+}
+
+// When a node's applications/hbase/ folder holds no Master or region
+// server log, the collection says how many nodes it looked at and what
+// was there instead, so the run can tell named-otherwise from absent.
+func TestCollectHBaseSaysWhatItFound(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	for _, f := range []string{"node/i-1/applications/hbase/hbase-hbase-master-ip-10-0-0-1.out.gz", "node/i-2/applications/hbase/SecurityAuth.audit.gz"} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, f)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := CollectHBase(context.Background(), source.NewLocalStore(dir), Plan{Instances: []string{"i-1", "i-2", "i-3"}})
+	if len(c.Sources) != 0 || c.HBaseNodes != 3 || strings.Join(c.HBaseOther, ",") != "hbase-hbase-master-ip-10-0-0-1.out.gz,SecurityAuth.audit.gz" {
+		t.Errorf("sources %+v, nodes %d, other %q", c.Sources, c.HBaseNodes, c.HBaseOther)
 	}
 }

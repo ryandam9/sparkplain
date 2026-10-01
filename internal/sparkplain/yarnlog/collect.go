@@ -66,6 +66,12 @@ type Collection struct {
 	Steps []string
 	// Sources are the Sources-panel rows: container, step and node logs.
 	Sources []model.SourceStatus
+	// HBaseNodes is how many nodes' applications/hbase/ folders were
+	// listed (0 when the whole node/ folder was), and HBaseOther the other
+	// files found there, which are not Master or region server logs: say
+	// what was there when none of them is.
+	HBaseNodes int
+	HBaseOther []string
 }
 
 // Collect lists and reads the application's container, step and node logs
@@ -171,6 +177,7 @@ func (c *Collection) hbase(ctx context.Context, st source.Store, p Plan) {
 			}
 		}
 		sort.Strings(ids)
+		c.HBaseNodes = len(ids)
 		var mu sync.Mutex
 		forEach(ids, p.Limits.Workers, func(id string) {
 			found, err := st.List(ctx, prefix+id+"/applications/hbase/")
@@ -187,6 +194,9 @@ func (c *Collection) hbase(ctx context.Context, st source.Store, p Plan) {
 	for _, o := range objs {
 		f := Describe(strings.TrimPrefix(o.Key, p.Root))
 		if f.Kind != HBaseMaster && f.Kind != HBaseRegion {
+			if strings.Contains(o.Key, "/applications/hbase/") {
+				c.HBaseOther = append(c.HBaseOther, path.Base(o.Key))
+			}
 			continue
 		}
 		switch {
