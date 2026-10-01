@@ -112,19 +112,21 @@ func TestCollectHBaseLogs(t *testing.T) {
 	c := Collect(context.Background(), st, Plan{AppID: "application_1790380000000_0092",
 		Since: time.Date(2026, 9, 29, 6, 8, 47, 0, time.UTC), Until: time.Date(2026, 9, 29, 6, 10, 11, 0, time.UTC)})
 	var row *struct{ status, detail string }
-	skipped := 0
+	listed := 0
 	for _, s := range c.Sources {
 		if s.Name == "HBase server logs" {
 			row = &struct{ status, detail string }{s.Status, s.Detail}
 			for _, f := range s.Files {
-				if f.Status == "skipped" && f.Detail == "an hour before the application started" {
-					skipped++
+				if f.Status == "skipped" {
+					listed++
 				}
 			}
 		}
 	}
-	if row == nil || row.status != "read" || !strings.Contains(row.detail, "kept to the application's time") || skipped != 6 {
-		t.Fatalf("HBase logs row = %+v, %d hours skipped", row, skipped)
+	// The hours before the run are counted, not listed one by one: a
+	// long-lived cluster has thousands.
+	if row == nil || row.status != "read" || !strings.Contains(row.detail, "kept to the application's time. 6 hourly logs outside it skipped.") || listed != 0 {
+		t.Fatalf("HBase logs row = %+v, %d skipped files listed", row, listed)
 	}
 	events := map[string]int{}
 	for _, f := range c.Files {
@@ -201,5 +203,24 @@ func TestCollectHBaseSaysWhatItFound(t *testing.T) {
 	c := CollectHBase(context.Background(), source.NewLocalStore(dir), Plan{Instances: []string{"i-1", "i-2", "i-3"}})
 	if len(c.Sources) != 0 || c.HBaseNodes != 3 || strings.Join(c.HBaseOther, ",") != "hbase-hbase-master-ip-10-0-0-1.out.gz,SecurityAuth.audit.gz" {
 		t.Errorf("sources %+v, nodes %d, other %q", c.Sources, c.HBaseNodes, c.HBaseOther)
+	}
+}
+
+// Without the application's time, HBase's logs would all qualify (every
+// hour the cluster ever logged) and the file cap would keep the oldest:
+// none is read, and the row says why and what to pass.
+func TestHBaseLogsNeedTheApplicationsTime(t *testing.T) {
+	t.Parallel()
+	st := source.NewLocalStore(filepath.Join(emrlogs, "j-FIXTURE0083CLUSTER"))
+	c := CollectHBase(context.Background(), st, Plan{Instances: []string{"i-0fee0000000000001", "i-0fee0000000000003"}})
+	if len(c.Sources) != 1 || c.Sources[0].Status != "not-supplied" || len(c.Files) != 0 ||
+		!strings.Contains(c.Sources[0].Detail, "Found 8 HBase logs, but nothing says when the application ran") || !strings.Contains(c.Sources[0].Detail, "Pass -eventlog") {
+		t.Fatalf("sources %+v, %d files read", c.Sources, len(c.Files))
+	}
+	// Given the run's time, only its hours are read.
+	since := time.Date(2026, 9, 29, 6, 8, 47, 0, time.UTC)
+	c = CollectHBase(context.Background(), st, Plan{Instances: []string{"i-0fee0000000000001", "i-0fee0000000000003"}, Since: since, Until: since.Add(90 * time.Second)})
+	if len(c.Sources) != 1 || c.Sources[0].Status != "read" || len(c.Files) != 4 {
+		t.Fatalf("sources %+v, %d files read", c.Sources, len(c.Files))
 	}
 }
