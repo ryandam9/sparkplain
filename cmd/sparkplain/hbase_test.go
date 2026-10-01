@@ -243,3 +243,33 @@ func TestHBaseNoneFoundSaysWhy(t *testing.T) {
 		}
 	}
 }
+
+// Without the event log (it is on HDFS by default), the separate HBase
+// cluster's logs are still kept to the application's time, taken from its
+// container logs on the Spark cluster, rather than read from the oldest
+// hour up to the file cap.
+func TestSeparateHBaseClusterWithoutEventLog(t *testing.T) {
+	bucket, stub := hbaseCluster0083(t, true)
+	const sparkCluster = "j-FIXTURE0083SPARK"
+	copyTree(t, filepath.Join(emrlogs, hbaseCluster), filepath.Join(bucket, "emr", sparkCluster))
+	stub.clusters[sparkCluster] = cluster(sparkCluster, "")
+	fakeAWS(t, map[string]string{"logs": bucket}, stub.clusters)
+	awsDeps.emr = func(aws.Config) awsmeta.EMRAPI { return stub }
+	out := t.TempDir()
+	code, stdout, errs := runCLI(t, "-app-id", "application_1790380000000_0092", "-profile", "test", "-cluster-id", sparkCluster,
+		"-hbase-cluster-id", hbaseCluster, "-no-cloudwatch", "-no-cloudtrail", "-format", "json", "-out", out)
+	if code == exitFatal {
+		t.Fatalf("exit %d: %s\n%s", code, errs, stdout)
+	}
+	r := readReport(t, out)
+	for _, s := range r.Sources {
+		if s.Name != "HBase server logs" {
+			continue
+		}
+		if s.Status != "read" || !strings.Contains(s.Detail, "kept to the application's time") || !strings.Contains(s.Detail, "hourly logs outside it skipped") {
+			t.Errorf("HBase row = %s: %s", s.Status, s.Detail)
+		}
+		return
+	}
+	t.Fatalf("no HBase server logs row: %+v", r.Sources)
+}

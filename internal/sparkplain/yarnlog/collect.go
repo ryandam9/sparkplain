@@ -94,7 +94,7 @@ func Collect(ctx context.Context, st source.Store, p Plan) Collection {
 	p = p.withDriverNodes(c.Files)
 	c.nodes(ctx, st, p)
 	if !p.SkipHBase {
-		c.hbase(ctx, st, p.withWindow(c.Files))
+		c.hbase(ctx, st, p.WithWindow(c.Files))
 	}
 	return c
 }
@@ -110,9 +110,9 @@ func CollectHBase(ctx context.Context, st source.Store, p Plan) Collection {
 	return c
 }
 
-// withWindow fills the application's time from its container logs, when
+// WithWindow fills the application's time from its container logs, when
 // neither the event log nor the caller gave it.
-func (p Plan) withWindow(files []model.LogFile) Plan {
+func (p Plan) WithWindow(files []model.LogFile) Plan {
 	if !p.Since.IsZero() && !p.Until.IsZero() {
 		return p
 	}
@@ -190,7 +190,11 @@ func (c *Collection) hbase(ctx context.Context, st source.Store, p Plan) {
 		})
 		sort.Slice(objs, func(i, j int) bool { return objs[i].Key < objs[j].Key })
 	}
+	// HBase rolls its logs each hour for as long as the cluster runs, so
+	// only the hours of the application are read. Those outside it are
+	// counted, not listed one by one: a long-lived cluster has thousands.
 	g := group{st: st, plan: p}
+	hbaseLogs, outside := 0, 0
 	for _, o := range objs {
 		f := Describe(strings.TrimPrefix(o.Key, p.Root))
 		if f.Kind != HBaseMaster && f.Kind != HBaseRegion {
@@ -199,34 +203,46 @@ func (c *Collection) hbase(ctx context.Context, st source.Store, p Plan) {
 			}
 			continue
 		}
+		hbaseLogs++
 		switch {
-		case !f.Hour.IsZero() && !p.Since.IsZero() && f.Hour.Add(time.Hour).Before(p.Since):
-			g.offer(o, f, false, "an hour before the application started")
-		case !f.Hour.IsZero() && !p.Until.IsZero() && f.Hour.After(p.Until):
-			g.offer(o, f, false, "an hour after the application ended")
-		case f.Hour.IsZero() && !p.Since.IsZero() && !o.Modified.IsZero() && o.Modified.Before(p.Since):
-			g.offer(o, f, false, "last written before the application started")
+		case !f.Hour.IsZero() && !p.Since.IsZero() && f.Hour.Add(time.Hour).Before(p.Since),
+			!f.Hour.IsZero() && !p.Until.IsZero() && f.Hour.After(p.Until),
+			f.Hour.IsZero() && !p.Since.IsZero() && !o.Modified.IsZero() && o.Modified.Before(p.Since):
+			outside++
 		default:
 			g.offer(o, f, true, "")
 		}
 	}
-	if len(g.picked)+len(g.sourceFiles) == 0 {
+	if hbaseLogs == 0 {
 		if listErr != nil {
 			c.Sources = append(c.Sources, listFailed(src, listErr))
 		}
 		return // no HBase on this cluster, or none in these folders
 	}
+	if p.Since.IsZero() && p.Until.IsZero() {
+		// Without the application's time every hour the cluster ever logged
+		// would qualify, and the cap would keep the oldest: read none.
+		src.Status = "not-supplied"
+		src.Detail = fmt.Sprintf("Found %s, but nothing says when the application ran (no event log, and no times in its container logs), so none was read: they cover the cluster's whole life, not this run. Pass -eventlog (the History Server's \"Download\", or a copy in S3) to read the run's hours.",
+			model.Plural(hbaseLogs, "HBase log", "HBase logs"))
+		c.Sources = append(c.Sources, src)
+		return
+	}
+	skipped := ""
+	if outside > 0 {
+		skipped = fmt.Sprintf(" %s outside it skipped.", model.Plural(outside, "hourly log", "hourly logs"))
+	}
 	g.read(ctx)
 	switch {
 	case len(g.picked) == 0:
 		src.Status = "not-supplied"
-		src.Detail = "No HBase log covers the application's time."
+		src.Detail = "No HBase log covers the application's time." + skipped
 	default:
 		src.Status, src.Class = g.status()
 		if listErr != nil {
 			src.Status = "partial"
 		}
-		src.Detail = g.summary() + ", kept to the application's time." + g.problems()
+		src.Detail = g.summary() + ", kept to the application's time." + skipped + g.problems()
 		src.Brief = model.Plural(len(g.files), "file", "files")
 		if !p.Since.IsZero() && !p.Until.IsZero() {
 			src.Brief += fmt.Sprintf(", %s–%s UTC", p.Since.UTC().Format("15:04"), p.Until.UTC().Format("15:04"))

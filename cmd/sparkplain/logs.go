@@ -219,6 +219,10 @@ func (out *clusterLogs) readHBaseCluster(ctx context.Context, cloud *awsSession,
 	if log != nil {
 		plan.Since, plan.Until = log.Application.Start, log.Application.End
 	}
+	// Without the event log, the application's time is from its container
+	// logs on the Spark cluster, read just before, as for HBase on the
+	// Spark cluster itself.
+	plan = plan.WithWindow(out.files)
 	instances, instErr := awsmeta.Instances(ctx, awsDeps.emr(cfg), cl)
 	if instErr == nil {
 		plan.Lifetimes = map[string][2]time.Time{}
