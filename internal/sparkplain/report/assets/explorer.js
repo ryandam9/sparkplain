@@ -642,17 +642,18 @@
   // ---------- task stories ----------
   // What each task did, as its executor logged it: views.tasks lists every
   // task with its totals, views.task one task's steps in order. A step is
-  // [ms since the task started, kind, bytes, n, ms, name, line].
+  // [ms since the task started, kind, bytes, n, ms, name, line, bytes over
+  // the network, storage memory free].
   var TS = D.taskStories;
   var STEP = {
     start: function () { return "Started."; },
     broadcast: function (s) { return "Began reading " + s[5] + ": " + bytes(s[2]) + " in " + num(s[3]) + " piece" + (s[3] === 1 ? "" : "s") + ", as Spark estimated it."; },
     "broadcast-read": function (s) { return "Had " + s[5] + " after " + dur(s[4]) + "."; },
-    shuffle: function (s) { return "Asked for " + num(s[3]) + " shuffle block" + (s[3] === 1 ? "" : "s") + " (" + bytes(s[2]) + ", Spark's estimate) from the previous stage's output."; },
+    shuffle: function (s) { return "Asked for " + num(s[3]) + " shuffle block" + (s[3] === 1 ? "" : "s") + " (" + bytes(s[2]) + ", Spark's estimate) from the previous stage's output: " + bytes(s[2] - (s[7] || 0)) + " on its own node, " + bytes(s[7] || 0) + " over the network."; },
     fetch: function (s) { return s[3] ? "Started " + num(s[3]) + " remote fetch" + (s[3] === 1 ? "" : "es") + " over the network in " + dur(s[4]) + "." : "Needed nothing over the network; set up in " + dur(s[4]) + "."; },
     spill: function (s) { return "Spilled " + bytes(s[2]) + " from memory to disk."; },
-    cache: function (s) { return "Cached " + s[5] + " in memory (" + bytes(s[2]) + ")."; },
-    drop: function (s) { return "Dropped " + num(s[3]) + " cached block" + (s[3] === 1 ? "" : "s") + " from memory to make room; " + bytes(s[2]) + " free after."; },
+    cache: function (s) { return "Cached " + s[5] + " in memory (" + bytes(s[2]) + "); " + bytes(s[8] || 0) + " of storage memory free after."; },
+    drop: function (s) { return "Dropped " + num(s[3]) + " cached block" + (s[3] === 1 ? "" : "s") + " from memory to make room; " + bytes(s[8] || 0) + " free after."; },
     "no-room": function (s) { return "Could not cache " + s[5] + ": not enough storage memory (" + bytes(s[2]) + " computed so far)."; },
     input: function (s) { return "Read " + s[5] + (s[2] ? " (" + bytes(s[2]) + " of file)" : "") + "."; },
     commit: function (s) { return "Committed its output in " + dur(s[4]) + "."; },
@@ -684,6 +685,42 @@
     s.appendChild(explain(TS.byThread && !TS.byTid ? "Every line is told apart by the executor thread that logged it, which names its task." :
       "Lines are told apart by the task they name (TID) and, otherwise, by being the only task their executor was running" + (TS.byThread ? "; " + num(TS.byThread) + " tasks by the thread that logged them" : "") + ". Lines no task could be found for are counted per executor."));
     s.appendChild(storyFacts(TS.totals, "the task's"));
+    var F = D.flows;
+    if (F) {
+      s.appendChild(el("h3", { text: "Data moved and memory over time" }));
+      s.appendChild(explain("The shuffle data each task asked for, from its own node and over the network, what tasks spilled and cached, and each executor's storage memory left after every block it cached or dropped. Shuffle sizes are Spark's estimates from the map outputs; the event log has the exact bytes."));
+      if ((F.local || []).length) s.appendChild(chartSlot("", "flows"));
+      if (F.executors.some(function (e) { return (e.free || []).length; })) s.appendChild(chartSlot("", "storage"));
+      if ((F.broadcasts || []).length) {
+        s.appendChild(el("h3", { text: "Broadcast variables read" }));
+        s.appendChild(table({
+          rows: F.broadcasts, sort: 1,
+          cols: [
+            { h: "Broadcast", v: function (b) { return b.name; }, f: function (b) { return b.name; } },
+            { h: "Size", num: true, v: function (b) { return b.bytes; }, f: function (b) { return bytes(b.bytes); } },
+            { h: "Pieces", num: true, v: function (b) { return b.pieces; }, f: function (b) { return num(b.pieces); } },
+            { h: "Executors", num: true, v: function (b) { return b.executors; }, f: function (b) { return num(b.executors); } },
+            { h: "Read time, all executors", num: true, v: function (b) { return b.readMs; }, f: function (b) { return dur(b.readMs); } },
+            { h: "Slowest read", num: true, v: function (b) { return b.maxMs; }, f: function (b) { return el("span", null, dur(b.maxMs), b.slowestOn ? el("span", { cls: "sub", text: "executor " + b.slowestOn }) : null); } },
+            { h: "First read", v: function (b) { return b.first; }, f: function (b) { return when(Date.parse(b.first)); } },
+            { h: "Found in", v: function (b) { return b.source.file; }, f: function (b) { return el("span", { cls: "srcref", text: b.source.file + ":" + b.source.line }); } }
+          ]
+        }));
+      }
+      if ((F.spills || []).length) {
+        s.appendChild(el("h3", { text: "Spills by stage" }));
+        s.appendChild(table({
+          rows: F.spills, sort: 3,
+          cols: [
+            { h: "Stage", num: true, v: function (x) { return x.stage; }, f: function (x) { return x.stage < 0 ? "lines naming no task" : storyStage({ stage: x.stage, stageAttempt: x.attempt }); } },
+            { h: "Tasks that spilled", num: true, v: function (x) { return x.tasks; }, f: function (x) { return x.tasks ? num(x.tasks) : "—"; } },
+            { h: "Spills", num: true, v: function (x) { return x.spills; }, f: function (x) { return num(x.spills); } },
+            { h: "Spilled", num: true, v: function (x) { return x.bytes; }, f: function (x) { return bytes(x.bytes); } },
+            { h: "Most by one task", num: true, v: function (x) { return x.mostBytes; }, f: function (x) { return x.mostBytes ? el("span", null, bytes(x.mostBytes), " ", link("#task/" + x.mostTask, "TID " + x.mostTask)) : "—"; } }
+          ]
+        }));
+      }
+    }
     s.appendChild(el("h3", { text: "Per executor" }));
     s.appendChild(table({
       rows: TS.executors, sort: 1,
@@ -2311,6 +2348,23 @@
     stageHealth: function (c, arg) { stageHealth(c, arg === "compact"); },
     stageSkew: function (c) { stageSkewChart(c); },
     runTimeline: function (c) { runTimeline(c); },
+    flows: function (c) {
+      var F = D.flows, pts = function (ps) { return (ps || []).map(function (p) { return [Date.parse(p.t), p.v]; }); };
+      var series = [{ label: "Shuffle read, own node", color: V.viz[1], points: pts(F.local), step: true },
+        { label: "Shuffle read, over the network", color: V.viz[2], points: pts(F.remote), step: true, area: 0.12 }];
+      if (F.spillBytes) series.push({ label: "Spilled to disk", color: V.viz[4], points: pts(F.spill), step: true });
+      if (F.cachedBytes) series.push({ label: "Cached in memory", color: V.viz[0], dash: "5 3", points: pts(F.cached), step: true });
+      timeChart(c, series, { t: "Data moved over time", run: RUN("flows"),
+          axes: [["Across", "Time of day, while the tasks ran."], ["Up", "Bytes in each " + dur(F.stepMs) + " step, as the executors logged them: shuffle data asked for when each task began reading it (Spark's estimate from the map outputs), and data spilled or cached when it was."]],
+          read: ["The network line high next to the own-node line: most shuffle data came from other nodes, which costs network time and their disks' reads.", "Spikes of spill: tasks ran out of execution memory at those times; the stage running then needed more memory or more partitions.", "Caching that stops while the job still runs, with drops in the storage memory chart: storage memory was full."] }, "bytes");
+    },
+    storage: function (c) {
+      var ex = D.flows.executors.filter(function (e) { return (e.free || []).length; }).sort(function (a2, b2) { return (a2.minFree || 0) - (b2.minFree || 0); });
+      var series = ex.slice(0, 8).map(function (e, i) { return { label: "Executor " + e.executor, color: V.viz[i % V.viz.length], dash: i >= V.viz.length ? "5 3" : null, step: true, points: e.free.map(function (p) { return [Date.parse(p.t), p.v]; }) }; });
+      timeChart(c, series, { t: "Storage memory left over time", run: RUN("memory"),
+          axes: [["Across", "Time of day, from each executor's first cached block to its last."], ["Up", "Storage memory free on the executor after each block it cached or dropped, as its MemoryStore logged it (the 8 executors with the least left)."]],
+          read: ["A line that falls towards zero: that executor's cache filled up; the next blocks pushed older ones out or were not cached.", "A line that jumps back up: blocks were dropped to make room, and will be computed again when used.", "Lines that stay high: the cache had room to spare."] }, "bytes");
+    },
     hbaseLoad: function (c) {
       var load = D.hbaseLoad || [], pts = function (ps) { return (ps || []).map(function (p) { return [Date.parse(p.t), p.v]; }); };
       var series = load.slice(0, 8).map(function (l, i) { return { label: String(l.server).split(".")[0], color: V.viz[i % V.viz.length], dash: i >= V.viz.length ? "5 3" : null, points: pts(l.points), step: true }; });

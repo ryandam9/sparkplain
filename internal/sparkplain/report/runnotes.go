@@ -41,6 +41,8 @@ var chartRules = map[string][]string{
 	"chain":      {"driver-gaps"},
 	"peakHeap":   {"memory-heap-near-limit", "memory-over-provisioned", "out-of-memory"},
 	"hbaseLoad":  {"hbase-server-load", "hbase-hotspot"},
+	"flows":      {"shuffle-network", "task-spill", "cache-evicted"},
+	"memory":     {"cache-evicted"},
 }
 
 // runNotes says, for each chart, what this run's version of it shows: a
@@ -294,6 +296,34 @@ func runNotes(r *model.Report) map[string][]runPoint {
 		l, all := h.Load[0], span(h.LoadFrom, h.LoadTo)
 		add("hbaseLoad", "%s did the most scan work: %s of task time, up to %d tasks at once, busy for %s of the %s the scans ran, across %s.",
 			shortHost(l.Server), model.Duration(l.TaskMs), l.Peak, model.Duration(l.BusyMs), model.Duration(all), model.Plural(len(h.Load), "region server", "region servers"))
+	}
+
+	// Data moved and storage memory, from the executors' logs.
+	if f := r.Flows; f != nil && len(f.Local) > 0 {
+		all := f.LocalBytes + f.RemoteBytes
+		peak := 0.0
+		for i := range f.Local {
+			peak = max(peak, f.Local[i].V+f.Remote[i].V)
+		}
+		if all > 0 {
+			add("flows", "Tasks read %s of shuffle data, %s of it over the network; the most in one %s step was %s.",
+				model.Bytes(all), model.Percent(float64(f.RemoteBytes)/float64(all)), model.Duration(f.StepMs), model.Bytes(int64(peak)))
+		} else {
+			add("flows", "No shuffle reads were logged; the chart shows what was spilled and cached.")
+		}
+	}
+	if f := r.Flows; f != nil {
+		var low *model.ExecFlow
+		for i := range f.Executors {
+			if e := &f.Executors[i]; len(e.Free) > 0 && (low == nil || e.MinFree < low.MinFree) {
+				low = e
+			}
+		}
+		if low != nil {
+			add("memory", "Executor %s came closest to a full cache: %s of storage memory free at the least.%s",
+				low.Executor, model.Bytes(low.MinFree),
+				map[bool]string{true: fmt.Sprintf(" %s dropped and %s not cached in all.", model.Plural(f.Dropped, "block was", "blocks were"), model.Num(int64(f.NotCached))), false: " No cached block was dropped."}[f.Dropped+f.NotCached > 0])
+		}
 	}
 
 	// The findings each chart is evidence for.
