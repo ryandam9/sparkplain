@@ -36,6 +36,9 @@ type ExplorerOptions struct {
 	// Sources are the application's files from -source, already redacted.
 	Sources     []SourceFile
 	SourceNotes []string
+	// SourceContext is how many lines of code to show before and after
+	// the line a stage or job ran; 0 means DefaultSourceContext.
+	SourceContext int
 }
 
 // Caps on text that would otherwise dominate the page's size.
@@ -170,6 +173,7 @@ type xData struct {
 	LogStats          *model.EventLogStats     `json:"logStats,omitempty"`
 	Sources           []xSource                `json:"sources"`
 	SourceNote        []string                 `json:"sourceNotes"`
+	SourceContext     int                      `json:"sourceContext"` // lines shown around a line of code
 	Logs              []xLogFile               `json:"logs"`
 	LogCols           []string                 `json:"logCols"`
 	LogSources        []xLogSource             `json:"logSources"`
@@ -407,7 +411,8 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		"tasks", "ok", "failed", "killed", "dur", "run", "gc", "input", "inputRows", "output", "outputRows",
 		"shRead", "shReadRows", "shWrite", "shWriteRows", "memSpill", "diskSpill", "p50", "max", "failure", "cached", "src",
 		"taskType", "loc", "sched", "resultSize", "gettingMs", "shWriteMs", "shRemote", "shRemoteDisk", "shLocalBlocks", "shRemoteBlocks",
-		"push", "cacheWrites", "failures", "details", "rp", "pushOn", "pushMergers", "barrier", "props", "cpuNs", "code", "split", "durMin", "p95", "durN")
+		"push", "cacheWrites", "failures", "details", "rp", "pushOn", "pushMergers", "barrier", "props", "cpuNs", "code", "split", "durMin", "p95", "durN", "mine")
+	mineCode := yourCode(r, opt.Sources)
 	for _, st := range r.Jobs.Stages {
 		t := st.Totals
 		d.Stages.add(st.ID, st.Attempt, st.Name, st.Status, unixMs(st.Submitted), unixMs(st.Completed), st.NumTasks,
@@ -420,7 +425,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 			t.ShuffleRemoteToDiskBytes, t.ShuffleLocalBlocks, t.ShuffleRemoteBlocks,
 			[]int64{t.PushMergedLocalBlocks, t.PushMergedLocalBytes, t.PushMergedRemoteBlocks, t.PushMergedRemoteBytes, t.PushFallbacks, t.PushCorruptChunks, t.PushMergedRemoteReqsMs},
 			[]int64{t.UpdatedBlocks, t.UpdatedBlockBytes}, stageFailures(st),
-			st.Details, st.ResourceProfile, st.ShufflePush, st.PushMergers, isBarrier(st), orMap(st.Properties), t.CPUTimeNs, codeRows(st.Code), splitRow(t.TimeSplit()), st.TaskDuration.Min, st.TaskDuration.P95, st.TaskDuration.Count)
+			st.Details, st.ResourceProfile, st.ShufflePush, st.PushMergers, isBarrier(st), orMap(st.Properties), t.CPUTimeNs, codeRows(st.Code), splitRow(t.TimeSplit()), st.TaskDuration.Min, st.TaskDuration.P95, st.TaskDuration.Count, mineRow(mineCode[strconv.Itoa(st.ID)+"."+strconv.Itoa(st.Attempt)]))
 		if len(st.RDDs) > 0 && len(st.RDDs) <= maxStageOpNodes && len(d.StageOps) < maxStageOpStages {
 			d.StageOps[strconv.Itoa(st.ID)+"."+strconv.Itoa(st.Attempt)] = stageOps(st)
 		}
@@ -461,7 +466,10 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		d.Profiles.add(p.ID, p.ExecutorCores, p.ExecutorMemoryMB, p.OverheadMB, p.OffHeapMB, p.PySparkMemoryMB, p.TaskCPUs, orMap(p.ExecutorOther), orMap(p.TaskOther), src(p.Source))
 	}
 	d.Critical, d.CritJob, d.LogStats = orEmpty(r.Jobs.CriticalPath), r.Jobs.CriticalJob, r.EventLog
-	d.Sources, d.SourceNote = []xSource{}, orEmpty(opt.SourceNotes)
+	d.Sources, d.SourceNote, d.SourceContext = []xSource{}, orEmpty(opt.SourceNotes), opt.SourceContext
+	if d.SourceContext <= 0 {
+		d.SourceContext = DefaultSourceContext
+	}
 	for _, sf := range opt.Sources {
 		d.Sources = append(d.Sources, xSource{Path: sf.Path, Logged: sf.Logged, Lines: sf.Lines, Cut: sf.Cut})
 	}
@@ -761,6 +769,15 @@ type xSource struct {
 }
 
 // codeRows encodes code locations as file, line, function, action.
+// mineRow is a stage's line of the application's code, as a code row
+// (file, line, function, action) with how it was found after it, or nil.
+func mineRow(y *YourCode) any {
+	if y == nil {
+		return nil
+	}
+	return []any{y.File, y.Line, y.Function, y.Action, y.Via}
+}
+
 func codeRows(cs []model.CodeLocation) [][]any {
 	out := [][]any{}
 	for _, c := range cs {

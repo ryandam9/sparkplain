@@ -74,6 +74,14 @@ environments:
 # wrong, the console says so. -log-timezone overrides it.
 # log-timezone: Australia/Sydney
 
+# The application's code: a local copy of its repo (or several folders or
+# files). Each stage then shows the line of your code that ran it, and the
+# explorer the code around it. Script names are matched by file name, so
+# the copy can live anywhere. Also per environment. -source overrides it.
+# source: ~/code/my-spark-jobs
+# Lines shown before and after that line (default 20; -source-context).
+# source-context: 20
+
 # Where reports are written (default ~/sparkplain/<yyyy-mm-dd>/<app-id>/).
 # out: ~/reports
 

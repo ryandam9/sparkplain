@@ -61,6 +61,9 @@ type options struct {
 	// Sources list (see applyReads).
 	off     map[string]string
 	sources []string
+	// sourceContext is how many lines of code to show around a stage's
+	// or job's line (-source-context, source-context:).
+	sourceContext int
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
@@ -96,10 +99,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.BoolVar(&o.check, "check", false, "check what the run can read, print it, and exit (0 all readable, 3 not)")
 	fs.StringVar(&o.show, "show", "", "print the event at file:line (as the pages cite it), redacted, and exit")
 	fs.StringVar(&o.decodeScan, "decode-scan", "", "print an HBase scan string (hbase.mapreduce.scan, base64) decoded: key range, columns, filters; - reads it from stdin; reads nothing else and exits")
-	fs.Func("source", "the application's source file or folder, shown beside jobs and stages in the explorer (repeatable; redacted)", func(v string) error {
+	fs.Func("source", "the application's source file or folder, such as a local copy of its repo, shown beside jobs and stages in the explorer (repeatable; redacted; or source: in the config file)", func(v string) error {
 		o.sources = append(o.sources, v)
 		return nil
 	})
+	fs.IntVar(&o.sourceContext, "source-context", 0, "lines of code shown before and after the line a stage or job ran (default 20, or source-context in the config file)")
 	fs.Usage = func() {
 		fmt.Fprintf(stderr, "Usage: sparkplain -app-id <application id> [-eventlog <path>] [-profile <p> -cluster-id <id> | -from <folder>] [flags]\n\n")
 		fmt.Fprintf(stderr, "Turns one Spark application's event log and YARN, step and node logs into <app-id>-report.html, <app-id>-report.json and <app-id>-explorer.html.\n\nFlags:\n")
@@ -155,6 +159,21 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	o.applyReads(cfg.Read)
 	cfg.Out, cfg.EventLogPrefix = expandHome(cfg.Out), expandHome(cfg.EventLogPrefix)
+	// The application's code: -source, else the config file's source:.
+	if len(o.sources) == 0 {
+		for _, s := range cfg.Source {
+			o.sources = append(o.sources, expandHome(s))
+		}
+	}
+	for i := range o.sources {
+		o.sources[i] = expandHome(o.sources[i])
+	}
+	if o.sourceContext <= 0 {
+		o.sourceContext = cfg.SourceContext
+	}
+	if o.sourceContext <= 0 {
+		o.sourceContext = report.DefaultSourceContext
+	}
 	// The config file names the clusters, the profile and the region when
 	// the flags do not. Its cluster names stand aside for a -from run, and
 	// for an -eventlog run that names no cluster and no -env: those are
@@ -513,7 +532,17 @@ func run(args []string, stdout, stderr io.Writer) int {
 		written[kind] = p
 		order = append(order, kind)
 	}
-	ropt := report.Options{Location: loc}
+	// The application's code, matched to the files its stages and jobs
+	// name: the report gives each stage's line, the explorer its code.
+	var srcs []report.SourceFile
+	var srcNotes []string
+	if len(o.sources) > 0 || len(fetched) > 0 {
+		var err error
+		if srcs, srcNotes, err = report.LoadSourcesFrom(r, o.sources, fetched); err != nil {
+			return fail("%v", err)
+		}
+	}
+	ropt := report.Options{Location: loc, Sources: srcs}
 	if outputs["explorer"] {
 		ropt.ExplorerHref = outputName(r.Application.ID, "explorer.html")
 	}
@@ -530,13 +559,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		if log != nil {
 			x = log.Explorer
 		}
-		xopt := report.ExplorerOptions{}
-		if len(o.sources) > 0 || len(fetched) > 0 {
-			var err error
-			if xopt.Sources, xopt.SourceNotes, err = report.LoadSourcesFrom(r, o.sources, fetched); err != nil {
-				return fail("%v", err)
-			}
-		}
+		xopt := report.ExplorerOptions{Sources: srcs, SourceNotes: srcNotes, SourceContext: o.sourceContext}
 		if outputs["html"] {
 			xopt.ReportHref = outputName(r.Application.ID, "report.html")
 		}

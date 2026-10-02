@@ -177,7 +177,8 @@ Rules that judge CPU, GC and memory size skip runs with less than `min-run-time`
 | `-check` | Run only the access check and exit |
 | `-show file:line` | Print, redacted, the event behind any value the pages cite, and exit |
 | `-decode-scan <base64>` | Print an HBase scan string (`hbase.mapreduce.scan`, base64 as Java or Python's `b2a_base64` writes it; `-` reads stdin) decoded, and exit; it reads nothing else. Decoded from HBase 2.4.17's protobuf definitions: key range and whether each end is included, reversed, columns, time ranges, versions, caching, batch and result size, block cache, read type, consistency, attributes, and the filter tree (`FilterList` with `MUST_PASS_ALL`/`MUST_PASS_ONE`, the compare filters with their operator and comparator, and the other filters HBase 2.4 ships). Row keys and values are shown as HBase's `Bytes.toStringBinary` does; an unknown filter or comparator is named as not decoded; the value tested on a column named like a secret is redacted |
-| `-source` | The application's code (repeatable, redacted), shown beside the jobs and stages that ran each line |
+| `-source` | The application's code (repeatable, redacted), such as a local copy of its repo, shown beside the jobs and stages that ran each line; also `source:` in the config file (a path or a list, per environment too). Files are matched by the names the call sites give, the longest shared tail of the path winning. `-source-context` (or `source-context:`, default 20) is how many lines are shown before and after |
+| Your code (stages) | Each stage's line of the application's code, in the report's and the explorer's stages tables and on the stage's page: its own call site when that is the application's; for a stage named after Spark's own code (PySpark's `PythonRDD.scala`, `SerDeUtil.scala`, `NativeMethodAccessorImpl.java`), the action of its job that the application's code ran; and when Spark recorded neither (PySpark's write, saveAsTable and sql), the nearest line it recorded before the stage started, labelled as such. With the code at hand, a line counts only if it is in the files given |
 
 **Exit codes:** 0 complete; 2 fatal (usage mistakes, a cluster or file that does not exist, an `-app-id` that does not match, output that cannot be written); 3 partial (a source missing, unreadable or refused); 130 interrupted.
 
@@ -208,6 +209,8 @@ environments:                    # picked with -env; each may set cluster-name, 
 eventlog-prefix: s3://my-logs/spark-events/   # used when -eventlog is not given
 timezone: Australia/Sydney
 log-timezone: Australia/Sydney   # the zone the cluster writes log times in (default UTC); -log-timezone overrides it
+source: ~/code/my-spark-jobs     # the application's code, one path or a list (also per environment); -source overrides it
+source-context: 20               # lines shown before and after each stage's or job's line; -source-context overrides it
 out: ~/reports
 format: html,json,explorer
 read: {step-logs: yes, node-logs: yes, hbase-logs: yes, cloudwatch: yes, cloudtrail: yes}   # each yes or no; as the -no-… flags

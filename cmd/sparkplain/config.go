@@ -46,6 +46,27 @@ type fileConfig struct {
 	Thresholds     thresholds           `yaml:"thresholds"`
 	Explorer       model.ExplorerLimits `yaml:"explorer"`
 	Read           readConfig           `yaml:"read"`
+	// Source is the application's code: local files or folders, such as
+	// a copy of its repo, shown beside its stages and jobs; SourceContext
+	// how many lines around the line each ran.
+	Source        stringList `yaml:"source"`
+	SourceContext int        `yaml:"source-context"`
+}
+
+// stringList is one string or a list of them.
+type stringList []string
+
+func (l *stringList) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		*l = stringList{n.Value}
+		return nil
+	}
+	var xs []string
+	if err := n.Decode(&xs); err != nil {
+		return fmt.Errorf("line %d: give a path or a list of paths", n.Line)
+	}
+	*l = xs
+	return nil
 }
 
 // readConfig turns sources off: every one is read unless set to no.
@@ -139,6 +160,7 @@ type envConfig struct {
 	LogTimeZone      string     `yaml:"log-timezone"`
 	Out              string     `yaml:"out"`
 	Read             readConfig `yaml:"read"`
+	Source           stringList `yaml:"source"`
 }
 
 // expandHome turns a leading ~/ (or a lone ~) into the home folder; any
@@ -186,6 +208,9 @@ func (c fileConfig) withEnv(name string) (fileConfig, error) {
 	set(&c.LogTimeZone, e.LogTimeZone)
 	set(&c.Out, e.Out)
 	c.Read = c.Read.over(e.Read, name)
+	if len(e.Source) > 0 {
+		c.Source = e.Source
+	}
 	return c, nil
 }
 
