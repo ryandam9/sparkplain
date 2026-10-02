@@ -517,7 +517,9 @@ func (p *parser) taskEnd(e *taskEndEvent, src model.Source) {
 		p.ex.task(stageKey{e.StageID, e.StageAttempt}, e, &t, pk, src)
 	}
 	if ok {
-		if a.scanned == nil && st.IsHadoopScan() {
+		// A rebuilt run does not say which stages read with
+		// newAPIHadoopRDD: keep every stage's tasks, for the split lines.
+		if a.scanned == nil && (st.IsHadoopScan() || p.log.Stats.Layout == model.LayoutRebuilt) {
 			a.scanned = map[int]bool{}
 		}
 		if a.scanned != nil && !a.scanned[e.Info.Index] {
