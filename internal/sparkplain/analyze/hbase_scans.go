@@ -21,10 +21,14 @@ import (
 // in key order. Without the event log, a scan is built from split lines
 // that name their tasks (logScanStages), with the task times their
 // executors logged and no rows.
-func hbaseScans(c *ctx, r *model.Report, h *model.HBaseSection) {
+//
+// It returns where each split line went (by its source): its stage, and
+// the event log's task when one is tied to it, for the tasks table.
+func hbaseScans(c *ctx, r *model.Report, h *model.HBaseSection) map[model.Source]placement {
 	if r.Logs == nil {
-		return
+		return nil
 	}
+	placed := map[model.Source]placement{}
 	var stages []*model.Stage
 	fromLogs := c.log == nil
 	if fromLogs {
@@ -164,6 +168,62 @@ func hbaseScans(c *ctx, r *model.Report, h *model.HBaseSection) {
 		})
 		h.Scans = append(h.Scans, sc)
 		scanSkew(c, sc, s)
+		ps := make([]placedSplit, len(xs))
+		for i, x := range xs {
+			ps[i] = placedSplit{x.s, x.f.Executor}
+		}
+		placeSplits(placed, s, sc, ps, fromLogs)
+	}
+	return placed
+}
+
+// placement is where a split line went: its stage, and the event log's
+// task for it when one is known.
+type placement struct {
+	stage *model.Stage
+	task  *model.ScanTask
+}
+
+// placedSplit is a split line with the executor whose log holds it.
+type placedSplit struct {
+	s        model.HBaseSplit
+	executor string
+}
+
+// placeSplits records each of a scan stage's split lines. A line that
+// names its task gets the event log's record of that task (none for an
+// attempt that failed, which the event log does not keep per partition).
+// A line that names none gets its region's tied task, but only one line
+// per region does: the latest logged by the executor that ran the task,
+// since a retried task logs the same split again and its earlier lines
+// were other attempts.
+func placeSplits(placed map[model.Source]placement, s *model.Stage, sc model.HBaseScanRead, xs []placedSplit, fromLogs bool) {
+	byTID := map[int64]*model.ScanTask{}
+	if !fromLogs {
+		for i := range s.ScanTasks {
+			byTID[s.ScanTasks[i].TaskID] = &s.ScanTasks[i]
+		}
+	}
+	regionOf := map[string]*model.HBaseRegionRead{}
+	for i := range sc.Regions {
+		g := &sc.Regions[i]
+		regionOf[sc.Table+"\x00"+g.StartRow+"\x00"+g.EndRow] = g
+	}
+	latest := map[string]int{} // region -> the line its task goes to
+	for i, x := range xs {
+		key := x.s.Table + "\x00" + x.s.StartRow + "\x00" + x.s.EndRow
+		pl := placement{stage: s}
+		if x.s.Task != nil {
+			pl.task = byTID[x.s.Task.TaskID]
+		} else if g := regionOf[key]; g != nil && g.Task != nil && (x.executor == "" || x.executor == g.Task.ExecutorID) {
+			if j, ok := latest[key]; !ok || !x.s.Time.Before(xs[j].s.Time) {
+				latest[key] = i
+			}
+		}
+		placed[x.s.Source] = pl
+	}
+	for key, i := range latest {
+		placed[xs[i].s.Source] = placement{stage: s, task: regionOf[key].Task}
 	}
 }
 
