@@ -408,9 +408,10 @@
         </table></div>
         <h3>Stages</h3>
         <div class="tbl"><table>
-          <thead><tr><th data-sort="num">Stage</th><th data-sort="text">Name</th><th data-sort="text">Status</th><th class="num" data-sort="num">Duration</th><th class="num" data-sort="num">Tasks</th><th class="num" data-sort="num">Median task</th><th class="num" data-sort="num">p95</th><th class="num" data-sort="num">Slowest</th><th class="num" data-sort="num">Skew</th><th class="num" data-sort="num">Spill (disk)</th><th class="num" data-sort="num">Failed tasks</th></tr></thead>
+          <thead><tr><th data-sort="num">Stage</th><th data-sort="text">Name</th><th data-sort="text" title="The line of your code that ran the stage: its own call site, or, for a stage named after Spark's own code, its job's action">Your code</th><th data-sort="text">Status</th><th class="num" data-sort="num">Duration</th><th class="num" data-sort="num">Tasks</th><th class="num" data-sort="num">Median task</th><th class="num" data-sort="num">p95</th><th class="num" data-sort="num">Slowest</th><th class="num" data-sort="num">Skew</th><th class="num" data-sort="num">Spill (disk)</th><th class="num" data-sort="num">Failed tasks</th></tr></thead>
           <tbody>{{range $j.Stages}}<tr><td data-v="{{.ID}}">{{.ID}}{{if .Attempt}}.{{.Attempt}}{{end}}</td>
             <td>{{.Name}}{{if .JobIDs}}<span class="sub">job {{ints .JobIDs}}</span>{{end}}{{if .FailureReason}}<span class="sub bad">{{short .FailureReason 300}}</span>{{end}}</td>
+            {{with index $.Mine (stageKey .)}}<td class="mono" title="{{.File}}:{{.Line}}">{{.Label}}{{with .Via}}<span class="sub">{{.}}</span>{{end}}</td>{{else}}<td>—</td>{{end}}
             <td><span class="pill {{if eq .Status "succeeded"}}full{{else if eq .Status "failed"}}crit{{else}}none{{end}}">{{statusLabel .Status}}</span></td>
             <td class="num" data-v="{{stageDur .}}">{{if stageDur .}}{{dur (stageDur .)}}{{else}}—{{end}}</td>
             <td class="num" data-v="{{.Totals.Tasks}}">{{num .Totals.Tasks}}</td>

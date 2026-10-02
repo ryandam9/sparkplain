@@ -314,6 +314,8 @@ Decided: keep each event with its time and source line, not only per-stage sums,
 
 **Real-cluster findings, 2: every executor drawn in full (2026-10-02).** The user asked whether At a glance draws all nine of their executors region by region. It draws one, the one killed for memory or else the one with the highest heap, and the others as cards. Decided: in the explorer, clicking an executor's card (anywhere on it) opens At a glance with that executor drawn in full above the diagram, linking on to its page; the report stays as it is.
 
+**Real-cluster findings, 3: your code at each stage (2026-10-02).** The user's stages table showed their scripts beside Spark's own files (`PythonRDD.scala`, `SerDeUtil.scala`), and they asked to see their own code at each stage, from a local copy of the repo, 20 lines either side. `-source` already matched scripts by name and showed 6 lines. Decided: `source:` and `source-context:` (default 20) in the config file, also per environment, with `-source-context` beside `-source`; each stage's line of the user's code in a new "Your code" column (report and explorer) and on its page, from its own call site, else its job's action, else the nearest line Spark recorded before it, labelled; the tables and files each stage read and wrote follow in their own PR.
+
 ## Appendix: the spec before it was simplified (2026-09-29)
 
 On 2026-09-29 the spec was rewritten to describe sparkplain as it is, and this history moved out of it. Its other sections as they stood then are kept here word for word, since they spell out details the rewrite summarises (for example exactly when each findings rule fires). Where they differ from the spec, the spec wins.

@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -42,6 +43,9 @@ type Options struct {
 	Location *time.Location
 	// ExplorerHref links to explorer.html; empty when it was not written.
 	ExplorerHref string
+	// Sources are the application's files (-source, source:): with them,
+	// each stage's line of the application's code is the one they match.
+	Sources []SourceFile
 }
 
 type page struct {
@@ -57,6 +61,9 @@ type page struct {
 	Info     int
 	Tasks    int64
 	Explorer string
+	// Mine is each stage's line of the application's code, by
+	// "id.attempt".
+	Mine map[string]*YourCode
 }
 
 // WriteHTML renders the report page.
@@ -73,7 +80,7 @@ func WriteHTML(w io.Writer, r *model.Report, opt Options) error {
 	if err != nil {
 		return err
 	}
-	p := page{R: r, CSS: template.CSS(css), JS: template.JS(js), Zone: zoneLabel(loc, r.Application.Start), Explorer: opt.ExplorerHref}
+	p := page{R: r, CSS: template.CSS(css), JS: template.JS(js), Zone: zoneLabel(loc, r.Application.Start), Explorer: opt.ExplorerHref, Mine: yourCode(r, opt.Sources)}
 	for _, c := range r.Coverage {
 		switch c.Coverage {
 		case model.Complete:
@@ -269,6 +276,7 @@ func funcs(loc *time.Location) template.FuncMap {
 			return float64(d.Max) / float64(d.P50)
 		},
 		"stageDur": func(s *model.Stage) int64 { return s.DurationMs() },
+		"stageKey": func(s *model.Stage) string { return strconv.Itoa(s.ID) + "." + strconv.Itoa(s.Attempt) },
 		"jobDur":   func(j *model.Job) int64 { return j.DurationMs() },
 		"planCap":  func(s string) string { return capText(s, 20000) },
 		"first":    func(n int, v []*model.SQLQuery) []*model.SQLQuery { return v[:min(n, len(v))] },

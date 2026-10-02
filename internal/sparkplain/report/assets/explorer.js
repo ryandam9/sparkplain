@@ -485,6 +485,8 @@
       cols: [
         { h: "Stage", num: true, v: function (s) { return s.id + s.attempt / 100; }, f: stageLink },
         { h: "Name", v: function (s) { return s.name; }, f: function (s) { return s.name; } },
+        { h: "Your code", title: "The line of your code that ran the stage: its own call site, or, for a stage named after Spark's own code, its job's action", v: function (s) { return s.mine ? s.mine[0] + ":" + s.mine[1] : ""; },
+          f: function (s) { if (!s.mine) return "—"; var h = codeHref(s.mine); return el("span", null, h ? link(h, codeLabel(s.mine)) : el("span", { cls: "mono", text: codeLabel(s.mine) }), s.mine[4] ? el("span", { cls: "sub", text: s.mine[4] }) : null); } },
         { h: "Status", v: function (s) { return s.status; }, f: function (s) { return status(s.status); } },
         { h: "Submitted", num: true, v: function (s) { return s.submitted; }, f: function (s) { return when(s.submitted); } },
         { h: "Duration", num: true, v: function (s) { return span(s.submitted, s.completed); }, f: function (s) { return dur(span(s.submitted, s.completed)); } },
@@ -1143,7 +1145,7 @@
           axes: [["Boxes", "The RDDs (datasets) this stage computes, each named by the operation that made it. Cached ones are outlined."], ["Arrows", "Data flows down the arrows, from what the stage reads to what it produces."]],
           read: ["Read it top to bottom, like the code.", "A long chain is fine; what matters is which step is slow, which the task table below shows."] });
     }
-    s.appendChild(codePanel(st.code, st.submitted, null));
+    s.appendChild(codePanel(st.code, st.submitted, null, st.mine));
     var hsc = (D.hbaseScans || {})[st.key];
     if (hsc) hbaseScanPanel(s, hsc);
     if (st.details) s.appendChild(el("details", null, el("summary", { text: "Where in the code: the full call stack Spark recorded" }), el("div", { cls: "inner" }, el("pre", { cls: "plan", text: st.details }))));
@@ -2908,8 +2910,23 @@
   }
   // codePanel shows where something ran: its frames, the code around the
   // innermost one, or why nothing was recorded.
-  function codePanel(code, when, selfJob) {
+  // mine, for a stage, is its line of the application's code (a code row,
+  // with how it was found fifth): its own call site's, or its job's action when its
+  // call site is Spark's own (PythonRDD.scala and the like).
+  function codePanel(code, when, selfJob, mine) {
     var box = el("section", null, el("h3", { text: "Code" }));
+    var CTX = D.sourceContext || 20;
+    if (mine && mine[4]) {
+      var near = /^nearest/.test(mine[4]);
+      box.appendChild(explain(near ? "Spark recorded no line of your code for this stage (PySpark records none for some actions, such as write, saveAsTable and sql). The nearest line it recorded before the stage started is below; the code that started this stage likely comes soon after it." :
+        "This stage is named after Spark's own code (" + (code && code.length ? codeLabel(code[0]) : "no call site") + "). The line of your code that ran it is " + mine[4] + ":"));
+      var mh = codeHref(mine);
+      box.appendChild(el("p", null, mh ? link(mh, codeLabel(mine)) : el("span", { cls: "mono", text: codeLabel(mine) })));
+      var ms = snippet(mine, CTX);
+      if (ms) box.appendChild(ms);
+      else if (!(D.sources || []).length) box.appendChild(el("p", { cls: "note", text: "Run sparkplain with -source <your code folder>, or set source: in the config file, to see the code here." }));
+      return box;
+    }
     if (!code || !code.length) {
       box.appendChild(explain(CODE_NONE));
       var before = null, after = null;
@@ -2928,9 +2945,11 @@
       var h = codeHref(c);
       return el("li", null, h ? link(h, codeLabel(c)) : codeLabel(c), el("span", { cls: "sub", text: (i ? "called from " : "") + c[0] }));
     })));
-    var sn = snippet(code[0], 6);
+    // the code around the first frame that is the application's own
+    var sn = null;
+    for (var i = 0; i < code.length && !sn; i++) sn = snippet(mine && i === 0 ? mine : code[i], CTX);
     if (sn) box.appendChild(sn);
-    else if (!(D.sources || []).length) box.appendChild(el("p", { cls: "note", text: "Run sparkplain with -source <your code folder> to see the code here." }));
+    else if (!(D.sources || []).length) box.appendChild(el("p", { cls: "note", text: "Run sparkplain with -source <your code folder>, or set source: in the config file, to see the code here." }));
     return box;
   }
   // codeUses maps "file:line" to the jobs, stages and queries that ran there.
