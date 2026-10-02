@@ -40,7 +40,8 @@ var (
 )
 
 // parseHeader reads a log4j line prefix. Times carry no zone in these logs;
-// they are read as UTC, the default on EMR nodes.
+// they are read as UTC here, and the classifier moves them into the
+// cluster's zone (Options.Loc).
 func parseHeader(kind FileKind, line string) (header, bool) {
 	if len(line) < 6 {
 		return header{}, false

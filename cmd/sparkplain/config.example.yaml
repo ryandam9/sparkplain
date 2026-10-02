@@ -68,6 +68,12 @@ environments:
 # The time zone the report shows times in (default: this machine's).
 # timezone: Australia/Sydney
 
+# The time zone the cluster writes its log times in (default UTC, EMR's
+# default). Log lines carry no zone, so a cluster set to another zone
+# needs this, or every log time is off by that zone's offset. If it looks
+# wrong, the console says so. -log-timezone overrides it.
+# log-timezone: Australia/Sydney
+
 # Where reports are written (default ~/sparkplain/<yyyy-mm-dd>/<app-id>/).
 # out: ~/reports
 

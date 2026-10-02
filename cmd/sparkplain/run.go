@@ -52,7 +52,7 @@ var appIDRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.\-]{0,127}$`)
 
 type options struct {
 	profile, region, configPath, env, clusterID, clusterName, hbaseClusterID, hbaseClusterName, appID string
-	eventLog, from, out, format, maxSize, maxUnpacked, show, decodeScan                               string
+	eventLog, from, out, format, maxSize, maxUnpacked, show, decodeScan, logTZ                        string
 	workers                                                                                           int
 	timeout, windowPad                                                                                time.Duration
 	noCloudWatch, noCloudTrail, showVersion, check, initConfig                                        bool
@@ -70,6 +70,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&o.profile, "profile", "", "named AWS profile for online runs (default for the default chain)")
 	fs.StringVar(&o.region, "region", "", "AWS region override (online runs)")
 	fs.StringVar(&o.configPath, "config", "", "YAML defaults file (default ~/.config/sparkplain/config.yaml)")
+	fs.StringVar(&o.logTZ, "log-timezone", "", "the time zone the cluster writes its log times in, such as Australia/Sydney (default UTC, EMR's default; or log-timezone in the config file)")
 	fs.StringVar(&o.env, "env", "", "environment in the config file, such as prod or nonprod: its clusters, profile, region and event log location")
 	fs.StringVar(&o.clusterID, "cluster-id", "", "EMR cluster ID: read its metadata and logs from AWS (needs -profile)")
 	fs.StringVar(&o.clusterName, "cluster-name", "", "EMR cluster name, instead of -cluster-id: the cluster of that name that ran the application (also cluster-name in the config file)")
@@ -206,6 +207,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return fail("config timezone %q: %v", cfg.TimeZone, err)
 		}
 	}
+	logLoc := time.UTC
+	if tz := firstNonEmpty(o.logTZ, cfg.LogTimeZone); tz != "" {
+		if logLoc, err = time.LoadLocation(tz); err != nil {
+			return fail("log time zone %q: %v", tz, err)
+		}
+	}
 	con.begin(o.appID)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -231,7 +238,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return checkExit(checks)
 	}
 	var cluster *model.Cluster
-	var logs clusterLogs
+	logs := clusterLogs{logLoc: logLoc}
 	if online {
 		con.status("reading the cluster from the EMR API")
 		c, err := cloud.cluster(ctx, o.clusterID, o.clusterName)
@@ -417,7 +424,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case o.from != "":
 		mode = "offline-logs"
 		con.status("reading the logs in " + o.from)
-		if logs, err = offlineLogs(ctx, o.from, o.appID, log, lim, o.off); err != nil {
+		if logs, err = offlineLogs(ctx, o.from, o.appID, log, lim, o.off, logLoc); err != nil {
 			if !errors.Is(err, iofs.ErrPermission) {
 				return fail("%v", err)
 			}
@@ -431,6 +438,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 		con.clear()
 		fmt.Fprintln(stderr, "sparkplain: interrupted")
 		return exitInterrupted
+	}
+	if msg := logZoneCheck(log, logs.files, logs.steps, logLoc); msg != "" {
+		con.note("%s", msg)
+		for i := range logs.sources {
+			if logs.sources[i].Name == "Container logs" {
+				logs.sources[i].Detail = strings.TrimSpace(logs.sources[i].Detail + " " + msg)
+			}
+		}
 	}
 	con.status("writing the report")
 	ain := analyze.Input{
