@@ -213,6 +213,17 @@ func joinContainers(c *ctx, r *model.Report) {
 		if a := containerAttempt(f.Container); a > 0 && final > 0 && a != final {
 			f.EarlierAttempt = a
 		}
+		// With no event log (or a container it does not name), an
+		// executor's own log says which executor it was; not for an
+		// earlier attempt, whose executor IDs the final one reuses.
+		if f.Executor == "" && f.Container != "" && f.EarlierAttempt == 0 {
+			for _, l := range f.Found {
+				if l.Kind == model.LogExecutorHost {
+					f.Executor, f.Host = l.Fields["executor"], l.Fields["host"]
+					break
+				}
+			}
+		}
 	}
 }
 

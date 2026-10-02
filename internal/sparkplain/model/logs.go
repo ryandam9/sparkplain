@@ -38,8 +38,9 @@ const (
 	LogContainerAssigned LogKind = "container-assigned" // YARN placed one of the application's containers
 	LogYarnRequest       LogKind = "yarn-request"       // Spark asked YARN for (or cancelled) containers of a size
 	// Where each attempt ran, and nodes YARN said were leaving.
-	LogDriverHost LogKind = "driver-host" // the host an attempt's driver ran on
-	LogNodeState  LogKind = "node-state"  // YARN told the driver a node is decommissioning or lost
+	LogDriverHost   LogKind = "driver-host"   // the host an attempt's driver ran on
+	LogExecutorHost LogKind = "executor-host" // an executor's ID and host, from its own log
+	LogNodeState    LogKind = "node-state"    // YARN told the driver a node is decommissioning or lost
 )
 
 // LogLine is one classified line of a container, step or node log, or one

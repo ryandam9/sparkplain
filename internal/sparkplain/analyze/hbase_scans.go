@@ -18,10 +18,26 @@ import (
 // stage's splits by start row ties each to its task, which is checked
 // against the executor that logged the split. Checked on the 0084 run: the
 // executor that ran partitions 1 and 2 logged the second and third splits
-// in key order.
+// in key order. Without the event log, a scan is built from split lines
+// that name their tasks (logScanStages), with the task times their
+// executors logged and no rows.
 func hbaseScans(c *ctx, r *model.Report, h *model.HBaseSection) {
-	if c.log == nil || r.Logs == nil {
+	if r.Logs == nil {
 		return
+	}
+	var stages []*model.Stage
+	fromLogs := c.log == nil
+	if fromLogs {
+		stages = logScanStages(r)
+		if untasked := countUntasked(r); untasked > 0 {
+			h.Missing = append(h.Missing, fmt.Sprintf("Scans for %s logged with no task: without the event log, a split is placed in its stage only when the executors' log layout prints the thread (log4j %%t), which names the task.",
+				model.Plural(untasked, "split", "splits")))
+		}
+		if len(stages) > 0 {
+			h.Missing = append(h.Missing, "Rows each scan region returned: Spark records them only in the event log.")
+		}
+	} else {
+		stages = c.log.Stages
 	}
 	type split struct {
 		s model.HBaseSplit
@@ -35,7 +51,7 @@ func hbaseScans(c *ctx, r *model.Report, h *model.HBaseSection) {
 			// to the scan stage that started last of those running then
 			// (log times have whole seconds).
 			var best *model.Stage
-			for _, s := range c.log.Stages {
+			for _, s := range stages {
 				switch {
 				case sp.Task != nil:
 					if s.ID == sp.Task.Stage && s.Attempt == sp.Task.StageAttempt {
@@ -51,7 +67,7 @@ func hbaseScans(c *ctx, r *model.Report, h *model.HBaseSection) {
 		}
 	}
 	scans := printedScans(c, r)
-	for _, s := range c.log.Stages {
+	for _, s := range stages {
 		xs := byStage[s]
 		if len(xs) == 0 {
 			continue
@@ -102,7 +118,7 @@ func hbaseScans(c *ctx, r *model.Report, h *model.HBaseSection) {
 		}
 		sort.Strings(names)
 		sc := model.HBaseScanRead{StageID: s.ID, Attempt: s.Attempt, Table: strings.Join(names, ", "), Regions: sorted,
-			Tasks: s.NumTasks, TotalRows: s.Totals.InputRecords, Source: s.Source}
+			Tasks: s.NumTasks, TotalRows: s.Totals.InputRecords, FromLogs: fromLogs, Source: s.Source}
 		if len(sorted) > 0 {
 			sc.Rows = model.HBaseScan{StartRow: sorted[0].StartRow, StopRow: sorted[len(sorted)-1].EndRow, IncludeStart: true}.Rows()
 		}
@@ -138,6 +154,9 @@ func hbaseScans(c *ctx, r *model.Report, h *model.HBaseSection) {
 			if a.Rows != b.Rows {
 				return a.Rows > b.Rows
 			}
+			if a.TaskMs != b.TaskMs {
+				return a.TaskMs > b.TaskMs
+			}
 			if a.Regions != b.Regions {
 				return a.Regions > b.Regions
 			}
@@ -146,6 +165,74 @@ func hbaseScans(c *ctx, r *model.Report, h *model.HBaseSection) {
 		h.Scans = append(h.Scans, sc)
 		scanSkew(c, sc, s)
 	}
+}
+
+// logScanStages are the scan stages the executors' split lines name, for
+// a run with no event log: each holds a task per partition, timed from its
+// Running to its Finished line. A partition that ran more than once keeps
+// the attempt that finished; a task with no end, or only failed ones, is
+// left out, so its region shows no time rather than a wrong one.
+func logScanStages(r *model.Report) []*model.Stage {
+	type key struct{ id, attempt int }
+	byKey := map[key]*model.Stage{}
+	parts := map[key]map[int]bool{}
+	at := map[key]map[int]int{} // partition -> its task's place in ScanTasks
+	for _, f := range r.Logs.Files {
+		for _, sp := range f.HBaseSplits {
+			t := sp.Task
+			if t == nil {
+				continue
+			}
+			k := key{t.Stage, t.StageAttempt}
+			s := byKey[k]
+			if s == nil {
+				s = &model.Stage{ID: t.Stage, Attempt: t.StageAttempt, Source: sp.Source}
+				byKey[k], parts[k], at[k] = s, map[int]bool{}, map[int]int{}
+			}
+			if !t.Start.IsZero() && (s.Submitted.IsZero() || t.Start.Before(s.Submitted)) {
+				s.Submitted = t.Start
+			}
+			if t.End.After(s.Completed) {
+				s.Completed = t.End
+			}
+			parts[k][t.Partition] = true
+			if t.End.IsZero() || t.Failed {
+				continue
+			}
+			st := model.ScanTask{Index: t.Partition, TaskID: t.TaskID, Attempt: t.Attempt, ExecutorID: f.Executor, Host: f.Host,
+				DurationMs: t.End.Sub(t.Start).Milliseconds(), Source: t.EndSource}
+			if i, ok := at[k][t.Partition]; ok {
+				if t.Attempt > s.ScanTasks[i].Attempt {
+					s.ScanTasks[i] = st
+				}
+				continue
+			}
+			at[k][t.Partition] = len(s.ScanTasks)
+			s.ScanTasks = append(s.ScanTasks, st)
+		}
+	}
+	var out []*model.Stage
+	for k, s := range byKey {
+		s.NumTasks = len(parts[k])
+		out = append(out, s)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].ID < out[j].ID || out[i].ID == out[j].ID && out[i].Attempt < out[j].Attempt
+	})
+	return out
+}
+
+// countUntasked counts the split lines that name no task.
+func countUntasked(r *model.Report) int {
+	n := 0
+	for _, f := range r.Logs.Files {
+		for _, sp := range f.HBaseSplits {
+			if sp.Task == nil {
+				n++
+			}
+		}
+	}
+	return n
 }
 
 // scanSkew reports a scan stage that waited on one region: a scan reads
@@ -187,13 +274,25 @@ func scanSkew(c *ctx, sc model.HBaseScanRead, s *model.Stage) {
 	if rows > 0 && float64(t.Rows) < 1.5*float64(rows)/float64(len(tied)) {
 		why = fmt.Sprintf(" It returned %s of the scan's %s rows (%s), no more than its share, so its time is not explained by the rows it returned: the region server's own log for that time, or rows its filters read and skipped, may say why.", model.Num(t.Rows), model.Num(rows), model.Percent(share(t.Rows, rows)))
 	}
+	took := fmt.Sprintf("%s, %s rows", model.Duration(t.DurationMs), model.Num(t.Rows))
+	ref := fmt.Sprintf("stage:%d.%d", s.ID, s.Attempt)
+	if sc.FromLogs {
+		// No event log: no rows, and no stage page to link to.
+		why = " Rows per region need the event log."
+		if slow.SizeBytes > 0 && sc.SizedRegions == len(sc.Regions) {
+			why = fmt.Sprintf(" Its region holds %s of the scan's %s (%s, HBase's estimate), so it had the most to read if that share is large; rows per region need the event log.",
+				model.Bytes(slow.SizeBytes), model.Bytes(sc.SizeBytes), model.Percent(share(slow.SizeBytes, sc.SizeBytes)))
+		}
+		took = model.Duration(t.DurationMs) + ", from its Running to its Finished line"
+		ref = ""
+	}
 	c.add(model.Finding{Rule: "hbase-scan-skew", Severity: model.Warning, Section: "stages",
 		Title: fmt.Sprintf("Stage %d's scan of %s waited on one region: %s took %s, the median region %s", s.ID, sc.Table, slow.Server, model.Duration(t.DurationMs), model.Duration(median)),
 		Explanation: fmt.Sprintf("A TableInputFormat scan reads one region per task, so the stage lasts as long as its slowest region. Region %s (rows %s), on region server %s, was read by task %d (partition %d) on executor %s.%s",
 			slow.Region, keys, slow.Server, t.TaskID, t.Index, t.ExecutorID, why),
 		Evidence: []model.Evidence{
 			{Source: slow.Source, Text: fmt.Sprintf("the split: region %s of %s, rows %s, on %s", slow.Region, sc.Table, keys, slow.Server)},
-			{Source: t.Source, Ref: fmt.Sprintf("stage:%d.%d", s.ID, s.Attempt), Text: fmt.Sprintf("task %d: %s, %s rows", t.TaskID, model.Duration(t.DurationMs), model.Num(t.Rows))},
+			{Source: t.Source, Ref: ref, Text: fmt.Sprintf("task %d: %s", t.TaskID, took)},
 		},
 		Fix: fmt.Sprintf("Split the region so its rows become several tasks (HBase shell: split '%s', '<a row key inside %s>'), or pre-split the table along its key range. Row keys that start with a date or a counter put the newest rows in one region: salting or hashing a prefix spreads them. If the table cannot change, scan narrower key ranges.", sc.Table, keys)})
 }

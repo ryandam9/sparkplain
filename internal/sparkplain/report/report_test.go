@@ -144,3 +144,31 @@ func TestRuntimeEnvironmentTable(t *testing.T) {
 		}
 	}
 }
+
+// A scan built from the executors' logs, with no event log, says rows
+// need the event log and how its times were found, and shows no rows.
+func TestScanFromLogsRenders(t *testing.T) {
+	t.Parallel()
+	r := scanFromLogsReport()
+	html := render(t, r, nil)
+	for _, want := range []string{"Stage 172: TableInputFormat scan of", "needs the event log", "Built without the event log", "4 min 10 s", "task 6429"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("report lacks %q", want)
+		}
+	}
+	if x := renderExplorer(t, r, nil); !strings.Contains(x, `"fromLogs":true`) {
+		t.Error("explorer lacks the logs-only scan")
+	}
+}
+
+func scanFromLogsReport() *model.Report {
+	r := analyze.Run(analyze.Input{Tool: "t", EventSource: model.SourceStatus{Name: "Spark event log", Status: "not-supplied"}})
+	task := &model.ScanTask{Index: 0, TaskID: 6429, ExecutorID: "3", DurationMs: 250_000, Rows: 0, Source: model.Source{File: "e1", Line: 40}}
+	r.HBase = &model.HBaseSection{
+		Tables: []model.HBaseTable{{Name: "orders", Read: true, APIs: []string{"TableInputFormat"}}},
+		Scans: []model.HBaseScanRead{{StageID: 172, Table: "orders", Rows: "[k1, k2)", Tasks: 1, Tied: true, TiedBy: "task", FromLogs: true,
+			Regions: []model.HBaseRegionRead{{Region: "aaa949cedc", StartRow: "k1", EndRow: "k2", Server: "rs-1", Task: task, Source: model.Source{File: "e1", Line: 12}}},
+			Servers: []model.HBaseServerRead{{Server: "rs-1", Regions: 1, TaskMs: 250_000}}}},
+	}
+	return r
+}

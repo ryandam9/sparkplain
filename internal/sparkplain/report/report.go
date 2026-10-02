@@ -349,8 +349,8 @@ type scanRegion struct {
 }
 
 // headRegions keeps a scan's table short: the n regions that returned the
-// most rows when they are known, else the first n in key order; shown in
-// key order.
+// most rows (then the longest) when they are tied to tasks, else the first
+// n in key order; shown in key order.
 func headRegions(rs []model.HBaseRegionRead, n int) []scanRegion {
 	out := make([]scanRegion, len(rs))
 	for i, g := range rs {
@@ -359,13 +359,17 @@ func headRegions(rs []model.HBaseRegionRead, n int) []scanRegion {
 	if len(out) <= n {
 		return out
 	}
-	rows := func(g model.HBaseRegionRead) int64 {
+	// The most rows first, then (as when rows are not known) the longest.
+	key := func(g model.HBaseRegionRead) [2]int64 {
 		if g.Task == nil {
-			return -1
+			return [2]int64{-1, -1}
 		}
-		return g.Task.Rows
+		return [2]int64{g.Task.Rows, g.Task.DurationMs}
 	}
-	sort.SliceStable(out, func(i, j int) bool { return rows(out[i].Region) > rows(out[j].Region) })
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := key(out[i].Region), key(out[j].Region)
+		return a[0] > b[0] || a[0] == b[0] && a[1] > b[1]
+	})
 	out = out[:n]
 	sort.Slice(out, func(i, j int) bool { return out[i].Index < out[j].Index })
 	return out
