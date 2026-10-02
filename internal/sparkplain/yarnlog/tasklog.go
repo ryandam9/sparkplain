@@ -127,12 +127,11 @@ func (c *classifier) taskStory(h header) {
 			if !strings.HasPrefix(m[1], "rdd_") {
 				return // a broadcast's pieces: counted with the broadcast
 			}
-			step.Kind, step.Bytes, step.Name = model.StepCache, SparkBytes(m[2]), m[1]
-			free := SparkBytes(m[3])
-			apply = func(t *model.TaskLog) { t.CachedBlocks++; t.CachedBytes += step.Bytes; t.MemoryFree = free }
+			step.Kind, step.Bytes, step.Name, step.Free = model.StepCache, SparkBytes(m[2]), m[1], SparkBytes(m[3])
+			apply = func(t *model.TaskLog) { t.CachedBlocks++; t.CachedBytes += step.Bytes; t.MemoryFree = step.Free }
 		} else if m := tlDroppedRE.FindStringSubmatch(msg); m != nil {
-			step.Kind, step.N, step.Bytes = model.StepDrop, atoi(m[1]), SparkBytes(m[2])
-			apply = func(t *model.TaskLog) { t.Dropped += step.N; t.MemoryFree = step.Bytes }
+			step.Kind, step.N, step.Free = model.StepDrop, atoi(m[1]), SparkBytes(m[2])
+			apply = func(t *model.TaskLog) { t.Dropped += step.N; t.MemoryFree = step.Free }
 		} else if m := tlNoRoomRE.FindStringSubmatch(msg); m != nil {
 			step.Kind, step.Bytes, step.Name = model.StepNoRoom, SparkBytes(m[2]), m[1]
 			apply = func(t *model.TaskLog) { t.NotCached++ }
@@ -143,6 +142,7 @@ func (c *classifier) taskStory(h header) {
 			step.Kind, step.N, step.Bytes = model.StepShuffle, atoi(m[1]), SparkBytes(m[2])
 			local := SparkBytes(m[4]) + SparkBytes(m[6]) + SparkBytes(m[8])
 			remote, rblocks := SparkBytes(m[10]), atoi(m[9])
+			step.Remote = remote
 			apply = func(t *model.TaskLog) {
 				t.ShuffleReads++
 				t.ShuffleBlocks += step.N
@@ -272,7 +272,11 @@ func (c *classifier) untied() *model.TaskLog {
 }
 
 func addStep(t *model.TaskLog, s model.TaskStep) {
-	if len(t.Steps) == model.MaxTaskSteps {
+	limit := model.MaxTaskSteps
+	if t.TaskID < 0 {
+		limit = model.MaxUntiedSteps
+	}
+	if len(t.Steps) == limit {
 		t.CutSteps++
 		return
 	}

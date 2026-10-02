@@ -90,8 +90,12 @@ type TaskLog struct {
 	CutSteps  int        `json:"cutSteps,omitempty"`
 }
 
-// MaxTaskSteps caps the steps kept per task.
-const MaxTaskSteps = 40
+// MaxTaskSteps caps the steps kept per task, and MaxUntiedSteps those of
+// an executor's lines no task could be found for.
+const (
+	MaxTaskSteps   = 40
+	MaxUntiedSteps = 20_000
+)
 
 // TaskStep is one thing a task did, as its log line says: a kind, the
 // sizes and times the line gives, and the line.
@@ -102,7 +106,12 @@ type TaskStep struct {
 	N     int       `json:"n,omitempty"`
 	Ms    int64     `json:"ms,omitempty"`
 	Name  string    `json:"name,omitempty"` // a block, broadcast or file, redacted
-	Line  int64     `json:"line"`
+	// Remote is a shuffle read's bytes over the network (the rest came
+	// from the task's own node); Free the storage memory free after a
+	// block was cached or blocks were dropped.
+	Remote int64 `json:"remote,omitempty"`
+	Free   int64 `json:"free,omitempty"`
+	Line   int64 `json:"line"`
 }
 
 // The kinds of TaskStep.
