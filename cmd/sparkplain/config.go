@@ -44,18 +44,99 @@ type fileConfig struct {
 	OverallTimeout time.Duration        `yaml:"overall-timeout"`
 	Thresholds     thresholds           `yaml:"thresholds"`
 	Explorer       model.ExplorerLimits `yaml:"explorer"`
+	Read           readConfig           `yaml:"read"`
+}
+
+// readConfig turns sources off: every one is read unless set to no.
+// Container logs, the EMR API and the event log are always read.
+type readConfig struct {
+	StepLogs   *yesNo `yaml:"step-logs"`
+	NodeLogs   *yesNo `yaml:"node-logs"`
+	HBaseLogs  *yesNo `yaml:"hbase-logs"`
+	CloudWatch *yesNo `yaml:"cloudwatch"`
+	CloudTrail *yesNo `yaml:"cloudtrail"`
+
+	env map[string]string // key -> the environment whose read: block set it, for the reason shown
+}
+
+// yesNo is a switch written yes or no (also true, false, on or off): YAML
+// 1.2, which the config reader follows, takes a bare yes as text.
+type yesNo bool
+
+func (v *yesNo) UnmarshalYAML(n *yaml.Node) error {
+	switch strings.ToLower(n.Value) {
+	case "yes", "true", "on":
+		*v = true
+	case "no", "false", "off":
+		*v = false
+	default:
+		return fmt.Errorf("line %d: %q is not yes or no", n.Line, n.Value)
+	}
+	return nil
+}
+
+// over lays e's keys over r's.
+func (r readConfig) over(e readConfig, env string) readConfig {
+	keys := []string{"step-logs", "node-logs", "hbase-logs", "cloudwatch", "cloudtrail"}
+	for i, p := range [][2]**yesNo{{&r.StepLogs, &e.StepLogs}, {&r.NodeLogs, &e.NodeLogs}, {&r.HBaseLogs, &e.HBaseLogs}, {&r.CloudWatch, &e.CloudWatch}, {&r.CloudTrail, &e.CloudTrail}} {
+		if *p[1] != nil {
+			*p[0] = *p[1]
+			env2 := map[string]string{keys[i]: env}
+			for k, v := range r.env {
+				if k != keys[i] {
+					env2[k] = v
+				}
+			}
+			r.env = env2
+		}
+	}
+	return r
+}
+
+// readSwitch is one source a run can be told not to read: its name in
+// the Sources list, its key under read:, and its flag.
+type readSwitch struct {
+	source, key, flag string
+	off               *bool
+	cfg               *yesNo
+}
+
+// applyReads turns off what the flags or the config file's read: block
+// say, and records why, by source, for the access check and the report.
+func (o *options) applyReads(r readConfig) {
+	o.off = map[string]string{}
+	for _, s := range []readSwitch{
+		{"Step logs", "step-logs", "no-step-logs", &o.noStepLogs, r.StepLogs},
+		{"Node logs", "node-logs", "no-node-logs", &o.noNodeLogs, r.NodeLogs},
+		{"HBase server logs", "hbase-logs", "no-hbase-logs", &o.noHBaseLogs, r.HBaseLogs},
+		{"CloudWatch", "cloudwatch", "no-cloudwatch", &o.noCloudWatch, r.CloudWatch},
+		{"CloudTrail", "cloudtrail", "no-cloudtrail", &o.noCloudTrail, r.CloudTrail},
+	} {
+		switch {
+		case *s.off:
+			o.off[s.source] = "turned off with -" + s.flag
+		case s.cfg != nil && !bool(*s.cfg):
+			*s.off = true
+			where := "the config file"
+			if env := r.env[s.key]; env != "" {
+				where += "'s " + env + " environment"
+			}
+			o.off[s.source] = "turned off in " + where + " (read: " + s.key + ": no)"
+		}
+	}
 }
 
 // envConfig is one environment's keys: where its clusters and logs are,
 // and how to reach them. Keys it leaves out keep the top-level values.
 type envConfig struct {
-	ClusterName      string `yaml:"cluster-name"`
-	HBaseClusterName string `yaml:"hbase-cluster-name"`
-	Profile          string `yaml:"profile"`
-	Region           string `yaml:"region"`
-	EventLogPrefix   string `yaml:"eventlog-prefix"`
-	TimeZone         string `yaml:"timezone"`
-	Out              string `yaml:"out"`
+	ClusterName      string     `yaml:"cluster-name"`
+	HBaseClusterName string     `yaml:"hbase-cluster-name"`
+	Profile          string     `yaml:"profile"`
+	Region           string     `yaml:"region"`
+	EventLogPrefix   string     `yaml:"eventlog-prefix"`
+	TimeZone         string     `yaml:"timezone"`
+	Out              string     `yaml:"out"`
+	Read             readConfig `yaml:"read"`
 }
 
 // expandHome turns a leading ~/ (or a lone ~) into the home folder; any
@@ -101,6 +182,7 @@ func (c fileConfig) withEnv(name string) (fileConfig, error) {
 	set(&c.EventLogPrefix, e.EventLogPrefix)
 	set(&c.TimeZone, e.TimeZone)
 	set(&c.Out, e.Out)
+	c.Read = c.Read.over(e.Read, name)
 	return c, nil
 }
 

@@ -114,7 +114,7 @@ func emrMetadata(ctx context.Context, cloud *awsSession, cl *model.Cluster) clus
 
 // readLogs reads the logs under the cluster's log URI. It never fails the
 // run: what it cannot read is reported in the Sources rows.
-func (out *clusterLogs) readLogs(ctx context.Context, cloud *awsSession, log *model.EventLog, appID string, lim source.Limits, includeHBase bool) {
+func (out *clusterLogs) readLogs(ctx context.Context, cloud *awsSession, log *model.EventLog, appID string, lim source.Limits, includeHBase bool, off map[string]string) {
 	cl := out.cluster
 	cfg, err := cloud.config(ctx)
 	if err != nil {
@@ -142,7 +142,7 @@ func (out *clusterLogs) readLogs(ctx context.Context, cloud *awsSession, log *mo
 		}
 		return
 	}
-	plan := yarnlog.Plan{Root: root, AppID: appID, Limits: lim, SkipHBase: !includeHBase}
+	plan := yarnlog.Plan{Root: root, AppID: appID, Limits: lim, SkipHBase: !includeHBase, Off: off}
 	plan.Steps, plan.Instances, plan.Since = narrow(out.steps, out.instances, log)
 	if log != nil {
 		plan.Until = log.Application.End
@@ -390,7 +390,7 @@ func shortHost(h string) string {
 // cluster's log root (containers/, steps/, node/), a folder holding one
 // such copy per cluster (j-…/containers/…), or one application's
 // container folders (container_*/stderr.gz).
-func offlineLogs(ctx context.Context, dir, appID string, log *model.EventLog, lim source.Limits) (clusterLogs, error) {
+func offlineLogs(ctx context.Context, dir, appID string, log *model.EventLog, lim source.Limits, off map[string]string) (clusterLogs, error) {
 	root, appFolder, err := fromLayout(dir, appID)
 	if err != nil {
 		return clusterLogs{}, err
@@ -399,7 +399,7 @@ func offlineLogs(ctx context.Context, dir, appID string, log *model.EventLog, li
 	if log != nil {
 		since, until = log.Application.Start, log.Application.End
 	}
-	col := yarnlog.Collect(ctx, source.NewLocalStore(dir), yarnlog.Plan{Root: root, AppFolder: appFolder, AppID: appID, Since: since, Until: until, Limits: lim})
+	col := yarnlog.Collect(ctx, source.NewLocalStore(dir), yarnlog.Plan{Root: root, AppFolder: appFolder, AppID: appID, Since: since, Until: until, Limits: lim, Off: off})
 	return clusterLogs{files: col.Files, sources: col.Sources}, nil
 }
 
@@ -589,11 +589,11 @@ func runWindow(log *model.EventLog, files []model.LogFile, steps []model.Step, c
 
 // readMetrics reads CloudWatch metrics for the cluster and the nodes that
 // were up while the application ran, padded by pad on each side.
-func (out *clusterLogs) readMetrics(ctx context.Context, cloud *awsSession, log *model.EventLog, skip bool, pad time.Duration) {
+func (out *clusterLogs) readMetrics(ctx context.Context, cloud *awsSession, log *model.EventLog, off string, pad time.Duration) {
 	row := model.SourceStatus{Name: "CloudWatch", Status: "read"}
 	defer func() { out.sources = append(out.sources, row) }()
-	if skip {
-		row.Status, row.Detail = "not-requested", "Not called: -no-cloudwatch."
+	if off != "" {
+		row.Status, row.Detail = "not-requested", "Not called: "+off+"."
 		return
 	}
 	from, to, ok := runWindow(log, out.files, out.steps, out.cluster)
@@ -636,11 +636,11 @@ func (out *clusterLogs) readMetrics(ctx context.Context, cloud *awsSession, log 
 
 // readCalls looks up in CloudTrail what the nodes the application ran on
 // called, padded by pad on each side of the run.
-func (out *clusterLogs) readCalls(ctx context.Context, cloud *awsSession, log *model.EventLog, skip bool, pad time.Duration) {
+func (out *clusterLogs) readCalls(ctx context.Context, cloud *awsSession, log *model.EventLog, off string, pad time.Duration) {
 	row := model.SourceStatus{Name: "CloudTrail", Status: "read"}
 	defer func() { out.sources = append(out.sources, row) }()
-	if skip {
-		row.Status, row.Detail = "not-requested", "Not called: -no-cloudtrail."
+	if off != "" {
+		row.Status, row.Detail = "not-requested", "Not called: "+off+"."
 		return
 	}
 	from, to, ok := runWindow(log, out.files, out.steps, out.cluster)

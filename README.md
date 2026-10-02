@@ -258,7 +258,7 @@ If HBase runs on a different EMR cluster, pass its name with `-hbase-cluster-nam
 
 On a terminal the marks are coloured dots: green ● (readable), red ● (refused or failed), amber ◐ (empty), pink ● (needed for a full report but not given to this run, such as AWS on an offline run, or an event log kept on HDFS) and ○ (turned off, or not needed); piped or with `NO_COLOR` they are Y, N, !, ? and -. A colour terminal also animates the run: what is being read spins with a running clock, each mark settles into its dot, and sections arrive a beat apart, which adds a few seconds. Set `SPARKPLAIN_NO_ANIMATION=1` (or run under `CI`) for a still console; the text is the same. Offline runs check the local paths instead. The rows are also in the JSON report, as `accessCheck`.
 
-Use `-no-cloudwatch` or `-no-cloudtrail` to skip those calls when you lack the permissions. Only their sections are affected.
+Use `-no-cloudwatch` or `-no-cloudtrail` to skip those calls when you lack the permissions, and `-no-step-logs`, `-no-node-logs` or `-no-hbase-logs` to skip those logs. Only their sections are affected, and the run is not marked partial for them. To skip a source every time, or only in one environment, set it to `no` under `read:` in the config file (below).
 
 ### 3. Offline, from a copy of the cluster's logs
 
@@ -370,9 +370,17 @@ environments:          # named sets picked with -env; their keys override the on
   nonprod:
     cluster-name: nightly-etl-dev
     profile: dev-emr
+    read:              # this environment's role may not call CloudTrail
+      cloudtrail: no
 timezone: Australia/Sydney                    # for times in the report (default: this machine's zone)
 out: ~/reports                                # default ~/sparkplain/<yyyy-mm-dd>/<app-id>/
 format: html,json,explorer
+read:                  # what to read, each yes or no (default yes); also per environment
+  step-logs: yes
+  node-logs: yes
+  hbase-logs: yes
+  cloudwatch: yes
+  cloudtrail: yes
 thresholds:            # tune when findings fire
   skew-ratio: 5        # slowest task over 5x the stage median
   spill-share: 0.10    # disk spill over 10% of shuffle write

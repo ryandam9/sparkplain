@@ -157,6 +157,7 @@ Rules that judge CPU, GC and memory size skip runs with less than `min-run-time`
 | `-from` | An offline copy of the cluster's logs; not with `-cluster-id` |
 | `-out`, `-format`, `-config` | Output folder; `html`, `json`, `explorer` (default all; `both` means `html,json`); config file |
 | `-no-cloudwatch`, `-no-cloudtrail`, `-window-pad` | Skip enrichment; padding on AWS queries (5 min) |
+| `-no-step-logs`, `-no-node-logs`, `-no-hbase-logs` | Skip the step logs, the node logs (NodeManager, ResourceManager, bootstrap actions) or HBase's server logs. Also `read:` in the config file, top level or per environment, each `yes` or `no` (`true`/`false`, `on`/`off`): a flag turns a source off whatever the file says; an environment's `read:` overrides the top level's. A source turned off is not checked, listed or read; the access check marks it ○ with what turned it off, its Sources row is `not-requested` with the same reason, and it does not make the run partial. Container logs, the EMR API and the event log are always read |
 | `-workers`, `-max-size`, `-max-unpacked`, `-overall-timeout` | Fetch budgets (§2) |
 | `-check` | Run only the access check and exit |
 | `-show file:line` | Print, redacted, the event behind any value the pages cite, and exit |
@@ -186,13 +187,14 @@ cluster-name: nightly-etl        # as -cluster-name; not for a run given -eventl
 hbase-cluster-name: hbase-prod   # as -hbase-cluster-name
 profile: prod-emr                # as -profile and -region
 region: us-east-1
-environments:                    # picked with -env; each may set cluster-name, hbase-cluster-name, profile, region, eventlog-prefix, timezone and out
+environments:                    # picked with -env; each may set cluster-name, hbase-cluster-name, profile, region, eventlog-prefix, timezone, out and read
   prod: {cluster-name: nightly-etl, profile: prod-emr}
   nonprod: {cluster-name: nightly-etl-dev, profile: dev-emr}
 eventlog-prefix: s3://my-logs/spark-events/   # used when -eventlog is not given
 timezone: Australia/Sydney
 out: ~/reports
 format: html,json,explorer
+read: {step-logs: yes, node-logs: yes, hbase-logs: yes, cloudwatch: yes, cloudtrail: yes}   # each yes or no; as the -no-… flags
 max-size: 10GiB
 max-unpacked: 50GiB
 overall-timeout: 30m

@@ -56,7 +56,11 @@ type options struct {
 	workers                                                                                           int
 	timeout, windowPad                                                                                time.Duration
 	noCloudWatch, noCloudTrail, showVersion, check, initConfig                                        bool
-	sources                                                                                           []string
+	noStepLogs, noNodeLogs, noHBaseLogs                                                               bool
+	// off says why each source turned off is not read, by its name in the
+	// Sources list (see applyReads).
+	off     map[string]string
+	sources []string
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
@@ -82,6 +86,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.DurationVar(&o.timeout, "overall-timeout", 0, "deadline for the whole run (default 30m)")
 	fs.BoolVar(&o.noCloudWatch, "no-cloudwatch", false, "skip CloudWatch metrics (fewer permissions needed)")
 	fs.BoolVar(&o.noCloudTrail, "no-cloudtrail", false, "skip CloudTrail lookups (fewer permissions needed)")
+	fs.BoolVar(&o.noStepLogs, "no-step-logs", false, "skip the EMR step logs (also read: step-logs: no in the config file)")
+	fs.BoolVar(&o.noNodeLogs, "no-node-logs", false, "skip the node logs: YARN's NodeManager and ResourceManager, bootstrap actions (also read: node-logs: no)")
+	fs.BoolVar(&o.noHBaseLogs, "no-hbase-logs", false, "skip HBase's Master and region server logs (also read: hbase-logs: no)")
 	fs.DurationVar(&o.windowPad, "window-pad", 5*time.Minute, "padding around the run's time window for CloudWatch and CloudTrail queries")
 	fs.BoolVar(&o.showVersion, "version", false, "print the version and exit")
 	fs.BoolVar(&o.initConfig, "init-config", false, "write a starter config file, every key explained, to ~/.config/sparkplain/config.yaml (or -config) and exit")
@@ -145,6 +152,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if cfg, err = cfg.withEnv(o.env); err != nil {
 		return fail("%v", err)
 	}
+	o.applyReads(cfg.Read)
 	cfg.Out, cfg.EventLogPrefix = expandHome(cfg.Out), expandHome(cfg.EventLogPrefix)
 	// The config file names the clusters, the profile and the region when
 	// the flags do not. Its cluster names stand aside for a -from run, and
@@ -383,17 +391,20 @@ func run(args []string, stdout, stderr io.Writer) int {
 		mode = "online"
 		con.status("reading container, step and node logs")
 		separate := o.hbaseClusterID != "" || o.hbaseClusterName != ""
-		logs.readLogs(ctx, cloud, log, o.appID, lim, !separate)
-		if separate {
+		logs.readLogs(ctx, cloud, log, o.appID, lim, !separate, o.off)
+		if why, off := o.off["HBase server logs"]; separate && off {
+			logs.sources = append(logs.sources, model.SourceStatus{Name: "HBase server logs", Status: "not-requested", Location: firstNonEmpty(o.hbaseClusterID, o.hbaseClusterName),
+				Detail: "Not read: " + why + "."})
+		} else if separate {
 			con.status("reading HBase server logs from " + firstNonEmpty(o.hbaseClusterID, o.hbaseClusterName))
 			logs.readHBaseCluster(ctx, cloud, o.hbaseClusterID, o.hbaseClusterName, log, lim)
 		}
 		con.sources(logs.sources...)
 		con.status("reading CloudWatch metrics")
-		logs.readMetrics(ctx, cloud, log, o.noCloudWatch, o.windowPad)
+		logs.readMetrics(ctx, cloud, log, o.off["CloudWatch"], o.windowPad)
 		con.sources(logs.sources...)
 		con.status("reading CloudTrail")
-		logs.readCalls(ctx, cloud, log, o.noCloudTrail, o.windowPad)
+		logs.readCalls(ctx, cloud, log, o.off["CloudTrail"], o.windowPad)
 		con.sources(logs.sources...)
 		if outputs["explorer"] {
 			var row *model.SourceStatus
@@ -406,7 +417,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case o.from != "":
 		mode = "offline-logs"
 		con.status("reading the logs in " + o.from)
-		if logs, err = offlineLogs(ctx, o.from, o.appID, log, lim); err != nil {
+		if logs, err = offlineLogs(ctx, o.from, o.appID, log, lim, o.off); err != nil {
 			if !errors.Is(err, iofs.ErrPermission) {
 				return fail("%v", err)
 			}

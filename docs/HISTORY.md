@@ -281,6 +281,8 @@ Checked first against a throwaway EMR 7.3.0 cluster with HBase 2.4.17 (`testdata
     - The HBase stage cell names a line behind each of its counts.
   - **Decoder location.** The decoder moved to `yarnlog`, since the classifier needs it.
 
+**Read switches (approved and built 2026-10-02).** The user wanted to choose, in the config file, which sources a run reads. A `read:` block (top level, and per environment, which overrides it) sets `step-logs`, `node-logs`, `hbase-logs`, `cloudwatch` and `cloudtrail` to yes or no; new flags `-no-step-logs`, `-no-node-logs` and `-no-hbase-logs` join `-no-cloudwatch` and `-no-cloudtrail`, and a flag turns a source off whatever the file says. HBase's server logs, though under `node/`, have their own key: they are often wanted when YARN's node logs are not. YAML 1.2 (yaml.v3) takes a bare `yes` as text, so the values are a small type that accepts yes, no, true, false, on and off and rejects anything else. A source turned off is not checked or read; the access check marks it ○ with the flag or config key that turned it off, its Sources row is `not-requested` with the same reason, and it does not make the run partial. Container logs, the EMR API and the event log are always read.
+
 ## Appendix: the spec before it was simplified (2026-09-29)
 
 On 2026-09-29 the spec was rewritten to describe sparkplain as it is, and this history moved out of it. Its other sections as they stood then are kept here word for word, since they spell out details the rewrite summarises (for example exactly when each findings rule fires). Where they differ from the spec, the spec wins.
