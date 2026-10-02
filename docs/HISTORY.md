@@ -269,6 +269,17 @@ Checked first against a throwaway EMR 7.3.0 cluster with HBase 2.4.17 (`testdata
 5. **Provenance.** Every value above links to its file and line. The report's HBase stage cell also links each count of server events and retries to the first line behind it, which it did not before.
 6. **Tests.** The `0084` fixture (splits, sizes, per-server rows, the untied case); synthetic scan strings encoded in the tests from the `.proto` field numbers, covering nested filter lists and each operator; a planted secret in a driver line. Then the user's own sample scan string (fake values), when available, to check the decoder against their encoding.
 - Step 3, the decoder (built 2026-10-02): `analyze.DecodeScan` and `-decode-scan` (a string, or `-` for stdin), from the four `.proto` files above. Tested on scans encoded in the tests from their field numbers (nested filter lists, every compare operator, each comparator HBase 2.4 ships, the filters with their own fields, an unknown filter, a value on a column named like a token), and fuzzed. A filter nested past 32 levels is shown as unreadable, not recursed into. Reading the scan from a driver line or a Spark property comes with step 4.
+- Steps 1, 2, 4 and 5 (built 2026-10-02):
+  - **Splits.** The classifier keeps each split with its key range, region server, region and source line, and each `Input split length` when its group of interleaved lines can be told apart. A group is the run from a split with none open until none is open again; its sizes are assigned only when it holds one split, or when every size in it is equal. On the `0084` executor log, the first pair of tasks logged 50 M and 50 M, so both are tied; the second logged 57 M and 50 M, so neither is.
+  - **Scan tasks.** The event log parser keeps each successful task of a `newAPIHadoopRDD` stage, one per partition, capped at 20,000 per stage.
+  - **Ordering, checked rather than assumed.** On `0084`, the five splits sorted by start row are partitions 0–4, and each was logged by the executor that ran that partition. So a stage's regions are tied by key order only when splits and tasks match one for one and every split's executor agrees. Otherwise the scan says why and ties none.
+  - **Printed scans.** A `sparkplain-scan` line is decoded as it is read, and the string is never kept; a test plants a value and the string, and checks that neither reaches the JSON, report or explorer. The submitting step's stdout is now read, since in client mode the driver's prints go there.
+  - **Output.**
+    - The report's HBase block has a scan block per stage.
+    - The explorer's stage page has an "HBase regions read" panel.
+    - New finding: `hbase-scan-skew`.
+    - The HBase stage cell names a line behind each of its counts.
+  - **Decoder location.** The decoder moved to `yarnlog`, since the classifier needs it.
 
 ## Appendix: the spec before it was simplified (2026-09-29)
 

@@ -54,6 +54,21 @@ The report also covers the timeline, cluster and nodes, executors, memory, CPU, 
 
 **HBase.** For applications that read or write HBase, Storage and I/O adds an HBase block: the tables read and written and how (the hbase-spark connector, `TableInputFormat`, `TableOutputFormat`), the regions each scan read on each region server, the ZooKeeper quorum and how many connections the run opened, the client and connector versions, the stages that used HBase with their time, CPU share and the retries logged while they ran, and what HBase's own Master and region servers logged during the run. HBase trouble mostly shows as a slower job rather than a failure, and its client often logs nothing when a region server is lost or a region moves, so those come from the servers' logs, which EMR keeps beside the YARN logs when HBase runs on the cluster. The event log names only the connector's tables; everything else comes from the container and node logs.
 
+**HBase scans.** Each `TableInputFormat` scan (`sc.newAPIHadoopRDD(...)` with `TableInputFormat`, from Scala, Java or PySpark) gets its own block, and a panel on its stage's page in the explorer:
+- **The key range read:** taken from the executors' split lines, one per region.
+- **Region servers:** which ones served the scan, with the regions, rows, estimated size and task time on each.
+- **Every region:** its key range, region server, rows, time, executor and task, each with the file:line it came from.
+
+TableInputFormat makes its splits in key order and Spark's partition *n* reads split *n*, so each region is tied to the task that read it. That tie is checked against the executor that logged each split. When it can't be checked, rows and time per region are left out rather than guessed, and the report says why. A scan where one region held the stage up gets an `hbase-scan-skew` finding naming that region and its server.
+
+The scan's filters and columns are not in any log. To see them in the report, a non-production run can print the scan string the job passes as `hbase.mapreduce.scan`:
+
+```python
+print("sparkplain-scan " + json.dumps({"table": conf["hbase.mapreduce.inputtable"], "scan": conf["hbase.mapreduce.scan"]}))
+```
+
+sparkplain decodes that line as it reads it and keeps only the decoded scan, never the string. Where printing isn't allowed, `-decode-scan` (below) decodes a scan string on your machine.
+
 **The explorer** is for digging in. It has a zoomable timeline of queries, jobs, stages, executors and running tasks. It has stage pages with task-time percentiles, histograms and task scatter plots, executor tables, SQL plan graphs with each operator's metrics, and your source code next to the stages that ran it.
 
 ![Explorer timeline: queries, jobs and stages over time, executors alive, tasks running, with the driver-only gaps shaded](docs/images/explorer-timeline.png)
