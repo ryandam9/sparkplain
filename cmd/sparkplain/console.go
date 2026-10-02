@@ -16,8 +16,8 @@ import (
 )
 
 // console prints what sparkplain read and, at the end, what it found: a
-// summary on stdout of the report's "What happened", its findings and the
-// files written. On a terminal each source is listed on stderr as it is
+// summary on stdout of the report's "What happened", how many findings (the
+// report lists them) and the files written. On a terminal each source is listed on stderr as it is
 // read, with a note of what is being read in the meantime, and markers
 // are coloured (not with NO_COLOR or TERM=dumb). Piped, the summary lists
 // the sources itself and notes keep their "sparkplain:" prefix on stderr.
@@ -63,7 +63,6 @@ const (
 var (
 	spinFrames   = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 	settleFrames = []string{"⠋", "⠹", "⠼"}
-	growFrames   = []string{"∙", "•"}
 	headerFrames = []string{"◇", "◈"}
 )
 
@@ -464,26 +463,9 @@ func (c *console) summary(r *model.Report, written map[string]string, order []st
 	if len(parts) == 0 {
 		parts = []string{"none"}
 	}
-	c.section(w, col, "Findings", "  "+numbers(col, strings.Join(parts, " · ")))
-	for _, f := range r.Findings {
-		// A dot coloured by severity; without colour, !! critical, ! warning, - note.
-		mark := map[model.Severity]string{model.Critical: "!!", model.Warning: "!"}[f.Severity]
-		if mark == "" {
-			mark = "-"
-		}
-		if col {
-			colour := map[model.Severity]string{model.Critical: red, model.Warning: amber, model.Info: blue}[f.Severity]
-			mark = paint(true, colour, "●")
-			// The dot grows into place.
-			var frames []string
-			for _, g := range growFrames {
-				frames = append(frames, paint(true, colour, g))
-			}
-			c.settle(w, "  ", frames)
-		}
-		lead := "  " + mark + " "
-		c.wrap(w, lead, strings.Repeat(" ", visibleLen(lead)), f.Title, func(l string) string { return numbers(col, l) })
-	}
+	// Only the count: the report and the explorer list each finding with
+	// its evidence and fix.
+	c.section(w, col, "Findings", "  "+numbers(col, strings.Join(parts, " · "))+paint(col, dim, " · listed in the report"))
 
 	// The folder once, then the files in it.
 	if len(order) > 0 {
