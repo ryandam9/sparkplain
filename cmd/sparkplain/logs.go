@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -145,7 +144,7 @@ func (out *clusterLogs) readLogs(ctx context.Context, cloud *awsSession, log *mo
 	plan := yarnlog.Plan{Root: root, AppID: appID, Limits: lim, SkipHBase: !includeHBase, Off: off}
 	plan.Steps, plan.Instances, plan.Since = narrow(out.steps, out.instances, log)
 	if log != nil {
-		plan.Until = log.Application.End
+		plan.Until, plan.WindowFrom = log.Application.End, "the event log"
 	}
 	plan.Others = otherNodes(out.instances, plan.Instances)
 	plan.Lifetimes = map[string][2]time.Time{}
@@ -215,14 +214,11 @@ func (out *clusterLogs) readHBaseCluster(ctx context.Context, cloud *awsSession,
 		return
 	}
 
+	// The application's time: from the event log, else from the Spark
+	// cluster's logs read just before (YARN's application summary, or the
+	// times its container logs cover), else from its step.
 	plan := yarnlog.Plan{Root: root, Limits: lim}
-	if log != nil {
-		plan.Since, plan.Until = log.Application.Start, log.Application.End
-	}
-	// Without the event log, the application's time is from its container
-	// logs on the Spark cluster, read just before, as for HBase on the
-	// Spark cluster itself.
-	plan = plan.WithWindow(out.files)
+	plan.Since, plan.Until, plan.WindowFrom, _ = runWindow(log, out.files, out.steps, out.cluster)
 	instances, instErr := awsmeta.Instances(ctx, awsDeps.emr(cfg), cl)
 	if instErr == nil {
 		plan.Lifetimes = map[string][2]time.Time{}
@@ -549,26 +545,23 @@ func (out *clusterLogs) fetchScripts(ctx context.Context, cloud *awsSession, app
 }
 
 // runWindow is when the application ran: from the event log, else from
-// YARN's summary in the logs, else from the step that submitted it.
-func runWindow(log *model.EventLog, files []model.LogFile, steps []model.Step, cl *model.Cluster) (from, to time.Time, ok bool) {
+// its logs (YARN's application summary, or the times its container logs
+// cover; see yarnlog.Window), else from the step that submitted it. how
+// says which, for the report.
+func runWindow(log *model.EventLog, files []model.LogFile, steps []model.Step, cl *model.Cluster) (from, to time.Time, how string, ok bool) {
 	if log != nil && !log.Application.Start.IsZero() {
 		from, to = log.Application.Start, log.Application.End
 		if to.IsZero() {
 			to = from.Add(time.Duration(log.Application.DurationMs) * time.Millisecond)
 		}
-		return from, to, true
+		return from, to, "the event log", true
 	}
-	for _, f := range files {
-		for _, l := range f.Found {
-			if l.Kind != model.LogAppSummary {
-				continue
-			}
-			s, _ := strconv.ParseInt(l.Fields["startTime"], 10, 64)
-			e, _ := strconv.ParseInt(l.Fields["finishTime"], 10, 64)
-			if s > 0 && e >= s {
-				return time.UnixMilli(s).UTC(), time.UnixMilli(e).UTC(), true
-			}
-		}
+	appID := ""
+	if log != nil {
+		appID = log.Application.ID
+	}
+	if from, to, how := yarnlog.Window(files, appID); !from.IsZero() && !to.IsZero() {
+		return from, to, how, true
 	}
 	for _, st := range steps {
 		if st.AppID != "" && !st.Started.IsZero() {
@@ -581,10 +574,10 @@ func runWindow(log *model.EventLog, files []model.LogFile, steps []model.Step, c
 			if to.IsZero() {
 				to = awsDeps.now()
 			}
-			return st.Started, to, true
+			return st.Started, to, "the step that submitted it", true
 		}
 	}
-	return time.Time{}, time.Time{}, false
+	return time.Time{}, time.Time{}, "", false
 }
 
 // readMetrics reads CloudWatch metrics for the cluster and the nodes that
@@ -596,7 +589,7 @@ func (out *clusterLogs) readMetrics(ctx context.Context, cloud *awsSession, log 
 		row.Status, row.Detail = "not-requested", "Not called: "+off+"."
 		return
 	}
-	from, to, ok := runWindow(log, out.files, out.steps, out.cluster)
+	from, to, _, ok := runWindow(log, out.files, out.steps, out.cluster)
 	if !ok {
 		row.Status, row.Detail = "not-supplied", "Not called: nothing says when the application ran (no event log, YARN summary or step)."
 		return
@@ -643,7 +636,7 @@ func (out *clusterLogs) readCalls(ctx context.Context, cloud *awsSession, log *m
 		row.Status, row.Detail = "not-requested", "Not called: "+off+"."
 		return
 	}
-	from, to, ok := runWindow(log, out.files, out.steps, out.cluster)
+	from, to, _, ok := runWindow(log, out.files, out.steps, out.cluster)
 	if !ok {
 		row.Status, row.Detail = "not-supplied", "Not called: nothing says when the application ran (no event log, YARN summary or step)."
 		return

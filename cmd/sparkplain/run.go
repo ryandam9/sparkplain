@@ -449,7 +449,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		LogsRead:    online || o.from != "",
 	}
 	if log == nil {
-		ain.RunStart, ain.RunEnd, _ = runWindow(nil, logs.files, logs.steps, logs.cluster)
+		ain.RunStart, ain.RunEnd, _, _ = runWindow(nil, logs.files, logs.steps, logs.cluster)
 	}
 	if logs.cluster != nil {
 		cl := *logs.cluster

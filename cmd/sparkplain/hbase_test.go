@@ -271,7 +271,7 @@ func TestSeparateHBaseClusterWithoutEventLog(t *testing.T) {
 		if s.Name != "HBase server logs" {
 			continue
 		}
-		if s.Status != "read" || !strings.Contains(s.Detail, "kept to the application's time") || !strings.Contains(s.Detail, "hourly logs outside it skipped") {
+		if s.Status != "read" || !strings.Contains(s.Detail, "kept to the application's time (2026-09-29 06:09–06:10 UTC, from the times its container logs cover)") || !strings.Contains(s.Detail, "hourly logs outside it skipped") {
 			t.Errorf("HBase row = %s: %s", s.Status, s.Detail)
 		}
 		return
