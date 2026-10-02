@@ -202,11 +202,28 @@ func analyzeNodes(c *ctx, r *model.Report) {
 		if r.Cluster != nil && len(r.Cluster.Instances) > 0 {
 			s.Coverage = model.Partial
 			s.Missing = []string{"Which nodes ran executors and what they did (the event log)"}
+			// EMR lists every instance the cluster has had, so on a
+			// long-lived cluster that scales most were not there for this
+			// application: keep those up at some point while it ran.
+			start, end := c.in.RunStart, c.in.RunEnd
+			others := 0
 			for _, in := range r.Cluster.Instances {
 				in := in
+				if !start.IsZero() && ((!in.Ended.IsZero() && in.Ended.Before(start)) || (!end.IsZero() && in.Created.After(end))) {
+					others++
+					continue
+				}
 				s.Hosts = append(s.Hosts, model.Host{Name: orID(in.PrivateDNS, in.ID), Instance: &in, Executors: []string{}})
 			}
-			s.Lede = fmt.Sprintf("The cluster had %s. Without the event log, which of them ran this application is not known.", model.Plural(len(s.Hosts), "node", "nodes"))
+			switch {
+			case start.IsZero():
+				s.Lede = fmt.Sprintf("EMR lists %s for the cluster. Nothing says when the application ran (no event log, YARN summary or step), so they are all shown, including any that ended before it or joined after it.", model.Plural(len(s.Hosts), "node", "nodes"))
+			case others > 0:
+				s.Lede = fmt.Sprintf("The cluster had %s up while the application ran; %s that ended before it or joined after it %s left out. Without the event log, which of them ran this application is not known.",
+					model.Plural(len(s.Hosts), "node", "nodes"), model.Plural(others, "other", "others"), map[bool]string{true: "is", false: "are"}[others == 1])
+			default:
+				s.Lede = fmt.Sprintf("The cluster had %s up while the application ran. Without the event log, which of them ran this application is not known.", model.Plural(len(s.Hosts), "node", "nodes"))
+			}
 		}
 		return
 	}
