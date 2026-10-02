@@ -15,6 +15,7 @@ const (
 	ContainerStdout FileKind = "container-stdout"   // a driver's or executor's stdout: Python tracebacks, prints
 	StepController  FileKind = "step-controller"    // EMR's step runner: the command and the step's exit code
 	StepStderr      FileKind = "step-stderr"        // spark-submit's own output: submission and YARN's final report
+	StepStdout      FileKind = "step-stdout"        // the step's stdout: in client mode, what the driver printed
 	NodeManager     FileKind = "nodemanager"        // a node's YARN NodeManager: container exits and memory kills
 	ResourceManager FileKind = "resourcemanager"    // the primary node's YARN ResourceManager: attempts and the app summary
 	Bootstrap       FileKind = "bootstrap"          // a node's bootstrap-actions/master.log
@@ -76,6 +77,8 @@ func Describe(key string) File {
 				f.Kind = StepController
 			case "stderr":
 				f.Kind = StepStderr
+			case "stdout":
+				f.Kind = StepStdout
 			}
 			return f
 		case p == "node" && i+2 < len(parts) && strings.HasPrefix(parts[i+1], "i-"):

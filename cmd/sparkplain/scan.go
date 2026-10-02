@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/ryandam9/sparkplain/internal/sparkplain/analyze"
+	"github.com/ryandam9/sparkplain/internal/sparkplain/yarnlog"
 )
 
 // decodeScan prints an HBase scan string decoded, for -decode-scan. It
@@ -19,7 +19,7 @@ func decodeScan(arg string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		arg = string(b)
 	}
-	sc, err := analyze.DecodeScan(arg)
+	sc, err := yarnlog.DecodeScan(arg)
 	if err != nil {
 		fmt.Fprintf(stderr, "sparkplain: -decode-scan: %v\n", err)
 		return exitFatal

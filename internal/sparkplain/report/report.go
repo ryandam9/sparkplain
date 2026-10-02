@@ -11,6 +11,7 @@ import (
 	"html/template"
 	"io"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -214,6 +215,18 @@ func funcs(loc *time.Location) template.FuncMap {
 		"hbaseEvent":   model.HBaseServerEventName,
 		"hbaseCPUMs":   func(ns int64) int64 { return ns / 1e6 },
 		"hbaseRegions": func(a, b int) int { return a + b },
+		"hbaseSrcs":    hbaseSrcs,
+		"headRegions":  headRegions,
+		"shortHost":    shortHost,
+		"scanFacts": func(sc *model.HBaseScan) [][2]string { // all but the key range, which the card shows
+			var out [][2]string
+			for _, f := range sc.Facts() {
+				if f[0] != "Rows" {
+					out = append(out, f)
+				}
+			}
+			return out
+		},
 		"removal": func(k string) string {
 			return map[string]string{"": "running at end", model.RemovalMemoryKill: "killed (137)", model.RemovalLost: "lost", model.RemovalDecommissioned: "decommissioned", model.RemovalKilledByDriver: "removed by Spark", model.RemovalIdle: "idle", model.RemovalOther: "other"}[k]
 		},
@@ -310,4 +323,50 @@ func runtimeValue(r *model.Report, label string) string {
 		}
 	}
 	return ""
+}
+
+// hbaseSrcs names a line behind each count in an HBase stage's cell, so
+// a reader can check it: "scanner: file:line; busy: file:line".
+func hbaseSrcs(maps ...map[string]model.Source) string {
+	var parts []string
+	for _, m := range maps {
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			parts = append(parts, k+": "+m[k].String())
+		}
+	}
+	return strings.Join(parts, "; ")
+}
+
+// scanRegion is a region of a scan with its place in key order.
+type scanRegion struct {
+	Index  int
+	Region model.HBaseRegionRead
+}
+
+// headRegions keeps a scan's table short: the n regions that returned the
+// most rows when they are known, else the first n in key order; shown in
+// key order.
+func headRegions(rs []model.HBaseRegionRead, n int) []scanRegion {
+	out := make([]scanRegion, len(rs))
+	for i, g := range rs {
+		out[i] = scanRegion{i, g}
+	}
+	if len(out) <= n {
+		return out
+	}
+	rows := func(g model.HBaseRegionRead) int64 {
+		if g.Task == nil {
+			return -1
+		}
+		return g.Task.Rows
+	}
+	sort.SliceStable(out, func(i, j int) bool { return rows(out[i].Region) > rows(out[j].Region) })
+	out = out[:n]
+	sort.Slice(out, func(i, j int) bool { return out[i].Index < out[j].Index })
+	return out
 }

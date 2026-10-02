@@ -1,6 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/base64"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -272,4 +277,91 @@ func TestSeparateHBaseClusterWithoutEventLog(t *testing.T) {
 		return
 	}
 	t.Fatalf("no HBase server logs row: %+v", r.Sources)
+}
+
+// The 0084 run's TableInputFormat scan of sp_orders, region by region:
+// its five splits in key order tie to partitions 0–4 (one executor ran
+// them all), each with its task's rows; sizes only where the size line
+// could be told apart.
+func TestHBaseScanRegions(t *testing.T) {
+	dir := t.TempDir()
+	app := "application_1790380000000_0084"
+	runCLI(t, "-app-id", app, "-from", filepath.Join(emrlogs, hbaseCluster), "-eventlog", filepath.Join(fx, app), "-out", dir, "-format", "json")
+	r := readReport(t, dir)
+	if r.HBase == nil || len(r.HBase.Scans) != 1 {
+		t.Fatalf("scans: %+v", r.HBase)
+	}
+	sc := r.HBase.Scans[0]
+	var got []string
+	for _, g := range sc.Regions {
+		row := fmt.Sprintf("[%s,%s) %s %dM", g.StartRow, g.EndRow, strings.SplitN(g.Server, ".", 2)[0], g.SizeBytes>>20)
+		if g.Task != nil {
+			row += fmt.Sprintf(" p%d %d rows", g.Task.Index, g.Task.Rows)
+		}
+		got = append(got, row)
+	}
+	want := []string{
+		"[,2) ip-10-0-2-10 0M p0 400000 rows",
+		"[2,4) ip-10-0-2-12 50M p1 400000 rows",
+		"[4,6) ip-10-0-2-12 50M p2 400000 rows",
+		"[6,8) ip-10-0-2-12 0M p3 400000 rows",
+		"[8,) ip-10-0-2-10 50M p4 400000 rows",
+	}
+	if sc.StageID != 0 || sc.Table != "sp_orders" || sc.Rows != "[first row, last row]" || !sc.Tied || strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("stage %d table %q rows %q tied %v (%s):\n%s", sc.StageID, sc.Table, sc.Rows, sc.Tied, sc.Untied, strings.Join(got, "\n"))
+	}
+	if sc.TotalRows != 2000000 || sc.SizedRegions != 3 || sc.SizeBytes != 150<<20 || len(sc.Servers) != 2 ||
+		sc.Servers[0].Server != "ip-10-0-2-12.us-east-1.compute.internal" || sc.Servers[0].Regions != 3 || sc.Servers[0].Rows != 1200000 {
+		t.Errorf("totals %d rows, %d sized (%d bytes), servers %+v", sc.TotalRows, sc.SizedRegions, sc.SizeBytes, sc.Servers)
+	}
+}
+
+// A scan the driver printed (a sparkplain-scan line in its stdout) joins
+// the stage that read its table, decoded; the string itself never reaches
+// the report.
+func TestHBaseScanPrinted(t *testing.T) {
+	logs := filepath.Join(t.TempDir(), "logs")
+	copyTree(t, filepath.Join(emrlogs, hbaseCluster), logs)
+	scan := bytes.Join([][]byte{field(3, []byte("2")), field(4, []byte("8")),
+		field(5, field(1, []byte("org.apache.hadoop.hbase.filter.PrefixFilter")), field(2, field(1, []byte("PLANTED-VALUE"))))}, nil)
+	b64 := base64.StdEncoding.EncodeToString(scan)
+	var gz bytes.Buffer
+	zw := gzip.NewWriter(&gz)
+	fmt.Fprintf(zw, "sparkplain-scan {\"table\": \"sp_orders\", \"scan\": \"%s\\n\"}\n", b64)
+	zw.Close()
+	if err := os.WriteFile(filepath.Join(logs, "containers/application_1790380000000_0084/container_1790380000000_0084_01_000001/stdout.gz"), gz.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	app := "application_1790380000000_0084"
+	runCLI(t, "-app-id", app, "-from", logs, "-eventlog", filepath.Join(fx, app), "-out", dir, "-format", "json,html,explorer")
+	r := readReport(t, dir)
+	if r.HBase == nil || len(r.HBase.Scans) != 1 || r.HBase.Scans[0].Scan == nil {
+		t.Fatalf("scans: %+v", r.HBase)
+	}
+	sc := r.HBase.Scans[0].Scan
+	if sc.Table != "sp_orders" || sc.Rows() != "[2, 8)" || sc.Filter.String() != `PrefixFilter "PLANTED-VALUE"` || !strings.HasSuffix(sc.Source.File, "stdout.gz") {
+		t.Errorf("scan = %+v", sc)
+	}
+	for _, name := range []string{app + "-report.json", app + "-report.html", app + "-explorer.html"} {
+		b, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(b), b64[:16]) {
+			t.Errorf("%s holds the scan string", name)
+		}
+		// Both pages show the scan stage, region by region, with the
+		// decoded filters.
+		region := "(first row)" // the report's regions table; the explorer's data names each region
+		if strings.HasSuffix(name, "explorer.html") {
+			region = "554f89fb3a319d50d2ea3299dc1270c1"
+		}
+		if strings.HasSuffix(name, ".html") && (!strings.Contains(string(b), "PrefixFilter") || !strings.Contains(string(b), region)) {
+			t.Errorf("%s lacks the scan's filters or regions", name)
+		}
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, app+"-report.html")); !strings.Contains(string(b), "TableInputFormat scan of <span class=\"mono\">sp_orders</span>") {
+		t.Error("the report lacks the scan block")
+	}
 }

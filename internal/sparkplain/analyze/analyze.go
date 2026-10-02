@@ -198,7 +198,7 @@ func share(a, b int64) float64 {
 func rulePriority(rule string) int {
 	for i, r := range []string{
 		"log-first-failure", "job-failed", "step-failed", "bootstrap-failed", "executor-memory-kill", "out-of-memory", "classpath-clash", "access-denied",
-		"hbase-access-denied", "kerberos-failure", "metastore-failure", "hbase-table-missing", "hbase-zookeeper", "hbase-server", "hbase-retries", "hbase-error", "executor-lost", "spot-interrupted", "app-retried", "waited-for-capacity", "executor-fit", "idle-nodes", "host-memory-pressure", "host-cpu-saturated", "executor-decommissioned", "stage-retried", "hbase-server-lost", "hbase-time", "hbase-regions-changed", "hbase-server-pause", "hbase-slow-calls", "hbase-busy", "hbase-scanner-expired", "hbase-region-moved", "hbase-hotspot", "hbase-zk-connections", "hbase-remote-regions",
+		"hbase-access-denied", "kerberos-failure", "metastore-failure", "hbase-table-missing", "hbase-zookeeper", "hbase-server", "hbase-retries", "hbase-error", "executor-lost", "spot-interrupted", "app-retried", "waited-for-capacity", "executor-fit", "idle-nodes", "host-memory-pressure", "host-cpu-saturated", "executor-decommissioned", "stage-retried", "hbase-server-lost", "hbase-time", "hbase-regions-changed", "hbase-server-pause", "hbase-slow-calls", "hbase-busy", "hbase-scanner-expired", "hbase-region-moved", "hbase-scan-skew", "hbase-hotspot", "hbase-zk-connections", "hbase-remote-regions",
 		"access-static-keys", "stage-skew", "memory-spill", "memory-gc-pressure", "memory-heap-near-limit",
 		"config-unlimited-result", "config-dynalloc-no-shuffle",
 	} {

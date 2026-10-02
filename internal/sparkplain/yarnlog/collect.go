@@ -367,7 +367,7 @@ func (c *Collection) steps(ctx context.Context, st source.Store, p Plan) {
 		switch f.Kind {
 		case StepStderr:
 			g.offer(o, f, true, "")
-		case StepController:
+		case StepController, StepStdout: // read for the step that submitted the application
 			controllers = append(controllers, o)
 		default:
 			g.offer(o, f, false, "not a log sparkplain reads")
@@ -559,7 +559,7 @@ func (g *group) read(ctx context.Context) {
 				continue
 			}
 			g.files = append(g.files, model.LogFile{Location: res.Name, Kind: string(f.Kind), Container: f.Container, Step: f.Step,
-				Instance: f.Instance, Host: f.Host, Bytes: er.bytes, Lines: res.Read, Dropped: res.Dropped, Found: res.Lines})
+				Instance: f.Instance, Host: f.Host, Bytes: er.bytes, Lines: res.Read, Dropped: res.Dropped, Found: res.Lines, HBaseSplits: res.Splits, HBaseScans: res.Scans})
 		}
 	}
 }

@@ -1,4 +1,4 @@
-package analyze
+package yarnlog
 
 import (
 	"encoding/base64"

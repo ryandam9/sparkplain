@@ -1,6 +1,7 @@
 package yarnlog
 
 import (
+	"compress/gzip"
 	"context"
 	"fmt"
 	"os"
@@ -222,5 +223,45 @@ func TestHBaseLogsNeedTheApplicationsTime(t *testing.T) {
 	c = CollectHBase(context.Background(), st, Plan{Instances: []string{"i-0fee0000000000001", "i-0fee0000000000003"}, Since: since, Until: since.Add(90 * time.Second)})
 	if len(c.Sources) != 1 || c.Sources[0].Status != "read" || len(c.Files) != 4 {
 		t.Fatalf("sources %+v, %d files read", c.Sources, len(c.Files))
+	}
+}
+
+// Each TableInputFormat task's split is kept with its key range, region
+// server and region, and its size when the size line can be told apart.
+// In the 0084 run one executor ran all five tasks two at a time: the first
+// pair logged equal sizes (50 M each), so both get it; the second pair
+// logged 57 M and 50 M, which cannot be told apart, so neither does.
+func TestSplitsFromExecutorLog(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(emrlogs, "j-FIXTURE0083CLUSTER/containers/application_1790380000000_0084/container_1790380000000_0084_01_000003/stderr.gz")
+	fh, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fh.Close()
+	zr, err := gzip.NewReader(fh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := Classify(zr, path, Describe("containers/application_1790380000000_0084/container_1790380000000_0084_01_000003/stderr.gz"), Options{AppID: "application_1790380000000_0084"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, s := range res.Splits {
+		got = append(got, fmt.Sprintf("%s [%s,%s) %s %s %d @%d", s.Table, s.StartRow, s.EndRow, strings.SplitN(s.Server, ".", 2)[0], s.Region[:6], s.SizeBytes>>20, s.Source.Line))
+	}
+	want := []string{
+		"sp_orders [4,6) ip-10-0-2-12 456201 50 @61",
+		"sp_orders [2,4) ip-10-0-2-12 17c39c 50 @62",
+		"sp_orders [6,8) ip-10-0-2-12 5281bb 0 @106",
+		"sp_orders [,2) ip-10-0-2-10 554f89 0 @109",
+		"sp_orders [8,) ip-10-0-2-10 a4cad2 50 @131",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("splits:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	if res.Splits[4].SizeSource.Line != 139 {
+		t.Errorf("size source = %+v", res.Splits[4].SizeSource)
 	}
 }

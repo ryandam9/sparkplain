@@ -32,6 +32,9 @@ type stageAcc struct {
 	records  distAcc
 	failures map[string]*model.TaskFailure
 	order    []string
+	// scanned marks the partitions of a newAPIHadoopRDD stage already kept
+	// in its ScanTasks; nil until the stage is known to be one.
+	scanned map[int]bool
 }
 
 type blockSize struct {
@@ -514,6 +517,19 @@ func (p *parser) taskEnd(e *taskEndEvent, src model.Source) {
 		p.ex.task(stageKey{e.StageID, e.StageAttempt}, e, &t, pk, src)
 	}
 	if ok {
+		if a.scanned == nil && st.IsHadoopScan() {
+			a.scanned = map[int]bool{}
+		}
+		if a.scanned != nil && !a.scanned[e.Info.Index] {
+			a.scanned[e.Info.Index] = true
+			if len(st.ScanTasks) < model.MaxScanTasks {
+				st.ScanTasks = append(st.ScanTasks, model.ScanTask{Index: e.Info.Index, TaskID: e.Info.TaskID, Attempt: e.Info.Attempt,
+					ExecutorID: redact.Text(e.Info.ExecutorID), Host: redact.Text(e.Info.Host), DurationMs: dur, RunTimeMs: t.RunTimeMs,
+					Rows: t.InputRecords, Source: src})
+			} else {
+				st.ScanTasksCapped = true
+			}
+		}
 		a.dur.add(dur)
 		a.input.add(input)
 		a.shuffle.add(shuffle)

@@ -21,6 +21,7 @@ const (
 	LogHBase        LogKind = "hbase"          // HBase and ZooKeeper connections and failures
 	LogClasspath    LogKind = "classpath"      // a class missing, or of another version, at run time
 	LogHBaseUse     LogKind = "hbase-use"      // a table read or written with HBase's MapReduce API, and where each region read was
+	LogHBaseScan    LogKind = "hbase-scan"     // the job printed its TableInputFormat scan (a sparkplain-scan line), decoded
 	LogLocalized    LogKind = "localized"      // a file YARN copied into the application's containers, such as a jar
 	LogHBaseServer  LogKind = "hbase-server"   // what an HBase Master or region server logged: moves, splits, lost servers, busy regions
 	LogIdentity     LogKind = "identity"       // who the application ran as: user, queue, principal
