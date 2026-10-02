@@ -2,6 +2,7 @@ package report
 
 import (
 	"net/url"
+	"sort"
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
 	"github.com/ryandam9/sparkplain/internal/sparkplain/source"
@@ -53,16 +54,71 @@ type xLogSource struct {
 
 // xCluster is the EMR cluster, from the EMR API.
 type xCluster struct {
-	ID        string           `json:"id"`
-	Name      string           `json:"name"`
-	Release   string           `json:"release"`
-	State     string           `json:"state"`
-	Reason    string           `json:"reason,omitempty"`
-	LogURI    string           `json:"logUri,omitempty"`
-	Profile   string           `json:"profile,omitempty"`
-	Role      string           `json:"role,omitempty"`
-	Security  string           `json:"security,omitempty"`
-	Instances []model.Instance `json:"instances"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Release  string `json:"release"`
+	State    string `json:"state"`
+	Reason   string `json:"reason,omitempty"`
+	LogURI   string `json:"logUri,omitempty"`
+	Profile  string `json:"profile,omitempty"`
+	Role     string `json:"role,omitempty"`
+	Security string `json:"security,omitempty"`
+	// Nodes are the instances up during the run (the ones the Nodes section
+	// and "At a glance" count), primary first, then core and task nodes,
+	// each numbered within its role; AllInstances is how many the cluster
+	// has ever had, terminated ones included.
+	Nodes        []xClusterNode `json:"nodes"`
+	AllInstances int            `json:"allInstances"`
+}
+
+// xClusterNode is one instance up during the run, numbered within its role,
+// with what it ran for the application.
+type xClusterNode struct {
+	model.Instance
+	Seq       int    `json:"seq"`
+	Kind      string `json:"kind"` // primary, core, task or other
+	Host      string `json:"host"`
+	Driver    bool   `json:"driver,omitempty"`
+	Executors int    `json:"executors,omitempty"`
+}
+
+// clusterNodes are the instances up during the run, from the Nodes
+// section's hosts: primary, core, then task nodes, each by when it joined,
+// numbered from 1 within its role.
+func clusterNodes(r *model.Report) []xClusterNode {
+	out := []xClusterNode{}
+	for _, h := range r.Nodes.Hosts {
+		if h.Instance == nil {
+			continue
+		}
+		in := *h.Instance
+		kind := map[string]string{"MASTER": "primary", "CORE": "core", "TASK": "task"}[in.Role]
+		if in.Primary {
+			kind = "primary"
+		}
+		if kind == "" {
+			kind = "other"
+		}
+		out = append(out, xClusterNode{Instance: in, Kind: kind, Host: h.Name, Driver: h.Driver, Executors: len(h.Executors)})
+	}
+	rank := map[string]int{"primary": 0, "core": 1, "task": 2, "other": 3}
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if rank[a.Kind] != rank[b.Kind] {
+			return rank[a.Kind] < rank[b.Kind]
+		}
+		if !a.Ready.Equal(b.Ready) {
+			return a.Ready.Before(b.Ready)
+		}
+		return a.ID < b.ID
+	})
+	for i := range out {
+		out[i].Seq = 1
+		if i > 0 && out[i-1].Kind == out[i].Kind {
+			out[i].Seq = out[i-1].Seq + 1
+		}
+	}
+	return out
 }
 
 // logData encodes the logs for the explorer.
@@ -72,7 +128,7 @@ func logData(r *model.Report) ([]xLogFile, []xLogSource, *xCluster) {
 	var cl *xCluster
 	if c := r.Cluster; c != nil {
 		cl = &xCluster{ID: c.ID, Name: c.Name, Release: c.Release, State: c.State, Reason: c.StateReason, LogURI: c.LogURI,
-			Profile: c.InstanceProfile, Role: c.ServiceRole, Security: c.SecurityConfig, Instances: orEmpty(c.Instances)}
+			Profile: c.InstanceProfile, Role: c.ServiceRole, Security: c.SecurityConfig, Nodes: clusterNodes(r), AllInstances: len(c.Instances)}
 	}
 	for _, s := range r.Sources {
 		switch s.Name {

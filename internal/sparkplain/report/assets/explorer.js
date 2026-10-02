@@ -638,6 +638,14 @@
     return s;
   };
 
+  // nodeKinds says how many nodes of each role: " (1 primary, 3 core, 80 task)".
+  function nodeKinds(nodes) {
+    var n = {};
+    nodes.forEach(function (x) { n[x.kind] = (n[x.kind] || 0) + 1; });
+    var parts = ["primary", "core", "task", "other"].filter(function (k) { return n[k]; }).map(function (k) { return num(n[k]) + " " + k; });
+    return parts.length ? " (" + parts.join(", ") + ")" : "";
+  }
+
   // logScanPage is a scan stage known only from its executors' logs (no
   // event log): the scan panel alone.
   function logScanPage(key) {
@@ -2709,7 +2717,25 @@
         fact("Cluster", el("span", null, el("span", { cls: "mono", text: c.id }), c.name ? " (" + c.name + ")" : ""), c.release + ", " + c.state + (c.reason ? ": " + c.reason : "") + "."),
         fact("Log URI", el("span", { cls: "mono", text: c.logUri || "none" }), "Where EMR copies the cluster's logs."),
         fact("Instance profile", c.profile || "none", "The IAM role the nodes' processes use for AWS calls."),
-        fact("Nodes", num(c.instances.length), c.instances.map(function (i) { return i.id + (i.primary ? " (primary)" : "") + (i.type ? " " + i.type : "") + (i.market ? " " + i.market : ""); }).join(", "))));
+        fact("Nodes up during the run", num(c.nodes.length) + nodeKinds(c.nodes), "The nodes the run could use, as At a glance counts them" + (c.allInstances > c.nodes.length ? ", of " + num(c.allInstances) + " instances the cluster has had (ended ones included)" : "") + ". Listed below by role.")));
+      if (c.nodes.length) {
+        s2.appendChild(el("h3", { text: "Nodes up during the run" }));
+        s2.appendChild(table({
+          rows: c.nodes.map(function (n, i) { return { i: i, n: n }; }), sort: 0, dir: "asc", page: 100, filter: "Filter by role, instance, type or host",
+          cols: [
+            { h: "Role", v: function (r) { return r.i; }, f: function (r) { return r.n.kind; } },
+            { h: "#", num: true, v: function (r) { return r.n.seq; }, f: function (r) { return String(r.n.seq); } },
+            { h: "Instance", v: function (r) { return r.n.id; }, f: function (r) { return el("span", { cls: "mono", text: r.n.id }); } },
+            { h: "Host", v: function (r) { return r.n.host; }, f: function (r) { return el("span", { cls: "mono", title: r.n.host, text: String(r.n.host || "").split(".")[0] }); } },
+            { h: "Type", v: function (r) { return r.n.type || ""; }, f: function (r) { return (r.n.type || "—") + (r.n.vcpu ? " · " + r.n.vcpu + " vCPU" : "") + (r.n.memoryBytes ? " · " + bytes(r.n.memoryBytes) : ""); } },
+            { h: "Market", v: function (r) { return r.n.market || ""; }, f: function (r) { return r.n.market ? r.n.market.toLowerCase().replace("_", "-") : "—"; } },
+            { h: "Joined", v: function (r) { return r.n.ready || ""; }, f: function (r) { return when(r.n.ready ? Date.parse(r.n.ready) : 0, true); } },
+            { h: "Ended", v: function (r) { return r.n.ended || ""; }, f: function (r) { return r.n.ended ? when(Date.parse(r.n.ended), true) : "still up"; } },
+            { h: "Ran for this application", v: function (r) { return (r.n.driver ? 1000 : 0) + (r.n.executors || 0); }, f: function (r) { return r.n.driver ? "the driver" + (r.n.executors ? " and " + num(r.n.executors) + " executors" : "") : r.n.executors ? num(r.n.executors) + " executor" + (r.n.executors === 1 ? "" : "s") : "nothing"; } }
+          ],
+          text: function (r) { return [r.n.kind, r.n.id, r.n.host, r.n.type || "", r.n.market || ""].join(" "); }
+        }));
+      }
     }
     (D.logSources || []).forEach(function (x) {
       s2.appendChild(el("div", { cls: "logsrc" }, el("h3", null, x.name, " ", el("span", { cls: "pill " + ({ read: "full", partial: "part", error: "crit" }[x.status] || "none"), text: SRC_LABEL[x.status] || x.status }), x.class ? el("span", { cls: "sub", text: x.class }) : null),
