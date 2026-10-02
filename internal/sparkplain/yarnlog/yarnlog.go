@@ -59,6 +59,12 @@ type Result struct {
 	// executors, in file order, up to maxDriverEvents: they rebuild the run
 	// when there is no event log.
 	DriverEvents []model.DriverEvent
+	// TaskLogs are the stories of the tasks this executor ran, in the
+	// order they started, up to maxTaskLogs (TaskLogsCut more); Untied
+	// adds up the task lines no task could be found for.
+	TaskLogs    []model.TaskLog
+	TaskLogsCut int
+	Untied      *model.TaskLog
 }
 
 // Caps on what one kept line carries.
@@ -79,7 +85,7 @@ func Classify(r io.Reader, name string, f File, opt Options) (Result, error) {
 	if opt.MaxEntries <= 0 {
 		opt.MaxEntries = 500
 	}
-	c := &classifier{res: Result{Name: name, File: f}, opt: opt, index: map[string]int{}, lastOOM: -1}
+	c := &classifier{res: Result{Name: name, File: f}, opt: opt, index: map[string]int{}, lastOOM: -1, errTask: -1}
 	if m := idRE.FindStringSubmatch(opt.AppID); m != nil {
 		c.appKey = m[1]
 	}
@@ -146,6 +152,13 @@ type classifier struct {
 	// started holds when each task thread logged "Running task", until
 	// its split or its end: a task logs its split just after it starts.
 	started map[int64]time.Time
+
+	// tasks finds a task's story in TaskLogs by its TID; running holds the
+	// tasks started and not yet ended; errTask is a failed task waiting
+	// for its exception's line, or -1.
+	tasks   map[int64]int
+	running map[int64]bool
+	errTask int64
 
 	// The most executors the driver asked for at once, kept as one line.
 	maxDesired     int
@@ -214,6 +227,7 @@ func (c *classifier) feed(line string) {
 	}
 	if h, ok := parseHeader(kind, line); ok {
 		c.flush()
+		c.errTask = -1
 		h.time = c.local(h.time)
 		if !h.time.IsZero() {
 			c.lastTime = h.time
@@ -241,6 +255,9 @@ func (c *classifier) feed(line string) {
 			c.res.Lines[c.lastOOM].Fields["selfKilled"] = "true" // the JVM ran kill -9 on itself: exit 137 without YARN
 		}
 		return
+	}
+	if c.errTask >= 0 && strings.TrimSpace(line) != "" {
+		c.taskError(line)
 	}
 	if c.blk != nil {
 		if strings.TrimSpace(line) == "" {
@@ -315,6 +332,9 @@ func (c *classifier) header(h header, line string) {
 	problem := h.level == "WARN" || h.level == "ERROR" || h.level == "FATAL"
 	if t := threadTask(h.thread); t != nil {
 		c.taskLine(t.TaskID, h)
+	}
+	if c.res.File.Kind == ContainerStderr || c.res.File.Kind == ContainerStdout {
+		c.taskStory(h)
 	}
 	switch c.res.File.Kind {
 	case ContainerStderr, ContainerStdout, StepStderr:

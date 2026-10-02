@@ -25,11 +25,13 @@ type Report struct {
 	CPU           CPUSection      `json:"cpu"`
 	IO            IOSection       `json:"io"`
 	// HBase is what the run did with HBase, when it used it (phase 5).
-	HBase    *HBaseSection   `json:"hbase,omitempty"`
-	Jobs     JobsSection     `json:"jobs"`
-	Config   ConfigSection   `json:"config"`
-	Identity IdentitySection `json:"identity"`
-	Sources  []SourceStatus  `json:"sources"`
+	HBase *HBaseSection `json:"hbase,omitempty"`
+	// TaskStories is what the executors' logs tell of each task.
+	TaskStories *TaskStorySection `json:"taskStories,omitempty"`
+	Jobs        JobsSection       `json:"jobs"`
+	Config      ConfigSection     `json:"config"`
+	Identity    IdentitySection   `json:"identity"`
+	Sources     []SourceStatus    `json:"sources"`
 	// AccessCheck is what the run found it could read before reading it.
 	AccessCheck []AccessCheck  `json:"accessCheck,omitempty"`
 	EventLog    *EventLogStats `json:"eventLog,omitempty"`
@@ -561,6 +563,12 @@ type LogFile struct {
 	// executors; they rebuild the run when there is no event log, and the
 	// rebuilt run is what the JSON report carries.
 	DriverEvents []DriverEvent `json:"-"`
+	// TaskLogs are the stories of the tasks this executor ran
+	// (TaskLogsCut more past the cap), and Untied adds up its task lines
+	// no task could be found for; the report's TaskStories gathers them.
+	TaskLogs    []TaskLog `json:"-"`
+	TaskLogsCut int       `json:"-"`
+	Untied      *TaskLog  `json:"-"`
 	// HBaseScans are the scans the job printed (sparkplain-scan lines),
 	// decoded and redacted; the scan strings themselves are not kept.
 	HBaseScans []HBaseScan `json:"hbaseScans,omitempty"`
