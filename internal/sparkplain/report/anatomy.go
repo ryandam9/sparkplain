@@ -490,31 +490,92 @@ func detailJVM(r *model.Report, a *anatomy) *anatJVM {
 			pick, why = m, "the one with the highest heap"
 		}
 	}
+	if pick == nil {
+		j := configJVM(r)
+		j.Title = "An executor as configured (none started)"
+		return j
+	}
+	j := execJVM(r, pick.ID)
+	if len(r.Memory.Executors) > 1 {
+		j.Why = why
+	}
+	return j
+}
+
+// configJVM is an executor as configured: its container, heap and
+// fractions, with no peaks.
+func configJVM(r *model.Report) *anatJVM {
+	c := r.Memory.Config
 	j := &anatJVM{Container: c.ContainerBytes, Overhead: c.OverheadBytes, Heap: c.HeapBytes, PySpark: c.PySparkBytes, OffHeap: c.OffHeapBytes,
 		MemoryFraction: c.MemoryFraction, StorageFraction: c.StorageFraction, Cores: c.Cores, GCShare: r.Memory.GCShare}
-	j.Title = "An executor as configured (none started)"
-	if pick != nil {
-		j.Title = "Inside executor " + pick.ID
-		if len(r.Memory.Executors) > 1 {
-			j.Why = why
-		}
-		j.PeakHeap, j.PeakExecution, j.PeakStorage, j.GCShare = pick.PeakHeap, pick.PeakExecution, pick.PeakStorage, pick.GCShare
-		for _, x := range r.Executors.Executors {
-			if x != nil && x.ID == pick.ID {
-				j.PeakPython = x.Peak.ProcessPythonRSS
-			}
-		}
-		for _, u := range r.CPU.Executors {
-			if u.ID == pick.ID {
-				j.CPUShare = u.Share
-			}
-		}
-		j.Href = "executor:" + pick.ID
-	}
 	if j.Container == 0 {
 		j.Container = j.Heap + j.Overhead + j.PySpark + j.OffHeap
 	}
 	return j
+}
+
+// execJVM is executor id region by region: its own heap when it differs
+// from the configuration, and how far each region peaked.
+func execJVM(r *model.Report, id string) *anatJVM {
+	j := configJVM(r)
+	j.Title, j.Href = "Inside executor "+id, "executor:"+id
+	j.GCShare = 0
+	for _, m := range r.Memory.Executors {
+		if m.ID == id {
+			if m.HeapBytes > 0 && m.HeapBytes != j.Heap {
+				j.Container += m.HeapBytes - j.Heap
+				j.Heap = m.HeapBytes
+			}
+			j.PeakHeap, j.PeakExecution, j.PeakStorage, j.GCShare = m.PeakHeap, m.PeakExecution, m.PeakStorage, m.GCShare
+		}
+	}
+	for _, x := range r.Executors.Executors {
+		if x != nil && x.ID == id {
+			j.PeakPython = x.Peak.ProcessPythonRSS
+			if x.Cores > 0 {
+				j.Cores = x.Cores
+			}
+		}
+	}
+	for _, u := range r.CPU.Executors {
+		if u.ID == id {
+			j.CPUShare = u.Share
+		}
+	}
+	return j
+}
+
+// maxExecPanels caps the executors the explorer draws a panel for.
+const maxExecPanels = 300
+
+// execPanels draws, for the explorer, each executor region by region as
+// the diagram draws one: a panel per executor, by ID, with the badges of
+// the findings about it. Nil when the executors' size is not known.
+func execPanels(r *model.Report, a *anatomy, l anatLinks) map[string]string {
+	if a == nil || r.Memory.Config.HeapBytes == 0 {
+		return nil
+	}
+	badges := map[string][]int{}
+	for _, n := range append(append([]*anatNode{}, a.Nodes...), a.Primary) {
+		if n == nil {
+			continue
+		}
+		for _, x := range n.Execs {
+			badges[x.ID] = x.Badges
+		}
+	}
+	out := map[string]string{}
+	for _, x := range r.Executors.Executors {
+		if x == nil || x.ID == "driver" || len(out) == maxExecPanels {
+			continue
+		}
+		j := execJVM(r, x.ID)
+		j.Badges = badges[x.ID]
+		body := &svgw{}
+		h := drawJVM(body, a, j, anPad, l) + anPad
+		out[x.ID] = fmt.Sprintf(`<svg class="anat" viewBox="0 0 %.0f %.0f" role="img" aria-label="Inside executor %s: its container and Java heap region by region">`, anW, h, esc(x.ID)) + body.String() + `</svg>`
+	}
+	return out
 }
 
 // pinFindings numbers the findings and pins each to the parts it is about.

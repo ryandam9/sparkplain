@@ -229,3 +229,4 @@ svg.dag .edge.branch{stroke-dasharray:4 3}
 .rp-ev.job,.rp-ev.stage{font-weight:500}
 @media (max-width:820px){.rp{grid-template-columns:minmax(0,1fr)}.rp-gauge{grid-template-columns:80px 1fr}.rp-gauge .sub{grid-column:1/-1}}
 @media (prefers-reduced-motion:reduce){.rp-slot,.rp-bar span{transition:none}}
+.anatexec{display:grid;gap:8px;padding:12px;border:1px solid var(--accent);border-radius:10px;background:var(--surface)}

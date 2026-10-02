@@ -137,12 +137,13 @@ func TestAnatomyEscapesAndDegrades(t *testing.T) {
 	}
 }
 
-// The explorer carries the same diagram, linked to its own pages.
+// The explorer carries the same diagram, linked to its own pages: an
+// executor opens At a glance with that executor drawn in full.
 func TestExplorerCarriesAnatomy(t *testing.T) {
 	t.Parallel()
 	r, x := buildWithExplorer(t, "application_1790380000000_0042")
 	a, _ := embedded(t, renderExplorer(t, r, x))["anatomy"].(string)
-	if !strings.Contains(a, `<svg class="anat"`) || !strings.Contains(a, `href="#executor/`) {
+	if !strings.Contains(a, `<svg class="anat"`) || !strings.Contains(a, `href="#anatomy/`) {
 		t.Fatalf("explorer anatomy = %.200s", a)
 	}
 	if len(r.Findings) > 0 && !strings.Contains(a, `href="#finding/1"`) {
@@ -338,5 +339,34 @@ func TestAnatomyFoldsUnusedNodes(t *testing.T) {
 	r.Executors.Executors, r.Nodes.Hosts[1].DriverContainerBytes, r.Nodes.Hosts[2].Executors = nil, 0, nil
 	if a = buildAnatomy(r); a.Unused != nil || len(a.Nodes) != 2 {
 		t.Errorf("no executors known: unused %+v, %d nodes", a.Unused, len(a.Nodes))
+	}
+}
+
+// The explorer can draw any executor in full, not only the one the
+// diagram picks: a panel per executor, with its own peaks, cores and the
+// findings about it; none when the executors' size is not known.
+func TestAnatomyPanelPerExecutor(t *testing.T) {
+	t.Parallel()
+	r := anatReport()
+	r.Executors.Executors = append(r.Executors.Executors, &model.Executor{ID: "2", Host: "ip-10-0-0-3.internal", Cores: 2})
+	r.Memory.Executors = append(r.Memory.Executors, model.ExecMemory{ID: "2", Host: "ip-10-0-0-3.internal", HeapBytes: 9486 << 20, PeakHeap: 8 * gib})
+	r.Findings = []model.Finding{{Rule: "out-of-memory", Severity: model.Critical, Title: "oom", Evidence: []model.Evidence{{Ref: "executor:2"}}}}
+	a := buildAnatomy(r)
+	ps := execPanels(r, a, anatLinks{Finding: func(int) string { return "#f" }, Ref: func(string) string { return "" }})
+	if len(ps) != 2 {
+		t.Fatalf("%d panels, want one per executor", len(ps))
+	}
+	p := ps["2"]
+	for _, want := range []string{`<svg class="anat"`, "Inside executor 2", "peak heap 8.0 GiB (86%)", "2 cores", `data-finding="1"`} {
+		if !strings.Contains(p, want) {
+			t.Errorf("executor 2's panel lacks %q", want)
+		}
+	}
+	if strings.Contains(ps["1"], `data-finding="1"`) || !strings.Contains(ps["1"], "peak heap 4.0 GiB") {
+		t.Error("executor 1's panel should show its own peak and no badge of executor 2's finding")
+	}
+	r.Memory.Config.HeapBytes = 0
+	if ps := execPanels(r, buildAnatomy(r), anatLinks{Finding: func(int) string { return "" }, Ref: func(string) string { return "" }}); ps != nil {
+		t.Errorf("no executor size, but %d panels", len(ps))
 	}
 }
