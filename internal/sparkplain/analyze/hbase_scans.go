@@ -31,11 +31,17 @@ func hbaseScans(c *ctx, r *model.Report, h *model.HBaseSection) {
 	for i := range r.Logs.Files {
 		f := &r.Logs.Files[i]
 		for _, sp := range f.HBaseSplits {
-			// A split goes to the scan stage that started last of those
-			// running then: log times have whole seconds.
+			// A split goes to the stage its thread names; without a thread,
+			// to the scan stage that started last of those running then
+			// (log times have whole seconds).
 			var best *model.Stage
 			for _, s := range c.log.Stages {
-				if s.IsHadoopScan() && during(s, sp.Time) && (best == nil || s.Submitted.After(best.Submitted)) {
+				switch {
+				case sp.Task != nil:
+					if s.ID == sp.Task.Stage && s.Attempt == sp.Task.StageAttempt {
+						best = s
+					}
+				case s.IsHadoopScan() && during(s, sp.Time) && (best == nil || s.Submitted.After(best.Submitted)):
 					best = s
 				}
 			}
@@ -54,6 +60,7 @@ func hbaseScans(c *ctx, r *model.Report, h *model.HBaseSection) {
 		seen := map[string]int{}
 		var regions []model.HBaseRegionRead
 		executors := map[int]string{}
+		parts := map[int]int{} // region -> the partition its split's thread names
 		tables := map[string]bool{}
 		for _, x := range xs {
 			key := x.s.Table + "\x00" + x.s.StartRow + "\x00" + x.s.EndRow
@@ -65,6 +72,9 @@ func hbaseScans(c *ctx, r *model.Report, h *model.HBaseSection) {
 			}
 			seen[key] = len(regions)
 			executors[len(regions)] = x.f.Executor
+			if x.s.Task != nil {
+				parts[len(regions)] = x.s.Task.Partition
+			}
 			tables[x.s.Table] = true
 			regions = append(regions, model.HBaseRegionRead{Region: x.s.Region, StartRow: x.s.StartRow, EndRow: x.s.EndRow,
 				Server: x.s.Server, SizeBytes: x.s.SizeBytes, Source: x.s.Source, SizeSource: x.s.SizeSource})
@@ -78,8 +88,13 @@ func hbaseScans(c *ctx, r *model.Report, h *model.HBaseSection) {
 		})
 		sorted := make([]model.HBaseRegionRead, len(regions))
 		execOf := make([]string, len(regions))
+		partOf := make([]int, len(regions))
 		for i, k := range order {
 			sorted[i], execOf[i] = regions[k], executors[k]
+			partOf[i] = -1
+			if p, ok := parts[k]; ok {
+				partOf[i] = p
+			}
 		}
 		var names []string
 		for t := range tables {
@@ -91,7 +106,11 @@ func hbaseScans(c *ctx, r *model.Report, h *model.HBaseSection) {
 		if len(sorted) > 0 {
 			sc.Rows = model.HBaseScan{StartRow: sorted[0].StartRow, StopRow: sorted[len(sorted)-1].EndRow, IncludeStart: true}.Rows()
 		}
-		sc.Tied, sc.Untied = tieRegions(s, sc.Regions, execOf, len(names))
+		if tieByTask(s, sc.Regions, partOf) {
+			sc.Tied, sc.TiedBy = true, "task"
+		} else if sc.Tied, sc.Untied = tieRegions(s, sc.Regions, execOf, len(names)); sc.Tied {
+			sc.TiedBy = "key order"
+		}
 		sc.Scan = scanFor(scans, sc.Table, s)
 		servers := map[string]*model.HBaseServerRead{}
 		for _, g := range sc.Regions {
@@ -177,6 +196,28 @@ func scanSkew(c *ctx, sc model.HBaseScanRead, s *model.Stage) {
 			{Source: t.Source, Ref: fmt.Sprintf("stage:%d.%d", s.ID, s.Attempt), Text: fmt.Sprintf("task %d: %s, %s rows", t.TaskID, model.Duration(t.DurationMs), model.Num(t.Rows))},
 		},
 		Fix: fmt.Sprintf("Split the region so its rows become several tasks (HBase shell: split '%s', '<a row key inside %s>'), or pre-split the table along its key range. Row keys that start with a date or a counter put the newest rows in one region: salting or hashing a prefix spreads them. If the table cannot change, scan narrower key ranges.", sc.Table, keys)})
+}
+
+// tieByTask gives each region the task its split's thread names (the
+// partition it ran; a retried partition read the same region), when every
+// split names one: exact, whatever ran at once.
+func tieByTask(s *model.Stage, regions []model.HBaseRegionRead, partOf []int) bool {
+	if len(regions) == 0 {
+		return false
+	}
+	for _, p := range partOf {
+		if p < 0 {
+			return false
+		}
+	}
+	tasks := map[int]*model.ScanTask{}
+	for i := range s.ScanTasks {
+		tasks[s.ScanTasks[i].Index] = &s.ScanTasks[i]
+	}
+	for i := range regions {
+		regions[i].Task = tasks[partOf[i]]
+	}
+	return true
 }
 
 // tieRegions gives each region, in key order, the task of the same

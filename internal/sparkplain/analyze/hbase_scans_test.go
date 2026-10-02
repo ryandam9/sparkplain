@@ -88,3 +88,39 @@ func TestHBaseScanUntied(t *testing.T) {
 		t.Error("no skew finding without tied regions")
 	}
 }
+
+// When each split line names its task (the log layout prints the thread),
+// regions are tied by it, exactly: even when the executors would not match
+// the key order, and even for a split logged outside the stage's time.
+func TestHBaseScanTiedByTask(t *testing.T) {
+	t.Parallel()
+	in := scanRun(true)
+	part := map[string]int{"r2": 0, "r3": 1, "r4": 2}
+	for i := range in.Logs {
+		for j := range in.Logs[i].HBaseSplits {
+			sp := &in.Logs[i].HBaseSplits[j]
+			p := part[sp.Region]
+			sp.Task = &model.SplitTask{TaskID: int64(30 + p), Partition: p, Stage: 3}
+			sp.Time = time.Time{} // no time to place it by
+		}
+	}
+	r := Run(in)
+	if r.HBase == nil || len(r.HBase.Scans) != 1 {
+		t.Fatalf("scans: %+v", r.HBase)
+	}
+	sc := r.HBase.Scans[0]
+	if !sc.Tied || sc.TiedBy != "task" || sc.Untied != "" {
+		t.Fatalf("scan = %+v", sc)
+	}
+	for _, g := range sc.Regions {
+		if g.Task == nil || g.Task.Index != part[g.Region] {
+			t.Errorf("region %s task %+v", g.Region, g.Task)
+		}
+	}
+	if _, ok := rules(r)["hbase-scan-skew"]; !ok {
+		t.Error("skew finding expected once regions are tied")
+	}
+	if sc := Run(scanRun(false)).HBase.Scans[0]; sc.TiedBy != "key order" {
+		t.Errorf("key order tie: %q", sc.TiedBy)
+	}
+}
