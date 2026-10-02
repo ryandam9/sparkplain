@@ -31,6 +31,35 @@ var (
 	// "2026-10-02 09:17:17,589 [Executor task launch worker for task 41.0 in
 	// stage 172.0 (TID 6429)] INFO  org.apache.spark.rdd.NewHadoopRDD  - Input split: …".
 	threadHeadRE = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) \[(.*?)\] (TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\s+(\S+?)\s+- ?(.*)$`)
+	// How the driver ran the application (Spark 3.5.1's messages, from
+	// DAGScheduler, TaskSetManager, the scheduler backends,
+	// BlockManagerMasterEndpoint, YarnAllocator, ExecutorAllocationManager,
+	// SparkContext and ApplicationMaster), read to rebuild the run without
+	// the event log. Names in parentheses may hold parentheses themselves
+	// (SQL plans), so the patterns anchor on what follows them.
+	drvVersionRE     = regexp.MustCompile(`^Running Spark version (\S+)`)
+	drvAppNameRE     = regexp.MustCompile(`^Submitted application: (.*)$`)
+	drvJobStartRE    = regexp.MustCompile(`^Got (map stage )?job (\d+) \((.*)\) with (\d+) output partitions$`)
+	drvFinalRE       = regexp.MustCompile(`^Final stage: (ShuffleMapStage|ResultStage) (\d+) \((.*)\)$`)
+	drvParentsRE     = regexp.MustCompile(`^Parents of final stage: List\((.*)\)$`)
+	drvStageRefRE    = regexp.MustCompile(`(?:ShuffleMapStage|ResultStage) (\d+)`)
+	drvStageTasksRE  = regexp.MustCompile(`^Submitting (\d+) missing tasks from (ShuffleMapStage|ResultStage) (\d+) \((.*)\) \(first 15 tasks`)
+	drvStageDoneRE   = regexp.MustCompile(`^(ShuffleMapStage|ResultStage) (\d+) \((.*)\) finished in ([\d.]+) s$`)
+	drvStageFailRE   = regexp.MustCompile(`^(ShuffleMapStage|ResultStage) (\d+) \((.*?)\) failed in ([\d.]+) s due to (.*)$`)
+	drvJobIsDoneRE   = regexp.MustCompile(`^Job (\d+) is finished\. `)
+	drvJobEndRE      = regexp.MustCompile(`^Job (\d+) (finished|failed): (.*), took ([\d.]+) s$`)
+	drvTaskStartRE   = regexp.MustCompile(`^Starting task (\d+)\.(\d+) in stage (\d+)\.(\d+) \(TID (\d+)\) \((\S+), executor (\S+), partition (\d+), (\w+), (\d+) bytes\)`)
+	drvTaskEndRE     = regexp.MustCompile(`^Finished task (\d+)\.(\d+) in stage (\d+)\.(\d+) \(TID (\d+)\) in (\d+) ms on (\S+) \(executor (\S+)\) \((\d+)/(\d+)\)`)
+	drvTaskLostRE    = regexp.MustCompile(`^Lost task (\d+)\.(\d+) in stage (\d+)\.(\d+) \(TID (\d+)\) (?:\((\S+) executor (\S+)\)|on (\S+), executor (\S+)): (.*)$`)
+	drvExecProfileRE = regexp.MustCompile(`^Launching executor with (\d+)m of heap \(plus (\d+)m overhead/off heap\) and (\d+) cores`)
+	drvContainerRE   = regexp.MustCompile(`^Launching container (\S+) on host (\S+) for executor with ID (\S+) `)
+	drvExecAddedRE   = regexp.MustCompile(`^Registered executor .* \(([^()]*)\) with ID ([^,\s]+),`)
+	drvBlockMgrRE    = regexp.MustCompile(`^Registering block manager \S+ with (.+?) RAM, BlockManagerId\(([^,]+), ([^,]+),`)
+	drvExecLostRE    = regexp.MustCompile(`^Lost executor (\S+) on (\S+?): (.*)$`)
+	drvExecIdleRE    = regexp.MustCompile(`^Executors (\S+) removed due to idle timeout\.`)
+	drvContDoneRE    = regexp.MustCompile(`^Completed container (\S+) on host: (\S+) \(state: \w+, exit status: (-?\d+)\)`)
+	sparkSizeRE      = regexp.MustCompile(`^([\d.]+) ?(B|KiB|MiB|GiB|TiB|PiB|EiB)$`)
+	drvFinalStatusRE = regexp.MustCompile(`^Final app status: (\w+), exitCode: (-?\d+)`)
 	// The task a Spark executor's thread runs: "… for task 41.0 in stage
 	// 172.0 (TID 6429)", which is partition 41, attempt 0, of stage 172,
 	// attempt 0.
