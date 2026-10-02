@@ -614,7 +614,7 @@ func (g *group) read(ctx context.Context) {
 				continue
 			}
 			g.files = append(g.files, model.LogFile{Location: res.Name, Kind: string(f.Kind), Container: f.Container, Step: f.Step,
-				Instance: f.Instance, Host: f.Host, Bytes: er.bytes, Lines: res.Read, Dropped: res.Dropped, Found: res.Lines, HBaseSplits: res.Splits, HBaseScans: res.Scans,
+				Instance: f.Instance, Host: f.Host, Bytes: er.bytes, Lines: res.Read, Dropped: res.Dropped, Found: res.Lines, HBaseSplits: res.Splits, HBaseScans: res.Scans, HBaseRegionEvents: res.RegionEvents,
 				FirstTime: res.FirstTime, LastTime: res.LastTime})
 		}
 	}

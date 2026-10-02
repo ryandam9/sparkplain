@@ -337,18 +337,28 @@
           {{end}}</tbody>
         </table></div>
         {{$tasks := headTasks .Tasks}}<div class="tbl"><table>
-          <thead><tr><th class="num" data-sort="num">Stage</th><th class="num" data-sort="num">Task</th><th class="num" data-sort="num">TID</th><th data-sort="text">Table</th><th data-sort="text">Start row</th><th data-sort="text">End row</th><th data-sort="text">Region</th><th data-sort="text">Region server</th><th data-sort="text">Executor</th><th data-sort="text">Started</th><th data-sort="text">Ended</th><th class="num" data-sort="num">Took</th><th data-sort="text">Outcome</th><th class="num" data-sort="num">Estimated size</th><th class="num" data-sort="num">Rows</th><th>Found in</th></tr></thead>
+          <thead><tr><th class="num" data-sort="num">Stage</th><th class="num" data-sort="num">Task</th><th class="num" data-sort="num">TID</th><th data-sort="text">Table</th><th data-sort="text">Start row</th><th data-sort="text">End row</th><th data-sort="text">Region</th><th data-sort="text">Region server</th><th data-sort="text">Executor</th><th data-sort="text">Started</th><th data-sort="text">Ended</th><th class="num" data-sort="num">Took</th><th data-sort="text">Outcome</th><th class="num" data-sort="num">Estimated size</th><th class="num" data-sort="num">Rows</th><th>Its server logged</th><th>Found in</th></tr></thead>
           <tbody>{{range $tasks}}<tr><td class="num" data-v="{{.Stage}}">{{if ge .Stage 0}}{{.Stage}}{{if .StageAttempt}}.{{.StageAttempt}}{{end}}{{else}}—{{end}}</td><td class="num" data-v="{{.Partition}}">{{if ge .Partition 0}}{{.Partition}}.{{.Attempt}}{{else}}—{{end}}</td><td class="num" data-v="{{.TaskID}}">{{if ge .TaskID 0}}{{.TaskID}}{{else}}—{{end}}</td>
             <td class="mono">{{.Table}}</td><td class="mono">{{if .StartRow}}{{.StartRow}}{{else}}(first row){{end}}</td><td class="mono">{{if .EndRow}}{{.EndRow}}{{else}}(last row){{end}}</td><td class="mono">{{.Region}}</td><td class="mono" title="{{.Server}}">{{shortHost .Server}}</td>
             <td>{{if .ExecutorID}}{{.ExecutorID}}{{else}}—{{end}}{{with .Host}}<span class="sub" title="{{.}}">{{shortHost .}}</span>{{end}}</td><td>{{time .Start "hms"}}</td><td>{{time .End "hms"}}</td>
-            <td class="num" data-v="{{.DurationMs}}">{{if .Timed}}{{dur .DurationMs}}<span class="sub">{{.TimeFrom}}</span>{{else}}—{{end}}</td><td>{{if .Outcome}}{{.Outcome}}{{else}}—{{end}}</td>
+            <td class="num" data-v="{{.DurationMs}}">{{if .Timed}}{{dur .DurationMs}}<span class="sub">{{if .Slow}}<b>slow</b> · {{end}}{{.TimeFrom}}</span>{{else}}—{{end}}</td><td>{{if .Outcome}}{{.Outcome}}{{else}}—{{end}}</td>
             <td class="num" data-v="{{.SizeBytes}}">{{if .SizeBytes}}{{bytes .SizeBytes}}{{else}}—{{end}}</td><td class="num" data-v="{{.Rows}}">{{if .RowsKnown}}{{num .Rows}}{{else}}—{{end}}</td>
+            <td>{{range .Events}}{{with index $r.HBase.RegionEvents .}}<span class="sub">{{.Event}}{{if gt .Count 1}} ×{{.Count}}{{end}}{{if .DurationMs}} {{dur .DurationMs}}{{end}}</span>{{end}}{{else}}—{{end}}</td>
             <td class="srcref">{{src .Source}}{{if .EndSource.File}}<br>{{src .EndSource}}{{end}}{{if .TaskSource.File}}<br>{{src .TaskSource}}{{end}}</td></tr>
           {{end}}</tbody>
         </table></div>
         {{if gt (len .Tasks) (len $tasks)}}<p class="explain">The first {{numi (len $tasks)}} of {{numi (len .Tasks)}} task attempts, in stage order; the explorer's HBase tasks view and the JSON report list them all.</p>{{end}}
         {{if lt (tasksWithRows .Tasks) (len .Tasks)}}<p class="explain">Rows are shown only for tasks the event log records (one successful attempt per partition); the executors' logs do not count rows.</p>{{end}}
         {{end}}
+        {{if .RegionEvents}}<h3 id="hbase-region-events">What the region servers logged about the regions read</h3>
+        <p class="explain">What HBase's servers logged about a region the run read, while one of its tasks was reading it: flushes and compactions, the region going offline (closed on one server, opened on another), moves and splits the Master ran, refused writes, and slow calls. Servers name a region by its encoded name, the same as the split lines. Events on a slow task's region (at least twice its stage's median) come first; such work competes with the scan for the region's disk and memory, or makes the client wait and retry.</p>
+        {{$evs := headEvents .RegionEvents}}<div class="tbl"><table>
+          <thead><tr><th data-sort="text">When</th><th data-sort="text">Event</th><th data-sort="text">Region</th><th data-sort="text">Server</th><th>What it logged</th><th class="num" data-sort="num">Took</th><th>While these tasks read it</th><th>Found in</th></tr></thead>
+          <tbody>{{range $evs}}<tr><td>{{if gt .Count 1}}{{time .First "hms"}} to {{end}}{{time .Time "hms"}}</td><td>{{.Event}}{{if gt .Count 1}} ×{{numi .Count}}{{end}}</td><td class="mono">{{.Region}}</td><td class="mono" title="{{.Host}}">{{shortHost .Host}}</td><td>{{.Detail}}</td>
+            <td class="num" data-v="{{.DurationMs}}">{{if .DurationMs}}{{dur .DurationMs}}{{else}}—{{end}}</td><td>{{range $i, $t := .Tasks}}{{if $i}}<br>{{end}}{{$t}}{{end}}{{with .Slow}}<span class="sub"><b>slow:</b> {{join . "; "}}</span>{{end}}</td><td class="srcref">{{src .Source}}</td></tr>
+          {{end}}</tbody>
+        </table></div>
+        {{if gt (len .RegionEvents) (len $evs)}}<p class="explain">The first {{numi (len $evs)}} of {{numi (len .RegionEvents)}}; the explorer's HBase tasks view and the JSON report list them all.</p>{{end}}{{end}}
         {{if .Load}}<h3 id="hbase-load">Region server load over time</h3>
         <p class="explain">How many of the run's TableInputFormat tasks each region server was serving at once, from each task's start and end (its Running and Finished lines, or the event log). Each task reads one region, so a server serving most of the tasks running at once is where the reads queued.</p>
         {{hbaseLoadChart $r}}

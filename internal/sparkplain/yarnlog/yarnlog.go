@@ -47,6 +47,10 @@ type Result struct {
 	// start with, recognised or not: a container's log brackets when it ran.
 	FirstTime, LastTime time.Time
 	Scans               []model.HBaseScan // sparkplain-scan lines, decoded
+	// RegionEvents are what an HBase server logged about one region during
+	// the run (flushes, compactions, closes and opens, moves, splits,
+	// refused writes, slow calls), up to maxRegionEvents.
+	RegionEvents []model.HBaseRegionEvent
 }
 
 // Caps on what one kept line carries.
@@ -241,7 +245,14 @@ func (c *classifier) feed(line string) {
 		return
 	}
 	switch kind {
-	case NodeManager, ResourceManager, Bootstrap, StepController, HBaseMaster, HBaseRegion:
+	case HBaseRegion:
+		// A refused write names its region only in the exception under the
+		// warning.
+		if m := rgBusyRE.FindStringSubmatch(line); m != nil && c.inWindow(c.lastTime) {
+			c.addRegionEvent(model.HBaseRegionEvent{Time: c.lastTime, Event: "busy", Region: m[2], Detail: "refused writes: its memstore was over " + m[1]})
+		}
+		return
+	case NodeManager, ResourceManager, Bootstrap, StepController, HBaseMaster:
 		return // daemons quote other processes' stacks; those are read from their own logs
 	}
 	if javaExcRE.MatchString(line) || strings.HasPrefix(line, "Traceback (most recent call last):") {
@@ -555,6 +566,7 @@ func (c *classifier) hbaseServer(h header) {
 	}
 	msg := h.msg
 	host := c.res.File.Host
+	c.regionEvent(h)
 	keep := func(sev model.Severity, event, text string, fields ...string) {
 		l := c.entry(model.LogHBaseServer, sev, h.time, text)
 		l.Fields["event"], l.Fields["host"] = event, host
@@ -613,6 +625,70 @@ func (c *classifier) hbaseServer(h header) {
 		m = hbCompactRE.FindStringSubmatch(msg)
 		keep(model.Info, "compaction", "HBase compacted a region of "+m[1], "table", m[1])
 	}
+}
+
+// maxRegionEvents caps the region events kept per server log.
+const maxRegionEvents = 20000
+
+// inWindow reports whether t falls in the run's time, as hbaseServer
+// checks its lines.
+func (c *classifier) inWindow(t time.Time) bool {
+	o := c.opt
+	return !t.IsZero() && (o.From.IsZero() || !t.Before(o.From.Truncate(time.Second))) && (o.To.IsZero() || !t.After(o.To))
+}
+
+// regionEvent keeps what an HBase server logged about one region: the
+// sparkplain run ties it to the tasks reading that region at the time.
+func (c *classifier) regionEvent(h header) {
+	msg := h.msg
+	switch {
+	case strings.HasSuffix(h.logger, "HRegion") && rgFlushRE.MatchString(msg):
+		m := rgFlushRE.FindStringSubmatch(msg)
+		ms, _ := strconv.ParseInt(m[3], 10, 64)
+		c.addRegionEvent(model.HBaseRegionEvent{Time: h.time, Event: "flush", Region: m[2], DurationMs: ms, Detail: "wrote " + m[1] + " of memstore to disk"})
+	case strings.HasSuffix(h.logger, "HStore") && rgCompactRE.MatchString(msg):
+		m := rgCompactRE.FindStringSubmatch(msg)
+		sec, _ := strconv.ParseInt(m[4], 10, 64)
+		c.addRegionEvent(model.HBaseRegionEvent{Time: h.time, Event: "compaction", Region: m[2], DurationMs: sec * 1000,
+			Detail: "rewrote " + m[1] + " store files into one of " + m[3]})
+	case strings.HasSuffix(h.logger, "UnassignRegionHandler") && rgCloseRE.MatchString(msg):
+		c.addRegionEvent(model.HBaseRegionEvent{Time: h.time, Event: "closed", Region: rgCloseRE.FindStringSubmatch(msg)[1], Detail: "closed the region: it stopped serving it"})
+	case strings.HasSuffix(h.logger, "AssignRegionHandler") && rgOpenedRE.MatchString(msg):
+		m := rgOpenedRE.FindStringSubmatch(msg)
+		c.addRegionEvent(model.HBaseRegionEvent{Time: h.time, Event: "opened", Region: m[2], Table: m[1], Detail: "opened the region: it serves it from now"})
+	case rgMoveRE.MatchString(msg):
+		m := rgMoveRE.FindStringSubmatch(msg)
+		why := "a client asked"
+		if m[4] != "" {
+			why = "the balancer asked"
+		}
+		c.addRegionEvent(model.HBaseRegionEvent{Time: h.time, Event: "move", Region: m[1], Detail: "the Master moved it from " + m[2] + " to " + m[3] + " (" + why + ")"})
+	case rgSplitRE.MatchString(msg):
+		m := rgSplitRE.FindStringSubmatch(msg)
+		sec, _ := strconv.ParseFloat(m[5], 64)
+		c.addRegionEvent(model.HBaseRegionEvent{Time: h.time, Event: "split", Region: m[2], Table: m[1], DurationMs: int64(sec * 1000),
+			Detail: "the Master split it into " + m[3] + " and " + m[4]})
+	case hbSlowRE.MatchString(msg) && rgSlowRE.MatchString(msg):
+		var ms int64
+		if m := hbSlowMsRE.FindStringSubmatch(msg); m != nil {
+			ms, _ = strconv.ParseInt(m[1], 10, 64)
+		}
+		op := "a call"
+		if m := hbSlowOpRE.FindStringSubmatch(msg); m != nil {
+			op = "a " + m[1] + " call"
+		}
+		c.addRegionEvent(model.HBaseRegionEvent{Time: h.time, Event: "slow-call", Region: rgSlowRE.FindStringSubmatch(msg)[1], DurationMs: ms,
+			Detail: op + " on it was slow (responseTooSlow)"})
+	}
+}
+
+// addRegionEvent keeps a region event at the current line.
+func (c *classifier) addRegionEvent(e model.HBaseRegionEvent) {
+	if len(c.res.RegionEvents) >= maxRegionEvents {
+		return
+	}
+	e.Host, e.Source = c.res.File.Host, model.Source{File: c.res.Name, Line: c.n}
+	c.res.RegionEvents = append(c.res.RegionEvents, e)
 }
 
 func (c *classifier) controller(h header) {

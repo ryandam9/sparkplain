@@ -260,3 +260,46 @@ func TestHBaseLoadRenders(t *testing.T) {
 		t.Errorf("explorer load: %d servers", len(l))
 	}
 }
+
+// regionReport is a stage of four tasks where the slow one's region was
+// compacting on its server while it read it.
+func regionReport() *model.Report {
+	t0 := time.Date(2026, 10, 2, 9, 17, 0, 0, time.UTC)
+	f := model.LogFile{Location: "e1", Kind: "container-stderr", Container: "container_1_0001_01_000002"}
+	for i := range 4 {
+		d := 20 * time.Second
+		if i == 3 {
+			d = 4 * time.Minute
+		}
+		sp := model.HBaseSplit{Table: "orders", StartRow: fmt.Sprintf("k%d", i), EndRow: fmt.Sprintf("k%d", i+1), Server: "rs-1.example.internal",
+			Region: strings.Repeat(fmt.Sprint(i), 32), Time: t0, Source: model.Source{File: "e1", Line: int64(10 + i)},
+			Task: &model.SplitTask{TaskID: int64(200 + i), Partition: i, Stage: 7, Start: t0, End: t0.Add(d), EndSource: model.Source{File: "e1", Line: int64(100 + i)}}}
+		f.HBaseSplits = append(f.HBaseSplits, sp)
+		f.Found = append(f.Found, model.LogLine{Kind: model.LogHBaseUse, Time: t0, Count: 1, Source: sp.Source,
+			Fields: map[string]string{"table": "orders", "access": "read", "api": "TableInputFormat", "server": sp.Server}})
+	}
+	rs := model.LogFile{Location: "rs.log", Kind: "hbase-regionserver", HBaseRegionEvents: []model.HBaseRegionEvent{{Time: t0.Add(2 * time.Minute), Event: "compaction",
+		Region: strings.Repeat("3", 32), Host: "rs-1.example.internal", Detail: "rewrote 6 store files into one of 1.2 G", DurationMs: 42_000, Source: model.Source{File: "rs.log", Line: 77}}}}
+	return analyze.Run(analyze.Input{AppID: "application_1_1", Tool: "t", TimeZone: "UTC", Thresholds: analyze.DefaultThresholds(),
+		EventSource: model.SourceStatus{Name: "Spark event log", Status: "not-supplied"}, Logs: []model.LogFile{f, rs}, LogsRead: true,
+		LogSources: []model.SourceStatus{{Name: "Container logs", Status: "read"}}})
+}
+
+// What the region servers logged about the regions read: a table of
+// events with the tasks reading them, the slow one marked, and the task's
+// row naming what its server logged.
+func TestHBaseRegionEventsRender(t *testing.T) {
+	t.Parallel()
+	r := regionReport()
+	page := render(t, r, time.UTC)
+	for _, want := range []string{"What the region servers logged about the regions read", "rewrote 6 store files into one of 1.2 G", "<b>slow:</b> 3.0 in stage 7.0 (TID 203)",
+		"rs.log:77", "<b>slow</b> · executor log", `<span class="sub">compaction 42 s</span>`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("report lacks %q", want)
+		}
+	}
+	d := embedded(t, renderExplorer(t, r, nil))
+	if e, _ := d["hbaseRegionEvents"].([]any); len(e) != 1 {
+		t.Errorf("explorer region events: %d", len(e))
+	}
+}

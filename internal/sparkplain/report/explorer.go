@@ -147,33 +147,35 @@ type xData struct {
 	HBaseLoad       []model.HBaseServerLoad `json:"hbaseLoad,omitempty"`
 	HBaseLoadTotal  []model.Point           `json:"hbaseLoadTotal,omitempty"`
 	HBaseLoadStepMs int64                   `json:"hbaseLoadStepMs,omitempty"`
-	Adaptive        map[string][][]any      `json:"adaptive"` // by query ID: metrics adaptive execution added, rows as in a plan node
-	RDDs            table                   `json:"rdds"`
-	Runtime         table                   `json:"runtime"`
-	Config          []xConfigGroup          `json:"config"`
-	Exclusions      table                   `json:"exclusions"`
-	RunTasks        table                   `json:"runningTasks"`
-	RunCapped       bool                    `json:"runningCapped"`
-	Gaps            [][4]any                `json:"gaps"` // driver gaps: start and end (Unix ms), the jobs before and after (null at either end)
-	BlockKinds      table                   `json:"blockKinds"`
-	Data            table                   `json:"data"`
-	Profiles        table                   `json:"profiles"`
-	Critical        []int                   `json:"critical"`
-	CritJob         int                     `json:"criticalJob"`
-	LogStats        *model.EventLogStats    `json:"logStats,omitempty"`
-	Sources         []xSource               `json:"sources"`
-	SourceNote      []string                `json:"sourceNotes"`
-	Logs            []xLogFile              `json:"logs"`
-	LogCols         []string                `json:"logCols"`
-	LogSources      []xLogSource            `json:"logSources"`
-	Cluster         *xCluster               `json:"cluster,omitempty"`
-	AWS             *xAWS                   `json:"aws,omitempty"`
-	AccessGaps      []model.AccessGap       `json:"accessGaps,omitempty"`
-	Collected       bool                    `json:"collected"` // explorer data was gathered
-	Limits          model.ExplorerLimits    `json:"limits"`
-	Shrinks         int                     `json:"shrinks"`
-	CellsCap        bool                    `json:"cellsCapped"`
-	Notes           []string                `json:"notes"`
+	// HBaseRegionEvents is what the servers logged about the regions read.
+	HBaseRegionEvents []model.HBaseRegionEvent `json:"hbaseRegionEvents,omitempty"`
+	Adaptive          map[string][][]any       `json:"adaptive"` // by query ID: metrics adaptive execution added, rows as in a plan node
+	RDDs              table                    `json:"rdds"`
+	Runtime           table                    `json:"runtime"`
+	Config            []xConfigGroup           `json:"config"`
+	Exclusions        table                    `json:"exclusions"`
+	RunTasks          table                    `json:"runningTasks"`
+	RunCapped         bool                     `json:"runningCapped"`
+	Gaps              [][4]any                 `json:"gaps"` // driver gaps: start and end (Unix ms), the jobs before and after (null at either end)
+	BlockKinds        table                    `json:"blockKinds"`
+	Data              table                    `json:"data"`
+	Profiles          table                    `json:"profiles"`
+	Critical          []int                    `json:"critical"`
+	CritJob           int                      `json:"criticalJob"`
+	LogStats          *model.EventLogStats     `json:"logStats,omitempty"`
+	Sources           []xSource                `json:"sources"`
+	SourceNote        []string                 `json:"sourceNotes"`
+	Logs              []xLogFile               `json:"logs"`
+	LogCols           []string                 `json:"logCols"`
+	LogSources        []xLogSource             `json:"logSources"`
+	Cluster           *xCluster                `json:"cluster,omitempty"`
+	AWS               *xAWS                    `json:"aws,omitempty"`
+	AccessGaps        []model.AccessGap        `json:"accessGaps,omitempty"`
+	Collected         bool                     `json:"collected"` // explorer data was gathered
+	Limits            model.ExplorerLimits     `json:"limits"`
+	Shrinks           int                      `json:"shrinks"`
+	CellsCap          bool                     `json:"cellsCapped"`
+	Notes             []string                 `json:"notes"`
 }
 
 type xApp struct {
@@ -496,6 +498,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 	if r.HBase != nil {
 		d.HBaseTasks, d.HBaseTaskStages = r.HBase.Tasks, r.HBase.TaskStages
 		d.HBaseLoad, d.HBaseLoadTotal, d.HBaseLoadStepMs = r.HBase.Load, r.HBase.LoadTotal, r.HBase.LoadStepMs
+		d.HBaseRegionEvents = r.HBase.RegionEvents
 		if len(d.HBaseTasks) > maxExplorerTasks {
 			d.HBaseTasksCut = len(d.HBaseTasks) - maxExplorerTasks
 			d.HBaseTasks = d.HBaseTasks[:maxExplorerTasks]

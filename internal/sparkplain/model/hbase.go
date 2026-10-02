@@ -56,7 +56,10 @@ type HBaseSection struct {
 	LoadFrom   time.Time         `json:"loadFrom,omitzero"`
 	LoadTo     time.Time         `json:"loadTo,omitzero"`
 	LoadStepMs int64             `json:"loadStepMs,omitempty"`
-	Missing    []string          `json:"missing,omitempty"`
+	// RegionEvents are what the HBase servers logged about the regions the
+	// run read, while a task was reading them; slow tasks' first.
+	RegionEvents []HBaseRegionEvent `json:"regionEvents,omitempty"`
+	Missing      []string           `json:"missing,omitempty"`
 }
 
 // HBaseServerEvent is one kind of thing an HBase server logged, how often,
