@@ -155,7 +155,7 @@ func Run(in Input) *model.Report {
 	}
 	for _, a := range []func(*ctx, *model.Report){
 		analyzeConfig, analyzeExecutors, analyzeNodes, analyzeMemory, analyzeCPU,
-		analyzeIO, analyzeJobs, analyzeTimeline, analyzeLogs, analyzeTaskStories, analyzeFlows, analyzeHBase, spotFindings, analyzeMetrics, analyzeIdentity, analyzeCalls,
+		analyzeIO, analyzeJobs, analyzeTimeline, analyzeLogs, analyzeTaskStories, analyzeFlows, analyzeHBase, analyzeStageData, spotFindings, analyzeMetrics, analyzeIdentity, analyzeCalls,
 	} {
 		a(c, r)
 	}

@@ -49,6 +49,7 @@ func planData(root planNode, planText string, src model.Source) (reads, writes [
 		switch {
 		case strings.HasPrefix(n.NodeName, "Scan "):
 			if r, ok := scanRef(n, src); ok {
+				r.Node = n.NodeName
 				reads = append(reads, r)
 			}
 		case isWriteNode(n.NodeName):

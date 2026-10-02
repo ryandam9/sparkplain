@@ -34,7 +34,20 @@ var (
 	tlSplitRE  = regexp.MustCompile(`^Input split: (.*):(\d+)\+(\d+)$`) // a FileSplit: path:start+length
 	tlRegionRE = regexp.MustCompile(`^Input split: Split\(tablename=([\w:.-]+), .*\bregionname=([^,)]+)`)
 	tlCommitRE = regexp.MustCompile(`: Committed\. Elapsed time: (\d+) ms\.`)
+
+	// What EMRFS logs as a task writes to S3 (EMR 7.3, checked against the
+	// fixtures): each file as the task closes it, each part as it uploads
+	// it (a file's first part is "partNum 1"), and, with EMR's optimized
+	// committer, the folder each task's files are published to, with the
+	// task's attempt ID, whose last number is the task's TID (Spark makes
+	// it so).
+	tlCloseRE   = regexp.MustCompile(`^close closed:false (\S+)$`)
+	tlUploadRE  = regexp.MustCompile(`^uploadPart: partNum (\d+) of '([^']+)' from local file '[^']*', (\d+) bytes in `)
+	tlPublishRE = regexp.MustCompile(`^Publishing staging directory at (\S+) named \S*_(\d+)$`)
 )
+
+// maxStageData caps the folders and tables kept per log file.
+const maxStageData = 5000
 
 // maxTaskLogs caps the tasks kept per log file; lines of tasks past it
 // add to the file's untied totals.
@@ -51,6 +64,10 @@ func (c *classifier) taskStory(h header) {
 	tid := int64(-1)
 	step := model.TaskStep{T: h.time, Line: c.n}
 	var apply func(t *model.TaskLog)
+	// data is the folder or table the line says was read or written, and
+	// quiet a line that adds to a task's totals without being a step.
+	var data *model.StageData
+	quiet := false
 	switch lg {
 	case "Executor":
 		switch {
@@ -168,14 +185,43 @@ func (c *classifier) taskStory(h header) {
 			from, to := atoi64(m[3]), atoi64(m[4])
 			step.Kind, step.Bytes, step.Name = model.StepInput, to-from, clip(redact.Text(m[2]), maxDetailLine)
 			apply = func(t *model.TaskLog) { input(t, step) }
+			data = &model.StageData{Access: model.DataRead, Kind: model.DataPath, Name: model.DataFolder(redact.Text(m[2])), Parts: 1, Sized: 1, Bytes: step.Bytes}
 		}
 	case "HadoopRDD", "NewHadoopRDD":
 		if m := tlRegionRE.FindStringSubmatch(msg); m != nil {
 			step.Kind, step.Name = model.StepInput, m[1]+" region "+m[2]
 			apply = func(t *model.TaskLog) { input(t, step) }
+			data = &model.StageData{Access: model.DataRead, Kind: model.DataHBase, Name: m[1], Parts: 1}
 		} else if m := tlSplitRE.FindStringSubmatch(msg); m != nil {
 			step.Kind, step.Bytes, step.Name = model.StepInput, atoi64(m[3]), clip(redact.Text(m[1]), maxDetailLine)
 			apply = func(t *model.TaskLog) { input(t, step) }
+			data = &model.StageData{Access: model.DataRead, Kind: model.DataPath, Name: model.DataFolder(redact.Text(m[1])), Parts: 1, Sized: 1, Bytes: step.Bytes}
+		}
+	case "MultipartUploadOutputStream":
+		if m := tlCloseRE.FindStringSubmatch(msg); m != nil {
+			step.Kind, step.Name = model.StepOutput, clip(redact.Text(m[1]), maxDetailLine)
+			apply = func(t *model.TaskLog) {
+				t.Outputs++
+				if t.Output == "" {
+					t.Output = step.Name
+				}
+			}
+			data = &model.StageData{Access: model.DataWrite, Kind: model.DataPath, Name: model.DataFolder(redact.Text(m[1])), Parts: 1}
+		} else if m := tlUploadRE.FindStringSubmatch(msg); m != nil {
+			n := atoi64(m[3])
+			apply, quiet = func(t *model.TaskLog) { t.OutputBytes += n }, true
+			data = &model.StageData{Access: model.DataWrite, Kind: model.DataPath, Name: model.DataFolder(redact.Text(m[2])), Bytes: n}
+			if m[1] == "1" {
+				data.Sized = 1
+			}
+		}
+	case "FileSystemOptimizedCommitter":
+		if m := tlPublishRE.FindStringSubmatch(msg); m != nil {
+			// Names the folder its files went to, and the task by its TID,
+			// when the files' own lines could not be tied to it.
+			tid, quiet = atoi64(m[2]), true
+			apply = func(t *model.TaskLog) {}
+			data = &model.StageData{Access: model.DataWrite, Kind: model.DataPath, Name: model.DataFolder(redact.Text(m[1]) + "/")}
 		}
 	case "SparkHadoopMapRedUtil":
 		if m := tlCommitRE.FindStringSubmatch(msg); m != nil {
@@ -203,6 +249,8 @@ func (c *classifier) taskStory(h header) {
 		return // nothing to tell, and no task named
 	case step.Kind == model.StepProblem && !named && (h.thread != "" || len(c.running) != 1):
 		return // a warning of no task: the Logs section has it
+	case data != nil && data.Access == model.DataWrite && !named && len(c.running) == 0 && threadTask(h.thread) == nil:
+		return // a file written with no task running: the driver's own, such as its event log
 	}
 	t, direct := c.owner(h, tid)
 	if direct || apply != nil {
@@ -212,6 +260,12 @@ func (c *classifier) taskStory(h header) {
 		return
 	}
 	apply(t)
+	if data != nil {
+		c.stageData(t, *data)
+	}
+	if quiet {
+		return
+	}
 	addStep(t, step)
 	switch step.Kind {
 	case model.StepEnd, model.StepBigResult, model.StepFailed, model.StepKilled:
@@ -269,6 +323,56 @@ func (c *classifier) untied() *model.TaskLog {
 		c.res.Untied = &model.TaskLog{TaskID: -1, Partition: -1, Stage: -1, Source: model.Source{File: c.res.Name, Line: c.n}}
 	}
 	return c.res.Untied
+}
+
+// stageData adds a folder or table read or written to the stage of task
+// t; for a line no task could be found for, to the stage of the tasks
+// running, when they all belong to one.
+func (c *classifier) stageData(t *model.TaskLog, d model.StageData) {
+	stage, attempt, ok := t.Stage, t.StageAttempt, t.TaskID >= 0 && t.Stage >= 0
+	if !ok {
+		stage, attempt, ok = c.runningStage()
+	}
+	if !ok || d.Name == "" {
+		c.res.DataUntied += d.Parts
+		return
+	}
+	k := strconv.Itoa(stage) + "." + strconv.Itoa(attempt) + " " + d.Access + " " + d.Kind + " " + d.Name
+	if i, has := c.data[k]; has {
+		e := &c.res.StageData[i]
+		e.Parts += d.Parts
+		e.Sized += d.Sized
+		e.Bytes += d.Bytes
+		return
+	}
+	if len(c.res.StageData) == maxStageData {
+		c.res.DataUntied += d.Parts
+		return
+	}
+	if c.data == nil {
+		c.data = map[string]int{}
+	}
+	c.data[k] = len(c.res.StageData)
+	d.Stage, d.StageAttempt = stage, attempt
+	d.From, d.Source = []string{"executor logs"}, model.Source{File: c.res.Name, Line: c.n}
+	c.res.StageData = append(c.res.StageData, d)
+}
+
+// runningStage is the stage attempt of every task running, when they
+// all belong to one.
+func (c *classifier) runningStage() (stage, attempt int, ok bool) {
+	for id := range c.running {
+		i, has := c.tasks[id]
+		if !has {
+			return 0, 0, false
+		}
+		x := &c.res.TaskLogs[i]
+		if x.Stage < 0 || ok && (x.Stage != stage || x.StageAttempt != attempt) {
+			return 0, 0, false
+		}
+		stage, attempt, ok = x.Stage, x.StageAttempt, true
+	}
+	return stage, attempt, ok
 }
 
 func addStep(t *model.TaskLog, s model.TaskStep) {

@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // TaskLog is one task attempt's story, told by its executor's log: Spark
 // 3.5's own lines from Executor (start, end, result, failure, kill),
@@ -69,6 +72,11 @@ type TaskLog struct {
 	Inputs     int    `json:"inputs,omitempty"`
 	Input      string `json:"input,omitempty"`
 	InputBytes int64  `json:"inputBytes,omitempty"`
+	// Output files it wrote (EMRFS logs each one as it closes it), the
+	// bytes it uploaded for them, and the first one, redacted.
+	Outputs     int    `json:"outputs,omitempty"`
+	Output      string `json:"output,omitempty"`
+	OutputBytes int64  `json:"outputBytes,omitempty"`
 	// Output commits and their time.
 	Commits  int   `json:"commits,omitempty"`
 	CommitMs int64 `json:"commitMs,omitempty"`
@@ -126,6 +134,7 @@ const (
 	StepDrop      = "drop"           // After dropping N blocks, free memory is Bytes
 	StepNoRoom    = "no-room"        // Not enough space to cache a block in memory
 	StepInput     = "input"          // Input split or file read (Bytes: its range's length)
+	StepOutput    = "output"         // an output file written (closed)
 	StepCommit    = "commit"         // Committed. Elapsed time: M ms
 	StepProblem   = "problem"        // a warning or error logged as the task's
 	StepEnd       = "end"            // Finished task (Bytes: the result's size)
@@ -195,9 +204,83 @@ func (t *TaskLog) Add(o TaskLog) {
 	t.NotCached += o.NotCached
 	t.Inputs += o.Inputs
 	t.InputBytes += o.InputBytes
+	t.Outputs += o.Outputs
+	t.OutputBytes += o.OutputBytes
 	t.Commits += o.Commits
 	t.CommitMs += o.CommitMs
 	t.Warnings += o.Warnings
 	t.Errors += o.Errors
 	t.Lines += o.Lines
+}
+
+// StageData is a folder or table one stage attempt read or wrote: from
+// its executors' logs (the files and file ranges its tasks read, the files
+// they wrote), its SQL plan, its RDDs' names, or its HBase scan or write.
+type StageData struct {
+	Stage        int    `json:"stage"`
+	StageAttempt int    `json:"stageAttempt"`
+	Access       string `json:"access"` // read or write
+	// Kind is "path" (a folder: a file's path loses its own name, its
+	// partition folders such as year=2024 and any staging folder), "table",
+	// or "hbase" (an HBase table).
+	Kind   string `json:"kind"`
+	Name   string `json:"name"`
+	Format string `json:"format,omitempty"`
+	// Parts counts the files, file ranges or HBase regions the logs name,
+	// Sized those whose size they give, adding up to Bytes: for a read, a
+	// range's length (a columnar file is read in part); for a write, the
+	// bytes uploaded.
+	Parts int   `json:"parts,omitempty"`
+	Sized int   `json:"sized,omitempty"`
+	Bytes int64 `json:"bytes,omitempty"`
+	// Paths are the files in the folder a SQL plan named, when it named
+	// files (up to MaxDataPaths).
+	Paths []string `json:"paths,omitempty"`
+	// From says how it is known: "executor logs", "SQL plan", "RDD",
+	// "HBase"; Source is the first line that says so.
+	From   []string `json:"from"`
+	Source Source   `json:"source"`
+}
+
+// MaxDataPaths caps StageData.Paths.
+const MaxDataPaths = 10
+
+// Data kinds and accesses of StageData.
+const (
+	DataPath  = "path"
+	DataTable = "table"
+	DataHBase = "hbase"
+	DataRead  = "read"
+	DataWrite = "write"
+)
+
+// DataFolder is the folder a file's data belongs to: its path without the
+// file's own name, any staging or temporary folder (a name that starts
+// with "." or "_", such as _temporary or .emrfs_staging_…), or partition
+// folders (name=value) at its end.
+func DataFolder(path string) string {
+	start := 0
+	if i := strings.Index(path, "://"); i >= 0 {
+		start = i + 3
+		if j := strings.IndexByte(path[start:], '/'); j >= 0 {
+			start += j + 1
+		} else {
+			return path
+		}
+	}
+	segs := strings.Split(path[start:], "/")
+	segs = segs[:len(segs)-1] // the file's own name
+	for i, s := range segs {
+		if strings.HasPrefix(s, ".") || strings.HasPrefix(s, "_") {
+			segs = segs[:i]
+			break
+		}
+	}
+	for len(segs) > 0 && (segs[len(segs)-1] == "" || strings.Contains(segs[len(segs)-1], "=")) {
+		segs = segs[:len(segs)-1]
+	}
+	if dir := strings.Join(segs, "/"); dir != "" {
+		return path[:start] + dir
+	}
+	return strings.TrimSuffix(path[:start], "/")
 }

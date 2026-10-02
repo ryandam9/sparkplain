@@ -100,6 +100,8 @@ th{font-weight:500;color:var(--muted);font-size:12px;letter-spacing:.03em;backgr
 tr:last-child td{border-bottom:0}
 td.r,th.r{text-align:right}
 td .sub{display:block;color:var(--muted);font-size:12.5px}
+td.data{min-width:220px}
+td.data .dl{display:block;font-size:13px;overflow-wrap:anywhere}
 tr.lost td{color:var(--muted)}
 .cpu{display:flex;align-items:center;gap:8px;min-width:150px}
 .bar{position:relative;flex:1;height:8px;background:var(--surface-2);border-radius:2px}

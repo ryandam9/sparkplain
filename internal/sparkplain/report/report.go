@@ -300,11 +300,14 @@ func funcs(loc *time.Location) template.FuncMap {
 			}
 			return template.URL(href + "#" + url.PathEscape(kind) + "/" + url.PathEscape(id))
 		},
-		"add":   func(a, b int) int { return a + b },
-		"short": func(s string, n int) string { return capText(s, n) },
-		"lower": strings.ToLower,
-		"rt":    runtimeValue,
-		"int64": func(n int) int64 { return int64(n) },
+		"add":         func(a, b int) int { return a + b },
+		"short":       func(s string, n int) string { return capText(s, n) },
+		"dataLabel":   dataLabel,
+		"dataMore":    func(ds []model.StageData) int { return len(ds) - maxDataCell },
+		"maxDataCell": func() int { return maxDataCell },
+		"lower":       strings.ToLower,
+		"rt":          runtimeValue,
+		"int64":       func(n int) int64 { return int64(n) },
 		"cpuShare": func(t model.TaskTotals) float64 {
 			if t.RunTimeMs <= 0 {
 				return 0

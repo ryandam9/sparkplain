@@ -65,6 +65,11 @@ type Result struct {
 	TaskLogs    []model.TaskLog
 	TaskLogsCut int
 	Untied      *model.TaskLog
+	// StageData are the folders and tables the tasks read and wrote, per
+	// stage, up to maxStageData; DataUntied counts the files and ranges no
+	// stage could be found for.
+	StageData  []model.StageData
+	DataUntied int
 }
 
 // Caps on what one kept line carries.
@@ -159,6 +164,8 @@ type classifier struct {
 	tasks   map[int64]int
 	running map[int64]bool
 	errTask int64
+	// data finds a stage's folder or table in StageData by stageDataKey.
+	data map[string]int
 
 	// The most executors the driver asked for at once, kept as one line.
 	maxDesired     int
