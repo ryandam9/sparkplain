@@ -286,3 +286,58 @@ func TestStepEventLogDirsNewestFirst(t *testing.T) {
 		t.Fatalf("dirs %v, want the newest step's first", got)
 	}
 }
+
+// Log times read in the wrong zone are a whole zone away from a time that
+// is UTC whatever the cluster's zone: the console and the Container logs
+// row say so, and point at log-timezone.
+func TestLogZoneCheck(t *testing.T) {
+	syd, err := time.LoadLocation("Australia/Sydney")
+	if err != nil {
+		t.Skip("no time zone database:", err)
+	}
+	start := time.Date(2026, 10, 1, 23, 11, 50, 0, time.UTC) // 09:11:50 AEST
+	log := &model.EventLog{Application: model.Application{ID: "application_1_0001", Start: start}}
+	at := func(t time.Time) []model.LogFile {
+		return []model.LogFile{{Container: "container_1_0001_01_000001", FirstTime: t}, {Instance: "i-1", FirstTime: t.Add(-48 * time.Hour)}}
+	}
+	// AEST log times read as UTC: 10 hours late.
+	got := logZoneCheck(log, at(time.Date(2026, 10, 2, 9, 12, 3, 0, time.UTC)), nil, time.UTC)
+	if got != "Log times look 10 hours ahead of UTC: the container logs start 10 hours after the application did. Set log-timezone (config file) or -log-timezone to the cluster's time zone, such as Australia/Sydney." {
+		t.Errorf("UTC: %q", got)
+	}
+	// Read in Sydney's time: the containers start 13 s after the application.
+	if got := logZoneCheck(log, at(time.Date(2026, 10, 2, 9, 12, 3, 0, syd)), nil, syd); got != "" {
+		t.Errorf("Sydney: %q", got)
+	}
+	// Set, but to the wrong zone.
+	if got := logZoneCheck(log, at(time.Date(2026, 10, 2, 9, 12, 3, 0, time.UTC).Add(-2*time.Hour)), nil, syd); !strings.Contains(got, "still look 8 hours ahead of the application's start with log-timezone Australia/Sydney") {
+		t.Errorf("wrong zone: %q", got)
+	}
+	// No event log: the step's start from the EMR API.
+	steps := []model.Step{{AppID: "application_1_0001", Started: start.Add(-40 * time.Second)}}
+	if got := logZoneCheck(nil, at(time.Date(2026, 10, 2, 9, 12, 3, 0, time.UTC)), steps, time.UTC); !strings.HasPrefix(got, "Log times look 10 hours ahead of UTC") {
+		t.Errorf("step: %q", got)
+	}
+	// Nothing UTC to compare with: no word.
+	if got := logZoneCheck(nil, at(time.Date(2026, 10, 2, 9, 12, 3, 0, time.UTC)), nil, time.UTC); got != "" {
+		t.Errorf("no reference: %q", got)
+	}
+}
+
+// log-timezone comes from the config file (or an environment in it), and
+// -log-timezone wins; a name Go does not know is an error.
+func TestLogTimeZoneSetting(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "config.yaml")
+	os.WriteFile(cfg, []byte("log-timezone: Mars/Olympus\nenvironments:\n  prod:\n    log-timezone: Australia/Sydney\n"), 0o644)
+	if code, _, errs := runCLI(t, "-config", cfg, "-app-id", "application_1_2", "-eventlog", fx); code != exitFatal || !strings.Contains(errs, `log time zone "Mars/Olympus"`) {
+		t.Errorf("an unknown zone should be an error: %d %s", code, errs)
+	}
+	log := filepath.Join(fx, "application_1790380000000_0042")
+	for _, args := range [][]string{{"-env", "prod"}, {"-log-timezone", "Australia/Sydney"}} {
+		args = append(args, "-config", cfg, "-app-id", "application_1790380000000_0042", "-eventlog", log, "-out", t.TempDir())
+		if code, _, errs := runCLI(t, args...); code != exitOK {
+			t.Errorf("%v: exit %d: %s", args[:2], code, errs)
+		}
+	}
+}

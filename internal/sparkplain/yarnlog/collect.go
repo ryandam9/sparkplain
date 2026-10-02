@@ -64,6 +64,9 @@ type Plan struct {
 	Off map[string]string
 	// MaxFiles caps the files read per kind of log; default 5000.
 	MaxFiles int
+	// Loc is the zone the cluster writes log times (and the hour in rolled
+	// HBase log names) in; nil is UTC.
+	Loc *time.Location
 }
 
 // Collection is what Collect read.
@@ -260,8 +263,8 @@ func (c *Collection) hbase(ctx context.Context, st source.Store, p Plan) {
 		}
 		hbaseLogs++
 		switch {
-		case !f.Hour.IsZero() && !p.Since.IsZero() && f.Hour.Add(time.Hour).Before(p.Since),
-			!f.Hour.IsZero() && !p.Until.IsZero() && f.Hour.After(p.Until),
+		case !f.Hour.IsZero() && !p.Since.IsZero() && InZone(f.Hour, p.Loc, f.Kind).Add(time.Hour).Before(p.Since),
+			!f.Hour.IsZero() && !p.Until.IsZero() && InZone(f.Hour, p.Loc, f.Kind).After(p.Until),
 			f.Hour.IsZero() && !p.Since.IsZero() && !o.Modified.IsZero() && o.Modified.Before(p.Since):
 			outside++
 		default:
@@ -300,7 +303,7 @@ func (c *Collection) hbase(ctx context.Context, st source.Store, p Plan) {
 		src.Detail = g.summary() + ", kept to the application's time" + p.windowText() + "." + skipped + g.problems()
 		src.Brief = model.Plural(len(g.files), "file", "files")
 		if !p.Since.IsZero() && !p.Until.IsZero() {
-			src.Brief += fmt.Sprintf(", %s–%s UTC", p.Since.UTC().Format("15:04"), p.Until.UTC().Format("15:04"))
+			src.Brief += fmt.Sprintf(", %s–%s %s", p.Since.In(p.zone()).Format("15:04"), p.Until.In(p.zone()).Format("15:04"), p.Until.In(p.zone()).Format("MST"))
 		}
 	}
 	src.Files = g.sourceFiles
@@ -591,7 +594,7 @@ func (g *group) read(ctx context.Context) {
 		i := index[o.Key]
 		cr := &countReader{r: r}
 		// name is the key, or key!entry inside a zip: lines cite the entry.
-		res, err := Classify(cr, g.st.Location(name), g.pickedFiles[i], Options{AppID: g.plan.AppID, From: g.plan.Since, To: g.plan.Until})
+		res, err := Classify(cr, g.st.Location(name), g.pickedFiles[i], Options{AppID: g.plan.AppID, From: g.plan.Since, To: g.plan.Until, Loc: g.plan.Loc})
 		bytes := o.Size // as stored, like every other log file
 		if name != o.Key {
 			bytes = cr.n // a zip entry's own size, unpacked
@@ -733,17 +736,27 @@ func LogRoot(logURI, clusterID string) (bucket, prefix string, ok bool) {
 	return bucket, strings.TrimPrefix(path.Join(key, clusterID)+"/", "/"), true
 }
 
-// windowText names the window HBase's logs were kept to: " (05:12–05:31
-// UTC, from YARN's application summary)".
+// zone is the cluster's log zone, UTC when not set.
+func (p Plan) zone() *time.Location {
+	if p.Loc == nil {
+		return time.UTC
+	}
+	return p.Loc
+}
+
+// windowText names the window HBase's logs were kept to, in the cluster's
+// log zone: " (2026-10-02 09:12–09:17 AEST, from the times its container
+// logs cover)".
 func (p Plan) windowText() string {
 	if p.Since.IsZero() || p.Until.IsZero() {
 		return ""
 	}
+	since, until := p.Since.In(p.zone()), p.Until.In(p.zone())
 	layout := "15:04"
-	if p.Since.UTC().YearDay() != p.Until.UTC().YearDay() || p.Since.Year() != p.Until.Year() {
+	if since.YearDay() != until.YearDay() || since.Year() != until.Year() {
 		layout = "2006-01-02 15:04"
 	}
-	s := " (" + p.Since.UTC().Format("2006-01-02 15:04") + "–" + p.Until.UTC().Format(layout) + " UTC"
+	s := " (" + since.Format("2006-01-02 15:04") + "–" + until.Format(layout) + " " + until.Format("MST")
 	if p.WindowFrom != "" {
 		s += ", from " + p.WindowFrom
 	}

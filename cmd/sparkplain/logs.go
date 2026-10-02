@@ -31,6 +31,8 @@ type clusterLogs struct {
 	calls     *model.AWSCallsSection
 	files     []model.LogFile
 	sources   []model.SourceStatus
+	// logLoc is the zone the cluster writes its log times in.
+	logLoc *time.Location
 }
 
 // clusterHasHBase reports whether DescribeCluster lists HBase among the
@@ -141,7 +143,7 @@ func (out *clusterLogs) readLogs(ctx context.Context, cloud *awsSession, log *mo
 		}
 		return
 	}
-	plan := yarnlog.Plan{Root: root, AppID: appID, Limits: lim, SkipHBase: !includeHBase, Off: off}
+	plan := yarnlog.Plan{Root: root, AppID: appID, Limits: lim, SkipHBase: !includeHBase, Off: off, Loc: out.logLoc}
 	plan.Steps, plan.Instances, plan.Since = narrow(out.steps, out.instances, log)
 	if log != nil {
 		plan.Until, plan.WindowFrom = log.Application.End, "the event log"
@@ -217,7 +219,7 @@ func (out *clusterLogs) readHBaseCluster(ctx context.Context, cloud *awsSession,
 	// The application's time: from the event log, else from the Spark
 	// cluster's logs read just before (YARN's application summary, or the
 	// times its container logs cover), else from its step.
-	plan := yarnlog.Plan{Root: root, Limits: lim}
+	plan := yarnlog.Plan{Root: root, Limits: lim, Loc: out.logLoc}
 	plan.Since, plan.Until, plan.WindowFrom, _ = runWindow(log, out.files, out.steps, out.cluster)
 	instances, instErr := awsmeta.Instances(ctx, awsDeps.emr(cfg), cl)
 	if instErr == nil {
@@ -386,7 +388,7 @@ func shortHost(h string) string {
 // cluster's log root (containers/, steps/, node/), a folder holding one
 // such copy per cluster (j-…/containers/…), or one application's
 // container folders (container_*/stderr.gz).
-func offlineLogs(ctx context.Context, dir, appID string, log *model.EventLog, lim source.Limits, off map[string]string) (clusterLogs, error) {
+func offlineLogs(ctx context.Context, dir, appID string, log *model.EventLog, lim source.Limits, off map[string]string, loc *time.Location) (clusterLogs, error) {
 	root, appFolder, err := fromLayout(dir, appID)
 	if err != nil {
 		return clusterLogs{}, err
@@ -395,8 +397,8 @@ func offlineLogs(ctx context.Context, dir, appID string, log *model.EventLog, li
 	if log != nil {
 		since, until = log.Application.Start, log.Application.End
 	}
-	col := yarnlog.Collect(ctx, source.NewLocalStore(dir), yarnlog.Plan{Root: root, AppFolder: appFolder, AppID: appID, Since: since, Until: until, Limits: lim, Off: off})
-	return clusterLogs{files: col.Files, sources: col.Sources}, nil
+	col := yarnlog.Collect(ctx, source.NewLocalStore(dir), yarnlog.Plan{Root: root, AppFolder: appFolder, AppID: appID, Since: since, Until: until, Limits: lim, Off: off, Loc: loc})
+	return clusterLogs{files: col.Files, sources: col.Sources, logLoc: loc}, nil
 }
 
 // fromLayout works out what a -from folder holds.
@@ -578,6 +580,51 @@ func runWindow(log *model.EventLog, files []model.LogFile, steps []model.Step, c
 		}
 	}
 	return time.Time{}, time.Time{}, "", false
+}
+
+// logZoneCheck says when the log times look read in the wrong zone: the
+// container logs' first time against a time that is UTC whatever the
+// cluster's zone (the event log's start, YARN's application summary, or
+// the step's start from the EMR API). Containers start seconds to minutes
+// after these, so a gap of a whole time zone (a multiple of 30 minutes,
+// give or take 15) means log-timezone is not the cluster's zone.
+func logZoneCheck(log *model.EventLog, files []model.LogFile, steps []model.Step, loc *time.Location) string {
+	var ref time.Time
+	appID := ""
+	if log != nil {
+		ref, appID = log.Application.Start, log.Application.ID
+	}
+	if from, _, how := yarnlog.Window(files, appID); ref.IsZero() && how == "YARN's application summary" {
+		ref = from
+	}
+	for _, st := range steps {
+		if ref.IsZero() && st.AppID != "" {
+			ref = st.Started
+		}
+	}
+	var first time.Time
+	for _, f := range files {
+		if f.Container != "" && !f.FirstTime.IsZero() && (first.IsZero() || f.FirstTime.Before(first)) {
+			first = f.FirstTime
+		}
+	}
+	if ref.IsZero() || first.IsZero() {
+		return ""
+	}
+	diff := first.Sub(ref)
+	off := diff.Round(30 * time.Minute)
+	if off == 0 || (diff-off).Abs() > 15*time.Minute {
+		return ""
+	}
+	way := "ahead of"
+	if off < 0 {
+		way = "behind"
+	}
+	gap := fmt.Sprintf("%g hours", off.Abs().Hours())
+	if loc == nil || loc == time.UTC {
+		return fmt.Sprintf("Log times look %s %s UTC: the container logs start %s after the application did. Set log-timezone (config file) or -log-timezone to the cluster's time zone, such as Australia/Sydney.", gap, way, gap)
+	}
+	return fmt.Sprintf("Log times still look %s %s the application's start with log-timezone %s: check that it is the cluster's time zone.", gap, way, loc)
 }
 
 // readMetrics reads CloudWatch metrics for the cluster and the nodes that

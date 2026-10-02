@@ -32,6 +32,10 @@ type Options struct {
 	// From and To keep an HBase daemon's lines to the application's time:
 	// these logs hold every application's. Zero keeps all.
 	From, To time.Time
+	// Loc is the zone the cluster writes log times in (they carry none);
+	// nil is UTC, EMR's default. The step controller's times end in Z and
+	// are always UTC.
+	Loc *time.Location
 }
 
 // Result is what one file held.
@@ -199,13 +203,14 @@ func (c *classifier) feed(line string) {
 	if i := strings.Index(line, scanMarker); i >= 0 && (kind == ContainerStdout || kind == ContainerStderr || kind == StepStdout || kind == StepStderr) {
 		c.flush()
 		if h, ok := parseHeader(kind, line); ok && !h.time.IsZero() {
-			c.lastTime = h.time
+			c.lastTime = c.local(h.time)
 		}
 		c.scanLine(line[i+len(scanMarker):])
 		return
 	}
 	if h, ok := parseHeader(kind, line); ok {
 		c.flush()
+		h.time = c.local(h.time)
 		if !h.time.IsZero() {
 			c.lastTime = h.time
 		}
@@ -625,6 +630,22 @@ func (c *classifier) hbaseServer(h header) {
 		m = hbCompactRE.FindStringSubmatch(msg)
 		keep(model.Info, "compaction", "HBase compacted a region of "+m[1], "table", m[1])
 	}
+}
+
+// local reads a log time, parsed as UTC, as the wall-clock time it is in
+// the cluster's zone. The step controller writes UTC (its times end in Z).
+func (c *classifier) local(t time.Time) time.Time {
+	return InZone(t, c.opt.Loc, c.res.File.Kind)
+}
+
+// InZone reads a log time parsed as UTC as the wall-clock time it is in
+// loc, the zone the cluster writes its logs in. The step controller's
+// times are UTC whatever the zone.
+func InZone(t time.Time, loc *time.Location, kind FileKind) time.Time {
+	if t.IsZero() || loc == nil || loc == time.UTC || kind == StepController {
+		return t
+	}
+	return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), loc).UTC()
 }
 
 // maxRegionEvents caps the region events kept per server log.
@@ -1384,7 +1405,7 @@ func (c *classifier) stamp(b []byte) {
 		if err != nil {
 			return
 		}
-		c.stampKey, c.stampTime = string(b[:n]), t
+		c.stampKey, c.stampTime = string(b[:n]), c.local(t)
 	}
 	if c.res.FirstTime.IsZero() || c.stampTime.Before(c.res.FirstTime) {
 		c.res.FirstTime = c.stampTime

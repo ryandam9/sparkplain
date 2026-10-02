@@ -37,6 +37,7 @@ type fileConfig struct {
 
 	EventLogPrefix string               `yaml:"eventlog-prefix"`
 	TimeZone       string               `yaml:"timezone"`
+	LogTimeZone    string               `yaml:"log-timezone"`
 	Out            string               `yaml:"out"`
 	Format         string               `yaml:"format"`
 	MaxSize        string               `yaml:"max-size"`
@@ -135,6 +136,7 @@ type envConfig struct {
 	Region           string     `yaml:"region"`
 	EventLogPrefix   string     `yaml:"eventlog-prefix"`
 	TimeZone         string     `yaml:"timezone"`
+	LogTimeZone      string     `yaml:"log-timezone"`
 	Out              string     `yaml:"out"`
 	Read             readConfig `yaml:"read"`
 }
@@ -181,6 +183,7 @@ func (c fileConfig) withEnv(name string) (fileConfig, error) {
 	set(&c.Region, e.Region)
 	set(&c.EventLogPrefix, e.EventLogPrefix)
 	set(&c.TimeZone, e.TimeZone)
+	set(&c.LogTimeZone, e.LogTimeZone)
 	set(&c.Out, e.Out)
 	c.Read = c.Read.over(e.Read, name)
 	return c, nil

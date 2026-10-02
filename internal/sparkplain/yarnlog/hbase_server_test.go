@@ -424,3 +424,59 @@ func TestRegionEvents(t *testing.T) {
 		t.Errorf("slow call = %+v", res.RegionEvents)
 	}
 }
+
+// A cluster set to a time zone writes its log times in it, with no zone
+// on them: with Loc, they are read as that zone's wall-clock times. The
+// step controller's times end in Z and stay UTC; the hour in a rolled
+// HBase log's name is the zone's too, so the same window in Sydney's
+// time picks the same files and lines.
+func TestLogTimeZone(t *testing.T) {
+	t.Parallel()
+	syd, err := time.LoadLocation("Australia/Sydney")
+	if err != nil {
+		t.Skip("no time zone database:", err)
+	}
+	log := "2026-10-02 09:17:17,589 [Executor task launch worker for task 41.0 in stage 172.0 (TID 6429)] INFO  org.apache.spark.executor.Executor  - Running task 41.0 in stage 172.0 (TID 6429)\n"
+	res, err := Classify(strings.NewReader(log), "stderr", File{Kind: ContainerStderr}, Options{Loc: syd})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := time.Date(2026, 10, 1, 23, 17, 17, 0, time.UTC); !res.FirstTime.Equal(want) {
+		t.Errorf("AEST line read as %s, want %s", res.FirstTime, want)
+	}
+	// On 4 October Sydney moves to daylight time, UTC+11.
+	res, _ = Classify(strings.NewReader(strings.Replace(log, "2026-10-02", "2026-10-05", 1)), "stderr", File{Kind: ContainerStderr}, Options{Loc: syd})
+	if want := time.Date(2026, 10, 4, 22, 17, 17, 0, time.UTC); !res.FirstTime.Equal(want) {
+		t.Errorf("AEDT line read as %s, want %s", res.FirstTime, want)
+	}
+	if got := InZone(time.Date(2026, 10, 2, 9, 0, 0, 0, time.UTC), syd, StepController); got.Hour() != 9 {
+		t.Errorf("a step controller time moved: %s", got)
+	}
+
+	st := source.NewLocalStore(filepath.Join(emrlogs, "j-FIXTURE0083CLUSTER"))
+	c := Collect(context.Background(), st, Plan{AppID: "application_1790380000000_0092", Loc: syd,
+		Since: time.Date(2026, 9, 29, 6, 8, 47, 0, syd), Until: time.Date(2026, 9, 29, 6, 10, 11, 0, syd)})
+	var detail string
+	for _, s := range c.Sources {
+		if s.Name == "HBase server logs" {
+			detail = s.Detail
+		}
+	}
+	if !strings.Contains(detail, "kept to the application's time (2026-09-29 06:08–06:10 AEST).") || !strings.Contains(detail, "6 hourly logs outside it skipped.") {
+		t.Errorf("HBase logs row = %q", detail)
+	}
+	n := 0
+	for _, f := range c.Files {
+		for _, l := range f.Found {
+			if l.Kind == "hbase-server" {
+				n += l.Count
+				if l.Time.Before(time.Date(2026, 9, 29, 6, 8, 47, 0, syd)) || l.Time.After(time.Date(2026, 9, 29, 6, 10, 11, 0, syd)) {
+					t.Errorf("a line outside the window: %s %s", l.Time, l.Text)
+				}
+			}
+		}
+	}
+	if n == 0 {
+		t.Error("no HBase server lines kept in Sydney's time")
+	}
+}
