@@ -411,7 +411,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		"tasks", "ok", "failed", "killed", "dur", "run", "gc", "input", "inputRows", "output", "outputRows",
 		"shRead", "shReadRows", "shWrite", "shWriteRows", "memSpill", "diskSpill", "p50", "max", "failure", "cached", "src",
 		"taskType", "loc", "sched", "resultSize", "gettingMs", "shWriteMs", "shRemote", "shRemoteDisk", "shLocalBlocks", "shRemoteBlocks",
-		"push", "cacheWrites", "failures", "details", "rp", "pushOn", "pushMergers", "barrier", "props", "cpuNs", "code", "split", "durMin", "p95", "durN", "mine")
+		"push", "cacheWrites", "failures", "details", "rp", "pushOn", "pushMergers", "barrier", "props", "cpuNs", "code", "split", "durMin", "p95", "durN", "mine", "data")
 	mineCode := yourCode(r, opt.Sources)
 	for _, st := range r.Jobs.Stages {
 		t := st.Totals
@@ -425,7 +425,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 			t.ShuffleRemoteToDiskBytes, t.ShuffleLocalBlocks, t.ShuffleRemoteBlocks,
 			[]int64{t.PushMergedLocalBlocks, t.PushMergedLocalBytes, t.PushMergedRemoteBlocks, t.PushMergedRemoteBytes, t.PushFallbacks, t.PushCorruptChunks, t.PushMergedRemoteReqsMs},
 			[]int64{t.UpdatedBlocks, t.UpdatedBlockBytes}, stageFailures(st),
-			st.Details, st.ResourceProfile, st.ShufflePush, st.PushMergers, isBarrier(st), orMap(st.Properties), t.CPUTimeNs, codeRows(st.Code), splitRow(t.TimeSplit()), st.TaskDuration.Min, st.TaskDuration.P95, st.TaskDuration.Count, mineRow(mineCode[strconv.Itoa(st.ID)+"."+strconv.Itoa(st.Attempt)]))
+			st.Details, st.ResourceProfile, st.ShufflePush, st.PushMergers, isBarrier(st), orMap(st.Properties), t.CPUTimeNs, codeRows(st.Code), splitRow(t.TimeSplit()), st.TaskDuration.Min, st.TaskDuration.P95, st.TaskDuration.Count, mineRow(mineCode[strconv.Itoa(st.ID)+"."+strconv.Itoa(st.Attempt)]), dataRows(st.Data, src))
 		if len(st.RDDs) > 0 && len(st.RDDs) <= maxStageOpNodes && len(d.StageOps) < maxStageOpStages {
 			d.StageOps[strconv.Itoa(st.ID)+"."+strconv.Itoa(st.Attempt)] = stageOps(st)
 		}

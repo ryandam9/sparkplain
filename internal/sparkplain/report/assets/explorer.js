@@ -472,6 +472,49 @@
     return s;
   };
 
+  // ---------- what a stage read and wrote ----------
+  // A stage's data rows: access, kind, name, format, parts, sized, bytes,
+  // sources, line, files the SQL plan names.
+  var DATA_CELL = 4;
+  var DATA_EXPLAIN = "The folders and tables this stage's tasks read and wrote. A folder stands for the files in it and in its partition folders (such as year=2024). " +
+    "A file split is a file, or a piece of a large file, that a task's log names as read; the size adds up each piece's length, which for a columnar file such as Parquet is more than was read, since only the columns needed are. " +
+    "Files written are the files the tasks closed (EMRFS logs each one), and the size is the bytes they uploaded. \"At least\" means some files' sizes were not logged. " +
+    "Known from says which sources name it: the executors' logs, the SQL plan, or the HBase section's scans and writes. A plan names what was read and written, but not how much.";
+  function dataWhat(d) { return d[1] === "hbase" ? "HBase table " + d[2] : d[1] === "table" ? "table " + d[2] : d[2]; }
+  function dataParts(d) {
+    if (!d[4]) return "";
+    var u = d[1] === "hbase" ? "region" : d[0] === "read" ? "file split" : "file";
+    return num(d[4]) + " " + u + (d[4] === 1 ? "" : "s");
+  }
+  function dataSize(d) { return d[6] ? (d[5] < d[4] ? "at least " : "") + bytes(d[6]) : ""; }
+  function dataLabel(d) {
+    var f = [dataParts(d), dataSize(d)].filter(Boolean).join(", ");
+    return (d[0] === "write" ? "wrote " : "read ") + dataWhat(d) + (f ? ": " + f : "");
+  }
+  function stageDataPanel(st) {
+    var box = el("div");
+    box.appendChild(el("h3", { text: "What it read and wrote" }));
+    if (!st.data || !st.data.length) {
+      box.appendChild(explain("No log or plan names a folder or table this stage read or wrote. It may have read only shuffle data, cached data or data made in the code, or its executors' logs were not read."));
+      return box;
+    }
+    box.appendChild(explain(DATA_EXPLAIN));
+    box.appendChild(table({
+      rows: st.data, page: 20,
+      cols: [
+        { h: "Did", v: function (d) { return d[0]; }, f: function (d) { return d[0] === "write" ? "Wrote" : "Read"; } },
+        { h: "Folder or table", v: function (d) { return d[2]; }, f: function (d) {
+          return el("span", null, el("span", { cls: "mono", text: dataWhat(d) }), d[9] && d[9].length ? el("span", { cls: "sub", text: "Files the SQL plan names: " + d[9].join(", ") }) : null); } },
+        { h: "Format", v: function (d) { return d[3]; }, f: function (d) { return d[3] || "—"; } },
+        { h: "Files or regions", num: true, title: "File splits read, files written, or HBase regions read, as the executors' logs name them", v: function (d) { return d[4]; }, f: function (d) { return dataParts(d) || "—"; } },
+        { h: "Size", num: true, title: "For a read, the file splits' lengths added up; for a write, the bytes uploaded", v: function (d) { return d[6]; }, f: function (d) { return dataSize(d) || "—"; } },
+        { h: "Known from", v: function (d) { return d[7].join(", "); }, f: function (d) { return d[7].join(", "); } },
+        { h: "First line", v: function (d) { return src(d[8]); }, f: function (d) { return el("span", { cls: "srcref dl", text: src(d[8]) }); } }
+      ]
+    }));
+    return box;
+  }
+
   function skew(s) { return s.p50 > 0 && s.tasks > 1 ? s.max / s.p50 : null; }
   function stageTable(rows, o) {
     o = o || {};
@@ -487,6 +530,12 @@
         { h: "Name", v: function (s) { return s.name; }, f: function (s) { return s.name; } },
         { h: "Your code", title: "The line of your code that ran the stage: its own call site, or, for a stage named after Spark's own code, its job's action", v: function (s) { return s.mine ? s.mine[0] + ":" + s.mine[1] : ""; },
           f: function (s) { if (!s.mine) return "—"; var h = codeHref(s.mine); return el("span", null, h ? link(h, codeLabel(s.mine)) : el("span", { cls: "mono", text: codeLabel(s.mine) }), s.mine[4] ? el("span", { cls: "sub", text: s.mine[4] }) : null); } },
+        { h: "Reads / writes", title: "The folders and tables the stage read and wrote, from its executors' logs, its SQL plan and the HBase section", v: function (s) { return (s.data || []).map(function (d) { return d[2]; }).join(" "); },
+          f: function (s) {
+            if (!s.data || !s.data.length) return "—";
+            return el("span", null, s.data.slice(0, DATA_CELL).map(function (d) { return el("span", { cls: "dl", title: d[2] + " (from " + d[7].join(", ") + ")", text: clip(dataLabel(d), 120) }); }),
+              s.data.length > DATA_CELL ? el("span", { cls: "sub", text: "and " + (s.data.length - DATA_CELL) + " more on the stage's page" }) : null);
+          } },
         { h: "Status", v: function (s) { return s.status; }, f: function (s) { return status(s.status); } },
         { h: "Submitted", num: true, v: function (s) { return s.submitted; }, f: function (s) { return when(s.submitted); } },
         { h: "Duration", num: true, v: function (s) { return span(s.submitted, s.completed); }, f: function (s) { return dur(span(s.submitted, s.completed)); } },
@@ -659,6 +708,7 @@
     drop: function (s) { return "Dropped " + num(s[3]) + " cached block" + (s[3] === 1 ? "" : "s") + " from memory to make room; " + bytes(s[8] || 0) + " free after."; },
     "no-room": function (s) { return "Could not cache " + s[5] + ": not enough storage memory (" + bytes(s[2]) + " computed so far)."; },
     input: function (s) { return "Read " + s[5] + (s[2] ? " (" + bytes(s[2]) + " of file)" : "") + "."; },
+    output: function (s) { return "Wrote " + s[5] + "."; },
     commit: function (s) { return "Committed its output in " + dur(s[4]) + "."; },
     problem: function (s) { return "Logged: " + s[5]; },
     end: function (s) { return "Finished, sending a " + bytes(s[2]) + " result back to the driver."; },
@@ -679,12 +729,13 @@
       has(t.inputs) && fact("Input read", num(t.inputs || 0) + (t.inputBytes ? " · " + bytes(t.inputBytes) : ""), "Files, file ranges or HBase regions opened; the size adds up file ranges, not bytes read."),
       has(t.cachedBlocks || t.dropped || t.notCached) && fact("Cached in memory", num(t.cachedBlocks || 0) + (t.cachedBlocks ? " · " + bytes(t.cachedBytes) : ""), "Cached partitions stored in executor memory." + (t.dropped ? " " + num(t.dropped) + " blocks dropped to make room." : "") + (t.notCached ? " " + num(t.notCached) + " did not fit." : "")),
       has(t.spills) && fact("Spilled to disk", t.spills ? num(t.spills) + " times · " + bytes(t.spillBytes) : "none", "Data a sort or aggregation could not keep in memory, as its in-memory size."),
+      has(t.outputs) && fact("Files written", num(t.outputs || 0) + (t.outputBytes ? " · " + bytes(t.outputBytes) : ""), "Files closed after writing (EMRFS logs each one); the size is the bytes uploaded for them."),
       has(t.commits) && fact("Output committed", num(t.commits || 0) + (t.commits ? " · " + dur(t.commitMs) : ""), "Task outputs moved into place at the end of a write."),
       has(t.resultBytes) && fact("Results sent back", bytes(t.resultBytes || 0), "What the tasks returned to the driver, serialized."),
       has(t.warnings || t.errors) && fact("Warnings and errors", num(t.warnings || 0) + " · " + num(t.errors || 0), "Lines logged at WARN and ERROR as a task's, besides its end."));
   }
   views.tasks = function () {
-    var s = section("Task stories", "What each task did, as its executor logged it: the broadcast variables it read, the shuffle blocks it fetched from its own node or over the network, the files or HBase regions it read, the blocks it cached, the data it spilled to disk, the output it committed and the result it sent back.");
+    var s = section("Task stories", "What each task did, as its executor logged it: the broadcast variables it read, the shuffle blocks it fetched from its own node or over the network, the files or HBase regions it read, the blocks it cached, the data it spilled to disk, the files it wrote, the output it committed and the result it sent back.");
     s.appendChild(explain(TS.byThread && !TS.byTid ? "Every line is told apart by the executor thread that logged it, which names its task." :
       "Lines are told apart by the task they name (TID) and, otherwise, by being the only task their executor was running" + (TS.byThread ? "; " + num(TS.byThread) + " tasks by the thread that logged them" : "") + ". Lines no task could be found for are counted per executor."));
     s.appendChild(storyFacts(TS.totals, "the task's"));
@@ -848,6 +899,7 @@
       drop: function (s) { return "dropped " + num(s[3]) + " cached blocks to make room"; },
       "no-room": function (s) { return "could not cache " + s[5]; },
       input: function (s) { return "read " + s[5]; },
+      output: function (s) { return "wrote " + s[5]; },
       commit: function (s) { return "committed its output in " + dur(s[4]); },
       problem: function (s) { return "logged: " + s[5]; }
     };
@@ -1146,6 +1198,7 @@
           read: ["Read it top to bottom, like the code.", "A long chain is fine; what matters is which step is slow, which the task table below shows."] });
     }
     s.appendChild(codePanel(st.code, st.submitted, null, st.mine));
+    s.appendChild(stageDataPanel(st));
     var hsc = (D.hbaseScans || {})[st.key];
     if (hsc) hbaseScanPanel(s, hsc);
     if (st.details) s.appendChild(el("details", null, el("summary", { text: "Where in the code: the full call stack Spark recorded" }), el("div", { cls: "inner" }, el("pre", { cls: "plan", text: st.details }))));

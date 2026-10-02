@@ -442,9 +442,12 @@ type Stage struct {
 	Slowest         *TaskRef          `json:"slowestTask,omitempty"`
 	Failures        []TaskFailure     `json:"failures,omitempty"`
 	CachedRDDs      []int             `json:"cachedRdds,omitempty"`
-	Source          Source            `json:"source"`
-	TaskSource      Source            `json:"taskSource,omitzero"`
-	EndSource       Source            `json:"endSource,omitzero"`
+	// Data are the folders and tables it read and wrote (analyze fills
+	// them from the executors' logs, the SQL plans, its RDDs and HBase).
+	Data       []StageData `json:"data,omitempty"`
+	Source     Source      `json:"source"`
+	TaskSource Source      `json:"taskSource,omitzero"`
+	EndSource  Source      `json:"endSource,omitzero"`
 	// ScanTasks are the successful tasks of a stage that read with
 	// newAPIHadoopRDD, one per partition (the first to succeed), up to
 	// MaxScanTasks: for a TableInputFormat scan, partition i read the
@@ -527,6 +530,9 @@ type DataRef struct {
 	Name   string `json:"name"`
 	Format string `json:"format,omitempty"`
 	Source Source `json:"source"`
+	// Node is the plan node that reads it ("Scan parquet db.t"): the
+	// stages that ran that node name their RDDs' scope after it.
+	Node string `json:"-"`
 }
 
 // SQLQuery is one SQL execution (DataFrame actions count too).

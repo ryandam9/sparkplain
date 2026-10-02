@@ -571,6 +571,10 @@ type LogFile struct {
 	TaskLogs    []TaskLog `json:"-"`
 	TaskLogsCut int       `json:"-"`
 	Untied      *TaskLog  `json:"-"`
+	// StageData are the folders and tables its tasks read and wrote, per
+	// stage; DataUntied counts the files no stage could be found for.
+	StageData  []StageData `json:"-"`
+	DataUntied int         `json:"-"`
 	// HBaseScans are the scans the job printed (sparkplain-scan lines),
 	// decoded and redacted; the scan strings themselves are not kept.
 	HBaseScans []HBaseScan `json:"hbaseScans,omitempty"`
