@@ -119,6 +119,11 @@ environments:
 #   hbase-hotspot-share: 0.75 # one region server holding over 75% of a table's regions read,
 #                             # or serving over 75% of the HBase scan tasks running at once
 #   hbase-load-min: 1m        # ... for at least this long
+#   network-min: 1GiB         # shuffle data read over the network, from the executors' logs, of at least this
+#   broadcast-large: 512MiB   # a broadcast variable of at least this size ...
+#   broadcast-slow: 10s       # ... or one executor taking at least this long to read it
+#   spill-min: 1GiB           # spill to disk of at least this, from the executors' logs (no event log)
+#   commit-share: 0.20        # output commits over 20% of the writing tasks' time
 
 # How much task detail the explorer page keeps (larger means a bigger page).
 # explorer:

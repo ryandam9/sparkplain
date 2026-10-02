@@ -31,6 +31,11 @@ type Thresholds struct {
 	HBaseConnections int           `yaml:"hbase-connections"`   // ZooKeeper connections one process opened over this
 	HBaseHotspot     float64       `yaml:"hbase-hotspot-share"` // one region server holding over this share of a table's regions read
 	HBaseLoadMin     time.Duration `yaml:"hbase-load-min"`      // one region server serving the hotspot share of running scan tasks for this long
+	NetworkMin       int64         `yaml:"network-min"`         // shuffle bytes over the network, from the executors' logs, of at least this
+	BroadcastLarge   int64         `yaml:"broadcast-large"`     // a broadcast variable of at least this estimated size
+	BroadcastSlow    time.Duration `yaml:"broadcast-slow"`      // or one executor taking at least this long to read it
+	SpillMin         int64         `yaml:"spill-min"`           // spill to disk of at least this, from the executors' logs (no event log)
+	CommitShare      float64       `yaml:"commit-share"`        // output commits over this share of the writing tasks' time
 }
 
 // DefaultThresholds are the values in SPEC §6 (the config file).
@@ -42,6 +47,7 @@ func DefaultThresholds() Thresholds {
 		SchedDelayShare: 0.20, LocalityAnyShare: 0.30, ResultShare: 0.50, SlowStartup: time.Minute,
 		DriverGapShare: 0.25, DriverGapMin: time.Minute,
 		HBaseTimeShare: 0.50, HBaseConnections: 50, HBaseHotspot: 0.75, HBaseLoadMin: time.Minute,
+		NetworkMin: 1 << 30, BroadcastLarge: 512 << 20, BroadcastSlow: 10 * time.Second, SpillMin: 1 << 30, CommitShare: 0.20,
 	}
 }
 
@@ -149,7 +155,7 @@ func Run(in Input) *model.Report {
 	}
 	for _, a := range []func(*ctx, *model.Report){
 		analyzeConfig, analyzeExecutors, analyzeNodes, analyzeMemory, analyzeCPU,
-		analyzeIO, analyzeJobs, analyzeTimeline, analyzeLogs, analyzeTaskStories, analyzeHBase, spotFindings, analyzeMetrics, analyzeIdentity, analyzeCalls,
+		analyzeIO, analyzeJobs, analyzeTimeline, analyzeLogs, analyzeTaskStories, analyzeFlows, analyzeHBase, spotFindings, analyzeMetrics, analyzeIdentity, analyzeCalls,
 	} {
 		a(c, r)
 	}
@@ -214,6 +220,7 @@ func rulePriority(rule string) int {
 	for i, r := range []string{
 		"log-first-failure", "job-failed", "step-failed", "bootstrap-failed", "executor-memory-kill", "out-of-memory", "classpath-clash", "access-denied",
 		"hbase-access-denied", "kerberos-failure", "metastore-failure", "hbase-table-missing", "hbase-zookeeper", "hbase-server", "hbase-retries", "hbase-error", "executor-lost", "spot-interrupted", "app-retried", "waited-for-capacity", "executor-fit", "idle-nodes", "host-memory-pressure", "host-cpu-saturated", "executor-decommissioned", "stage-retried", "hbase-server-lost", "hbase-time", "hbase-regions-changed", "hbase-server-pause", "hbase-slow-calls", "hbase-busy", "hbase-scanner-expired", "hbase-region-moved", "hbase-scan-skew", "hbase-region-events", "hbase-retried-regions", "hbase-server-load", "hbase-repeated-scan", "hbase-hotspot", "hbase-zk-connections", "hbase-remote-regions", "hbase-full-scan", "hbase-tiny-regions",
+		"cache-evicted", "shuffle-network", "task-spill", "commit-slow", "broadcast-large",
 		"access-static-keys", "stage-skew", "memory-spill", "memory-gc-pressure", "memory-heap-near-limit",
 		"config-unlimited-result", "config-dynalloc-no-shuffle",
 	} {

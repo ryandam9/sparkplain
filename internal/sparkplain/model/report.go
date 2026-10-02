@@ -28,10 +28,12 @@ type Report struct {
 	HBase *HBaseSection `json:"hbase,omitempty"`
 	// TaskStories is what the executors' logs tell of each task.
 	TaskStories *TaskStorySection `json:"taskStories,omitempty"`
-	Jobs        JobsSection       `json:"jobs"`
-	Config      ConfigSection     `json:"config"`
-	Identity    IdentitySection   `json:"identity"`
-	Sources     []SourceStatus    `json:"sources"`
+	// Flows is the data moved and memory used over time, from them.
+	Flows    *FlowSection    `json:"flows,omitempty"`
+	Jobs     JobsSection     `json:"jobs"`
+	Config   ConfigSection   `json:"config"`
+	Identity IdentitySection `json:"identity"`
+	Sources  []SourceStatus  `json:"sources"`
 	// AccessCheck is what the run found it could read before reading it.
 	AccessCheck []AccessCheck  `json:"accessCheck,omitempty"`
 	EventLog    *EventLogStats `json:"eventLog,omitempty"`

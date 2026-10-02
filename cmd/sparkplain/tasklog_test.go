@@ -54,3 +54,41 @@ func TestTaskStories(t *testing.T) {
 		}
 	}
 }
+
+// On 0050 the executors read most shuffle data over the network: the
+// flows say so, and with network-min lowered in the config file (a size
+// such as 1MiB) shuffle-network notes it. A size that is not one is
+// refused.
+func TestFlows(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfg, []byte("thresholds:\n  network-min: 1MiB\n  broadcast-large: 1GiB\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	app := "application_1790380000000_0050"
+	if code, _, errs := runCLI(t, "-config", cfg, "-app-id", app, "-from", filepath.Join(emrlogs, "j-FIXTURE0050CLUSTER"), "-out", dir, "-format", "json,html,explorer"); code != exitPartial {
+		t.Fatalf("exit %d: %s", code, errs)
+	}
+	r := readReport(t, dir)
+	f := r.Flows
+	if f == nil || len(f.Executors) != 4 || f.RemoteBytes <= f.LocalBytes || len(f.Broadcasts) < 3 || len(f.Remote) == 0 {
+		t.Fatalf("flows: %+v", f)
+	}
+	got := findingRules(t, dir)
+	if !strings.Contains(got["shuffle-network"], "crossed the network between nodes") {
+		t.Errorf("shuffle-network: %q", got["shuffle-network"])
+	}
+	if _, ok := got["broadcast-large"]; ok {
+		t.Error("broadcast-large fired under broadcast-large: 1GiB")
+	}
+	html, _ := os.ReadFile(filepath.Join(dir, app+"-report.html"))
+	if !strings.Contains(string(html), "Data moved over time") {
+		t.Error("the report has no flows chart")
+	}
+	if err := os.WriteFile(cfg, []byte("thresholds:\n  network-min: lots\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, errs := runCLI(t, "-config", cfg, "-app-id", app, "-from", filepath.Join(emrlogs, "j-FIXTURE0050CLUSTER"), "-out", dir); code != exitFatal || !strings.Contains(errs, `"lots" is not a size`) {
+		t.Errorf("a bad size: exit %d: %s", code, errs)
+	}
+}
