@@ -523,8 +523,12 @@ func (p *parser) taskEnd(e *taskEndEvent, src model.Source) {
 		if a.scanned != nil && !a.scanned[e.Info.Index] {
 			a.scanned[e.Info.Index] = true
 			if len(st.ScanTasks) < model.MaxScanTasks {
+				var launch time.Time
+				if e.Info.LaunchTime > 0 {
+					launch = time.UnixMilli(e.Info.LaunchTime).UTC()
+				}
 				st.ScanTasks = append(st.ScanTasks, model.ScanTask{Index: e.Info.Index, TaskID: e.Info.TaskID, Attempt: e.Info.Attempt,
-					ExecutorID: redact.Text(e.Info.ExecutorID), Host: redact.Text(e.Info.Host), DurationMs: dur, RunTimeMs: t.RunTimeMs,
+					ExecutorID: redact.Text(e.Info.ExecutorID), Host: redact.Text(e.Info.Host), Launch: launch, DurationMs: dur, RunTimeMs: t.RunTimeMs,
 					Rows: t.InputRecords, Source: src})
 			} else {
 				st.ScanTasksCapped = true

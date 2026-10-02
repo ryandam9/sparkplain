@@ -40,6 +40,7 @@ var chartRules = map[string][]string{
 	"running":    {"driver-gaps", "cpu-idle-executors"},
 	"chain":      {"driver-gaps"},
 	"peakHeap":   {"memory-heap-near-limit", "memory-over-provisioned", "out-of-memory"},
+	"hbaseLoad":  {"hbase-server-load", "hbase-hotspot"},
 }
 
 // runNotes says, for each chart, what this run's version of it shows: a
@@ -286,6 +287,13 @@ func runNotes(r *model.Report) map[string][]runPoint {
 	}
 	if q != nil {
 		add("queries", "Query %d ran longest: %s%s.", q.ID, model.Duration(span(q.Start, q.End)), share(span(q.Start, q.End)))
+	}
+
+	// HBase region server load: the busiest server.
+	if h := r.HBase; h != nil && len(h.Load) > 0 {
+		l, all := h.Load[0], span(h.LoadFrom, h.LoadTo)
+		add("hbaseLoad", "%s did the most scan work: %s of task time, up to %d tasks at once, busy for %s of the %s the scans ran, across %s.",
+			shortHost(l.Server), model.Duration(l.TaskMs), l.Peak, model.Duration(l.BusyMs), model.Duration(all), model.Plural(len(h.Load), "region server", "region servers"))
 	}
 
 	// The findings each chart is evidence for.

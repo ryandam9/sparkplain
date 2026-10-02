@@ -3,6 +3,7 @@ package model
 import (
 	"sort"
 	"strings"
+	"time"
 )
 
 // HBaseSection is what the run did with HBase (phase 5): the tables it read
@@ -47,7 +48,15 @@ type HBaseSection struct {
 	// TaskStages sums them per stage.
 	Tasks      []HBaseTaskRead  `json:"tasks,omitempty"`
 	TaskStages []HBaseTaskStage `json:"taskStages,omitempty"`
-	Missing    []string         `json:"missing,omitempty"`
+	// Load is how many of those tasks each region server was serving at
+	// once over time, the busiest first; LoadTotal is all servers together.
+	// Both are the most at once in each LoadStepMs step from LoadFrom.
+	Load       []HBaseServerLoad `json:"load,omitempty"`
+	LoadTotal  []Point           `json:"loadTotal,omitempty"`
+	LoadFrom   time.Time         `json:"loadFrom,omitzero"`
+	LoadTo     time.Time         `json:"loadTo,omitzero"`
+	LoadStepMs int64             `json:"loadStepMs,omitempty"`
+	Missing    []string          `json:"missing,omitempty"`
 }
 
 // HBaseServerEvent is one kind of thing an HBase server logged, how often,
@@ -200,4 +209,30 @@ func HBaseServerEventsText(n map[string]int) string {
 		return parts[0]
 	}
 	return strings.Join(parts[:len(parts)-1], ", ") + " and " + parts[len(parts)-1]
+}
+
+// HBaseServerLoad is how hard one region server was read by the run's
+// TableInputFormat tasks: the tasks it served, their time added up, the
+// time at least one ran (BusyMs), the most at once and when, and the most
+// at once per step (Points). Hot is the longest stretch it served at least
+// the hotspot share of all the run's scan tasks running then, when it did.
+type HBaseServerLoad struct {
+	Server string    `json:"server"`
+	Tasks  int       `json:"tasks"`
+	TaskMs int64     `json:"taskMs"`
+	BusyMs int64     `json:"busyMs"`
+	Peak   int       `json:"peak"`
+	PeakAt time.Time `json:"peakAt,omitzero"`
+	Points []Point   `json:"points,omitempty"`
+	Hot    *HBaseHot `json:"hot,omitempty"`
+}
+
+// HBaseHot is a stretch when one region server served most of the scan
+// tasks running: at its worst, Tasks of the All running, at At.
+type HBaseHot struct {
+	From  time.Time `json:"from"`
+	To    time.Time `json:"to"`
+	Tasks int       `json:"tasks"`
+	All   int       `json:"all"`
+	At    time.Time `json:"at"`
 }

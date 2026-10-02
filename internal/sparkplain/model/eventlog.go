@@ -459,15 +459,16 @@ const MaxScanTasks = 20000
 // ScanTask is one task of a newAPIHadoopRDD stage: its partition, where it
 // ran, how long, and the rows it read.
 type ScanTask struct {
-	Index      int    `json:"index"`
-	TaskID     int64  `json:"taskId"`
-	Attempt    int    `json:"attempt"`
-	ExecutorID string `json:"executorId"`
-	Host       string `json:"host"`
-	DurationMs int64  `json:"durationMs"`
-	RunTimeMs  int64  `json:"runTimeMs"`
-	Rows       int64  `json:"rows"`
-	Source     Source `json:"source"`
+	Index      int       `json:"index"`
+	TaskID     int64     `json:"taskId"`
+	Attempt    int       `json:"attempt"`
+	ExecutorID string    `json:"executorId"`
+	Host       string    `json:"host"`
+	Launch     time.Time `json:"launch,omitzero"`
+	DurationMs int64     `json:"durationMs"`
+	RunTimeMs  int64     `json:"runTimeMs"`
+	Rows       int64     `json:"rows"`
+	Source     Source    `json:"source"`
 }
 
 // IsHadoopScan reports whether the stage reads with newAPIHadoopRDD, as a

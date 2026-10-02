@@ -206,6 +206,7 @@ type thresholds struct {
 	HBaseTimeShare   *float64       `yaml:"hbase-time-share"`
 	HBaseConnections *int           `yaml:"hbase-connections"`
 	HBaseHotspot     *float64       `yaml:"hbase-hotspot-share"`
+	HBaseLoadMin     *time.Duration `yaml:"hbase-load-min"`
 }
 
 func (t thresholds) apply(d analyze.Thresholds) analyze.Thresholds {
@@ -240,6 +241,7 @@ func (t thresholds) apply(d analyze.Thresholds) analyze.Thresholds {
 		d.HBaseConnections = *t.HBaseConnections
 	}
 	setF(&d.HBaseHotspot, t.HBaseHotspot)
+	setD(&d.HBaseLoadMin, t.HBaseLoadMin)
 	return d
 }
 

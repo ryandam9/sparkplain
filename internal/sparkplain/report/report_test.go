@@ -209,3 +209,54 @@ func TestHBaseTasksTable(t *testing.T) {
 		t.Errorf("explorer has %d task stages", len(ss))
 	}
 }
+
+// loadReport is a run with no event log where one region server serves 8
+// of the 10 scan tasks running for 3 minutes.
+func loadReport() *model.Report {
+	t0 := time.Date(2026, 10, 2, 9, 17, 0, 0, time.UTC)
+	f := model.LogFile{Location: "e1", Kind: "container-stderr", Container: "container_1_0001_01_000002"}
+	for i := range 10 {
+		srv, end := "rs-hot.example.internal", t0.Add(3*time.Minute)
+		if i >= 8 {
+			srv, end = fmt.Sprintf("rs-%d.example.internal", i), t0.Add(10*time.Minute)
+		}
+		sp := model.HBaseSplit{Table: "orders", StartRow: fmt.Sprintf("k%d", i), EndRow: fmt.Sprintf("k%d", i+1), Server: srv, Region: fmt.Sprintf("r%d", i),
+			Time: t0, Source: model.Source{File: "e1", Line: int64(10 + i)},
+			Task: &model.SplitTask{TaskID: int64(100 + i), Partition: i, Stage: 5, Start: t0, End: end, EndSource: model.Source{File: "e1", Line: int64(100 + i)}}}
+		f.HBaseSplits = append(f.HBaseSplits, sp)
+		f.Found = append(f.Found, model.LogLine{Kind: model.LogHBaseUse, Time: t0, Count: 1, Source: sp.Source,
+			Fields: map[string]string{"table": "orders", "access": "read", "api": "TableInputFormat", "server": srv}})
+	}
+	return analyze.Run(analyze.Input{AppID: "application_1_1", Tool: "t", TimeZone: "UTC", Thresholds: analyze.DefaultThresholds(),
+		EventSource: model.SourceStatus{Name: "Spark event log", Status: "not-supplied"}, Logs: []model.LogFile{f}, LogsRead: true,
+		LogSources: []model.SourceStatus{{Name: "Container logs", Status: "read"}}})
+}
+
+// Region server load over time: a chart that explains itself and links
+// the finding, a table per server with its hot stretch, and the explorer's
+// copy.
+func TestHBaseLoadRenders(t *testing.T) {
+	t.Parallel()
+	r := loadReport()
+	page := render(t, r, time.UTC)
+	i := strings.Index(page, "<h4>Region server load over time</h4>")
+	if i < 0 {
+		t.Fatal("no load chart")
+	}
+	chart := page[i:]
+	chart = chart[:strings.Index(chart, `<div class="tbl">`)]
+	for _, want := range []string{`<dl class="axes">`, "How to read it", "rs-hot did the most scan work: 24 min 0 s of task time, up to 8 tasks at once", "See finding", "<svg"} {
+		if !strings.Contains(chart, want) {
+			t.Errorf("load chart lacks %q", want)
+		}
+	}
+	for _, want := range []string{">rs-hot<", "up to 8 of 10", "On average while busy"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("load table lacks %q", want)
+		}
+	}
+	d := embedded(t, renderExplorer(t, r, nil))
+	if l, _ := d["hbaseLoad"].([]any); len(l) != 3 {
+		t.Errorf("explorer load: %d servers", len(l))
+	}
+}

@@ -291,6 +291,9 @@ Checked first against a throwaway EMR 7.3.0 cluster with HBase 2.4.17 (`testdata
 
 **HBase tasks table (approved 2026-10-02).** The user asked for one table of every stage's HBase tasks from the container logs, in order, with each task's stage, row keys, table, region, region server and executor. Approved: one row per task attempt; the explorer (new HBase tasks view under More) and the JSON with every row, and the report capped at 500 rows (the user's choice), with a per-stage summary above it. With the event log, rows, time and executor come from it where it records the attempt; without, times come from the Running and Finished lines.
 
+**HBase follow-ups (approved 2026-10-02).** The user asked to finish the three remaining proposals in order, one PR each: region server load over time, slow regions linked to the HBase server logs, and new findings. Two of the proposed findings already existed (`hbase-hotspot` for regions held, `hbase-remote-regions` for locality), so the third PR adds the others.
+- Load over time (built 2026-10-02): concurrent scan tasks per region server from the tasks table, in the report and the explorer, with `hbase-server-load` (one server serving at least `hbase-hotspot-share` of the running scan tasks, and at least 4, for `hbase-load-min`). With the event log, a task's start is its launch time, now kept for scan tasks.
+
 ## Appendix: the spec before it was simplified (2026-09-29)
 
 On 2026-09-29 the spec was rewritten to describe sparkplain as it is, and this history moved out of it. Its other sections as they stood then are kept here word for word, since they spell out details the rewrite summarises (for example exactly when each findings rule fires). Where they differ from the spec, the spec wins.

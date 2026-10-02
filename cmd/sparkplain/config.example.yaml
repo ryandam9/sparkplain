@@ -110,7 +110,9 @@ environments:
 #   driver-gap-min: 1m        # ... and at least this long in all
 #   hbase-time-share: 0.50    # stages reading or writing HBase over 50% of the run
 #   hbase-connections: 50     # one process opening over this many ZooKeeper connections
-#   hbase-hotspot-share: 0.75 # one region server holding over 75% of a table's regions read
+#   hbase-hotspot-share: 0.75 # one region server holding over 75% of a table's regions read,
+#                             # or serving over 75% of the HBase scan tasks running at once
+#   hbase-load-min: 1m        # ... for at least this long
 
 # How much task detail the explorer page keeps (larger means a bigger page).
 # explorer:
