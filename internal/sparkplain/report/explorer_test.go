@@ -502,13 +502,21 @@ func TestClusterNodesUpDuringTheRun(t *testing.T) {
 }
 
 // The replay is a tab of its own when the executors' logs told the tasks'
-// stories, and it plays only when asked (it starts paused).
+// stories, and it plays only when asked (it starts paused). A legend says
+// which stage each colour is, and what happened is a numbered list whose
+// tasks are grouped by stage and second.
 func TestExplorerReplay(t *testing.T) {
 	t.Parallel()
 	for _, want := range []string{
 		`if (D.taskStories && D.taskStories.tasks.length) TABS.splice(`,
 		`views.replay = function () {`,
 		`paused at the start`,
+		// the colours say what they are, and the list is numbered,
+		// grouped, and can be cut down to jobs and stages
+		`"Task colour = its stage:"`,
+		`"Jobs and stages only"`,
+		`el("span", { cls: "rp-n", text: num(n) })`,
+		`Math.floor(t / 1000) + "|" + kind + "|" + x.task.stage`,
 	} {
 		if !strings.Contains(explorerJS, want) {
 			t.Errorf("explorer.js has no %q", want)

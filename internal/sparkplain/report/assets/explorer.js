@@ -857,6 +857,12 @@
   // words. Everything comes from the task stories and the flows, at the
   // times the logs give (whole seconds in Spark's default layout).
   var RP = null;
+  // What the "What happened" list can show: its value, label and levels.
+  var RP_SHOW = [["tasks", "Jobs, stages and tasks", ["run", "task"]], ["run", "Jobs and stages only", ["run"]], ["all", "Everything, step by step", ["run", "task", "step"]]];
+  var RP_TAG = { job: "Job", stage: "Stage", start: "Started", end: "Finished", failed: "Failed", killed: "Killed", broadcast: "Broadcast", "broadcast-read": "Broadcast",
+    shuffle: "Shuffle", spill: "Spill", cache: "Cache", drop: "Evicted", "no-room": "No room", input: "Read", output: "Wrote", commit: "Commit", problem: "Logged" };
+  var RP_VERB = { start: "started", end: "finished", failed: "failed", killed: "were killed" };
+  var RP_STAGES = 8, RP_JOBS = 5, RP_EVENTS = 14;
   function replayModel() {
     if (RP) return RP;
     var ts = TS.tasks.filter(function (t) { return t.start; }).map(function (t) {
@@ -887,9 +893,19 @@
     });
     order.forEach(function (id) { var e = ex[id]; e.nslots = Math.max(e.cores, e.slots.length, 1); });
     order.sort(function (p, q) { var x = +p, y = +q; return isNaN(x) || isNaN(y) ? String(p).localeCompare(String(q)) : x - y; });
-    // what happened, in words, in time order
-    var evs = [];
+    // what happened, in words, in time order. Jobs and stages are events
+    // of their own ("run"); a task's start and end are grouped with the
+    // others of its stage that did the same in the same second ("task");
+    // what a task did in between is a "step", one event each.
+    var evs = [], groups = {};
     function who(x) { return "TID " + x.task.taskId + (x.task.stage >= 0 ? " (stage " + x.task.stage + ", partition " + x.task.partition + ")" : "") + " on executor " + x.ex; }
+    function group(t, kind, x, text) {
+      var k = Math.floor(t / 1000) + "|" + kind + "|" + x.task.stage + "." + x.task.stageAttempt, g = groups[k];
+      if (!g) { g = groups[k] = { at: t, kind: kind, level: "task", stage: x.task.stage, attempt: x.task.stageAttempt, members: [], execs: [] }; evs.push(g); }
+      g.at = Math.min(g.at, t);
+      g.members.push({ at: t, tid: x.task.taskId, text: text });
+      if (g.execs.indexOf(x.ex) < 0) g.execs.push(x.ex);
+    }
     var SAY = {
       broadcast: function (s) { return "began reading " + s[5] + " (" + bytes(s[2]) + ")"; },
       "broadcast-read": function (s) { return "had " + s[5] + " after " + dur(s[4]); },
@@ -904,23 +920,31 @@
       problem: function (s) { return "logged: " + s[5]; }
     };
     ts.forEach(function (x) {
-      evs.push([x.s, "start", who(x) + " started"]);
+      group(x.s, "start", x, who(x) + " started");
       (x.task.s || []).forEach(function (st) {
-        if (SAY[st[1]]) evs.push([x.s + st[0], st[1], who(x) + " " + SAY[st[1]](st)]);
+        if (SAY[st[1]]) evs.push({ at: x.s + st[0], kind: st[1], level: "step", stage: x.task.stage, text: who(x) + " " + SAY[st[1]](st) });
       });
       var o = x.task.outcome;
-      if (x.task.end) evs.push([x.e, o === "failed" || o === "killed" ? o : "end", who(x) + (o === "failed" ? " failed" + (x.task.error ? ": " + x.task.error : "") : o === "killed" ? " was killed" : " finished" + (x.task.resultBytes ? ", sending " + bytes(x.task.resultBytes) + " back" : ""))]);
+      if (x.task.end) group(x.e, o === "failed" || o === "killed" ? o : "end", x, who(x) + (o === "failed" ? " failed" + (x.task.error ? ": " + x.task.error : "") : o === "killed" ? " was killed" : " finished" + (x.task.resultBytes ? ", sending " + bytes(x.task.resultBytes) + " back" : "")));
     });
     jobs.forEach(function (j) {
-      if (j.submitted) evs.push([j.submitted, "job", "Job " + j.id + " started: " + (j.desc || j.name || "")]);
-      if (j.completed) evs.push([j.completed, "job", "Job " + j.id + (j.status === "failed" ? " failed" : " finished")]);
+      if (j.submitted) evs.push({ at: j.submitted, kind: "job", level: "run", text: "Job " + j.id + " started: " + (j.desc || j.name || "") });
+      if (j.completed) evs.push({ at: j.completed, kind: "job", level: "run", bad: j.status === "failed", text: "Job " + j.id + (j.status === "failed" ? " failed" : " finished") });
     });
     stages.forEach(function (st) {
-      if (st.submitted) evs.push([st.submitted, "stage", "Stage " + st.id + (st.attempt ? "." + st.attempt : "") + " started: " + st.numTasks + " tasks (" + st.name + ")"]);
-      if (st.completed) evs.push([st.completed, "stage", "Stage " + st.id + (st.attempt ? "." + st.attempt : "") + (st.status === "failed" ? " failed" : " finished")]);
+      var n = "Stage " + st.id + (st.attempt ? "." + st.attempt : "");
+      if (st.submitted) evs.push({ at: st.submitted, kind: "stage", level: "run", stage: st.id, text: n + " started: " + num(st.numTasks) + " tasks (" + st.name + ")" });
+      if (st.completed) evs.push({ at: st.completed, kind: "stage", level: "run", stage: st.id, bad: st.status === "failed", text: n + (st.status === "failed" ? " failed" : " finished") });
     });
-    evs.sort(function (p, q) { return p[0] - q[0]; });
-    RP = { ts: ts, t0: t0, t1: Math.max(t1, t0 + 1000), ex: ex, order: order, evs: evs };
+    evs.sort(function (p, q) { return p.at - q.at; });
+    evs.forEach(function (e) { if (e.members) e.members.sort(function (p, q) { return p.at - q.at || p.tid - q.tid; }); });
+    // each view of the list (RP_SHOW) numbers its own events, 1 first
+    var shown = {};
+    RP_SHOW.forEach(function (m) { shown[m[0]] = []; });
+    evs.forEach(function (e, i) {
+      RP_SHOW.forEach(function (m) { if (m[2].indexOf(e.level) >= 0) shown[m[0]].push(i); });
+    });
+    RP = { ts: ts, t0: t0, t1: Math.max(t1, t0 + 1000), ex: ex, order: order, evs: evs, shown: shown };
     return RP;
   }
   function stageColor(stage) { return stage < 0 ? V.neutral : V.viz[stage % V.viz.length]; }
@@ -931,7 +955,7 @@
   }
   views.replay = function () {
     var M = replayModel();
-    var s = section("Replay", "The run played back from its logs: each executor's task slots filling with the tasks it ran, coloured by stage; the jobs and stages the driver was running; each executor's shuffle reads over the network and storage memory left; and what happened, in words.");
+    var s = section("Replay", "The run played back from its logs: each executor's task slots filling with the tasks it ran, coloured by stage (the legend above the executors says which colour is which); the jobs and stages the driver was running; each executor's shuffle reads over the network and storage memory left; and what happened, as a numbered list.");
     s.appendChild(explain("Times are as the logs give them" + (TS.byThread ? "" : " (whole seconds in Spark's default layout, so a task shorter than a second shows briefly)") + ". A task's slot is the first free one on its executor; Spark does not log which core ran it. " +
       num(M.ts.length) + " tasks on " + num(M.order.length) + " executor" + (M.order.length === 1 ? "" : "s") + (TS.cut ? "; " + num(TS.cut) + " tasks past the page's cap are not shown" : "") + "."));
     var span0 = M.t1 - M.t0;
@@ -945,15 +969,22 @@
     var clock = el("span", { cls: "count" });
     s.appendChild(el("div", { cls: "bar-tools" }, playBtn, restart, stepBtn, speed, clock));
     s.appendChild(scrub);
+    var show = el("select", { "aria-label": "What the list shows" });
+    RP_SHOW.forEach(function (o) { show.appendChild(el("option", { value: o[0], text: o[1] })); });
     var stage = el("div", { cls: "rp" });
     var driver = el("div", { cls: "rp-driver" });
+    var legend = el("div", { cls: "rp-legend" });
     var grid = el("div", { cls: "rp-grid" });
     var ticker = el("ol", { cls: "rp-ticker", "aria-live": "off" });
-    stage.appendChild(el("div", { cls: "rp-col" }, el("h3", { text: "Driver" }), driver, el("h3", { text: "What happened" }), ticker));
-    stage.appendChild(el("div", { cls: "rp-col" }, el("h3", { text: "Executors" }), grid));
+    stage.appendChild(el("div", { cls: "rp-col" }, el("h3", { text: "Driver" }), driver,
+      el("div", { cls: "rp-head" }, el("h3", { text: "What happened" }), show),
+      explain("Newest first, numbered in order. Tasks of one stage that started or ended in the same second share a line; open it to see each one."), ticker));
+    stage.appendChild(el("div", { cls: "rp-col" }, el("h3", { text: "Executors" }), legend, grid,
+      explain("Each box is a task slot: \"s3 p12\" is stage 3's partition 12. There are " + V.viz.length + " colours, so stages " + V.viz.length + " apart share one; the slot's label tells them apart. " +
+        "The grey bars are not stages: Network in is the shuffle data an executor fetched over the network in the last " + dur((D.flows || {}).stepMs || 0) + "; Storage free is the memory it had left for cached data.")));
     s.appendChild(stage);
-    // executor cards, grouped by host
-    var cards = {}, hosts = {};
+    // executor cards, side by side, in executor order, each naming its host
+    var cards = {};
     var flowEx = {};
     ((D.flows || {}).executors || []).forEach(function (e) {
       var maxFree = 0, maxRemote = 0;
@@ -963,26 +994,50 @@
     });
     M.order.forEach(function (id) {
       var e = M.ex[id], h = e.host || "unknown host";
-      if (!hosts[h]) { hosts[h] = el("div", { cls: "rp-host" }, el("div", { cls: "rp-hostname", title: h, text: String(h).split(".")[0] })); grid.appendChild(hosts[h]); }
       var slots = [];
-      var row = el("div", { cls: "rp-slots" });
+      var row = el("div", { cls: "rp-slots", style: "grid-template-columns:repeat(" + Math.min(e.nslots, 6) + ",minmax(0,1fr))" });
       for (var k = 0; k < e.nslots; k++) { var sl = el("div", { cls: "rp-slot" }); slots.push(sl); row.appendChild(sl); }
-      var net = el("div", { cls: "rp-bar" }, el("span")), mem = el("div", { cls: "rp-bar mem" }, el("span"));
-      var netTxt = el("span", { cls: "sub" }), memTxt = el("span", { cls: "sub" });
-      var card = el("div", { cls: "rp-exec" }, el("div", { cls: "rp-exhead" }, execByID[id] ? execLink(id) : "Executor " + id, el("span", { cls: "sub", text: e.cores ? e.cores + " cores" : num(e.nslots) + " at once" })), row,
+      var net = el("div", { cls: "rp-bar gauge" }, el("span")), mem = el("div", { cls: "rp-bar gauge" }, el("span"));
+      var netTxt = el("span", { cls: "rp-val" }), memTxt = el("span", { cls: "rp-val" });
+      var card = el("div", { cls: "rp-exec" },
+        el("div", { cls: "rp-exhead" }, el("span", null, "Executor ", execByID[id] ? execLink(id) : String(id)), el("span", { cls: "sub", title: h, text: (e.cores ? e.cores + " cores" : num(e.nslots) + " at once") + " · " + String(h).split(".")[0] })), row,
         flowEx[id] && flowEx[id].maxRemote ? el("div", { cls: "rp-gauge" }, el("span", { text: "Network in" }), net, netTxt) : null,
         flowEx[id] && flowEx[id].maxFree ? el("div", { cls: "rp-gauge" }, el("span", { text: "Storage free" }), mem, memTxt) : null);
       cards[id] = { card: card, slots: slots, net: net.firstChild, mem: mem.firstChild, netTxt: netTxt, memTxt: memTxt };
-      hosts[h].appendChild(card);
+      grid.appendChild(card);
     });
+    function rpStageName(id) { var st = (stagesByID[id] || [])[0]; return st ? st.name : ""; }
+    function dot(stageID) { return el("span", { cls: "rp-dot", style: "background:" + stageColor(stageID) }); }
+    function plural(n, one, many) { return num(n) + " " + (n === 1 ? one : many); }
+    // a task's line: its TID linked to its page, then what it did
+    function member(m) { var id = "TID " + m.tid; return el("span", null, link("#task/" + m.tid, id), m.text.slice(id.length)); }
+    // one line of the list: a job or stage, a step, or a group of tasks,
+    // counting only its tasks up to now
+    function eventItem(n, e, t) {
+      var body;
+      if (e.members) {
+        var ms = e.members.filter(function (m) { return m.at <= t; });
+        var of = e.stage >= 0 ? " of stage " + e.stage + (e.attempt ? "." + e.attempt : "") : "";
+        if (ms.length === 1) body = el("span", null, dot(e.stage), member(ms[0]));
+        else {
+          var execs = e.execs.length > 3 ? plural(e.execs.length, "executor", "executors") : (e.execs.length === 1 ? "executor " : "executors ") + e.execs.join(", ");
+          body = el("details", null, el("summary", null, dot(e.stage), plural(ms.length, "task", "tasks") + of + " " + RP_VERB[e.kind] + " on " + execs),
+            el("ul", { cls: "rp-members" }, ms.map(function (m) { return el("li", null, member(m)); })));
+        }
+      } else body = el("span", null, e.stage != null && e.stage >= 0 ? dot(e.stage) : null, e.text);
+      var bad = e.bad || e.kind === "failed" || e.kind === "killed";
+      return el("li", { cls: "rp-ev " + e.level + (bad ? " bad" : "") }, el("span", { cls: "rp-n", text: num(n) }), el("span", { cls: "rp-time", text: tfmt.format(e.at) }),
+        el("span", { cls: "rp-tag" + (bad ? " bad" : e.level === "run" ? " run" : ""), text: RP_TAG[e.kind] || e.kind }), el("span", { cls: "rp-txt" }, body));
+    }
+    var drawn = { legend: null, ticker: null };
     function draw() {
       var t = state.now;
       clock.textContent = tfmt.format(t) + " · " + dur(t - M.t0) + " of " + dur(span0);
       scrub.value = String(Math.round(1000 * (t - M.t0) / span0));
       // task slots
-      var busy = {};
+      var busy = {}, busyStages = {};
       M.ts.forEach(function (x) {
-        if (x.s <= t && t < x.e) busy[x.ex + "/" + x.slot] = x;
+        if (x.s <= t && t < x.e) { busy[x.ex + "/" + x.slot] = x; busyStages[x.task.stage + "." + x.task.stageAttempt] = x.task.stage; }
       });
       M.order.forEach(function (id) {
         var c = cards[id];
@@ -1001,36 +1056,63 @@
         if (f && f.maxRemote) {
           var p = seriesAt(f.e.remote, t), v = p && t - Date.parse(p.t) < D.flows.stepMs ? p.v : 0;
           c.net.style.width = (100 * v / f.maxRemote) + "%";
-          c.netTxt.textContent = v ? bytes(v) + " in " + dur(D.flows.stepMs) : "—";
+          c.netTxt.textContent = v ? bytes(v) : "—";
         }
         if (f && f.maxFree) {
           var q = seriesAt(f.e.free, t);
           c.mem.style.width = q ? (100 * q.v / f.maxFree) + "%" : "100%";
-          c.memTxt.textContent = q ? bytes(q.v) : "nothing cached yet";
+          c.memTxt.textContent = q ? bytes(q.v) : "nothing cached";
         }
       });
-      // driver: jobs and stages running
+      // driver: jobs and stages running, numbered
       driver.textContent = "";
       var runJobs = jobs.filter(function (j) { return j.submitted && j.submitted <= t && (!j.completed || t < j.completed); });
       var runStages = stages.filter(function (st) { return st.submitted && st.submitted <= t && (!st.completed || t < st.completed); });
       if (!runJobs.length && !runStages.length) driver.appendChild(el("p", { cls: "sub", text: t <= M.t0 ? "Starting." : t >= M.t1 ? "The run has ended." : "No job running: the driver was busy with its own work, or waiting." }));
-      runJobs.forEach(function (j) { driver.appendChild(el("div", { cls: "rp-job" }, link("#job/" + j.id, "Job " + j.id), " ", el("span", { cls: "sub", text: j.desc || j.name || "" }))); });
-      runStages.forEach(function (st) {
-        var done = 0;
-        M.ts.forEach(function (x) { if (x.task.stage === st.id && x.task.stageAttempt === st.attempt && x.e <= t && x.task.outcome === "finished") done++; });
-        var n = st.numTasks || 1;
-        driver.appendChild(el("div", { cls: "rp-stage" }, el("span", { cls: "rp-dot", style: "background:" + stageColor(st.id) }), link("#stage/" + st.key, "Stage " + st.id), " ",
-          el("span", { cls: "sub", text: num(done) + " of " + num(n) + " tasks done" }), el("div", { cls: "rp-bar" }, el("span", { style: "width:" + Math.min(100, 100 * done / n) + "%;background:" + stageColor(st.id) }))));
-      });
-      // the last events up to now
-      ticker.textContent = "";
-      var hi = 0, lo = M.evs.length;
-      while (hi < lo) { var mid = (hi + lo) >> 1; if (M.evs[mid][0] <= t) hi = mid + 1; else lo = mid; }
-      for (var i = hi - 1; i >= Math.max(0, hi - 14); i--) {
-        var ev = M.evs[i];
-        ticker.appendChild(el("li", { cls: "rp-ev " + ev[1] }, el("span", { cls: "sub", text: tfmt.format(ev[0]) }), " ", ev[2]));
+      if (runJobs.length) {
+        driver.appendChild(el("ul", { cls: "rp-jobs" }, runJobs.slice(0, RP_JOBS).map(function (j) { return el("li", { cls: "rp-job" }, link("#job/" + j.id, "Job " + j.id), " ", el("span", { cls: "sub inline", text: clip(j.desc || j.name || "", 80) })); })));
+        if (runJobs.length > RP_JOBS) driver.appendChild(el("p", { cls: "sub", text: "and " + plural(runJobs.length - RP_JOBS, "more job", "more jobs") + " running" }));
+      }
+      if (runStages.length) {
+        driver.appendChild(el("ol", { cls: "rp-list" }, runStages.slice(0, RP_STAGES).map(function (st) {
+          var done = 0;
+          M.ts.forEach(function (x) { if (x.task.stage === st.id && x.task.stageAttempt === st.attempt && x.e <= t && x.task.outcome === "finished") done++; });
+          var n = st.numTasks || 1;
+          return el("li", { cls: "rp-stage" }, el("div", null, dot(st.id), link("#stage/" + st.key, "Stage " + st.id + (st.attempt ? "." + st.attempt : "")), " ",
+            el("span", { cls: "sub inline", text: num(done) + " of " + num(n) + " tasks done" })), el("div", { cls: "rp-bar" }, el("span", { style: "width:" + Math.min(100, 100 * done / n) + "%;background:" + stageColor(st.id) })));
+        })));
+        if (runStages.length > RP_STAGES) driver.appendChild(el("p", { cls: "sub", text: "and " + plural(runStages.length - RP_STAGES, "more stage", "more stages") + " running" }));
+      }
+      // the legend: what each colour is, for the stages running now
+      runStages.forEach(function (st) { busyStages[st.id + "." + st.attempt] = st.id; });
+      var keys = Object.keys(busyStages).sort(function (p, q) { return parseFloat(p) - parseFloat(q); });
+      if (drawn.legend !== keys.join(" ")) {
+        drawn.legend = keys.join(" ");
+        legend.textContent = "";
+        legend.appendChild(el("span", { cls: "rp-legtitle", text: "Task colour = its stage:" }));
+        if (!keys.length) legend.appendChild(el("span", { cls: "sub inline", text: "no task running" }));
+        keys.forEach(function (k) {
+          var id = busyStages[k];
+          legend.appendChild(el("span", { cls: "rp-chip", title: rpStageName(id) }, dot(id), id < 0 ? "Stage unknown" : "Stage " + k.replace(/\.0$/, ""), rpStageName(id) ? el("span", { cls: "sub inline", text: clip(rpStageName(id), 40) }) : null));
+        });
+      }
+      // the last events up to now, newest first, redrawn only when they change
+      var idx = M.shown[show.value] || [];
+      var hi = 0, lo = idx.length;
+      while (hi < lo) { var mid = (hi + lo) >> 1; if (M.evs[idx[mid]].at <= t) hi = mid + 1; else lo = mid; }
+      var sig = show.value + "/" + hi;
+      for (var j = hi - 1; j >= Math.max(0, hi - RP_EVENTS); j--) {
+        var g = M.evs[idx[j]];
+        if (g.members && g.members[g.members.length - 1].at > g.at) sig += "/" + g.members.filter(function (m) { return m.at <= t; }).length;
+      }
+      if (drawn.ticker !== sig) {
+        drawn.ticker = sig;
+        ticker.textContent = "";
+        if (!hi) ticker.appendChild(el("li", { cls: "sub", text: "Nothing yet." }));
+        for (var i = hi - 1; i >= Math.max(0, hi - RP_EVENTS); i--) ticker.appendChild(eventItem(i + 1, M.evs[idx[i]], t));
       }
     }
+    show.addEventListener("change", draw);
     function speedNow() {
       var v = speed.value;
       return v.slice(0, 3) === "fit" ? span0 / (1000 * +v.slice(3)) : +v;
@@ -1052,8 +1134,8 @@
     restart.addEventListener("click", function () { state.now = M.t0; state.last = 0; draw(); });
     stepBtn.addEventListener("click", function () {
       state.playing = false; playBtn.textContent = "Play";
-      var next = M.evs.filter(function (e) { return e[0] > state.now; })[0];
-      state.now = next ? next[0] : M.t1;
+      var next = (M.shown[show.value] || []).map(function (i) { return M.evs[i]; }).filter(function (e) { return e.at > state.now; })[0];
+      state.now = next ? next.at : M.t1;
       draw();
     });
     scrub.addEventListener("input", function () { state.now = M.t0 + span0 * (+scrub.value) / 1000; state.last = 0; draw(); });
