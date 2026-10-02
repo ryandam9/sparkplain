@@ -483,6 +483,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		d.Config = append(d.Config, xg)
 	}
 
+	d.HBaseScans = hbaseScans(r)
 	if x == nil {
 		d.Notes = append(d.Notes, "Per-task detail was not collected for this run, so stage summaries, samples and charts are missing.")
 		return d
@@ -566,23 +567,28 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 			d.PlanLays[strconv.FormatInt(g.QueryID, 10)] = layered(len(nodes), edges)
 		}
 	}
-	if r.HBase != nil {
-		for _, sc := range r.HBase.Scans {
-			x := xHBaseScan{HBaseScanRead: sc}
-			if sc.Scan != nil {
-				x.Facts, x.Filter = sc.Scan.Facts(), sc.Scan.Filter.Lines()
-			}
-			if len(x.Regions) > maxExplorerRegions {
-				x.RegionsCut = len(x.Regions) - maxExplorerRegions
-				x.Regions = x.Regions[:maxExplorerRegions]
-			}
-			if d.HBaseScans == nil {
-				d.HBaseScans = map[string]xHBaseScan{}
-			}
-			d.HBaseScans[fmt.Sprintf("%d.%d", sc.StageID, sc.Attempt)] = x
-		}
-	}
 	return d
+}
+
+// hbaseScans are the scan stages, by stage key; those built from the
+// executors' logs exist even with no event log.
+func hbaseScans(r *model.Report) map[string]xHBaseScan {
+	if r.HBase == nil || len(r.HBase.Scans) == 0 {
+		return nil
+	}
+	out := map[string]xHBaseScan{}
+	for _, sc := range r.HBase.Scans {
+		x := xHBaseScan{HBaseScanRead: sc}
+		if sc.Scan != nil {
+			x.Facts, x.Filter = sc.Scan.Facts(), sc.Scan.Filter.Lines()
+		}
+		if len(x.Regions) > maxExplorerRegions {
+			x.RegionsCut = len(x.Regions) - maxExplorerRegions
+			x.Regions = x.Regions[:maxExplorerRegions]
+		}
+		out[fmt.Sprintf("%d.%d", sc.StageID, sc.Attempt)] = x
+	}
+	return out
 }
 
 // maxExplorerRegions caps the regions of one scan on the page.

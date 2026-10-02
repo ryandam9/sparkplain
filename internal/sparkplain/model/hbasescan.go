@@ -191,13 +191,19 @@ type HBaseSplit struct {
 }
 
 // SplitTask is a task as its executor thread names it: "… for task 41.0
-// in stage 172.0 (TID 6429)".
+// in stage 172.0 (TID 6429)". Start and End are the times of its "Running
+// task" and "Finished task" lines (End from "Exception in task" when it
+// Failed), when the log holds them; EndSource is that last line.
 type SplitTask struct {
-	TaskID       int64 `json:"taskId"`
-	Partition    int   `json:"partition"`
-	Attempt      int   `json:"attempt"`
-	Stage        int   `json:"stage"`
-	StageAttempt int   `json:"stageAttempt"`
+	TaskID       int64     `json:"taskId"`
+	Partition    int       `json:"partition"`
+	Attempt      int       `json:"attempt"`
+	Stage        int       `json:"stage"`
+	StageAttempt int       `json:"stageAttempt"`
+	Start        time.Time `json:"start,omitzero"`
+	End          time.Time `json:"end,omitzero"`
+	Failed       bool      `json:"failed,omitempty"`
+	EndSource    Source    `json:"endSource,omitzero"`
 }
 
 // HBaseScanRead is what one TableInputFormat scan stage read, from its
@@ -205,6 +211,9 @@ type SplitTask struct {
 // key order, and per region server how many regions, rows and bytes.
 // Regions are tied to their tasks (rows, time, executor) when the stage's
 // splits match its partitions one for one (Untied says why not).
+// FromLogs marks a scan built without the event log, from split lines that
+// name their tasks: its stage, tasks and times come from the executors'
+// logs, and rows are not known.
 type HBaseScanRead struct {
 	StageID   int               `json:"stageId"`
 	Attempt   int               `json:"attempt"`
@@ -222,6 +231,7 @@ type HBaseScanRead struct {
 	Tied         bool   `json:"tied"`
 	TiedBy       string `json:"tiedBy,omitempty"` // "task" (each split line names its task) or "key order"
 	Untied       string `json:"untied,omitempty"`
+	FromLogs     bool   `json:"fromLogs,omitempty"`
 	Source       Source `json:"source"`
 }
 

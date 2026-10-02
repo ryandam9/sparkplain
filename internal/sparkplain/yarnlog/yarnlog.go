@@ -131,6 +131,9 @@ type classifier struct {
 	// splitOf finds a split by the task that logged it, when the layout
 	// prints the thread: its size line then needs no guessing.
 	splitOf map[int64]int
+	// started holds when each task thread logged "Running task", until
+	// its split or its end: a task logs its split just after it starts.
+	started map[int64]time.Time
 
 	// The most executors the driver asked for at once, kept as one line.
 	maxDesired     int
@@ -290,6 +293,9 @@ func (c *classifier) header(h header, line string) {
 	}
 	lg := shortLogger(h.logger)
 	problem := h.level == "WARN" || h.level == "ERROR" || h.level == "FATAL"
+	if t := threadTask(h.thread); t != nil {
+		c.taskLine(t.TaskID, h)
+	}
 
 	// spark-submit's YARN client, in the step's stderr.
 	if c.res.File.Kind == StepStderr {
@@ -435,6 +441,10 @@ func (c *classifier) header(h header, line string) {
 	case driverHostRE.MatchString(msg):
 		l = c.entry(model.LogDriverHost, model.Info, h.time, msg)
 		l.Fields["host"] = driverHostRE.FindStringSubmatch(msg)[1]
+	case executorHostRE.MatchString(msg):
+		m := executorHostRE.FindStringSubmatch(msg)
+		l = c.entry(model.LogExecutorHost, model.Info, h.time, msg)
+		l.Fields["executor"], l.Fields["host"] = m[1], m[2]
 	case nodeStateRE.MatchString(msg):
 		m := nodeStateRE.FindStringSubmatch(msg)
 		if m[2] == "RUNNING" || m[2] == "NEW" {
@@ -1123,6 +1133,13 @@ func (c *classifier) split(table, server, msg string, h header) {
 		sp.StartRow, sp.EndRow, sp.Region = redact.Clean(m[1]), redact.Clean(m[2]), m[3]
 	}
 	sp.Task = threadTask(h.thread)
+	if sp.Task != nil {
+		sp.Task.Start = h.time
+		if t, ok := c.started[sp.Task.TaskID]; ok {
+			sp.Task.Start = t
+			delete(c.started, sp.Task.TaskID)
+		}
+	}
 	c.res.Splits = append(c.res.Splits, sp)
 	if sp.Task != nil {
 		if c.splitOf == nil {
@@ -1133,6 +1150,37 @@ func (c *classifier) split(table, server, msg string, h header) {
 	}
 	c.splitGroup = append(c.splitGroup, len(c.res.Splits)-1)
 	c.splitOpen++
+}
+
+// maxStarted caps the tasks waiting for their split line: a task that
+// reads no HBase logs none, and its Running line is dropped at its end.
+const maxStarted = 10_000
+
+// taskLine times a task from the lines its thread logs: Spark's executor
+// logs "Running task …" as the task starts and "Finished task …" (or
+// "Exception in task …") as it ends, both on the task's own thread. Only
+// tasks that logged a split are kept.
+func (c *classifier) taskLine(tid int64, h header) {
+	switch {
+	case strings.HasPrefix(h.msg, "Running task "):
+		if c.started == nil {
+			c.started = map[int64]time.Time{}
+		}
+		if len(c.started) < maxStarted {
+			c.started[tid] = h.time
+		}
+	case strings.HasPrefix(h.msg, "Finished task "), taskExcRE.MatchString(h.msg):
+		delete(c.started, tid)
+		k, ok := c.splitOf[tid]
+		if !ok {
+			return
+		}
+		t := c.res.Splits[k].Task
+		if t.End.IsZero() {
+			t.End, t.EndSource = h.time, model.Source{File: c.res.Name, Line: c.n}
+			t.Failed = !strings.HasPrefix(h.msg, "Finished task ")
+		}
+	}
 }
 
 // threadTask reads the task a Spark executor thread runs from its name.

@@ -30,7 +30,7 @@ var (
 	// logger, as on the user's clusters (%d [%t] %-5p %c - %m):
 	// "2026-10-02 09:17:17,589 [Executor task launch worker for task 41.0 in
 	// stage 172.0 (TID 6429)] INFO  org.apache.spark.rdd.NewHadoopRDD  - Input split: …".
-	threadHeadRE = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d{3} \[(.*?)\] (TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\s+(\S+?)\s+- ?(.*)$`)
+	threadHeadRE = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) \[(.*?)\] (TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\s+(\S+?)\s+- ?(.*)$`)
 	// The task a Spark executor's thread runs: "… for task 41.0 in stage
 	// 172.0 (TID 6429)", which is partition 41, attempt 0, of stage 172,
 	// attempt 0.
@@ -54,7 +54,8 @@ func parseHeader(kind FileKind, line string) (header, bool) {
 		return header{time: t, level: m[2], thread: m[3], logger: m[4], msg: m[5]}, true
 	}
 	if m := threadHeadRE.FindStringSubmatch(line); m != nil {
-		t, _ := time.Parse("2006-01-02 15:04:05", m[1])
+		// Kept to the millisecond: a task's lines time it.
+		t, _ := time.Parse("2006-01-02 15:04:05,000", m[1])
 		return header{time: t, thread: m[2], level: m[3], logger: m[4], msg: m[5]}, true
 	}
 	if m := hadoopHeadRE.FindStringSubmatch(line); m != nil {
@@ -122,7 +123,10 @@ var (
 	// The driver's own block manager names its host; YarnAllocator passes
 	// on YARN's node updates, such as a spot node given notice
 	// (DECOMMISSIONING), checked on the phase 4 test cluster.
-	driverHostRE   = regexp.MustCompile(`^Registered BlockManager BlockManagerId\(driver, ([^,\s]+), \d+`)
+	driverHostRE = regexp.MustCompile(`^Registered BlockManager BlockManagerId\(driver, ([^,\s]+), \d+`)
+	// An executor names itself as it starts: "Starting executor ID 1 on
+	// host ip-10-0-2-12.us-east-1.compute.internal".
+	executorHostRE = regexp.MustCompile(`^Starting executor ID (\S+) on host (\S+)$`)
 	nodeStateRE    = regexp.MustCompile(`^Yarn node state updated for host (\S+) to (\w+)`)
 	shutdownCmdRE  = regexp.MustCompile(`^Driver commanded a shutdown`)
 	submittedAppRE = regexp.MustCompile(`^Submitted application (application_\d+_\d+)`)

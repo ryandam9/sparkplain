@@ -526,8 +526,28 @@
     s.appendChild(picker);
     s.appendChild(slot);
     s.appendChild(stageTable(stages));
+    var fromLogs = Object.keys(D.hbaseScans || {}).filter(function (k) { return D.hbaseScans[k].fromLogs; });
+    if (fromLogs.length) {
+      s.appendChild(el("h3", { text: "HBase scans from the executors' logs" }));
+      s.appendChild(explain("There is no event log, so these stages are known only from the split lines their tasks logged."));
+      var ul = el("ul");
+      fromLogs.forEach(function (k) { var x = D.hbaseScans[k]; ul.appendChild(el("li", null, link("#stage/" + k, "Stage " + x.stageId + (x.attempt ? " (attempt " + (x.attempt + 1) + ")" : "")), ": scan of " + x.table)); });
+      s.appendChild(ul);
+    }
     return s;
   };
+
+  // logScanPage is a scan stage known only from its executors' logs (no
+  // event log): the scan panel alone.
+  function logScanPage(key) {
+    var x = (D.hbaseScans || {})[key] || (D.hbaseScans || {})[key + ".0"];
+    if (!x || !x.fromLogs) return null;
+    var s = section("Stage " + x.stageId + (x.attempt ? " (attempt " + (x.attempt + 1) + ")" : "") + ": TableInputFormat scan of " + x.table,
+      "Known only from the executors' logs: there is no event log, so the stage's tasks, rows and code are not shown.");
+    s.insertBefore(el("div", { cls: "crumbs" }, link("#stages", "Stages"), " / stage " + x.stageId + "." + x.attempt), s.firstChild);
+    hbaseScanPanel(s, x);
+    return s;
+  }
 
   var METRICS = [
     ["durationMs", "Duration", dur, "Wall-clock time from launch to finish."],
@@ -590,7 +610,7 @@
   views.stage = function (key) {
     var st = null;
     stages.forEach(function (s) { if (s.key === key || (!st && String(s.id) === key)) st = s; });
-    if (!st) return notFound("Stage " + key);
+    if (!st) return logScanPage(key) || notFound("Stage " + key);
     var det = D.detail[st.key];
     var s = section("Stage " + st.id + (st.attempt ? " (attempt " + (st.attempt + 1) + ")" : "") + ": " + st.name);
     s.insertBefore(el("div", { cls: "crumbs" }, link("#stages", "Stages"), " / stage " + st.key), s.firstChild);
@@ -700,11 +720,11 @@
     function row(k) { return k ? el("span", { cls: "mono", text: k }) : el("span", { cls: "sub", text: "(table edge)" }); }
     var regions = x.regions || [], servers = x.servers || [];
     s.appendChild(el("h3", { text: "HBase regions read: " + x.table }));
-    s.appendChild(explain("TableInputFormat makes one split per region the scan overlaps, in key order, and Spark's partition n reads split n. " + (x.tiedBy === "task" ? "Each region's rows and time come from the task named by the executor thread on its split line, so the tie is exact." : "Each region's rows and time come from its task, checked against the executor that logged its split.")));
+    s.appendChild(explain("TableInputFormat makes one split per region the scan overlaps, in key order, and Spark's partition n reads split n. " + (x.fromLogs ? "Each split line names its task by the executor thread that logged it, and each region's time runs from that task's Running line to its Finished line. A region whose task logged no end, or only failed, shows no time." : x.tiedBy === "task" ? "Each region's rows and time come from the task named by the executor thread on its split line, so the tie is exact." : "Each region's rows and time come from its task, checked against the executor that logged its split.")));
     s.appendChild(el("div", { cls: "facts" },
       fact("Key range read", el("span", { cls: "mono", text: x.rows }), "From the executors' split lines: each region's range cut to the scan's start and stop rows."),
       fact("Regions read", num(regions.length + (x.regionsCut || 0)) + " on " + num(servers.length) + " region server" + (servers.length === 1 ? "" : "s"), "One task per region, so the stage cannot run more tasks at once than this."),
-      fact("Rows returned", num(x.totalRows), "Rows the scan returned to Spark, after its filters ran on the region servers. Spark counts no bytes for HBase input."),
+      x.fromLogs ? fact("Rows returned", "needs the event log", "Spark records the rows each task read only in the event log; the executors' logs do not say.") : fact("Rows returned", num(x.totalRows), "Rows the scan returned to Spark, after its filters ran on the region servers. Spark counts no bytes for HBase input."),
       x.sizedRegions ? fact("Estimated size", bytes(x.sizeBytes) + (x.sizedRegions < regions.length ? " · " + num(x.sizedRegions) + " of " + num(regions.length) + " regions" : ""), "HBase's estimate of each region's size on disk (Input split length), not bytes sent over the network.") : null,
       x.scan ? fact("Scan as the job defined it", el("span", { cls: "mono", text: ((x.facts || []).filter(function (f) { return f[0] === "Rows"; })[0] || ["", ""])[1] }), (x.facts || []).filter(function (f) { return f[0] !== "Rows"; }).map(function (f) { return f[0] + ": " + f[1]; }).join(". ") + ". From " + msrc(x.scan.source) + ".") : null));
     if (x.filter && x.filter.length) {
@@ -715,11 +735,11 @@
     }
     if (!x.tied) s.appendChild(explain("Rows and time per region are not shown: " + x.untied));
     s.appendChild(table({
-      rows: servers, sort: x.tied ? 2 : 1,
+      rows: servers, sort: x.fromLogs ? 4 : x.tied ? 2 : 1,
       cols: [
         { h: "Region server", v: function (r) { return r.server; }, f: function (r) { return host(r.server); } },
         { h: "Regions", num: true, v: function (r) { return r.regions; }, f: function (r) { return num(r.regions); } },
-        { h: "Rows", num: true, v: function (r) { return r.rows; }, f: function (r) { return x.tied ? num(r.rows) : "—"; } },
+        { h: "Rows", num: true, v: function (r) { return r.rows; }, f: function (r) { return x.tied && !x.fromLogs ? num(r.rows) : "—"; } },
         { h: "Estimated size", num: true, v: function (r) { return r.sizeBytes; }, f: function (r) { return r.sizeBytes ? bytes(r.sizeBytes) : "—"; } },
         { h: "Task time", num: true, v: function (r) { return r.taskMs; }, f: function (r) { return x.tied ? dur(r.taskMs) : "—"; } }
       ]
@@ -732,9 +752,9 @@
         { h: "Start row", v: function (r) { return r.g.startRow; }, f: function (r) { return row(r.g.startRow); } },
         { h: "End row", v: function (r) { return r.g.endRow; }, f: function (r) { return row(r.g.endRow); } },
         { h: "Region server", v: function (r) { return r.g.server; }, f: function (r) { return host(r.g.server); } },
-        { h: "Rows", num: true, v: function (r) { return r.g.task ? r.g.task.rows : -1; }, f: function (r) { return r.g.task ? num(r.g.task.rows) : "—"; } },
+        { h: "Rows", num: true, v: function (r) { return r.g.task && !x.fromLogs ? r.g.task.rows : -1; }, f: function (r) { return r.g.task && !x.fromLogs ? num(r.g.task.rows) : "—"; } },
         { h: "Took", num: true, v: function (r) { return r.g.task ? r.g.task.durationMs : -1; }, f: function (r) { return r.g.task ? dur(r.g.task.durationMs) : "—"; } },
-        { h: "Executor", v: function (r) { return r.g.task ? r.g.task.executorId : ""; }, f: function (r) { return r.g.task ? el("span", null, execLink(r.g.task.executorId), el("span", { cls: "sub", text: "task " + r.g.task.taskId })) : "—"; } },
+        { h: "Executor", v: function (r) { return r.g.task ? r.g.task.executorId : ""; }, f: function (r) { return r.g.task ? el("span", null, x.fromLogs ? (r.g.task.executorId || "—") : execLink(r.g.task.executorId), el("span", { cls: "sub", text: "task " + r.g.task.taskId })) : "—"; } },
         { h: "Estimated size", num: true, v: function (r) { return r.g.sizeBytes || 0; }, f: function (r) { return r.g.sizeBytes ? bytes(r.g.sizeBytes) : "—"; } },
         { h: "Region", v: function (r) { return r.g.region; }, f: function (r) { return el("span", { cls: "mono", text: r.g.region }); } },
         { h: "Found in", v: function (r) { return msrc(r.g.source); }, f: function (r) { return el("span", { cls: "srcref" }, msrc(r.g.source), r.g.task ? el("br") : null, r.g.task ? msrc(r.g.task.source) : null); } }

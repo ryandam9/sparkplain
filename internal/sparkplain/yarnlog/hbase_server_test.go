@@ -277,11 +277,14 @@ func TestThreadLayoutTiesSplitsToTasks(t *testing.T) {
 		return fmt.Sprintf("[Executor task launch worker for task %d.0 in stage 172.0 (TID %d)]", p, tid)
 	}
 	log := strings.Join([]string{
+		"2026-10-02 09:17:10,004 [dispatcher-Executor] INFO  org.apache.spark.executor.Executor  - Starting executor ID 3 on host ip-10-0-2-12.example.internal",
+		"2026-10-02 09:17:16,950 " + task(41, 6429) + " INFO  org.apache.spark.executor.Executor  - Running task 41.0 in stage 172.0 (TID 6429)",
 		"2026-10-02 09:17:17,589 " + task(41, 6429) + " INFO  org.apache.spark.rdd.NewHadoopRDD  - Input split: Split(tablename=ns:orders, startrow=k41, endrow=k42, regionLocation=ip-10-0-2-12.example.internal, regionname=aaa949cedc)",
 		"2026-10-02 09:17:17,590 " + task(42, 6430) + " INFO  org.apache.spark.rdd.NewHadoopRDD  - Input split: Split(tablename=ns:orders, startrow=k42, endrow=k43, regionLocation=ip-10-0-2-10.example.internal, regionname=bbb949cedc)",
 		"2026-10-02 09:17:17,601 " + task(42, 6430) + " INFO  org.apache.hadoop.hbase.mapreduce.TableInputFormatBase  - Input split length: 57 M bytes.",
 		"2026-10-02 09:17:17,602 " + task(41, 6429) + " INFO  org.apache.hadoop.hbase.mapreduce.TableInputFormatBase  - Input split length: 50 M bytes.",
 		"2026-10-02 09:18:02,001 " + task(42, 6430) + " ERROR org.apache.spark.executor.Executor  - Exception in task 42.0 in stage 172.0 (TID 6430)",
+		"2026-10-02 09:21:27,200 " + task(41, 6429) + " INFO  org.apache.spark.executor.Executor  - Finished task 41.0 in stage 172.0 (TID 6429). 2345 bytes result sent to driver",
 	}, "\n") + "\n"
 	res, err := Classify(strings.NewReader(log), "stderr", File{Kind: ContainerStderr, Container: "container_1_0001_01_000002"}, Options{})
 	if err != nil {
@@ -293,17 +296,32 @@ func TestThreadLayoutTiesSplitsToTasks(t *testing.T) {
 			s.SizeSource.Line, s.Task.Partition, s.Task.Attempt, s.Task.Stage, s.Task.StageAttempt, s.Task.TaskID))
 	}
 	want := []string{
-		"ns:orders [k41,k42) aaa949cedc 50M size@4 task 41.0 stage 172.0 TID 6429",
-		"ns:orders [k42,k43) bbb949cedc 57M size@3 task 42.0 stage 172.0 TID 6430",
+		"ns:orders [k41,k42) aaa949cedc 50M size@6 task 41.0 stage 172.0 TID 6429",
+		"ns:orders [k42,k43) bbb949cedc 57M size@5 task 42.0 stage 172.0 TID 6430",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("splits:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
-	var taskErr bool
+	// Task 41 is timed from its Running line to its Finished line; task 42
+	// had no Running line, so from its split, and failed.
+	if k := res.Splits[0].Task; k.Start != time.Date(2026, 10, 2, 9, 17, 16, 950e6, time.UTC) || k.End.Sub(k.Start) != 4*time.Minute+10250*time.Millisecond ||
+		k.Failed || k.EndSource.Line != 8 {
+		t.Errorf("task 41: %+v", k)
+	}
+	if k := res.Splits[1].Task; k.Start != time.Date(2026, 10, 2, 9, 17, 17, 590e6, time.UTC) || !k.Failed || k.EndSource.Line != 7 {
+		t.Errorf("task 42: %+v", k)
+	}
+	var taskErr, execHost bool
 	for _, l := range res.Lines {
-		if l.Kind == model.LogTaskError && l.Fields["tid"] == "6430" && l.Time.Equal(time.Date(2026, 10, 2, 9, 18, 2, 0, time.UTC)) {
+		if l.Kind == model.LogExecutorHost && l.Fields["executor"] == "3" && l.Fields["host"] == "ip-10-0-2-12.example.internal" {
+			execHost = true
+		}
+		if l.Kind == model.LogTaskError && l.Fields["tid"] == "6430" && l.Time.Equal(time.Date(2026, 10, 2, 9, 18, 2, 1e6, time.UTC)) {
 			taskErr = true
 		}
+	}
+	if !execHost {
+		t.Errorf("executor ID line not read: %+v", res.Lines)
 	}
 	if !taskErr {
 		t.Errorf("task error not read from the thread layout: %+v", res.Lines)
