@@ -202,3 +202,30 @@ svg.dag .edge.branch{stroke-dasharray:4 3}
 .utrack .ufill{background:var(--viz-series);border-radius:4px}
 .use.warn .ufill{background:var(--warn)} .use.crit .ufill{background:var(--viz-fail)}
 .uscale{display:flex;justify-content:space-between;font-size:10.5px;color:var(--faint);margin-top:2px}
+
+/* replay */
+.rp-scrub{width:100%}
+.rp{display:grid;grid-template-columns:minmax(260px,1fr) minmax(0,2fr);gap:18px;align-items:start}
+.rp-col{display:grid;gap:10px;min-width:0}
+.rp-col h3{margin:0}
+.rp-driver{display:grid;gap:8px;min-height:60px}
+.rp-stage,.rp-job{font-size:13px}
+.rp-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.rp-grid{display:grid;gap:12px}
+.rp-host{border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--surface);display:grid;gap:8px}
+.rp-hostname{font-family:var(--mono,monospace);font-size:12px;color:var(--muted)}
+.rp-exec{display:grid;gap:6px}
+.rp-exhead{display:flex;gap:8px;align-items:baseline;font-size:13px}
+.rp-slots{display:flex;flex-wrap:wrap;gap:4px}
+.rp-slot{width:64px;height:24px;border-radius:4px;border:1px dashed var(--line);font-size:11px;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:background .15s}
+.rp-slot.on{border-style:solid;border-color:transparent}
+.rp-slot.on a{color:#fff;text-decoration:none;white-space:nowrap;font-weight:600;text-shadow:0 0 2px rgba(0,0,0,.45)}
+.rp-gauge{display:grid;grid-template-columns:90px 1fr 130px;gap:8px;align-items:center;font-size:12px;color:var(--muted)}
+.rp-bar{height:8px;border-radius:4px;background:var(--surface-2);overflow:hidden}
+.rp-bar span{display:block;height:100%;width:0;background:var(--viz-3);transition:width .15s}
+.rp-bar.mem span{background:var(--viz-1)}
+.rp-ticker{list-style:none;margin:0;padding:0;display:grid;gap:4px;font-size:13px;max-height:420px;overflow:auto}
+.rp-ev.failed,.rp-ev.killed{color:var(--crit)}
+.rp-ev.job,.rp-ev.stage{font-weight:500}
+@media (max-width:820px){.rp{grid-template-columns:minmax(0,1fr)}.rp-gauge{grid-template-columns:80px 1fr}.rp-gauge .sub{grid-column:1/-1}}
+@media (prefers-reduced-motion:reduce){.rp-slot,.rp-bar span{transition:none}}
