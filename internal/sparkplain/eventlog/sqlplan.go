@@ -118,8 +118,14 @@ func writeRefs(n planNode, planText string, src model.Source) []model.DataRef {
 	} else if cmd == "InsertIntoHadoopFsRelationCommand" {
 		parts := strings.Split(args, ", ")
 		ref := model.DataRef{Kind: "path", Access: "write", Name: redact.Text(parts[0]), Source: src}
-		if len(parts) > 2 {
-			ref.Format = strings.ToLower(parts[2])
+		// "path, ifPartitionNotExists, [partition columns, when partitioned], Format, …"
+		depth := 0
+		for _, p := range parts[min(2, len(parts)):] {
+			if depth == 0 && !strings.HasPrefix(p, "[") {
+				ref.Format = strings.ToLower(p)
+				break
+			}
+			depth += strings.Count(p, "[") - strings.Count(p, "]")
 		}
 		out = append(out, ref)
 	}
