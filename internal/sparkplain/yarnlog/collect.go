@@ -60,8 +60,17 @@ type Plan struct {
 	SkipHBase bool
 	// Off names the sources the run was told not to read ("Step logs",
 	// "Node logs", "HBase server logs") and why; each gets a Sources row
-	// saying so, and nothing of it is listed or read.
+	// saying so, and nothing of it is listed or read, except the
+	// NodeManager logs of the nodes that ran the application (AppNodes).
 	Off map[string]string
+	// HostIDs maps the short host name of every instance to its ID, so
+	// the nodes the application's own logs name can be found (AppNodes).
+	// Guessed says Instances is a guess, every node up during the run, as
+	// there was no event log to say which ran the application: once the
+	// container logs name them, only those and Primary are read.
+	HostIDs map[string]string
+	Guessed bool
+	Primary []string
 	// MaxFiles caps the files read per kind of log; default 5000.
 	MaxFiles int
 	// Loc is the zone the cluster writes log times (and the hour in rolled
@@ -82,6 +91,9 @@ type Collection struct {
 	// what was there when none of them is.
 	HBaseNodes int
 	HBaseOther []string
+	// AppNodes are the instances the application's container logs say
+	// ran its driver or executors.
+	AppNodes []string
 }
 
 // Collect lists and reads the application's container, step and node logs
@@ -104,8 +116,31 @@ func Collect(ctx context.Context, st source.Store, p Plan) Collection {
 		c.steps(ctx, st, p)
 	}
 	p = p.withDriverNodes(c.Files)
-	if !c.off(st, p, "Node logs", "node/") {
+	c.AppNodes = appNodes(c.Files, p.HostIDs)
+	if p.Guessed && len(c.AppNodes) > 0 {
+		p.Instances = append(slices.Clone(p.Primary), c.AppNodes...)
+	}
+	switch {
+	case p.Off["Node logs"] == "":
 		c.nodes(ctx, st, p)
+	case len(c.AppNodes) > 0:
+		// Off, but the nodes that ran the application are always read:
+		// their NodeManager logs hold what YARN offered on each.
+		q := p
+		q.Instances = c.AppNodes
+		c.nodes(ctx, st, q)
+		if r := &c.Sources[len(c.Sources)-1]; r.Name == "Node logs" {
+			nodes := model.Plural(len(c.AppNodes), "node", "nodes") + " that ran this application"
+			if r.Status == "read" || r.Status == "partial" {
+				r.Detail = fmt.Sprintf("Node logs are off (%s), but those of the %s were read anyway, for what YARN offered there; no other node's. ", p.Off["Node logs"], nodes) + r.Detail
+			} else {
+				// Nothing there: the source stays off, as asked.
+				r.Status, r.Class = "not-requested", ""
+				r.Detail = fmt.Sprintf("Not read: %s. The %s had no NodeManager logs to read anyway.", p.Off["Node logs"], nodes)
+			}
+		}
+	default:
+		c.off(st, p, "Node logs", "node/")
 	}
 	if !p.SkipHBase && !c.off(st, p, "HBase server logs", "node/*/applications/hbase/") {
 		c.hbase(ctx, st, p.WithWindow(c.Files))
@@ -335,6 +370,46 @@ func (p Plan) withDriverNodes(files []model.LogFile) Plan {
 		}
 	}
 	return p
+}
+
+// AppHosts are the short host names the application's own container
+// logs name for its driver and executors: YarnAllocator's "Launching
+// container … on host H", an executor's "Starting executor ID n on host
+// H", and the driver's host.
+func AppHosts(files []model.LogFile) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(h string) {
+		if h = shortHost(h); h != "" && !seen[h] {
+			seen[h] = true
+			out = append(out, h)
+		}
+	}
+	for _, f := range files {
+		for _, l := range f.Found {
+			if l.Kind == model.LogExecutorHost || l.Kind == model.LogDriverHost {
+				add(l.Fields["host"])
+			}
+		}
+		for _, e := range f.DriverEvents {
+			if e.Kind == model.DrvContainer {
+				add(e.Host)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// appNodes are the instance IDs of the hosts AppHosts names.
+func appNodes(files []model.LogFile, ids map[string]string) []string {
+	var out []string
+	for _, h := range AppHosts(files) {
+		if id := ids[h]; id != "" && !slices.Contains(out, id) {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // shortHost is a host name without its domain, or an IP address as the

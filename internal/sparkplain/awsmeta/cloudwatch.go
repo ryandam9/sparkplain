@@ -93,7 +93,9 @@ func Metrics(ctx context.Context, api CloudWatchAPI, clusterID string, instances
 	}
 	var qs []query
 	for _, m := range clusterMetrics {
-		qs = append(qs, query{m, "JobFlowId", clusterID, false})
+		if clusterID != "" { // "": only the instances' metrics
+			qs = append(qs, query{m, "JobFlowId", clusterID, false})
+		}
 	}
 	for _, id := range instances {
 		for _, m := range hostMetrics {
