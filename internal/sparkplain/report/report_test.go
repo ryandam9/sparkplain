@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -171,4 +172,40 @@ func scanFromLogsReport() *model.Report {
 			Servers: []model.HBaseServerRead{{Server: "rs-1", Regions: 1, TaskMs: 250_000}}}},
 	}
 	return r
+}
+
+// The HBase tasks table lists every task attempt; the report keeps the
+// first 500 in stage order and the explorer all of them.
+func TestHBaseTasksTable(t *testing.T) {
+	t.Parallel()
+	r := scanFromLogsReport()
+	t0 := time.Date(2026, 10, 2, 9, 17, 0, 0, time.UTC)
+	for i := range 600 {
+		k := model.HBaseTaskRead{Stage: 172 + i/300, Partition: i % 300, TaskID: int64(6000 + i), Table: "ns:orders", StartRow: fmt.Sprintf("k%03d", i), EndRow: fmt.Sprintf("k%03d", i+1),
+			Region: fmt.Sprintf("r%03d", i), Server: "rs-1.example.internal", ExecutorID: "3", Host: "ip-3.example.internal", Start: t0, End: t0.Add(time.Minute),
+			DurationMs: 60_000, Timed: true, TimeFrom: "executor log", Outcome: "finished", Source: model.Source{File: "e1", Line: int64(10 + i)}}
+		if i == 1 {
+			k.Outcome, k.EndSource = "failed", model.Source{File: "e1", Line: 9001}
+		}
+		r.HBase.Tasks = append(r.HBase.Tasks, k)
+	}
+	r.HBase.TaskStages = []model.HBaseTaskStage{{Stage: 172, Tables: []string{"ns:orders"}, Tasks: 300, Failed: 1, Regions: 300, Servers: 1, Start: t0, End: t0.Add(time.Minute)},
+		{Stage: 173, Tables: []string{"ns:orders"}, Tasks: 300, Regions: 300, Servers: 1, Start: t0, End: t0.Add(time.Minute)}}
+	html := render(t, r, nil)
+	for _, want := range []string{"Every HBase task, all stages", "The first 500 of 600 task attempts", "k499", "e1:9001", "failed", "executor log",
+		"Rows are shown only for tasks the event log records"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("report lacks %q", want)
+		}
+	}
+	if strings.Contains(html, ">r500<") || !strings.Contains(html, ">r499<") {
+		t.Error("report goes past 500 tasks")
+	}
+	d := embedded(t, renderExplorer(t, r, nil))
+	if ts, _ := d["hbaseTasks"].([]any); len(ts) != 600 {
+		t.Errorf("explorer has %d tasks, want 600", len(ts))
+	}
+	if ss, _ := d["hbaseTaskStages"].([]any); len(ss) != 2 {
+		t.Errorf("explorer has %d task stages", len(ss))
+	}
 }

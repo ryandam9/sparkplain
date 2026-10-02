@@ -271,11 +271,12 @@
   var TABS = [["overview", "Overview"]].concat(D.anatomy ? [["anatomy", "At a glance"]] : [], [["timeline", "Timeline"], ["jobs", "Jobs", jobs.length], ["stages", "Stages", stages.length], ["executors", "Executors", execs.length],
     ["sql", "SQL / DataFrame", queries.length], ["storage", "Storage", rdds.length], ["code", "Code"], ["environment", "Environment"], ["log", "Event log"]]);
   if (D.aws) TABS.push(["cluster", "Cluster", D.aws.nodes.length]);
+  if ((D.hbaseTasks || []).length) TABS.push(["hbaseTasks", "HBase tasks", D.hbaseTasks.length + (D.hbaseTasksCut || 0)]);
   if (logFiles.length || (D.logSources || []).length) TABS.push(["logs", "Logs", logFiles.length]);
   var tabs = document.getElementById("sp-tabs");
   // Less-used tabs sit under More (a native disclosure, so it works from the
   // keyboard); the row keeps the ones a diagnosis starts from.
-  var MORE = { storage: 1, code: 1, environment: 1, log: 1, logs: 1 };
+  var MORE = { storage: 1, code: 1, environment: 1, log: 1, logs: 1, hbaseTasks: 1 };
   var tabLink = function (t) { return el("a", { href: "#" + t[0], "data-tab": t[0] }, t[1], t[2] != null ? el("span", { cls: "n", text: num(t[2]) }) : null); };
   TABS.filter(function (t) { return !MORE[t[0]]; }).forEach(function (t) { tabs.appendChild(tabLink(t)); });
   var moreTabs = TABS.filter(function (t) { return MORE[t[0]]; });
@@ -534,6 +535,64 @@
       fromLogs.forEach(function (k) { var x = D.hbaseScans[k]; ul.appendChild(el("li", null, link("#stage/" + k, "Stage " + x.stageId + (x.attempt ? " (attempt " + (x.attempt + 1) + ")" : "")), ": scan of " + x.table)); });
       s.appendChild(ul);
     }
+    return s;
+  };
+
+  // views.hbaseTasks lists every task attempt that read an HBase region,
+  // across all stages, as the report's HBase tasks table does, in full.
+  views.hbaseTasks = function () {
+    var tasks = D.hbaseTasks || [], sums = D.hbaseTaskStages || [];
+    var s = section("HBase tasks", "Every task attempt that read an HBase region with TableInputFormat, across all stages, in stage, partition and attempt order. A retried task has a row per attempt.");
+    s.appendChild(explain("The region comes from the split line its executor logged; the stage and task from the executor thread named on that line, or, with the event log, from the scan's tie. Times run from the task's Running line to its Finished line, or come from the event log, which also has its rows. — means not known."));
+    function msrc(o) { return o && o.file ? o.file + ":" + (o.line || "") : ""; }
+    function host(h) { return h ? el("span", { cls: "mono", title: h, text: String(h).split(".")[0] }) : "—"; }
+    function key(st, att) { return st + "." + (att || 0); }
+    function stageCell(st, att) {
+      if (st < 0) return "—";
+      var label = String(st) + (att ? "." + att : "");
+      return (D.hbaseScans || {})[key(st, att)] || stagesByID[st] ? link("#stage/" + key(st, att), label) : label;
+    }
+    s.appendChild(el("h3", { text: "By stage" }));
+    s.appendChild(table({
+      rows: sums, sort: 0, dir: "asc",
+      cols: [
+        { h: "Stage", num: true, v: function (r) { return r.stage < 0 ? 1e15 : r.stage * 1000 + r.stageAttempt; }, f: function (r) { return r.stage < 0 ? "not known" : stageCell(r.stage, r.stageAttempt); } },
+        { h: "Tables", v: function (r) { return (r.tables || []).join(", "); }, f: function (r) { return el("span", { cls: "mono", text: (r.tables || []).join(", ") }); } },
+        { h: "Task attempts", num: true, v: function (r) { return r.tasks; }, f: function (r) { return num(r.tasks); } },
+        { h: "Failed", num: true, v: function (r) { return r.failed || 0; }, f: function (r) { return r.failed ? num(r.failed) : "—"; } },
+        { h: "Regions", num: true, v: function (r) { return r.regions; }, f: function (r) { return num(r.regions); } },
+        { h: "Region servers", num: true, v: function (r) { return r.servers; }, f: function (r) { return num(r.servers); } },
+        { h: "First start", v: function (r) { return r.start || ""; }, f: function (r) { return when(r.start ? Date.parse(r.start) : 0); } },
+        { h: "Last end", v: function (r) { return r.end || ""; }, f: function (r) { return when(r.end ? Date.parse(r.end) : 0); } },
+        { h: "Ran for", num: true, v: function (r) { return span(Date.parse(r.start), Date.parse(r.end)) || -1; }, f: function (r) { var d = span(Date.parse(r.start), Date.parse(r.end)); return d != null && d >= 0 ? dur(d) : "—"; } }
+      ]
+    }));
+    s.appendChild(el("h3", { text: "Every task" }));
+    var rows = tasks.map(function (t, i) { return { i: i, t: t }; });
+    s.appendChild(table({
+      rows: rows, sort: 0, dir: "asc", page: 50, filter: "Filter by stage, table, row key, region, server or executor",
+      cols: [
+        { h: "Stage", num: true, v: function (r) { return r.i; }, f: function (r) { return stageCell(r.t.stage, r.t.stageAttempt); } },
+        { h: "Task", num: true, v: function (r) { return r.t.partition; }, f: function (r) { return r.t.partition < 0 ? "—" : r.t.partition + "." + r.t.attempt; } },
+        { h: "TID", num: true, v: function (r) { return r.t.taskId; }, f: function (r) { return r.t.taskId < 0 ? "—" : String(r.t.taskId); } },
+        { h: "Table", v: function (r) { return r.t.table; }, f: function (r) { return el("span", { cls: "mono", text: r.t.table }); } },
+        { h: "Start row", v: function (r) { return r.t.startRow; }, f: function (r) { return r.t.startRow ? el("span", { cls: "mono", text: r.t.startRow }) : el("span", { cls: "sub", text: "(first row)" }); } },
+        { h: "End row", v: function (r) { return r.t.endRow; }, f: function (r) { return r.t.endRow ? el("span", { cls: "mono", text: r.t.endRow }) : el("span", { cls: "sub", text: "(last row)" }); } },
+        { h: "Region", v: function (r) { return r.t.region; }, f: function (r) { return el("span", { cls: "mono", text: r.t.region }); } },
+        { h: "Region server", v: function (r) { return r.t.server; }, f: function (r) { return host(r.t.server); } },
+        { h: "Executor", v: function (r) { return r.t.executorId || ""; }, f: function (r) { return el("span", null, r.t.executorId || "—", r.t.host ? el("span", { cls: "sub", title: r.t.host, text: String(r.t.host).split(".")[0] }) : null); } },
+        { h: "Started", v: function (r) { return r.t.start || ""; }, f: function (r) { return when(r.t.start ? Date.parse(r.t.start) : 0); } },
+        { h: "Ended", v: function (r) { return r.t.end || ""; }, f: function (r) { return when(r.t.end ? Date.parse(r.t.end) : 0); } },
+        { h: "Took", num: true, v: function (r) { return r.t.timed ? r.t.durationMs : -1; }, f: function (r) { return r.t.timed ? el("span", null, dur(r.t.durationMs), el("span", { cls: "sub", text: r.t.timeFrom })) : "—"; } },
+        { h: "Outcome", v: function (r) { return r.t.outcome || ""; }, f: function (r) { return r.t.outcome || "—"; } },
+        { h: "Estimated size", num: true, v: function (r) { return r.t.sizeBytes || 0; }, f: function (r) { return r.t.sizeBytes ? bytes(r.t.sizeBytes) : "—"; } },
+        { h: "Rows", num: true, v: function (r) { return r.t.rowsKnown ? r.t.rows : -1; }, f: function (r) { return r.t.rowsKnown ? num(r.t.rows) : "—"; } },
+        { h: "Found in", v: function (r) { return msrc(r.t.source); }, f: function (r) { return el("span", { cls: "srcref" }, msrc(r.t.source), r.t.endSource ? el("br") : null, r.t.endSource ? msrc(r.t.endSource) : null, r.t.taskSource ? el("br") : null, r.t.taskSource ? msrc(r.t.taskSource) : null); } }
+      ],
+      text: function (r) { var t = r.t; return [t.stage < 0 ? "" : "stage " + t.stage, t.table, t.startRow, t.endRow, t.region, t.server, t.executorId || "", t.host || "", t.outcome || "", t.taskId < 0 ? "" : "TID " + t.taskId].join(" "); }
+    }));
+    if (D.hbaseTasksCut) s.appendChild(explain(num(D.hbaseTasksCut) + " more task attempts are left out to keep the page small; the JSON report lists them all."));
+    if (tasks.some(function (t) { return !t.rowsKnown; })) s.appendChild(explain("Rows are shown only for tasks the event log records (one successful attempt per partition); the executors' logs do not count rows."));
     return s;
   };
 

@@ -217,7 +217,22 @@ func funcs(loc *time.Location) template.FuncMap {
 		"hbaseRegions": func(a, b int) int { return a + b },
 		"hbaseSrcs":    hbaseSrcs,
 		"headRegions":  headRegions,
-		"shortHost":    shortHost,
+		"tasksWithRows": func(ts []model.HBaseTaskRead) int {
+			n := 0
+			for _, t := range ts {
+				if t.RowsKnown {
+					n++
+				}
+			}
+			return n
+		},
+		"headTasks": func(ts []model.HBaseTaskRead) []model.HBaseTaskRead {
+			if len(ts) > maxReportTasks {
+				return ts[:maxReportTasks]
+			}
+			return ts
+		},
+		"shortHost": shortHost,
 		"scanFacts": func(sc *model.HBaseScan) [][2]string { // all but the key range, which the card shows
 			var out [][2]string
 			for _, f := range sc.Facts() {
@@ -341,6 +356,10 @@ func hbaseSrcs(maps ...map[string]model.Source) string {
 	}
 	return strings.Join(parts, "; ")
 }
+
+// maxReportTasks caps the HBase tasks table in the report; the explorer
+// and the JSON report list them all.
+const maxReportTasks = 500
 
 // scanRegion is a region of a scan with its place in key order.
 type scanRegion struct {

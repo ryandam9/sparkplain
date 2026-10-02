@@ -138,33 +138,38 @@ type xData struct {
 	// HBaseScans are the TableInputFormat scan stages, region by region, by
 	// "id.attempt"; RegionsCut counts regions left out past the cap.
 	HBaseScans map[string]xHBaseScan `json:"hbaseScans,omitempty"`
-	Adaptive   map[string][][]any    `json:"adaptive"` // by query ID: metrics adaptive execution added, rows as in a plan node
-	RDDs       table                 `json:"rdds"`
-	Runtime    table                 `json:"runtime"`
-	Config     []xConfigGroup        `json:"config"`
-	Exclusions table                 `json:"exclusions"`
-	RunTasks   table                 `json:"runningTasks"`
-	RunCapped  bool                  `json:"runningCapped"`
-	Gaps       [][4]any              `json:"gaps"` // driver gaps: start and end (Unix ms), the jobs before and after (null at either end)
-	BlockKinds table                 `json:"blockKinds"`
-	Data       table                 `json:"data"`
-	Profiles   table                 `json:"profiles"`
-	Critical   []int                 `json:"critical"`
-	CritJob    int                   `json:"criticalJob"`
-	LogStats   *model.EventLogStats  `json:"logStats,omitempty"`
-	Sources    []xSource             `json:"sources"`
-	SourceNote []string              `json:"sourceNotes"`
-	Logs       []xLogFile            `json:"logs"`
-	LogCols    []string              `json:"logCols"`
-	LogSources []xLogSource          `json:"logSources"`
-	Cluster    *xCluster             `json:"cluster,omitempty"`
-	AWS        *xAWS                 `json:"aws,omitempty"`
-	AccessGaps []model.AccessGap     `json:"accessGaps,omitempty"`
-	Collected  bool                  `json:"collected"` // explorer data was gathered
-	Limits     model.ExplorerLimits  `json:"limits"`
-	Shrinks    int                   `json:"shrinks"`
-	CellsCap   bool                  `json:"cellsCapped"`
-	Notes      []string              `json:"notes"`
+	// HBaseTasks is every HBase task attempt, all stages (up to
+	// maxExplorerTasks; HBaseTasksCut more), and HBaseTaskStages their sums.
+	HBaseTasks      []model.HBaseTaskRead  `json:"hbaseTasks,omitempty"`
+	HBaseTasksCut   int                    `json:"hbaseTasksCut,omitempty"`
+	HBaseTaskStages []model.HBaseTaskStage `json:"hbaseTaskStages,omitempty"`
+	Adaptive        map[string][][]any     `json:"adaptive"` // by query ID: metrics adaptive execution added, rows as in a plan node
+	RDDs            table                  `json:"rdds"`
+	Runtime         table                  `json:"runtime"`
+	Config          []xConfigGroup         `json:"config"`
+	Exclusions      table                  `json:"exclusions"`
+	RunTasks        table                  `json:"runningTasks"`
+	RunCapped       bool                   `json:"runningCapped"`
+	Gaps            [][4]any               `json:"gaps"` // driver gaps: start and end (Unix ms), the jobs before and after (null at either end)
+	BlockKinds      table                  `json:"blockKinds"`
+	Data            table                  `json:"data"`
+	Profiles        table                  `json:"profiles"`
+	Critical        []int                  `json:"critical"`
+	CritJob         int                    `json:"criticalJob"`
+	LogStats        *model.EventLogStats   `json:"logStats,omitempty"`
+	Sources         []xSource              `json:"sources"`
+	SourceNote      []string               `json:"sourceNotes"`
+	Logs            []xLogFile             `json:"logs"`
+	LogCols         []string               `json:"logCols"`
+	LogSources      []xLogSource           `json:"logSources"`
+	Cluster         *xCluster              `json:"cluster,omitempty"`
+	AWS             *xAWS                  `json:"aws,omitempty"`
+	AccessGaps      []model.AccessGap      `json:"accessGaps,omitempty"`
+	Collected       bool                   `json:"collected"` // explorer data was gathered
+	Limits          model.ExplorerLimits   `json:"limits"`
+	Shrinks         int                    `json:"shrinks"`
+	CellsCap        bool                   `json:"cellsCapped"`
+	Notes           []string               `json:"notes"`
 }
 
 type xApp struct {
@@ -484,6 +489,13 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 	}
 
 	d.HBaseScans = hbaseScans(r)
+	if r.HBase != nil {
+		d.HBaseTasks, d.HBaseTaskStages = r.HBase.Tasks, r.HBase.TaskStages
+		if len(d.HBaseTasks) > maxExplorerTasks {
+			d.HBaseTasksCut = len(d.HBaseTasks) - maxExplorerTasks
+			d.HBaseTasks = d.HBaseTasks[:maxExplorerTasks]
+		}
+	}
 	if x == nil {
 		d.Notes = append(d.Notes, "Per-task detail was not collected for this run, so stage summaries, samples and charts are missing.")
 		return d
@@ -591,8 +603,12 @@ func hbaseScans(r *model.Report) map[string]xHBaseScan {
 	return out
 }
 
-// maxExplorerRegions caps the regions of one scan on the page.
-const maxExplorerRegions = 5000
+// maxExplorerRegions caps the regions of one scan on the page, and
+// maxExplorerTasks the rows of the HBase tasks view.
+const (
+	maxExplorerRegions = 5000
+	maxExplorerTasks   = 50_000
+)
 
 // xHBaseScan is a scan stage for the explorer: the scan's settings and
 // filter tree are pre-rendered, as the report shows them.

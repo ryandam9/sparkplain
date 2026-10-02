@@ -63,6 +63,15 @@ func TestHBaseScanTiesAndSkew(t *testing.T) {
 		sc.Servers[0].Server != "rs-1" || sc.Servers[0].Rows != 6_800_000 || sc.SizeBytes != 9<<30 {
 		t.Errorf("scan = %+v", sc)
 	}
+	// The tasks table takes each region's task from the tie: rows and time
+	// from the event log.
+	var rows []string
+	for _, k := range r.HBase.Tasks {
+		rows = append(rows, fmt.Sprintf("%d p%d TID %d %s %s rows %d exec %s from %s", k.Stage, k.Partition, k.TaskID, k.Region, model.Duration(k.DurationMs), k.Rows, k.ExecutorID, k.TimeFrom))
+	}
+	if got := strings.Join(rows, "; "); got != "3 p0 TID 30 r2 40 s rows 1100000 exec 1 from event log; 3 p1 TID 31 r3 55 s rows 1600000 exec 1 from event log; 3 p2 TID 32 r4 4 min 10 s rows 6800000 exec 2 from event log" {
+		t.Errorf("tasks: %s", got)
+	}
 	f, ok := rules(r)["hbase-scan-skew"]
 	if !ok || f.Title != "Stage 3's scan of orders waited on one region: rs-1 took 4 min 10 s, the median region 55 s" ||
 		!strings.Contains(f.Explanation, "returned 6,800,000 of the scan's 9,500,000 rows (72%)") || !strings.Contains(f.Fix, "split 'orders'") ||
@@ -121,6 +130,11 @@ func TestHBaseScanTiedByTask(t *testing.T) {
 	}
 	if _, ok := rules(r)["hbase-scan-skew"]; !ok {
 		t.Error("skew finding expected once regions are tied")
+	}
+	for _, k := range r.HBase.Tasks {
+		if !k.RowsKnown || k.TimeFrom != "event log" || k.TaskID != int64(30+part[k.Region]) {
+			t.Errorf("task row %+v", k)
+		}
 	}
 	if sc := Run(scanRun(false)).HBase.Scans[0]; sc.TiedBy != "key order" {
 		t.Errorf("key order tie: %q", sc.TiedBy)
@@ -185,6 +199,28 @@ func TestHBaseScanFromLogs(t *testing.T) {
 	if !ok || !strings.Contains(f.Title, "rs-1 took 4 min 10 s, the median region 55 s") || !strings.Contains(f.Explanation, "holds 6.0 GiB of the scan's 9.0 GiB (67%") ||
 		strings.Contains(f.Explanation, "returned") || f.Evidence[1].Ref != "" || f.Evidence[1].Source.Line != 120 {
 		t.Errorf("finding = %+v", f)
+	}
+	// Every attempt has a row, in stage, partition and attempt order; the
+	// split line with no task goes last.
+	var rows []string
+	for _, k := range r.HBase.Tasks {
+		rows = append(rows, fmt.Sprintf("%d.%d p%d.%d TID %d %s %s %q exec %s from %s rows %v", k.Stage, k.StageAttempt, k.Partition, k.Attempt, k.TaskID,
+			k.Region, model.Duration(k.DurationMs), k.Outcome, k.ExecutorID, k.TimeFrom, k.RowsKnown))
+	}
+	wantRows := []string{
+		`172.0 p0.0 TID 30 r2 40 s "finished" exec 1 from executor log rows false`,
+		`172.0 p1.0 TID 31 r3 5.0 s "failed" exec 1 from executor log rows false`,
+		`172.0 p1.1 TID 33 r3 55 s "finished" exec 1 from executor log rows false`,
+		`172.0 p2.0 TID 32 r4 4 min 10 s "finished" exec 2 from executor log rows false`,
+		`172.0 p3.0 TID 34 r5 0 ms "no end logged" exec 2 from  rows false`,
+		`-1.0 p-1.0 TID -1 rx 0 ms "" exec 1 from  rows false`,
+	}
+	if strings.Join(rows, "\n") != strings.Join(wantRows, "\n") {
+		t.Errorf("tasks:\n%s\nwant:\n%s", strings.Join(rows, "\n"), strings.Join(wantRows, "\n"))
+	}
+	if ts := r.HBase.TaskStages; len(ts) != 2 || ts[0].Stage != 172 || ts[0].Tasks != 5 || ts[0].Failed != 1 || ts[0].Regions != 4 || ts[0].Servers != 3 ||
+		ts[0].Start != t0 || ts[0].End != t0.Add(250*time.Second) || ts[1].Stage != -1 || ts[1].Tasks != 1 {
+		t.Errorf("task stages = %+v", ts)
 	}
 	missing := strings.Join(r.HBase.Missing, "\n")
 	if !strings.Contains(missing, "Rows each scan region returned") || !strings.Contains(missing, "Scans for 1 split logged with no task") {

@@ -41,8 +41,13 @@ type HBaseSection struct {
 	// cluster at the same time.
 	ServerEvents []HBaseServerEvent `json:"serverEvents,omitempty"`
 	// Scans are the TableInputFormat scan stages, region by region.
-	Scans   []HBaseScanRead `json:"scans,omitempty"`
-	Missing []string        `json:"missing,omitempty"`
+	Scans []HBaseScanRead `json:"scans,omitempty"`
+	// Tasks are every TableInputFormat task attempt the executors logged a
+	// split for, across all stages, in stage, partition and attempt order;
+	// TaskStages sums them per stage.
+	Tasks      []HBaseTaskRead  `json:"tasks,omitempty"`
+	TaskStages []HBaseTaskStage `json:"taskStages,omitempty"`
+	Missing    []string         `json:"missing,omitempty"`
 }
 
 // HBaseServerEvent is one kind of thing an HBase server logged, how often,

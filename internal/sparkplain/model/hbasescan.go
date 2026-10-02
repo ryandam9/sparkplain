@@ -257,3 +257,56 @@ type HBaseServerRead struct {
 	SizeBytes int64  `json:"sizeBytes"`
 	TaskMs    int64  `json:"taskMs"`
 }
+
+// HBaseTaskRead is one task attempt that read an HBase region with
+// TableInputFormat: the region from its split line, and the task from the
+// executor thread that logged it or, with the event log, from the scan's
+// tie. Stage, Partition and TaskID are -1 when not known (a split line in
+// a layout with no thread that could not be tied). With the event log,
+// Rows, DurationMs and the executor come from it (TimeFrom "event log");
+// without, the time runs from the task's Running to its Finished line
+// (TimeFrom "executor log").
+type HBaseTaskRead struct {
+	Stage        int       `json:"stage"`
+	StageAttempt int       `json:"stageAttempt"`
+	Partition    int       `json:"partition"`
+	Attempt      int       `json:"attempt"`
+	TaskID       int64     `json:"taskId"`
+	Table        string    `json:"table"`
+	StartRow     string    `json:"startRow"`
+	EndRow       string    `json:"endRow"`
+	Region       string    `json:"region"`
+	Server       string    `json:"server"`
+	SizeBytes    int64     `json:"sizeBytes,omitempty"`
+	ExecutorID   string    `json:"executorId,omitempty"`
+	Host         string    `json:"host,omitempty"`
+	Start        time.Time `json:"start,omitzero"`
+	End          time.Time `json:"end,omitzero"`
+	DurationMs   int64     `json:"durationMs"`
+	Timed        bool      `json:"timed"`
+	TimeFrom     string    `json:"timeFrom,omitempty"`
+	// Outcome is "finished", "failed" or "no end logged", or empty when the
+	// split line names no task to follow.
+	Outcome    string `json:"outcome,omitempty"`
+	Rows       int64  `json:"rows"`
+	RowsKnown  bool   `json:"rowsKnown"`
+	Source     Source `json:"source"`
+	SizeSource Source `json:"sizeSource,omitzero"`
+	EndSource  Source `json:"endSource,omitzero"`  // the Finished or Exception line
+	TaskSource Source `json:"taskSource,omitzero"` // the event log's task end
+}
+
+// HBaseTaskStage sums one stage's rows of the tasks table: its tables, its
+// task attempts and how many failed, the regions and region servers they
+// read, and its first start and last end.
+type HBaseTaskStage struct {
+	Stage        int       `json:"stage"`
+	StageAttempt int       `json:"stageAttempt"`
+	Tables       []string  `json:"tables"`
+	Tasks        int       `json:"tasks"`
+	Failed       int       `json:"failed"`
+	Regions      int       `json:"regions"`
+	Servers      int       `json:"servers"`
+	Start        time.Time `json:"start,omitzero"`
+	End          time.Time `json:"end,omitzero"`
+}
