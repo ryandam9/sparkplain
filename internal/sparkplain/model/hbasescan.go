@@ -185,6 +185,19 @@ type HBaseSplit struct {
 	Time       time.Time `json:"time,omitzero"`
 	Source     Source    `json:"source"`
 	SizeSource Source    `json:"sizeSource,omitzero"`
+	// Task is the task that logged the split, when the log layout prints
+	// the thread, which Spark names after it.
+	Task *SplitTask `json:"task,omitempty"`
+}
+
+// SplitTask is a task as its executor thread names it: "… for task 41.0
+// in stage 172.0 (TID 6429)".
+type SplitTask struct {
+	TaskID       int64 `json:"taskId"`
+	Partition    int   `json:"partition"`
+	Attempt      int   `json:"attempt"`
+	Stage        int   `json:"stage"`
+	StageAttempt int   `json:"stageAttempt"`
 }
 
 // HBaseScanRead is what one TableInputFormat scan stage read, from its
@@ -207,6 +220,7 @@ type HBaseScanRead struct {
 	SizeBytes    int64  `json:"sizeBytes"`
 	SizedRegions int    `json:"sizedRegions"`
 	Tied         bool   `json:"tied"`
+	TiedBy       string `json:"tiedBy,omitempty"` // "task" (each split line names its task) or "key order"
 	Untied       string `json:"untied,omitempty"`
 	Source       Source `json:"source"`
 }

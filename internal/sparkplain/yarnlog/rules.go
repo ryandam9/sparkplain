@@ -14,6 +14,7 @@ type header struct {
 	time   time.Time
 	level  string // INFO, WARN, ERROR, FATAL, …
 	logger string // the class, short (Spark) or full (Hadoop)
+	thread string // the thread, when the layout prints it
 	msg    string
 }
 
@@ -23,8 +24,17 @@ var (
 	// Hadoop daemons and EMR's instance controller:
 	// "2026-09-26 10:15:43,675 WARN org.apache…DefaultContainerExecutor (ContainersLauncher #0): Exit code …"
 	// HBase's daemons: "2026-09-29 06:00:00,369 INFO  [PEWorker-6] procedure.MasterProcedureScheduler: …".
-	hbaseHeadRE  = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d{3} (TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\s+\[[^\]]*\] (\S+?): ?(.*)$`)
+	hbaseHeadRE  = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d{3} (TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\s+\[([^\]]*)\] (\S+?): ?(.*)$`)
 	hadoopHeadRE = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d{3} (TRACE|DEBUG|INFO|WARN|ERROR|FATAL) (\S+?):?(?: \([^)]*\))?: ?(.*)$`)
+	// Spark with a log4j pattern that prints the thread first and the full
+	// logger, as on the user's clusters (%d [%t] %-5p %c - %m):
+	// "2026-10-02 09:17:17,589 [Executor task launch worker for task 41.0 in
+	// stage 172.0 (TID 6429)] INFO  org.apache.spark.rdd.NewHadoopRDD  - Input split: …".
+	threadHeadRE = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d{3} \[(.*?)\] (TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\s+(\S+?)\s+- ?(.*)$`)
+	// The task a Spark executor's thread runs: "… for task 41.0 in stage
+	// 172.0 (TID 6429)", which is partition 41, attempt 0, of stage 172,
+	// attempt 0.
+	taskThreadRE = regexp.MustCompile(`for task (\d+)\.(\d+) in stage (\d+)\.(\d+) \(TID (\d+)\)`)
 	// The step controller: "2026-09-26T10:15:56.651Z WARN Step failed …", or "INFO startExec …" with no time.
 	controllerHeadRE = regexp.MustCompile(`^(?:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.\d{3}Z )?(TRACE|DEBUG|INFO|WARN|ERROR|FATAL) (.*)$`)
 )
@@ -41,7 +51,11 @@ func parseHeader(kind FileKind, line string) (header, bool) {
 	}
 	if m := hbaseHeadRE.FindStringSubmatch(line); m != nil {
 		t, _ := time.Parse("2006-01-02 15:04:05", m[1])
-		return header{time: t, level: m[2], logger: m[3], msg: m[4]}, true
+		return header{time: t, level: m[2], thread: m[3], logger: m[4], msg: m[5]}, true
+	}
+	if m := threadHeadRE.FindStringSubmatch(line); m != nil {
+		t, _ := time.Parse("2006-01-02 15:04:05", m[1])
+		return header{time: t, thread: m[2], level: m[3], logger: m[4], msg: m[5]}, true
 	}
 	if m := hadoopHeadRE.FindStringSubmatch(line); m != nil {
 		t, _ := time.Parse("2006-01-02 15:04:05", m[1])

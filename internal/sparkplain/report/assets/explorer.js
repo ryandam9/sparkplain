@@ -700,7 +700,7 @@
     function row(k) { return k ? el("span", { cls: "mono", text: k }) : el("span", { cls: "sub", text: "(table edge)" }); }
     var regions = x.regions || [], servers = x.servers || [];
     s.appendChild(el("h3", { text: "HBase regions read: " + x.table }));
-    s.appendChild(explain("TableInputFormat makes one split per region the scan overlaps, in key order, and Spark's partition n reads split n. Each region's rows and time come from its task, checked against the executor that logged its split."));
+    s.appendChild(explain("TableInputFormat makes one split per region the scan overlaps, in key order, and Spark's partition n reads split n. " + (x.tiedBy === "task" ? "Each region's rows and time come from the task named by the executor thread on its split line, so the tie is exact." : "Each region's rows and time come from its task, checked against the executor that logged its split.")));
     s.appendChild(el("div", { cls: "facts" },
       fact("Key range read", el("span", { cls: "mono", text: x.rows }), "From the executors' split lines: each region's range cut to the scan's start and stop rows."),
       fact("Regions read", num(regions.length + (x.regionsCut || 0)) + " on " + num(servers.length) + " region server" + (servers.length === 1 ? "" : "s"), "One task per region, so the stage cannot run more tasks at once than this."),

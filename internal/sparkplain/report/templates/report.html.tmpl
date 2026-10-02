@@ -327,7 +327,7 @@
           {{end}}</tbody>
         </table></div>
         {{if gt (len .Regions) (len $regions)}}<p class="explain">The {{numi (len $regions)}} regions {{if .Tied}}that returned the most rows{{else}}first in key order{{end}} of {{numi (len .Regions)}}; the explorer and the JSON report list them all.</p>{{end}}
-        {{if .Tied}}<p class="explain">Each region is tied to the task that read it: TableInputFormat makes its splits in key order and Spark's partition <i>n</i> reads split <i>n</i>, checked against the executor that logged each split.</p>{{else}}<p class="explain">Rows and time per region are not shown: {{.Untied}}</p>{{end}}
+        {{if eq .TiedBy "task"}}<p class="explain">Each region is tied to the task that read it by the executor thread named on its split line (for task <i>p</i> in stage <i>s</i> (TID <i>t</i>)), so the tie is exact.</p>{{else if .Tied}}<p class="explain">Each region is tied to the task that read it: TableInputFormat makes its splits in key order and Spark's partition <i>n</i> reads split <i>n</i>, checked against the executor that logged each split.</p>{{else}}<p class="explain">Rows and time per region are not shown: {{.Untied}}</p>{{end}}
         {{end}}
         {{if .ServerEvents}}<h3>What HBase's servers logged while the run went on</h3>
         <div class="tbl"><table>

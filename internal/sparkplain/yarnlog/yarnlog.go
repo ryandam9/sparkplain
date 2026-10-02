@@ -128,6 +128,9 @@ type classifier struct {
 	splitGroup []int
 	splitSizes []splitSize
 	splitOpen  int
+	// splitOf finds a split by the task that logged it, when the layout
+	// prints the thread: its size line then needs no guessing.
+	splitOf map[int64]int
 
 	// The most executors the driver asked for at once, kept as one line.
 	maxDesired     int
@@ -492,10 +495,10 @@ func (c *classifier) header(h header, line string) {
 		l = c.entry(model.LogHBaseUse, model.Info, h.time, "TableInputFormat read a region of "+m[1]+" held on "+m[2])
 		l.Fields["table"], l.Fields["access"], l.Fields["api"], l.Fields["server"] = m[1], "read", "TableInputFormat", m[2]
 		c.add(l)
-		c.split(m[1], m[2], msg, h.time)
+		c.split(m[1], m[2], msg, h)
 		return
 	case hbaseSplitLenRE.MatchString(msg):
-		c.splitSize(hbaseSplitLenRE.FindStringSubmatch(msg))
+		c.splitSize(hbaseSplitLenRE.FindStringSubmatch(msg), h)
 		return
 	case hbaseOutputRE.MatchString(msg):
 		m := hbaseOutputRE.FindStringSubmatch(msg)
@@ -1111,17 +1114,38 @@ type splitSize struct {
 }
 
 // split keeps one TableInputFormat split.
-func (c *classifier) split(table, server, msg string, t time.Time) {
+func (c *classifier) split(table, server, msg string, h header) {
 	if len(c.res.Splits) == maxSplits {
 		return
 	}
-	sp := model.HBaseSplit{Table: table, Server: server, Time: t, Source: model.Source{File: c.res.Name, Line: c.n}}
+	sp := model.HBaseSplit{Table: table, Server: server, Time: h.time, Source: model.Source{File: c.res.Name, Line: c.n}}
 	if m := hbaseSplitRowsRE.FindStringSubmatch(msg); m != nil {
 		sp.StartRow, sp.EndRow, sp.Region = redact.Clean(m[1]), redact.Clean(m[2]), m[3]
 	}
+	sp.Task = threadTask(h.thread)
 	c.res.Splits = append(c.res.Splits, sp)
+	if sp.Task != nil {
+		if c.splitOf == nil {
+			c.splitOf = map[int64]int{}
+		}
+		c.splitOf[sp.Task.TaskID] = len(c.res.Splits) - 1
+		return
+	}
 	c.splitGroup = append(c.splitGroup, len(c.res.Splits)-1)
 	c.splitOpen++
+}
+
+// threadTask reads the task a Spark executor thread runs from its name.
+func threadTask(thread string) *model.SplitTask {
+	m := taskThreadRE.FindStringSubmatch(thread)
+	if m == nil {
+		return nil
+	}
+	n := make([]int64, 5)
+	for i := range n {
+		n[i], _ = strconv.ParseInt(m[i+1], 10, 64)
+	}
+	return &model.SplitTask{Partition: int(n[0]), Attempt: int(n[1]), Stage: int(n[2]), StageAttempt: int(n[3]), TaskID: n[4]}
 }
 
 // splitSize gives a split its size line. Each task logs its split, then
@@ -1130,16 +1154,24 @@ func (c *classifier) split(table, server, msg string, t time.Time) {
 // a split with none open to the moment none is open again: a group of one
 // split gets its size; a larger group's splits get theirs only when every
 // size in it is the same, and otherwise none, never a guess.
-func (c *classifier) splitSize(m []string) {
-	if c.splitOpen == 0 {
-		return
-	}
+func (c *classifier) splitSize(m []string, h header) {
 	v, err := strconv.ParseFloat(m[1], 64)
 	if err != nil {
 		return
 	}
 	mult := map[string]float64{"": 1, "K": 1 << 10, "M": 1 << 20, "G": 1 << 30, "T": 1 << 40, "P": 1 << 50, "E": 1 << 60}[m[2]]
-	c.splitSizes = append(c.splitSizes, splitSize{int64(v * mult), model.Source{File: c.res.Name, Line: c.n}})
+	size := splitSize{int64(v * mult), model.Source{File: c.res.Name, Line: c.n}}
+	// The thread names the task: its split is known exactly.
+	if t := threadTask(h.thread); t != nil {
+		if k, ok := c.splitOf[t.TaskID]; ok && c.res.Splits[k].SizeBytes == 0 {
+			c.res.Splits[k].SizeBytes, c.res.Splits[k].SizeSource = size.bytes, size.src
+		}
+		return
+	}
+	if c.splitOpen == 0 {
+		return
+	}
+	c.splitSizes = append(c.splitSizes, size)
 	if c.splitOpen--; c.splitOpen > 0 {
 		return
 	}

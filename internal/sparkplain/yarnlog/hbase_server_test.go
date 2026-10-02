@@ -267,6 +267,53 @@ func TestSplitsFromExecutorLog(t *testing.T) {
 	}
 }
 
+// A log4j layout that prints the thread first and the full logger
+// (%d [%t] %-5p %c - %m) is read like Spark's own, and its thread names
+// each split's task, so sizes are tied exactly even when two tasks'
+// lines interleave with different sizes.
+func TestThreadLayoutTiesSplitsToTasks(t *testing.T) {
+	t.Parallel()
+	task := func(p, tid int) string {
+		return fmt.Sprintf("[Executor task launch worker for task %d.0 in stage 172.0 (TID %d)]", p, tid)
+	}
+	log := strings.Join([]string{
+		"2026-10-02 09:17:17,589 " + task(41, 6429) + " INFO  org.apache.spark.rdd.NewHadoopRDD  - Input split: Split(tablename=ns:orders, startrow=k41, endrow=k42, regionLocation=ip-10-0-2-12.example.internal, regionname=aaa949cedc)",
+		"2026-10-02 09:17:17,590 " + task(42, 6430) + " INFO  org.apache.spark.rdd.NewHadoopRDD  - Input split: Split(tablename=ns:orders, startrow=k42, endrow=k43, regionLocation=ip-10-0-2-10.example.internal, regionname=bbb949cedc)",
+		"2026-10-02 09:17:17,601 " + task(42, 6430) + " INFO  org.apache.hadoop.hbase.mapreduce.TableInputFormatBase  - Input split length: 57 M bytes.",
+		"2026-10-02 09:17:17,602 " + task(41, 6429) + " INFO  org.apache.hadoop.hbase.mapreduce.TableInputFormatBase  - Input split length: 50 M bytes.",
+		"2026-10-02 09:18:02,001 " + task(42, 6430) + " ERROR org.apache.spark.executor.Executor  - Exception in task 42.0 in stage 172.0 (TID 6430)",
+	}, "\n") + "\n"
+	res, err := Classify(strings.NewReader(log), "stderr", File{Kind: ContainerStderr, Container: "container_1_0001_01_000002"}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, s := range res.Splits {
+		got = append(got, fmt.Sprintf("%s [%s,%s) %s %dM size@%d task %d.%d stage %d.%d TID %d", s.Table, s.StartRow, s.EndRow, s.Region, s.SizeBytes>>20,
+			s.SizeSource.Line, s.Task.Partition, s.Task.Attempt, s.Task.Stage, s.Task.StageAttempt, s.Task.TaskID))
+	}
+	want := []string{
+		"ns:orders [k41,k42) aaa949cedc 50M size@4 task 41.0 stage 172.0 TID 6429",
+		"ns:orders [k42,k43) bbb949cedc 57M size@3 task 42.0 stage 172.0 TID 6430",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("splits:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	var taskErr bool
+	for _, l := range res.Lines {
+		if l.Kind == model.LogTaskError && l.Fields["tid"] == "6430" && l.Time.Equal(time.Date(2026, 10, 2, 9, 18, 2, 0, time.UTC)) {
+			taskErr = true
+		}
+	}
+	if !taskErr {
+		t.Errorf("task error not read from the thread layout: %+v", res.Lines)
+	}
+	if h, ok := parseHeader(ContainerStderr, "2026-10-02 09:17:17,589 [main] WARN  org.apache.spark.SparkConf  - The configuration key is deprecated"); !ok ||
+		h.thread != "main" || h.level != "WARN" || h.logger != "org.apache.spark.SparkConf" || h.msg != "The configuration key is deprecated" {
+		t.Errorf("header = %+v", h)
+	}
+}
+
 // A container log dates itself from any line that starts with a time,
 // whatever log4j pattern follows it, so a run with no event log and no
 // recognised line still has a time for HBase's logs.
