@@ -500,3 +500,21 @@ func TestClusterNodesUpDuringTheRun(t *testing.T) {
 		t.Errorf("nodes = %v, all = %v", got, c["allInstances"])
 	}
 }
+
+// The replay is a tab of its own when the executors' logs told the tasks'
+// stories, and it plays only when asked (it starts paused).
+func TestExplorerReplay(t *testing.T) {
+	t.Parallel()
+	for _, want := range []string{
+		`if (D.taskStories && D.taskStories.tasks.length) TABS.splice(`,
+		`views.replay = function () {`,
+		`paused at the start`,
+	} {
+		if !strings.Contains(explorerJS, want) {
+			t.Errorf("explorer.js has no %q", want)
+		}
+	}
+	if strings.Contains(explorerJS, "setInterval(") {
+		t.Error("the replay should animate with requestAnimationFrame, which stops with the tab")
+	}
+}

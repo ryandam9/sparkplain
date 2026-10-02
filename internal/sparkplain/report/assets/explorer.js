@@ -273,6 +273,7 @@
   if (D.aws) TABS.push(["cluster", "Cluster", D.aws.nodes.length]);
   if ((D.hbaseTasks || []).length) TABS.push(["hbaseTasks", "HBase tasks", D.hbaseTasks.length + (D.hbaseTasksCut || 0)]);
   if (D.taskStories) TABS.push(["tasks", "Task stories", D.taskStories.tasks.length + (D.taskStories.cut || 0)]);
+  if (D.taskStories && D.taskStories.tasks.length) TABS.splice(D.anatomy ? 3 : 2, 0, ["replay", "Replay"]);
   if (logFiles.length || (D.logSources || []).length) TABS.push(["logs", "Logs", logFiles.length]);
   var tabs = document.getElementById("sp-tabs");
   // Less-used tabs sit under More (a native disclosure, so it works from the
@@ -792,6 +793,217 @@
     }));
     if (t.cutSteps) s.appendChild(explain(num(t.cutSteps) + " more steps are not kept; its totals above count them."));
     if (t.tiedBy === "tid") s.appendChild(explain("This executor's log prints no thread, so lines that do not name the task are its only when it was the only task the executor was running then. Its totals may miss lines logged while other tasks ran."));
+    return s;
+  };
+
+  // ---------- replay ----------
+  // views.replay plays the run back from its logs: each executor's task
+  // slots filling with the tasks it ran (coloured by stage), the jobs and
+  // stages running on the driver, each executor's shuffle reads over the
+  // network and storage memory left, and a ticker telling each event in
+  // words. Everything comes from the task stories and the flows, at the
+  // times the logs give (whole seconds in Spark's default layout).
+  var RP = null;
+  function replayModel() {
+    if (RP) return RP;
+    var ts = TS.tasks.filter(function (t) { return t.start; }).map(function (t) {
+      var s = Date.parse(t.start), e = t.end ? Date.parse(t.end) : null;
+      return { task: t, s: s, e: e, ex: t.executor || "?" };
+    }).sort(function (a2, b2) { return a2.s - b2.s || a2.task.taskId - b2.task.taskId; });
+    var t0 = a.start || (ts.length ? ts[0].s : 0), t1 = a.end || 0;
+    ts.forEach(function (x) { t0 = Math.min(t0, x.s); t1 = Math.max(t1, x.e || x.s); });
+    ts.forEach(function (x) { if (x.e == null) x.e = t1; x.end = x.e; });
+    // executors, by host, each with a slot per core (more when it ran more at once)
+    var ex = {}, order = [];
+    function execOf(id) {
+      if (!ex[id]) {
+        var info = execByID[id] || {}, fx = (TS.executors || []).filter(function (e) { return e.executor === id; })[0] || {};
+        ex[id] = { id: id, host: info.host || fx.host || "", cores: info.cores || 0, slots: [], added: info.added || null, removed: info.removed || null };
+        order.push(id);
+      }
+      return ex[id];
+    }
+    // a slot is free from the logged end of its last task; a task within
+    // one logged second is then drawn for 400 ms so it shows
+    ts.forEach(function (x) {
+      var e = execOf(x.ex), k = 0;
+      while (k < e.slots.length && e.slots[k] > x.s) k++;
+      e.slots[k] = x.end;
+      x.slot = k;
+      if (x.e <= x.s) x.e = x.s + 400;
+    });
+    order.forEach(function (id) { var e = ex[id]; e.nslots = Math.max(e.cores, e.slots.length, 1); });
+    order.sort(function (p, q) { var x = +p, y = +q; return isNaN(x) || isNaN(y) ? String(p).localeCompare(String(q)) : x - y; });
+    // what happened, in words, in time order
+    var evs = [];
+    function who(x) { return "TID " + x.task.taskId + (x.task.stage >= 0 ? " (stage " + x.task.stage + ", partition " + x.task.partition + ")" : "") + " on executor " + x.ex; }
+    var SAY = {
+      broadcast: function (s) { return "began reading " + s[5] + " (" + bytes(s[2]) + ")"; },
+      "broadcast-read": function (s) { return "had " + s[5] + " after " + dur(s[4]); },
+      shuffle: function (s) { return "fetched " + num(s[3]) + " shuffle blocks: " + bytes(s[2] - (s[7] || 0)) + " on its node, " + bytes(s[7] || 0) + " over the network"; },
+      spill: function (s) { return "spilled " + bytes(s[2]) + " to disk"; },
+      cache: function (s) { return "cached " + s[5] + " (" + bytes(s[2]) + "; " + bytes(s[8] || 0) + " storage free)"; },
+      drop: function (s) { return "dropped " + num(s[3]) + " cached blocks to make room"; },
+      "no-room": function (s) { return "could not cache " + s[5]; },
+      input: function (s) { return "read " + s[5]; },
+      commit: function (s) { return "committed its output in " + dur(s[4]); },
+      problem: function (s) { return "logged: " + s[5]; }
+    };
+    ts.forEach(function (x) {
+      evs.push([x.s, "start", who(x) + " started"]);
+      (x.task.s || []).forEach(function (st) {
+        if (SAY[st[1]]) evs.push([x.s + st[0], st[1], who(x) + " " + SAY[st[1]](st)]);
+      });
+      var o = x.task.outcome;
+      if (x.task.end) evs.push([x.e, o === "failed" || o === "killed" ? o : "end", who(x) + (o === "failed" ? " failed" + (x.task.error ? ": " + x.task.error : "") : o === "killed" ? " was killed" : " finished" + (x.task.resultBytes ? ", sending " + bytes(x.task.resultBytes) + " back" : ""))]);
+    });
+    jobs.forEach(function (j) {
+      if (j.submitted) evs.push([j.submitted, "job", "Job " + j.id + " started: " + (j.desc || j.name || "")]);
+      if (j.completed) evs.push([j.completed, "job", "Job " + j.id + (j.status === "failed" ? " failed" : " finished")]);
+    });
+    stages.forEach(function (st) {
+      if (st.submitted) evs.push([st.submitted, "stage", "Stage " + st.id + (st.attempt ? "." + st.attempt : "") + " started: " + st.numTasks + " tasks (" + st.name + ")"]);
+      if (st.completed) evs.push([st.completed, "stage", "Stage " + st.id + (st.attempt ? "." + st.attempt : "") + (st.status === "failed" ? " failed" : " finished")]);
+    });
+    evs.sort(function (p, q) { return p[0] - q[0]; });
+    RP = { ts: ts, t0: t0, t1: Math.max(t1, t0 + 1000), ex: ex, order: order, evs: evs };
+    return RP;
+  }
+  function stageColor(stage) { return stage < 0 ? V.neutral : V.viz[stage % V.viz.length]; }
+  function seriesAt(ps, t) { // the last point at or before t
+    var lo = 0, hi = (ps || []).length - 1, best = null;
+    while (lo <= hi) { var mid = (lo + hi) >> 1; if (Date.parse(ps[mid].t) <= t) { best = ps[mid]; lo = mid + 1; } else hi = mid - 1; }
+    return best;
+  }
+  views.replay = function () {
+    var M = replayModel();
+    var s = section("Replay", "The run played back from its logs: each executor's task slots filling with the tasks it ran, coloured by stage; the jobs and stages the driver was running; each executor's shuffle reads over the network and storage memory left; and what happened, in words.");
+    s.appendChild(explain("Times are as the logs give them" + (TS.byThread ? "" : " (whole seconds in Spark's default layout, so a task shorter than a second shows briefly)") + ". A task's slot is the first free one on its executor; Spark does not log which core ran it. " +
+      num(M.ts.length) + " tasks on " + num(M.order.length) + " executor" + (M.order.length === 1 ? "" : "s") + (TS.cut ? "; " + num(TS.cut) + " tasks past the page's cap are not shown" : "") + "."));
+    var span0 = M.t1 - M.t0;
+    var state = { now: M.t0, playing: false, last: 0 };
+    var playBtn = el("button", { cls: "more", type: "button", text: "Play" });
+    var restart = el("button", { cls: "more", type: "button", text: "Restart" });
+    var stepBtn = el("button", { cls: "more", type: "button", text: "Next event" });
+    var speed = el("select", { "aria-label": "Playback speed" });
+    [["fit60", "The run in 1 minute"], ["fit20", "The run in 20 seconds"], ["fit180", "The run in 3 minutes"], ["1", "Real time"], ["10", "10× real time"], ["100", "100× real time"]].forEach(function (o) { speed.appendChild(el("option", { value: o[0], text: o[1] })); });
+    var scrub = el("input", { type: "range", min: "0", max: "1000", value: "0", "aria-label": "Replay position", cls: "rp-scrub" });
+    var clock = el("span", { cls: "count" });
+    s.appendChild(el("div", { cls: "bar-tools" }, playBtn, restart, stepBtn, speed, clock));
+    s.appendChild(scrub);
+    var stage = el("div", { cls: "rp" });
+    var driver = el("div", { cls: "rp-driver" });
+    var grid = el("div", { cls: "rp-grid" });
+    var ticker = el("ol", { cls: "rp-ticker", "aria-live": "off" });
+    stage.appendChild(el("div", { cls: "rp-col" }, el("h3", { text: "Driver" }), driver, el("h3", { text: "What happened" }), ticker));
+    stage.appendChild(el("div", { cls: "rp-col" }, el("h3", { text: "Executors" }), grid));
+    s.appendChild(stage);
+    // executor cards, grouped by host
+    var cards = {}, hosts = {};
+    var flowEx = {};
+    ((D.flows || {}).executors || []).forEach(function (e) {
+      var maxFree = 0, maxRemote = 0;
+      (e.free || []).forEach(function (p) { maxFree = Math.max(maxFree, p.v); });
+      (e.remote || []).forEach(function (p) { maxRemote = Math.max(maxRemote, p.v); });
+      flowEx[e.executor] = { e: e, maxFree: maxFree, maxRemote: maxRemote };
+    });
+    M.order.forEach(function (id) {
+      var e = M.ex[id], h = e.host || "unknown host";
+      if (!hosts[h]) { hosts[h] = el("div", { cls: "rp-host" }, el("div", { cls: "rp-hostname", title: h, text: String(h).split(".")[0] })); grid.appendChild(hosts[h]); }
+      var slots = [];
+      var row = el("div", { cls: "rp-slots" });
+      for (var k = 0; k < e.nslots; k++) { var sl = el("div", { cls: "rp-slot" }); slots.push(sl); row.appendChild(sl); }
+      var net = el("div", { cls: "rp-bar" }, el("span")), mem = el("div", { cls: "rp-bar mem" }, el("span"));
+      var netTxt = el("span", { cls: "sub" }), memTxt = el("span", { cls: "sub" });
+      var card = el("div", { cls: "rp-exec" }, el("div", { cls: "rp-exhead" }, execByID[id] ? execLink(id) : "Executor " + id, el("span", { cls: "sub", text: e.cores ? e.cores + " cores" : num(e.nslots) + " at once" })), row,
+        flowEx[id] && flowEx[id].maxRemote ? el("div", { cls: "rp-gauge" }, el("span", { text: "Network in" }), net, netTxt) : null,
+        flowEx[id] && flowEx[id].maxFree ? el("div", { cls: "rp-gauge" }, el("span", { text: "Storage free" }), mem, memTxt) : null);
+      cards[id] = { card: card, slots: slots, net: net.firstChild, mem: mem.firstChild, netTxt: netTxt, memTxt: memTxt };
+      hosts[h].appendChild(card);
+    });
+    function draw() {
+      var t = state.now;
+      clock.textContent = tfmt.format(t) + " · " + dur(t - M.t0) + " of " + dur(span0);
+      scrub.value = String(Math.round(1000 * (t - M.t0) / span0));
+      // task slots
+      var busy = {};
+      M.ts.forEach(function (x) {
+        if (x.s <= t && t < x.e) busy[x.ex + "/" + x.slot] = x;
+      });
+      M.order.forEach(function (id) {
+        var c = cards[id];
+        c.slots.forEach(function (sl, k) {
+          var x = busy[id + "/" + k];
+          var key = x ? x.task.taskId : "";
+          if (sl.getAttribute("data-k") === String(key)) return;
+          sl.setAttribute("data-k", String(key));
+          sl.textContent = "";
+          sl.className = "rp-slot" + (x ? " on" : "");
+          sl.style.background = x ? stageColor(x.task.stage) : "";
+          sl.title = x ? "TID " + x.task.taskId + ", stage " + x.task.stage + ", partition " + x.task.partition : "idle";
+          if (x) sl.appendChild(link("#task/" + x.task.taskId, (x.task.stage >= 0 ? "s" + x.task.stage + " " : "") + "p" + x.task.partition));
+        });
+        var f = flowEx[id];
+        if (f && f.maxRemote) {
+          var p = seriesAt(f.e.remote, t), v = p && t - Date.parse(p.t) < D.flows.stepMs ? p.v : 0;
+          c.net.style.width = (100 * v / f.maxRemote) + "%";
+          c.netTxt.textContent = v ? bytes(v) + " in " + dur(D.flows.stepMs) : "—";
+        }
+        if (f && f.maxFree) {
+          var q = seriesAt(f.e.free, t);
+          c.mem.style.width = q ? (100 * q.v / f.maxFree) + "%" : "100%";
+          c.memTxt.textContent = q ? bytes(q.v) : "nothing cached yet";
+        }
+      });
+      // driver: jobs and stages running
+      driver.textContent = "";
+      var runJobs = jobs.filter(function (j) { return j.submitted && j.submitted <= t && (!j.completed || t < j.completed); });
+      var runStages = stages.filter(function (st) { return st.submitted && st.submitted <= t && (!st.completed || t < st.completed); });
+      if (!runJobs.length && !runStages.length) driver.appendChild(el("p", { cls: "sub", text: t <= M.t0 ? "Starting." : t >= M.t1 ? "The run has ended." : "No job running: the driver was busy with its own work, or waiting." }));
+      runJobs.forEach(function (j) { driver.appendChild(el("div", { cls: "rp-job" }, link("#job/" + j.id, "Job " + j.id), " ", el("span", { cls: "sub", text: j.desc || j.name || "" }))); });
+      runStages.forEach(function (st) {
+        var done = 0;
+        M.ts.forEach(function (x) { if (x.task.stage === st.id && x.task.stageAttempt === st.attempt && x.e <= t && x.task.outcome === "finished") done++; });
+        var n = st.numTasks || 1;
+        driver.appendChild(el("div", { cls: "rp-stage" }, el("span", { cls: "rp-dot", style: "background:" + stageColor(st.id) }), link("#stage/" + st.key, "Stage " + st.id), " ",
+          el("span", { cls: "sub", text: num(done) + " of " + num(n) + " tasks done" }), el("div", { cls: "rp-bar" }, el("span", { style: "width:" + Math.min(100, 100 * done / n) + "%;background:" + stageColor(st.id) }))));
+      });
+      // the last events up to now
+      ticker.textContent = "";
+      var hi = 0, lo = M.evs.length;
+      while (hi < lo) { var mid = (hi + lo) >> 1; if (M.evs[mid][0] <= t) hi = mid + 1; else lo = mid; }
+      for (var i = hi - 1; i >= Math.max(0, hi - 14); i--) {
+        var ev = M.evs[i];
+        ticker.appendChild(el("li", { cls: "rp-ev " + ev[1] }, el("span", { cls: "sub", text: tfmt.format(ev[0]) }), " ", ev[2]));
+      }
+    }
+    function speedNow() {
+      var v = speed.value;
+      return v.slice(0, 3) === "fit" ? span0 / (1000 * +v.slice(3)) : +v;
+    }
+    function frame(now) {
+      if (!state.playing || !document.body.contains(stage)) { state.playing = false; playBtn.textContent = "Play"; return; }
+      if (state.last) state.now = Math.min(M.t1, state.now + (now - state.last) * speedNow());
+      state.last = now;
+      draw();
+      if (state.now >= M.t1) { state.playing = false; playBtn.textContent = "Play again"; return; }
+      requestAnimationFrame(frame);
+    }
+    playBtn.addEventListener("click", function () {
+      if (state.playing) { state.playing = false; playBtn.textContent = "Play"; return; }
+      if (state.now >= M.t1) state.now = M.t0;
+      state.playing = true; state.last = 0; playBtn.textContent = "Pause";
+      requestAnimationFrame(frame);
+    });
+    restart.addEventListener("click", function () { state.now = M.t0; state.last = 0; draw(); });
+    stepBtn.addEventListener("click", function () {
+      state.playing = false; playBtn.textContent = "Play";
+      var next = M.evs.filter(function (e) { return e[0] > state.now; })[0];
+      state.now = next ? next[0] : M.t1;
+      draw();
+    });
+    scrub.addEventListener("input", function () { state.now = M.t0 + span0 * (+scrub.value) / 1000; state.last = 0; draw(); });
+    draw(); // paused at the start: it moves only when the reader presses Play
     return s;
   };
 
