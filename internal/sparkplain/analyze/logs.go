@@ -241,6 +241,19 @@ func containerAttempt(id string) int {
 // applicationFromLogs fills in the application's name, user, queue,
 // status and times from YARN's records when there is no event log.
 func applicationFromLogs(c *ctx, r *model.Report) {
+	if c.rebuilt {
+		// The driver's log does not say who ran it, or in which queue.
+		a := &r.Application
+		for _, h := range c.logs.hits {
+			if k := h.l.Kind; (k == model.LogAppSummary || k == model.LogAppReport) && a.User == "" {
+				a.User = h.l.Fields["user"]
+				if a.Queue == "" {
+					a.Queue = h.l.Fields["queue"]
+				}
+			}
+		}
+		return
+	}
 	if c.has() {
 		return
 	}

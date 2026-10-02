@@ -113,7 +113,7 @@ func analyzeHBase(c *ctx, r *model.Report) {
 	}
 	hbaseStages(c, r, h)
 	hbaseLocality(c, h)
-	hbaseTasks(r, h, hbaseScans(c, r, h))
+	hbaseTasks(c, r, h, hbaseScans(c, r, h))
 	hbaseRegionEvents(c, r, h)
 	hbaseLoad(c, h)
 	hbaseScanFindings(c, h)

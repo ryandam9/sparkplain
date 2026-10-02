@@ -16,9 +16,11 @@ func investigateFindings(c *ctx) {
 		return
 	}
 	exclusionFindings(c)
-	schedulerDelayFinding(c)
+	if c.metrics() { // both read task metrics
+		schedulerDelayFinding(c)
+		resultSizeFinding(c)
+	}
 	localityFinding(c)
-	resultSizeFinding(c)
 	startupFinding(c)
 	speculationFinding(c)
 	runningAtEndFinding(c)

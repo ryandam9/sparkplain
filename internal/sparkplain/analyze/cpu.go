@@ -10,9 +10,12 @@ import (
 func analyzeCPU(c *ctx, r *model.Report) {
 	s := &r.CPU
 	s.Missing = []string{"Host CPU per node over time (needs the CloudWatch agent, phase 3)"}
-	if !c.has() {
+	if !c.metrics() {
 		s.Coverage = model.NeedsEventLog
 		s.Missing = append([]string{"CPU time per stage and per executor"}, s.Missing...)
+		if c.rebuilt {
+			s.Missing = append([]string{rebuiltNote}, s.Missing...)
+		}
 		return
 	}
 	s.Coverage = model.Partial

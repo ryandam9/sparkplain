@@ -75,8 +75,13 @@ type Input struct {
 
 // ctx is shared state for the analyzers.
 type ctx struct {
-	in       Input
-	log      *model.EventLog
+	in  Input
+	log *model.EventLog
+	// rebuilt says the event log was rebuilt from the driver's log: its
+	// jobs, stages, tasks and executors are Spark's, but its tasks carry no
+	// metrics (rows, bytes, CPU, GC, memory), so rules and sections that
+	// need them say so instead of reading zeros.
+	rebuilt  bool
 	conf     map[string]string // Spark and Hadoop properties, already redacted
 	sys      map[string]string // JVM and system properties
 	confSrc  model.Source
@@ -110,6 +115,7 @@ func Run(in Input) *model.Report {
 		Mode:          in.Mode,
 	}
 	c := &ctx{in: in, log: in.EventLog, t: in.Thresholds, conf: map[string]string{}, sys: map[string]string{}}
+	c.rebuilt = in.EventLog != nil && in.EventLog.Stats.Layout == model.LayoutRebuilt
 	if c.t == (Thresholds{}) {
 		c.t = DefaultThresholds()
 	}
@@ -178,6 +184,14 @@ func exitCode(c *ctx, r *model.Report) int {
 }
 
 func (c *ctx) has() bool { return c.log != nil }
+
+// metrics reports whether task metrics are known: an event log, not one
+// rebuilt from the driver's log.
+func (c *ctx) metrics() bool { return c.log != nil && !c.rebuilt }
+
+// rebuiltNote says what a section misses when the run was rebuilt from
+// the driver's log.
+const rebuiltNote = "Task metrics (rows, bytes, CPU and GC time, spill, memory): only the event log has them; this run was rebuilt from the driver's log"
 
 func (c *ctx) confBool(key string, def bool) bool {
 	v, ok := c.conf[key]

@@ -77,6 +77,10 @@ func analyzeExecutors(c *ctx, r *model.Report) {
 		return
 	}
 	s.Coverage = model.Complete
+	if c.rebuilt {
+		s.Coverage = model.Partial
+		s.Missing = []string{rebuiltNote}
+	}
 	s.Executors = c.log.Executors
 	if s.Executors == nil {
 		s.Executors = []*model.Executor{}

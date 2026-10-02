@@ -8,9 +8,12 @@ import (
 
 func analyzeIO(c *ctx, r *model.Report) {
 	s := &r.IO
-	if !c.has() {
+	if !c.metrics() {
 		s.Coverage = model.NeedsEventLog
 		s.Missing = []string{"Bytes and rows read and written per stage", "Shuffle read and write", "Cached data", "Tables and paths from SQL plans"}
+		if c.rebuilt {
+			s.Missing = append([]string{rebuiltNote}, s.Missing...)
+		}
 		return
 	}
 	s.Coverage = model.Complete

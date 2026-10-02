@@ -81,9 +81,12 @@ func r0cores(c *ctx) int {
 
 func analyzeMemory(c *ctx, r *model.Report) {
 	s := &r.Memory
-	if !c.has() {
+	if !c.metrics() {
 		s.Coverage = model.NeedsEventLog
 		s.Missing = []string{"Configured memory per executor", "Peak heap, off-heap and process memory per executor", "Spill to memory and disk per stage", "Garbage collection time"}
+		if c.rebuilt {
+			s.Missing = append([]string{rebuiltNote}, s.Missing...)
+		}
 		return
 	}
 	s.Coverage = model.Partial

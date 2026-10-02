@@ -13,7 +13,7 @@ import (
 // (placed); its time from its Running and Finished lines, or from the
 // event log when it records the task, which also gives its rows. Then it
 // sums them per stage.
-func hbaseTasks(r *model.Report, h *model.HBaseSection, placed map[model.Source]placement) {
+func hbaseTasks(c *ctx, r *model.Report, h *model.HBaseSection, placed map[model.Source]placement) {
 	if r.Logs == nil {
 		return
 	}
@@ -45,11 +45,14 @@ func hbaseTasks(r *model.Report, h *model.HBaseSection, placed map[model.Source]
 				if sp.Task == nil {
 					t.Partition, t.Attempt, t.TaskID, t.Outcome = k.Index, k.Attempt, k.TaskID, "finished"
 				}
-				if t.Start.IsZero() && !k.Launch.IsZero() { // the event log's launch, when the log has no Running line
+				if t.Start.IsZero() && !k.Launch.IsZero() { // the event log's (or driver's) launch, when the log has no Running line
 					t.Start, t.End = k.Launch, k.Launch.Add(time.Duration(k.DurationMs)*time.Millisecond)
 				}
-				t.Rows, t.RowsKnown = k.Rows, true
+				t.Rows, t.RowsKnown = k.Rows, c.metrics()
 				t.DurationMs, t.Timed, t.TimeFrom = k.DurationMs, true, "event log"
+				if c.rebuilt {
+					t.TimeFrom = "driver log"
+				}
 				t.ExecutorID, t.Host, t.TaskSource = k.ExecutorID, k.Host, k.Source
 			}
 			h.Tasks = append(h.Tasks, t)
