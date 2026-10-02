@@ -116,6 +116,7 @@ func analyzeHBase(c *ctx, r *model.Report) {
 	hbaseTasks(r, h, hbaseScans(c, r, h))
 	hbaseRegionEvents(c, r, h)
 	hbaseLoad(c, h)
+	hbaseScanFindings(c, h)
 	if slices.ContainsFunc(h.Tables, func(t model.HBaseTable) bool { return t.Read && slices.Contains(t.APIs, "hbase-spark connector") }) {
 		h.Missing = append(h.Missing, "Regions per region server for tables the hbase-spark connector read: the connector does not log its regions (HBase's own logs, step 7, will).")
 	}
