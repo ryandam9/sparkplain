@@ -1255,7 +1255,7 @@
   function drawGraph(wrap, lay, info, g) {
     var svg = sv("svg", { "class": "dag", viewBox: "0 0 " + lay.w + " " + lay.h, width: lay.w, height: lay.h, role: "img" });
     var W = 200, H = 48;
-    lay.edges.forEach(function (e) {
+    (lay.edges || []).forEach(function (e) { // a graph of one node has no edges (null)
       var a = lay.pos[e[0]], b = lay.pos[e[1]];
       var x1 = a[0] + W / 2, y1 = a[1] + H, x2 = b[0] + W / 2, y2 = b[1], my = (y1 + y2) / 2;
       svg.appendChild(sv("path", { "class": "edge" + (g.edgeCls ? " " + g.edgeCls(e) : ""), d: "M" + x1 + "," + y1 + " C" + x1 + "," + my + " " + x2 + "," + my + " " + x2 + "," + (y2 - 4), "marker-end": "url(#sp-arrow)" }));
