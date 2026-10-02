@@ -3166,8 +3166,23 @@
   // The anatomy diagram is drawn in Go (the same picture as the report's);
   // D3 adds zoom and pan, double-click to zoom to a part, and hover that
   // lights up every badge of the same finding.
-  views.anatomy = function () {
-    var s = section("The run at a glance", "The whole run in one picture: the cluster, what each node offered YARN, the containers placed there (to scale), and inside an executor the heap's regions with how far each peaked.");
+  views.anatomy = function (arg) {
+    var s = section("The run at a glance", "The whole run in one picture: the cluster, what each node offered YARN, the containers placed there (to scale), and inside an executor the heap's regions with how far each peaked. Click an executor to see inside it.");
+    // #anatomy/<id>: that executor drawn in full, above the diagram
+    if (arg != null) {
+      var panel = (D.anatomyExecutors || {})[arg];
+      var box = el("div", { cls: "anatexec" });
+      box.appendChild(el("div", { cls: "crumbs" }, link("#anatomy", "The whole run"), " / executor " + arg,
+        execByID[arg] ? [" · ", link("#executor/" + encodeURIComponent(arg), "Open executor " + arg + "'s page")] : null));
+      if (panel) {
+        var pw = el("div", { cls: "anatwrap" });
+        pw.innerHTML = panel; // drawn and escaped in Go
+        box.appendChild(pw);
+      } else {
+        box.appendChild(explain("Executor " + arg + " cannot be drawn region by region: its memory settings are only in the event log" + (D.anatomyExecutors ? ", or it is past the page's limit of executors drawn" : "") + "."));
+      }
+      s.appendChild(box);
+    }
     var wrap = el("div", { cls: "anatwrap" });
     wrap.innerHTML = D.anatomy; // drawn and escaped in Go
     var tools = el("div", { cls: "bar-tools anattools" });
@@ -3196,12 +3211,18 @@
     btn("Zoom in", function () { go(250, zoom.scaleBy, 1.5); });
     btn("Zoom out", function () { go(250, zoom.scaleBy, 1 / 1.5); });
     btn("Fit", function () { go(300, zoom.transform, d3.zoomIdentity); });
-    tools.appendChild(el("span", { cls: "count", text: "Drag to move · Ctrl + wheel to zoom · double-click a node or panel to zoom to it" }));
+    tools.appendChild(el("span", { cls: "count", text: "Click an executor to see inside it · drag to move · Ctrl + wheel to zoom · double-click a node or panel to zoom to it" }));
     var vb = node.viewBox.baseVal;
     svg.selectAll("g.node, g.jvm, g.rmpanel").on("dblclick", function (ev) {
       ev.preventDefault();
       var b = this.getBBox(), k = Math.min(8, 0.9 * Math.min(vb.width / b.width, vb.height / b.height));
       go(450, zoom.transform, d3.zoomIdentity.translate(vb.width / 2 - k * (b.x + b.width / 2), vb.height / 2 - k * (b.y + b.height / 2)).scale(k));
+    });
+    // The whole executor card opens it drawn in full, not only its name.
+    svg.selectAll("g[data-exec]").style("cursor", "pointer").on("click", function (ev) {
+      if (ev.defaultPrevented || ev.target.closest("[data-finding]")) return; // a drag, or a finding's badge
+      ev.preventDefault();
+      location.hash = "#anatomy/" + encodeURIComponent(this.getAttribute("data-exec"));
     });
     svg.selectAll("[data-finding]")
       .on("mouseenter", function () { svg.selectAll('[data-finding="' + this.getAttribute("data-finding") + '"]').classed("hl", true); })

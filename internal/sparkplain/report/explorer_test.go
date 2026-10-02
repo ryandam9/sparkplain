@@ -518,3 +518,25 @@ func TestExplorerReplay(t *testing.T) {
 		t.Error("the replay should animate with requestAnimationFrame, which stops with the tab")
 	}
 }
+
+// In the explorer an executor's card opens At a glance with that executor
+// drawn in full: the diagram links to #anatomy/<id>, and the page carries
+// a panel per executor.
+func TestExplorerAnatomyOpensExecutors(t *testing.T) {
+	t.Parallel()
+	r, x := buildWithExplorer(t, "application_1790380000000_0046")
+	d := embedded(t, renderExplorer(t, r, x))
+	anat, _ := d["anatomy"].(string)
+	execs, _ := d["anatomyExecutors"].(map[string]any)
+	if len(execs) == 0 || len(execs) != len(r.Executors.Executors) {
+		t.Fatalf("%d executor panels for %d executors", len(execs), len(r.Executors.Executors))
+	}
+	for id := range execs {
+		if !strings.Contains(anat, `href="#anatomy/`+id+`"`) {
+			t.Errorf("the diagram does not open executor %s", id)
+		}
+	}
+	if !strings.Contains(explorerJS, `location.hash = "#anatomy/" + encodeURIComponent(this.getAttribute("data-exec"))`) {
+		t.Error("the whole executor card should open it")
+	}
+}

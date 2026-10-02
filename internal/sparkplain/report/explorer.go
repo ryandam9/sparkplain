@@ -117,7 +117,8 @@ type xData struct {
 	Findings   []xFinding            `json:"findings"`
 	Anatomy    string                `json:"anatomy,omitempty"` // the diagram's SVG, drawn in Go
 	AnatGuide  *chartGuide           `json:"anatomyGuide,omitempty"`
-	RunNotes   map[string][]runPoint `json:"runNotes,omitempty"` // each chart's "In this run"
+	AnatExecs  map[string]string     `json:"anatomyExecutors,omitempty"` // each executor drawn in full, by ID
+	RunNotes   map[string][]runPoint `json:"runNotes,omitempty"`         // each chart's "In this run"
 	Files      []string              `json:"files"`
 	Execs      []string              `json:"execs"` // executor IDs; task and cell rows use their index
 	Executors  table                 `json:"executors"`
@@ -280,13 +281,15 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 	d.Resources = resourceUse(r, buildAnatomy(r))
 	d.AnatGuide = &anatGuide
 	d.RunNotes = runNotes(r)
-	d.Anatomy = anatomySVG(buildAnatomy(r), anatLinks{
+	// An executor's chip opens At a glance with that executor drawn in
+	// full (AnatExecs), which links on to its own page.
+	anat, anatL := buildAnatomy(r), anatLinks{
 		Finding: func(n int) string { return fmt.Sprintf("#finding/%d", n) },
 		Ref: func(ref string) string {
 			kind, id, _ := strings.Cut(ref, ":")
 			switch kind {
 			case "executor":
-				return "#executor/" + url.PathEscape(id)
+				return "#anatomy/" + url.PathEscape(id)
 			case "node":
 				if r.Cluster != nil {
 					return "#cluster"
@@ -295,7 +298,9 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 			}
 			return ""
 		},
-	})
+	}
+	d.AnatExecs = execPanels(r, anat, anatL)
+	d.Anatomy = anatomySVG(anat, anatL)
 	files := map[string]int{}
 	fileIdx := func(s model.Source) int64 {
 		if s.File == "" {
