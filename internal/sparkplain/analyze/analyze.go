@@ -30,6 +30,7 @@ type Thresholds struct {
 	HBaseTimeShare   float64       `yaml:"hbase-time-share"`    // stages reading or writing HBase over this share of the run
 	HBaseConnections int           `yaml:"hbase-connections"`   // ZooKeeper connections one process opened over this
 	HBaseHotspot     float64       `yaml:"hbase-hotspot-share"` // one region server holding over this share of a table's regions read
+	HBaseLoadMin     time.Duration `yaml:"hbase-load-min"`      // one region server serving the hotspot share of running scan tasks for this long
 }
 
 // DefaultThresholds are the values in SPEC §6 (the config file).
@@ -40,7 +41,7 @@ func DefaultThresholds() Thresholds {
 		MinRunTime:      time.Minute,
 		SchedDelayShare: 0.20, LocalityAnyShare: 0.30, ResultShare: 0.50, SlowStartup: time.Minute,
 		DriverGapShare: 0.25, DriverGapMin: time.Minute,
-		HBaseTimeShare: 0.50, HBaseConnections: 50, HBaseHotspot: 0.75,
+		HBaseTimeShare: 0.50, HBaseConnections: 50, HBaseHotspot: 0.75, HBaseLoadMin: time.Minute,
 	}
 }
 
@@ -198,7 +199,7 @@ func share(a, b int64) float64 {
 func rulePriority(rule string) int {
 	for i, r := range []string{
 		"log-first-failure", "job-failed", "step-failed", "bootstrap-failed", "executor-memory-kill", "out-of-memory", "classpath-clash", "access-denied",
-		"hbase-access-denied", "kerberos-failure", "metastore-failure", "hbase-table-missing", "hbase-zookeeper", "hbase-server", "hbase-retries", "hbase-error", "executor-lost", "spot-interrupted", "app-retried", "waited-for-capacity", "executor-fit", "idle-nodes", "host-memory-pressure", "host-cpu-saturated", "executor-decommissioned", "stage-retried", "hbase-server-lost", "hbase-time", "hbase-regions-changed", "hbase-server-pause", "hbase-slow-calls", "hbase-busy", "hbase-scanner-expired", "hbase-region-moved", "hbase-scan-skew", "hbase-hotspot", "hbase-zk-connections", "hbase-remote-regions",
+		"hbase-access-denied", "kerberos-failure", "metastore-failure", "hbase-table-missing", "hbase-zookeeper", "hbase-server", "hbase-retries", "hbase-error", "executor-lost", "spot-interrupted", "app-retried", "waited-for-capacity", "executor-fit", "idle-nodes", "host-memory-pressure", "host-cpu-saturated", "executor-decommissioned", "stage-retried", "hbase-server-lost", "hbase-time", "hbase-regions-changed", "hbase-server-pause", "hbase-slow-calls", "hbase-busy", "hbase-scanner-expired", "hbase-region-moved", "hbase-scan-skew", "hbase-server-load", "hbase-hotspot", "hbase-zk-connections", "hbase-remote-regions",
 		"access-static-keys", "stage-skew", "memory-spill", "memory-gc-pressure", "memory-heap-near-limit",
 		"config-unlimited-result", "config-dynalloc-no-shuffle",
 	} {

@@ -349,6 +349,16 @@
         {{if gt (len .Tasks) (len $tasks)}}<p class="explain">The first {{numi (len $tasks)}} of {{numi (len .Tasks)}} task attempts, in stage order; the explorer's HBase tasks view and the JSON report list them all.</p>{{end}}
         {{if lt (tasksWithRows .Tasks) (len .Tasks)}}<p class="explain">Rows are shown only for tasks the event log records (one successful attempt per partition); the executors' logs do not count rows.</p>{{end}}
         {{end}}
+        {{if .Load}}<h3 id="hbase-load">Region server load over time</h3>
+        <p class="explain">How many of the run's TableInputFormat tasks each region server was serving at once, from each task's start and end (its Running and Finished lines, or the event log). Each task reads one region, so a server serving most of the tasks running at once is where the reads queued.</p>
+        {{hbaseLoadChart $r}}
+        <div class="tbl"><table>
+          <thead><tr><th data-sort="text">Region server</th><th class="num" data-sort="num">Tasks</th><th class="num" data-sort="num">Task time</th><th class="num" data-sort="num">Busy for</th><th class="num" data-sort="num">Most at once</th><th data-sort="text">When</th><th class="num" data-sort="num">On average while busy</th><th>Served most of the scans running</th></tr></thead>
+          <tbody>{{range .Load}}<tr><td class="mono" title="{{.Server}}">{{shortHost .Server}}</td><td class="num" data-v="{{.Tasks}}">{{numi .Tasks}}</td><td class="num" data-v="{{.TaskMs}}">{{dur .TaskMs}}</td><td class="num" data-v="{{.BusyMs}}">{{dur .BusyMs}}</td><td class="num" data-v="{{.Peak}}">{{numi .Peak}}</td><td>{{time .PeakAt "hms"}}</td><td class="num" data-v="{{ratio .TaskMs .BusyMs}}">{{if .BusyMs}}{{printf "%.1f" (ratio .TaskMs .BusyMs)}} tasks{{else}}—{{end}}</td>
+            <td>{{with .Hot}}{{time .From "hms"}} to {{time .To "hms"}} ({{span .From .To}}): up to {{numi .Tasks}} of {{numi .All}}{{else}}—{{end}}</td></tr>
+          {{end}}</tbody>
+        </table></div>
+        <p class="explain"><b>Busy for</b> is the time at least one scan task was reading from the server; <b>on average while busy</b> is its task time over that. A stretch counts as serving most of the scans when it served at least <span class="mono">hbase-hotspot-share</span> (75% unless the config file sets it) of those running, and at least 4.</p>{{end}}
         {{if .ServerEvents}}<h3>What HBase's servers logged while the run went on</h3>
         <div class="tbl"><table>
           <thead><tr><th data-sort="text">Event</th><th data-sort="text">Server</th><th data-sort="text">Table</th><th class="num" data-sort="num">Times</th><th>This run's</th><th>Detail</th><th>Found in</th></tr></thead>

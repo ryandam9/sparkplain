@@ -729,6 +729,49 @@ func nodeCPUChart(r *model.Report, loc *time.Location) template.HTML {
 	}, lines(series, m.From, m.To, pctF, loc), legend)
 }
 
+// hbaseLoadChart shows how many HBase scan tasks each region server served
+// at once over the run: the five busiest, and all of them together.
+func hbaseLoadChart(r *model.Report, loc *time.Location) template.HTML {
+	h := r.HBase
+	if h == nil || len(h.Load) == 0 {
+		return ""
+	}
+	colors := []string{cInput, cShRead, cShWrite, cOutput, cSpill}
+	var series []line
+	var legend []legendItem
+	for i, l := range h.Load {
+		if i == len(colors) {
+			break
+		}
+		series = append(series, line{label: shortHost(l.Server), color: colors[i], points: l.Points, step: true})
+		legend = append(legend, legendItem{colors[i], shortHost(l.Server)})
+	}
+	if len(h.Load) > 1 {
+		series = append(series, line{label: "All region servers", color: cNeutral, points: h.LoadTotal, step: true, dash: true})
+		legend = append(legend, legendItem{cNeutral, "All region servers (dashed)"})
+	}
+	note := ""
+	if len(h.Load) > len(colors) {
+		note = fmt.Sprintf("The %d busiest of %d region servers; the table below lists them all.", len(colors), len(h.Load))
+	}
+	end := h.LoadTo.Add(time.Duration(h.LoadStepMs) * time.Millisecond)
+	return chartBox("Region server load over time", chartGuide{
+		Run: runNotes(r)["hbaseLoad"],
+		Axes: [][2]string{
+			{"Across", "Time of day, while the run's HBase scans ran."},
+			{"Up", fmt.Sprintf("HBase scan tasks reading from the region server at once: the most in each %s step. One line per region server, the dashed line all of them together.", model.Duration(h.LoadStepMs))},
+		},
+		Read: []string{
+			"Lines of similar height: the reads were spread across the region servers.",
+			"One line close to the dashed line while the others sit low: that server served almost all the reads, and its regions' reads queued on it.",
+			"A server's line that stays up after the others drop: its regions took longest, and the stage waited on them.",
+		},
+		Note: note,
+	}, lines(series, h.LoadFrom, end, countF, loc), legend)
+}
+
+func countF(v float64) string { return model.Num(int64(v)) }
+
 // queriesChart shows the longest SQL and DataFrame queries.
 func queriesChart(r *model.Report, explorer string) template.HTML {
 	dur := func(q *model.SQLQuery) float64 {
@@ -792,5 +835,6 @@ func chartFuncs(loc *time.Location, explorer string) template.FuncMap {
 		"nodeMemoryChart": nodeMemoryChart,
 		"nodeCPUChart":    func(r *model.Report) template.HTML { return nodeCPUChart(r, loc) },
 		"queriesChart":    func(r *model.Report) template.HTML { return queriesChart(r, explorer) },
+		"hbaseLoadChart":  func(r *model.Report) template.HTML { return hbaseLoadChart(r, loc) },
 	}
 }

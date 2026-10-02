@@ -552,6 +552,26 @@
       var label = String(st) + (att ? "." + att : "");
       return (D.hbaseScans || {})[key(st, att)] || stagesByID[st] ? link("#stage/" + key(st, att), label) : label;
     }
+    var load = D.hbaseLoad || [];
+    if (load.length) {
+      s.appendChild(el("h3", { text: "Region server load over time" }));
+      s.appendChild(chartSlot("", "hbaseLoad"));
+      s.appendChild(table({
+        rows: load, sort: 2,
+        cols: [
+          { h: "Region server", v: function (l) { return l.server; }, f: function (l) { return host(l.server); } },
+          { h: "Tasks", num: true, v: function (l) { return l.tasks; }, f: function (l) { return num(l.tasks); } },
+          { h: "Task time", num: true, v: function (l) { return l.taskMs; }, f: function (l) { return dur(l.taskMs); } },
+          { h: "Busy for", num: true, v: function (l) { return l.busyMs; }, f: function (l) { return dur(l.busyMs); } },
+          { h: "Most at once", num: true, v: function (l) { return l.peak; }, f: function (l) { return num(l.peak); } },
+          { h: "When", v: function (l) { return l.peakAt || ""; }, f: function (l) { return when(l.peakAt ? Date.parse(l.peakAt) : 0); } },
+          { h: "On average while busy", num: true, v: function (l) { return l.busyMs ? l.taskMs / l.busyMs : 0; }, f: function (l) { return l.busyMs ? (l.taskMs / l.busyMs).toFixed(1) + " tasks" : "—"; } },
+          { h: "Served most of the scans running", v: function (l) { return l.hot ? Date.parse(l.hot.to) - Date.parse(l.hot.from) : -1; },
+            f: function (l) { return l.hot ? el("span", null, when(Date.parse(l.hot.from)), " to ", when(Date.parse(l.hot.to)), " (" + dur(Date.parse(l.hot.to) - Date.parse(l.hot.from)) + "): up to " + num(l.hot.tasks) + " of " + num(l.hot.all)) : "—"; } }
+        ]
+      }));
+      s.appendChild(explain("Busy for is the time at least one scan task was reading from the server; on average while busy is its task time over that. A stretch counts as serving most of the scans when it served at least hbase-hotspot-share (75% unless the config file sets it) of those running, and at least 4."));
+    }
     s.appendChild(el("h3", { text: "By stage" }));
     s.appendChild(table({
       rows: sums, sort: 0, dir: "asc",
@@ -2140,6 +2160,14 @@
     stageHealth: function (c, arg) { stageHealth(c, arg === "compact"); },
     stageSkew: function (c) { stageSkewChart(c); },
     runTimeline: function (c) { runTimeline(c); },
+    hbaseLoad: function (c) {
+      var load = D.hbaseLoad || [], pts = function (ps) { return (ps || []).map(function (p) { return [Date.parse(p.t), p.v]; }); };
+      var series = load.slice(0, 8).map(function (l, i) { return { label: String(l.server).split(".")[0], color: V.viz[i % V.viz.length], dash: i >= V.viz.length ? "5 3" : null, points: pts(l.points), step: true }; });
+      if (load.length > 1) series.push({ label: "All region servers", color: V.neutral, dash: "2 3", points: pts(D.hbaseLoadTotal), step: true });
+      timeChart(c, series, { t: "Region server load over time", run: RUN("hbaseLoad"),
+          axes: [["Across", "Time of day, while the run's HBase scans ran."], ["Up", "HBase scan tasks reading from the region server at once: the most in each " + dur(D.hbaseLoadStepMs) + " step. One line per region server (the 8 busiest), the dotted line all of them together."]],
+          read: ["Lines of similar height: the reads were spread across the region servers.", "One line close to the dotted line while the others sit low: that server served almost all the reads, and its regions' reads queued on it.", "A server's line that stays up after the others drop: its regions took longest, and the stage waited on them."] }, "count");
+    },
     dataOverTime: function (c) {
       var done = stages.filter(function (st) { return st.completed; }).sort(function (a2, b2) { return a2.completed - b2.completed; });
       if (done.length < 2) { waitText(c, "Too few finished stages to chart."); return; }

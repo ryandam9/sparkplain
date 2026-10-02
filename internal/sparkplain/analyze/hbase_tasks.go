@@ -2,6 +2,7 @@ package analyze
 
 import (
 	"sort"
+	"time"
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
 )
@@ -43,6 +44,9 @@ func hbaseTasks(r *model.Report, h *model.HBaseSection, placed map[model.Source]
 			if k := pl.task; k != nil {
 				if sp.Task == nil {
 					t.Partition, t.Attempt, t.TaskID, t.Outcome = k.Index, k.Attempt, k.TaskID, "finished"
+				}
+				if t.Start.IsZero() && !k.Launch.IsZero() { // the event log's launch, when the log has no Running line
+					t.Start, t.End = k.Launch, k.Launch.Add(time.Duration(k.DurationMs)*time.Millisecond)
 				}
 				t.Rows, t.RowsKnown = k.Rows, true
 				t.DurationMs, t.Timed, t.TimeFrom = k.DurationMs, true, "event log"
