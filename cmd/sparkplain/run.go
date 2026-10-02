@@ -256,6 +256,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			con.status("reading the cluster's steps and instances")
 			logs = emrMetadata(ctx, cloud, cluster)
 		}
+		logs.logLoc = logLoc // the two above start a new clusterLogs
 		for _, row := range []*model.SourceStatus{logs.emr, logs.ec2} {
 			if row != nil {
 				con.sources(*row)

@@ -206,6 +206,32 @@ func TestOnlineReadsClusterLogs(t *testing.T) {
 	if strings.Contains(string(page), "FAKE-SCRIPT-PASSWORD") {
 		t.Error("the script's planted password reached the explorer")
 	}
+
+	// Online too, -log-timezone reads the log times in the cluster's zone
+	// (describing the cluster once dropped it): Sydney's, 10 hours ahead
+	// in September, so every container log starts 10 hours earlier in UTC.
+	dir2 := t.TempDir()
+	if code, _, errs := runCLI(t, "-app-id", "application_1790380000000_0049", "-cluster-id", "j-FIXTURE0049CLUSTER", "-profile", "test",
+		"-log-timezone", "Australia/Sydney", "-out", dir2, "-format", "json"); code != exitOK {
+		t.Fatalf("exit %d: %s", code, errs)
+	}
+	first := map[string]time.Time{}
+	for _, f := range r.Logs.Files {
+		first[f.Location] = f.FirstTime
+	}
+	n := 0
+	for _, f := range readReport(t, dir2).Logs.Files {
+		if f.Container == "" || f.FirstTime.IsZero() {
+			continue
+		}
+		n++
+		if want := first[f.Location].Add(-10 * time.Hour); !f.FirstTime.Equal(want) {
+			t.Errorf("%s starts %s in Sydney's time, want %s", f.Location, f.FirstTime, want)
+		}
+	}
+	if n == 0 {
+		t.Error("no container log read with -log-timezone")
+	}
 }
 
 func TestSubmitScripts(t *testing.T) {
