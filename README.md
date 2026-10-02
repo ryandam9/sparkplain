@@ -382,6 +382,23 @@ thresholds:            # tune when findings fire
     -show application_1700000000000_0042.lz4:1234
   ```
 
+- **`-decode-scan <base64>`** prints an HBase scan string (the `hbase.mapreduce.scan` a `TableInputFormat` job passes, as `binascii.b2a_base64` or Java writes it) decoded: the key range, columns, time range, caching, and the filters as a tree with their operators and values. It reads nothing else and calls nothing. Pass `-` to read the string from stdin, which keeps it out of your shell history:
+
+  ```sh
+  pbpaste | sparkplain -decode-scan -
+  ```
+  ```
+  HBase scan
+    Rows               [2026-08-15, 2026-10-10)
+    Columns            d:status, d:amount
+    Caching            500 rows per call to the region server
+    Filters
+      FilterList  MUST_PASS_ALL
+      ├─ SingleColumnValueFilter  d:status EQUAL Binary "SHIPPED" (rows without the column are left out)
+      └─ PrefixFilter  "2026-09"
+  ```
+  A filter or comparator it does not know is named and marked "not decoded", never guessed. The value tested on a column named like a password, secret, token, key or credential is redacted.
+
 - **Limits:** `-max-size` (stored size per file, default 10 GiB), `-max-unpacked` (unpacked size per compressed file, default 50 GiB), `-workers` (files read at once, 1 to 256, default 16), `-overall-timeout` (default 30m) and `-window-pad` (padding around the run for CloudWatch and CloudTrail, default 5m). A file cut short by a limit is marked partial, never passed off as complete.
 
 Run `sparkplain -h` for every flag.
