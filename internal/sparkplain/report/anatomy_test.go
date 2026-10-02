@@ -266,8 +266,10 @@ func TestAnatomyNodesNotThereForTheRun(t *testing.T) {
 	if a.RM.OfferedBytes != 24*gib {
 		t.Errorf("offered %d GiB, want the two nodes there throughout", a.RM.OfferedBytes/gib)
 	}
+	// They ran nothing of the application, so they add up in the box of
+	// unused nodes, which says they were not there throughout.
 	svg := anatomySVG(a, anatLinks{Finding: func(int) string { return "" }, Ref: func(string) string { return "" }})
-	for _, want := range []string{"12.0 GiB free, but the node went away 1 min 19 s into the run", "12.0 GiB free, but the node joined 3 min 41 s into the run"} {
+	for _, want := range []string{"Not used by this application: 2 worker nodes", "2 task nodes (m5.xlarge)", "1 went away and 1 joined while the application ran"} {
 		if !strings.Contains(svg, want) {
 			t.Errorf("diagram lacks %q", want)
 		}
@@ -296,5 +298,45 @@ func TestAnatomyShowsExecutorSizeAndKey(t *testing.T) {
 	n.Execs[1].Kind = model.RemovalLost
 	if svg := anatomySVG(&anatomy{Cluster: "c", Nodes: []*anatNode{n}}, noLinks); !strings.Contains(svg, "Red outline: executor killed or lost") {
 		t.Error("a lost executor, but no key for its red outline")
+	}
+}
+
+// On a shared cluster most worker nodes run nothing of the application:
+// those it used get a card each (not folded into "more like it"), and the
+// rest one box counting them by role and type, with what they offered
+// YARN and the findings about them.
+func TestAnatomyFoldsUnusedNodes(t *testing.T) {
+	t.Parallel()
+	r := anatReport()
+	for i := 4; i <= 13; i++ {
+		role, typ := "CORE", "r5.4xlarge"
+		if i > 10 {
+			role, typ = "TASK", "m5.2xlarge"
+		}
+		r.Nodes.Hosts = append(r.Nodes.Hosts, model.Host{Name: "ip-10-0-0-" + string(rune('0'+i%10)) + string(rune('a'+i)) + ".internal",
+			Instance: &model.Instance{ID: "i-x", Role: role, Type: typ}, YARNMemoryBytes: 100 * gib, YARNVCores: 16})
+	}
+	r.Findings = []model.Finding{{Rule: "idle-nodes", Severity: model.Info, Title: "idle", Evidence: []model.Evidence{{Text: r.Nodes.Hosts[5].Name + " ran no executors"}}}}
+	a := buildAnatomy(r)
+	if len(a.Nodes) != 2 || a.Nodes[0].Alike != 0 || a.Nodes[1].Alike != 0 {
+		t.Fatalf("nodes the application used: %+v", a.Nodes)
+	}
+	u := a.Unused
+	if u == nil || u.Count != 10 || strings.Join(u.Groups, " · ") != "7 core nodes (r5.4xlarge) · 3 task nodes (m5.2xlarge)" ||
+		u.YARNBytes != 1000*gib || u.YARNCores != 160 || len(u.Badges) != 1 {
+		t.Fatalf("unused = %+v", u)
+	}
+	svg := anatomySVG(a, anatLinks{Finding: func(int) string { return "" }, Ref: func(string) string { return "" }})
+	for _, want := range []string{"Not used by this application: 10 worker nodes", "7 core nodes (r5.4xlarge) · 3 task nodes (m5.2xlarge)", "Their NodeManagers offered 1000 GiB and 160 vcores."} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("diagram lacks %q", want)
+		}
+	}
+	// With nothing saying which nodes ran the application, every node is
+	// drawn as before.
+	r = anatReport()
+	r.Executors.Executors, r.Nodes.Hosts[1].DriverContainerBytes, r.Nodes.Hosts[2].Executors = nil, 0, nil
+	if a = buildAnatomy(r); a.Unused != nil || len(a.Nodes) != 2 {
+		t.Errorf("no executors known: unused %+v, %d nodes", a.Unused, len(a.Nodes))
 	}
 }
