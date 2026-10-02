@@ -52,7 +52,7 @@ var appIDRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.\-]{0,127}$`)
 
 type options struct {
 	profile, region, configPath, env, clusterID, clusterName, hbaseClusterID, hbaseClusterName, appID string
-	eventLog, from, out, format, maxSize, maxUnpacked, show                                           string
+	eventLog, from, out, format, maxSize, maxUnpacked, show, decodeScan                               string
 	workers                                                                                           int
 	timeout, windowPad                                                                                time.Duration
 	noCloudWatch, noCloudTrail, showVersion, check, initConfig                                        bool
@@ -87,6 +87,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.BoolVar(&o.initConfig, "init-config", false, "write a starter config file, every key explained, to ~/.config/sparkplain/config.yaml (or -config) and exit")
 	fs.BoolVar(&o.check, "check", false, "check what the run can read, print it, and exit (0 all readable, 3 not)")
 	fs.StringVar(&o.show, "show", "", "print the event at file:line (as the pages cite it), redacted, and exit")
+	fs.StringVar(&o.decodeScan, "decode-scan", "", "print an HBase scan string (hbase.mapreduce.scan, base64) decoded: key range, columns, filters; - reads it from stdin; reads nothing else and exits")
 	fs.Func("source", "the application's source file or folder, shown beside jobs and stages in the explorer (repeatable; redacted)", func(v string) error {
 		o.sources = append(o.sources, v)
 		return nil
@@ -109,6 +110,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	if o.initConfig {
 		return writeStarterConfig(firstNonEmpty(o.configPath, defaultConfigPath()), stdout, stderr)
+	}
+	if o.decodeScan != "" {
+		return decodeScan(o.decodeScan, os.Stdin, stdout, stderr)
 	}
 	con := newConsole(stdout, stderr)
 	fail := func(format string, a ...any) int {

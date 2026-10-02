@@ -158,6 +158,7 @@ Rules that judge CPU, GC and memory size skip runs with less than `min-run-time`
 | `-workers`, `-max-size`, `-max-unpacked`, `-overall-timeout` | Fetch budgets (§2) |
 | `-check` | Run only the access check and exit |
 | `-show file:line` | Print, redacted, the event behind any value the pages cite, and exit |
+| `-decode-scan <base64>` | Print an HBase scan string (`hbase.mapreduce.scan`, base64 as Java or Python's `b2a_base64` writes it; `-` reads stdin) decoded, and exit; it reads nothing else. Decoded from HBase 2.4.17's protobuf definitions: key range and whether each end is included, reversed, columns, time ranges, versions, caching, batch and result size, block cache, read type, consistency, attributes, and the filter tree (`FilterList` with `MUST_PASS_ALL`/`MUST_PASS_ONE`, the compare filters with their operator and comparator, and the other filters HBase 2.4 ships). Row keys and values are shown as HBase's `Bytes.toStringBinary` does; an unknown filter or comparator is named as not decoded; the value tested on a column named like a secret is redacted |
 | `-source` | The application's code (repeatable, redacted), shown beside the jobs and stages that ran each line |
 
 **Exit codes:** 0 complete; 2 fatal (usage mistakes, a cluster or file that does not exist, an `-app-id` that does not match, output that cannot be written); 3 partial (a source missing, unreadable or refused); 130 interrupted.
