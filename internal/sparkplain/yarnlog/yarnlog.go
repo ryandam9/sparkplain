@@ -43,7 +43,10 @@ type Result struct {
 	Truncated int             // lines longer than 64 KiB, cut
 	Dropped   int             // distinct lines past MaxEntries, not kept
 	Splits    []model.HBaseSplit
-	Scans     []model.HBaseScan // sparkplain-scan lines, decoded
+	// FirstTime and LastTime are the first and last times the file's lines
+	// start with, recognised or not: a container's log brackets when it ran.
+	FirstTime, LastTime time.Time
+	Scans               []model.HBaseScan // sparkplain-scan lines, decoded
 }
 
 // Caps on what one kept line carries.
@@ -77,6 +80,7 @@ func Classify(r io.Reader, name string, f File, opt Options) (Result, error) {
 			break
 		}
 		c.n++
+		c.stamp(b)
 		c.feed(string(b))
 	}
 	c.closeReport()
@@ -113,6 +117,11 @@ type classifier struct {
 	// (stacks, HotSpot's banner), so they sort near where they happened.
 	lastTime time.Time
 	lastOOM  int // index of the last HotSpot out-of-memory line, or -1
+
+	// stampKey is the last time prefix parsed by stamp, and stampTime its
+	// time: lines in the same second are not parsed again.
+	stampKey  string
+	stampTime time.Time
 
 	// TableInputFormat splits whose size line has not come yet: one group
 	// while tasks overlap, since their lines interleave (see splitSize).
@@ -1191,4 +1200,40 @@ func (c *classifier) scanLine(js string) {
 	l := c.entry(model.LogHBaseScan, model.Info, c.lastTime, "The job printed its scan of "+sc.Table+": rows "+sc.Rows())
 	l.Fields["table"] = sc.Table
 	c.add(l)
+}
+
+// stamp keeps the file's first and last times, from any line that starts
+// with one in a layout EMR's logs use (2026-10-02 05:12:03,123, its ISO
+// form, or Spark's 26/10/02 05:12:03), whatever follows: a log4j pattern
+// sparkplain does not otherwise read still dates the file.
+func (c *classifier) stamp(b []byte) {
+	if len(b) < 17 || b[0] < '0' || b[0] > '9' {
+		return
+	}
+	var n int
+	var layout string
+	switch {
+	case len(b) >= 19 && b[4] == '-' && b[7] == '-' && b[13] == ':' && b[16] == ':' && (b[10] == ' ' || b[10] == 'T'):
+		n, layout = 19, "2006-01-02 15:04:05"
+		if b[10] == 'T' {
+			layout = "2006-01-02T15:04:05"
+		}
+	case b[2] == '/' && b[5] == '/' && b[8] == ' ' && b[11] == ':' && b[14] == ':':
+		n, layout = 17, "06/01/02 15:04:05"
+	default:
+		return
+	}
+	if string(b[:n]) != c.stampKey {
+		t, err := time.Parse(layout, string(b[:n]))
+		if err != nil {
+			return
+		}
+		c.stampKey, c.stampTime = string(b[:n]), t
+	}
+	if c.res.FirstTime.IsZero() || c.stampTime.Before(c.res.FirstTime) {
+		c.res.FirstTime = c.stampTime
+	}
+	if c.stampTime.After(c.res.LastTime) {
+		c.res.LastTime = c.stampTime
+	}
 }

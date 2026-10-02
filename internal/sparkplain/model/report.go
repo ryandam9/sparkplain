@@ -557,6 +557,9 @@ type LogFile struct {
 	// HBaseScans are the scans the job printed (sparkplain-scan lines),
 	// decoded and redacted; the scan strings themselves are not kept.
 	HBaseScans []HBaseScan `json:"hbaseScans,omitempty"`
+	// FirstTime and LastTime are the first and last times its lines carry.
+	FirstTime time.Time `json:"firstTime,omitzero"`
+	LastTime  time.Time `json:"lastTime,omitzero"`
 }
 
 // HostCPU is a node's CPU use over the run, as a percentage of all its

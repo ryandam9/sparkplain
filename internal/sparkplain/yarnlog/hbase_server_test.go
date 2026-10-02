@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
 	"github.com/ryandam9/sparkplain/internal/sparkplain/source"
 )
 
@@ -126,7 +127,7 @@ func TestCollectHBaseLogs(t *testing.T) {
 	}
 	// The hours before the run are counted, not listed one by one: a
 	// long-lived cluster has thousands.
-	if row == nil || row.status != "read" || !strings.Contains(row.detail, "kept to the application's time. 6 hourly logs outside it skipped.") || listed != 0 {
+	if row == nil || row.status != "read" || !strings.Contains(row.detail, "kept to the application's time (2026-09-29 06:08–06:10 UTC). 6 hourly logs outside it skipped.") || listed != 0 {
 		t.Fatalf("HBase logs row = %+v, %d skipped files listed", row, listed)
 	}
 	events := map[string]int{}
@@ -263,5 +264,50 @@ func TestSplitsFromExecutorLog(t *testing.T) {
 	}
 	if res.Splits[4].SizeSource.Line != 139 {
 		t.Errorf("size source = %+v", res.Splits[4].SizeSource)
+	}
+}
+
+// A container log dates itself from any line that starts with a time,
+// whatever log4j pattern follows it, so a run with no event log and no
+// recognised line still has a time for HBase's logs.
+func TestLogFileTimesAnyPattern(t *testing.T) {
+	t.Parallel()
+	log := "2026-10-02 05:12:03,123 [Executor task launch worker for task 0.0] INFO  org.apache.spark.executor.Executor - Running task 0.0\n" +
+		"  at some.Frame(Frame.java:1)\n" +
+		"2026-10-02 05:31:40,001 [main] INFO  org.apache.spark.executor.Executor - Finished\n"
+	res, err := Classify(strings.NewReader(log), "stderr", File{Kind: ContainerStderr, Container: "container_1_0001_01_000002"}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.FirstTime != time.Date(2026, 10, 2, 5, 12, 3, 0, time.UTC) || res.LastTime != time.Date(2026, 10, 2, 5, 31, 40, 0, time.UTC) {
+		t.Errorf("times %s – %s", res.FirstTime, res.LastTime)
+	}
+	res, _ = Classify(strings.NewReader("26/10/02 05:12:03 INFO Executor: Running task\n"), "stderr", File{Kind: ContainerStderr}, Options{})
+	if res.FirstTime != time.Date(2026, 10, 2, 5, 12, 3, 0, time.UTC) {
+		t.Errorf("Spark's own layout: %s", res.FirstTime)
+	}
+}
+
+// The application's time without an event log: YARN's application summary
+// when the logs hold it (exact), else the times its containers' logs cover.
+func TestWindowFromLogs(t *testing.T) {
+	t.Parallel()
+	containers := []model.LogFile{
+		{Container: "c2", FirstTime: time.Date(2026, 10, 2, 5, 12, 3, 0, time.UTC), LastTime: time.Date(2026, 10, 2, 5, 30, 0, 0, time.UTC)},
+		{Container: "c3", FirstTime: time.Date(2026, 10, 2, 5, 13, 0, 0, time.UTC), LastTime: time.Date(2026, 10, 2, 5, 31, 40, 0, time.UTC)},
+		{Instance: "i-1", FirstTime: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)}, // a node log covers far more than the run
+	}
+	since, until, from := Window(containers, "application_1_0001")
+	if since != containers[0].FirstTime || until != containers[1].LastTime || from != "the times its container logs cover" {
+		t.Errorf("containers: %s – %s from %q", since, until, from)
+	}
+	rm := model.LogFile{Instance: "i-1", Found: []model.LogLine{{Kind: model.LogAppSummary, Fields: map[string]string{"appId": "application_1_0001",
+		"startTime": "1790917920000", "finishTime": "1790919000000"}}}}
+	since, until, from = Window(append(containers, rm), "application_1_0001")
+	if since != time.UnixMilli(1790917920000).UTC() || until != time.UnixMilli(1790919000000).UTC() || from != "YARN's application summary" {
+		t.Errorf("summary: %s – %s from %q", since, until, from)
+	}
+	if since, _, from := Window(nil, ""); !since.IsZero() || from != "" {
+		t.Errorf("nothing: %s %q", since, from)
 	}
 }

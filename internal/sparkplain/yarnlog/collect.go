@@ -8,6 +8,7 @@ import (
 	"path"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -50,8 +51,10 @@ type Plan struct {
 	// Until is when the application ended. With Since, it keeps HBase's
 	// logs, which hold every application, to the application's time; when
 	// both are zero, the container logs' first and last times are used.
-	Until  time.Time
-	Limits source.Limits
+	Until time.Time
+	// WindowFrom says where Since and Until came from, for the report.
+	WindowFrom string
+	Limits     source.Limits
 	// SkipHBase leaves HBase Master and region-server logs for a separate
 	// collector, for example when HBase runs on another EMR cluster.
 	SkipHBase bool
@@ -129,36 +132,69 @@ func CollectHBase(ctx context.Context, st source.Store, p Plan) Collection {
 	return c
 }
 
-// WithWindow fills the application's time from its container logs, when
-// neither the event log nor the caller gave it.
+// WithWindow fills the application's time from its logs, when neither
+// the event log nor the caller gave it (see Window), and says where it came
+// from.
 func (p Plan) WithWindow(files []model.LogFile) Plan {
 	if !p.Since.IsZero() && !p.Until.IsZero() {
 		return p
 	}
-	var first, last time.Time
+	since, until, from := Window(files, p.AppID)
+	if p.Since.IsZero() {
+		p.Since = since
+	}
+	if p.Until.IsZero() {
+		p.Until = until
+	}
+	if p.WindowFrom == "" {
+		p.WindowFrom = from
+	}
+	return p
+}
+
+// Window is when the application ran, from its logs: YARN's application
+// summary (the ResourceManager's record of its start and finish, exact)
+// when the logs hold it, else the first and last times its containers'
+// logs carry, recognised lines or not. From says which; zero times and ""
+// when neither is there.
+func Window(files []model.LogFile, appID string) (since, until time.Time, from string) {
+	for _, f := range files {
+		for _, l := range f.Found {
+			if l.Kind != model.LogAppSummary || appID != "" && l.Fields["appId"] != "" && l.Fields["appId"] != appID {
+				continue
+			}
+			s, _ := strconv.ParseInt(l.Fields["startTime"], 10, 64)
+			e, _ := strconv.ParseInt(l.Fields["finishTime"], 10, 64)
+			if s > 0 && e >= s {
+				return time.UnixMilli(s).UTC(), time.UnixMilli(e).UTC(), "YARN's application summary"
+			}
+		}
+	}
+	widen := func(t time.Time) {
+		if t.IsZero() {
+			return
+		}
+		if since.IsZero() || t.Before(since) {
+			since = t
+		}
+		if t.After(until) {
+			until = t
+		}
+	}
 	for _, f := range files {
 		if f.Container == "" {
 			continue
 		}
+		widen(f.FirstTime)
+		widen(f.LastTime)
 		for _, l := range f.Found {
-			if l.Time.IsZero() {
-				continue
-			}
-			if first.IsZero() || l.Time.Before(first) {
-				first = l.Time
-			}
-			if l.Time.After(last) {
-				last = l.Time
-			}
+			widen(l.Time)
 		}
 	}
-	if p.Since.IsZero() {
-		p.Since = first
+	if !since.IsZero() {
+		from = "the times its container logs cover"
 	}
-	if p.Until.IsZero() {
-		p.Until = last
-	}
-	return p
+	return since, until, from
 }
 
 // upDuringRun reports whether an instance was up at some point of the
@@ -242,7 +278,7 @@ func (c *Collection) hbase(ctx context.Context, st source.Store, p Plan) {
 		// Without the application's time every hour the cluster ever logged
 		// would qualify, and the cap would keep the oldest: read none.
 		src.Status = "not-supplied"
-		src.Detail = fmt.Sprintf("Found %s, but nothing says when the application ran (no event log, and no times in its container logs), so none was read: they cover the cluster's whole life, not this run. Pass -eventlog (the History Server's \"Download\", or a copy in S3) to read the run's hours.",
+		src.Detail = fmt.Sprintf("Found %s, but nothing says when the application ran (no event log, no YARN application summary, and no times in its container logs), so none was read: they cover the cluster's whole life, not this run. Pass -eventlog (the History Server's \"Download\", or a copy in S3), or read the node logs, which hold YARN's summary.",
 			model.Plural(hbaseLogs, "HBase log", "HBase logs"))
 		c.Sources = append(c.Sources, src)
 		return
@@ -261,7 +297,7 @@ func (c *Collection) hbase(ctx context.Context, st source.Store, p Plan) {
 		if listErr != nil {
 			src.Status = "partial"
 		}
-		src.Detail = g.summary() + ", kept to the application's time." + skipped + g.problems()
+		src.Detail = g.summary() + ", kept to the application's time" + p.windowText() + "." + skipped + g.problems()
 		src.Brief = model.Plural(len(g.files), "file", "files")
 		if !p.Since.IsZero() && !p.Until.IsZero() {
 			src.Brief += fmt.Sprintf(", %s–%s UTC", p.Since.UTC().Format("15:04"), p.Until.UTC().Format("15:04"))
@@ -578,7 +614,8 @@ func (g *group) read(ctx context.Context) {
 				continue
 			}
 			g.files = append(g.files, model.LogFile{Location: res.Name, Kind: string(f.Kind), Container: f.Container, Step: f.Step,
-				Instance: f.Instance, Host: f.Host, Bytes: er.bytes, Lines: res.Read, Dropped: res.Dropped, Found: res.Lines, HBaseSplits: res.Splits, HBaseScans: res.Scans})
+				Instance: f.Instance, Host: f.Host, Bytes: er.bytes, Lines: res.Read, Dropped: res.Dropped, Found: res.Lines, HBaseSplits: res.Splits, HBaseScans: res.Scans,
+				FirstTime: res.FirstTime, LastTime: res.LastTime})
 		}
 	}
 }
@@ -694,4 +731,21 @@ func LogRoot(logURI, clusterID string) (bucket, prefix string, ok bool) {
 	}
 	key = strings.Trim(key, "/")
 	return bucket, strings.TrimPrefix(path.Join(key, clusterID)+"/", "/"), true
+}
+
+// windowText names the window HBase's logs were kept to: " (05:12–05:31
+// UTC, from YARN's application summary)".
+func (p Plan) windowText() string {
+	if p.Since.IsZero() || p.Until.IsZero() {
+		return ""
+	}
+	layout := "15:04"
+	if p.Since.UTC().YearDay() != p.Until.UTC().YearDay() || p.Since.Year() != p.Until.Year() {
+		layout = "2006-01-02 15:04"
+	}
+	s := " (" + p.Since.UTC().Format("2006-01-02 15:04") + "–" + p.Until.UTC().Format(layout) + " UTC"
+	if p.WindowFrom != "" {
+		s += ", from " + p.WindowFrom
+	}
+	return s + ")"
 }
