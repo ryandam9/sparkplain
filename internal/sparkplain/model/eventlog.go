@@ -42,7 +42,7 @@ type Component struct {
 // EventLogStats describes how the event log was read.
 type EventLogStats struct {
 	Input          string           `json:"input"`
-	Layout         string           `json:"layout"` // single, rolling, zip, zip-rolling
+	Layout         string           `json:"layout"` // single, rolling, zip, zip-rolling, container-logs (LayoutRebuilt)
 	Codec          string           `json:"codec"`
 	Files          []FileRead       `json:"files"`
 	Lines          int64            `json:"lines"`

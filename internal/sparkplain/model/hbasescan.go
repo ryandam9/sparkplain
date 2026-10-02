@@ -213,7 +213,8 @@ type SplitTask struct {
 // splits match its partitions one for one (Untied says why not).
 // FromLogs marks a scan built without the event log, from split lines that
 // name their tasks: its stage, tasks and times come from the executors'
-// logs, and rows are not known.
+// logs, and rows are not known. Rebuilt marks one whose stage and tasks
+// come from a run rebuilt from the driver's log: rows are not known.
 type HBaseScanRead struct {
 	StageID   int               `json:"stageId"`
 	Attempt   int               `json:"attempt"`
@@ -232,6 +233,7 @@ type HBaseScanRead struct {
 	TiedBy       string `json:"tiedBy,omitempty"` // "task" (each split line names its task) or "key order"
 	Untied       string `json:"untied,omitempty"`
 	FromLogs     bool   `json:"fromLogs,omitempty"`
+	Rebuilt      bool   `json:"rebuilt,omitempty"`
 	Source       Source `json:"source"`
 }
 

@@ -377,10 +377,13 @@ func analyzeSummary(c *ctx, r *model.Report) {
 		first += " " + a.StatusReason
 	}
 	s.Sentences = append(s.Sentences, first)
-	s.Sentences = append(s.Sentences, fmt.Sprintf("It ran %s (%s, %s tasks) on %s across %s. Tasks used %s of CPU time; executors held %s of core time.",
+	ran := fmt.Sprintf("It ran %s (%s, %s tasks) on %s across %s.",
 		model.Plural(len(c.log.Jobs), "job", "jobs"), model.Plural(len(c.log.Stages), "stage", "stages"), model.Num(tasks),
-		model.Plural(len(c.log.Executors), "executor", "executors"), model.Plural(hosts, "host", "hosts"),
-		model.Duration(r.CPU.CPUMs), model.Duration(r.CPU.AllocatedCoreMs)))
+		model.Plural(len(c.log.Executors), "executor", "executors"), model.Plural(hosts, "host", "hosts"))
+	if c.metrics() {
+		ran += fmt.Sprintf(" Tasks used %s of CPU time; executors held %s of core time.", model.Duration(r.CPU.CPUMs), model.Duration(r.CPU.AllocatedCoreMs))
+	}
+	s.Sentences = append(s.Sentences, ran)
 	var problems []string
 	for _, f := range r.Findings {
 		if f.Severity == model.Info || len(problems) == 3 {
@@ -394,8 +397,12 @@ func analyzeSummary(c *ctx, r *model.Report) {
 		s.Sentences = append(s.Sentences, "No warnings or critical findings came up.")
 	}
 	io := r.IO.Totals
-	s.Sentences = append(s.Sentences, fmt.Sprintf("It read %s, wrote %s and moved %s between executors in shuffles.",
-		model.Bytes(io.InputBytes), model.Bytes(io.OutputBytes), model.Bytes(io.ShuffleWriteBytes)))
+	if c.metrics() {
+		s.Sentences = append(s.Sentences, fmt.Sprintf("It read %s, wrote %s and moved %s between executors in shuffles.",
+			model.Bytes(io.InputBytes), model.Bytes(io.OutputBytes), model.Bytes(io.ShuffleWriteBytes)))
+	} else {
+		s.Sentences = append(s.Sentences, "There is no event log, so this run was rebuilt from the driver's log: its jobs, stages, tasks and executors are as Spark logged them, but how much it read, wrote, shuffled and used of CPU and memory is only in the event log.")
+	}
 
 	crit, warn, info := 0, 0, 0
 	for _, f := range r.Findings {
@@ -440,6 +447,19 @@ func analyzeSummary(c *ctx, r *model.Report) {
 		{Label: "Data read", Value: model.Bytes(io.InputBytes), Explain: fmt.Sprintf("%s rows from files and tables.", model.Num(io.InputRecords))},
 		{Label: "Data written", Value: model.Bytes(io.OutputBytes), Explain: fmt.Sprintf("%s rows. Shuffles moved %s more.", model.Num(io.OutputRecords), model.Bytes(io.ShuffleWriteBytes))},
 		{Label: "Findings", Value: fmt.Sprint(crit + warn + info), Unit: fmt.Sprintf("%d critical · %d warning", crit, warn), Explain: "Problems and notes found by the rules below.", Tone: findTone},
+	}
+	if !c.metrics() {
+		// Rebuilt from the driver's log: what it says, not zeros for
+		// what only the event log holds.
+		failed := 0
+		for _, st := range c.log.Stages {
+			failed += int(st.Totals.Failed)
+		}
+		s.KPIs = append(s.KPIs[:3:3],
+			model.KPI{Label: "Jobs", Value: fmt.Sprint(len(c.log.Jobs)), Unit: "run", Explain: "Actions the application ran (a count, a save), as the driver logged them."},
+			model.KPI{Label: "Stages", Value: fmt.Sprint(len(c.log.Stages)), Unit: "attempts", Explain: "Steps Spark split the jobs into, between shuffles; stages a job skipped are not in the driver's log."},
+			model.KPI{Label: "Tasks", Value: model.Num(tasks), Unit: fmt.Sprintf("attempts · %d failed", failed), Explain: "One task reads one partition; each attempt as the driver logged it."},
+			s.KPIs[len(s.KPIs)-1])
 	}
 }
 

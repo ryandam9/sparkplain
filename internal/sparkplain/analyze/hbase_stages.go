@@ -85,6 +85,9 @@ func hbaseStages(c *ctx, r *model.Report, h *model.HBaseSection) {
 	}
 	isScan := func(s *model.Stage) bool { return stageHas(s, "NewHadoopRDD", "newAPIHadoopRDD") }
 	anyStage := func(*model.Stage) bool { return true }
+	if c.rebuilt { // a rebuilt run does not say which stages scan
+		isScan = anyStage
+	}
 	var stages []*model.Stage
 	for _, s := range c.log.Stages {
 		hs := model.HBaseStage{StageID: s.ID, Attempt: s.Attempt, Description: s.Name, Tasks: s.NumTasks, DurationMs: s.DurationMs(),
@@ -242,7 +245,12 @@ func hbaseSlowFindings(c *ctx, h *model.HBaseSection) {
 			their = "Its"
 		}
 		expl := fmt.Sprintf("Spark spent that long in the %s that read or wrote HBase. %s tasks were on the CPU %s of their run time", model.Plural(len(h.Stages), "stage", "stages"), their, model.Percent(cpu))
-		if cpu < t.LowCPUShare {
+		if !c.metrics() { // CPU time is only in the event log
+			expl = fmt.Sprintf("Spark spent that long in the %s that read or wrote HBase", model.Plural(len(h.Stages), "stage", "stages"))
+		}
+		if !c.metrics() {
+			expl += "."
+		} else if cpu < t.LowCPUShare {
 			sev = model.Warning
 			expl += ", so they spent most of it waiting, usually on HBase."
 		} else {
@@ -271,8 +279,11 @@ func hbaseSlowFindings(c *ctx, h *model.HBaseSection) {
 			if len(ev) == 5 {
 				break
 			}
-			ev = append(ev, model.Evidence{Source: s.Source, Ref: model.StageRef(s.StageID, s.Attempt),
-				Text: fmt.Sprintf("%s: %s, CPU %s of task time", stageName(s), model.Duration(s.DurationMs), model.Percent(share(s.CPUTimeNs/1e6, s.RunTimeMs)))})
+			text := fmt.Sprintf("%s: %s, CPU %s of task time", stageName(s), model.Duration(s.DurationMs), model.Percent(share(s.CPUTimeNs/1e6, s.RunTimeMs)))
+			if !c.metrics() {
+				text = fmt.Sprintf("%s: %s", stageName(s), model.Duration(s.DurationMs))
+			}
+			ev = append(ev, model.Evidence{Source: s.Source, Ref: model.StageRef(s.StageID, s.Attempt), Text: text})
 		}
 		c.add(model.Finding{Rule: "hbase-time", Severity: sev, Section: "stages",
 			Title:       fmt.Sprintf("Stages reading or writing HBase took %s of the %s run (%s)", model.Duration(h.TimeMs), model.Duration(h.RunMs), model.Percent(share(h.TimeMs, h.RunMs))),

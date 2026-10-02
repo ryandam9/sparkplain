@@ -12,7 +12,7 @@ var groupOrder = []string{"Spark", "Hadoop", "Hive", "HBase", "JVM"}
 
 func analyzeConfig(c *ctx, r *model.Report) {
 	s := &r.Config
-	if !c.has() {
+	if !c.metrics() {
 		s.Coverage = model.NeedsEventLog
 		s.Missing = []string{"The effective configuration, including settings made inside the code"}
 		return

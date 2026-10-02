@@ -448,6 +448,19 @@ func run(args []string, stdout, stderr io.Writer) int {
 			}
 		}
 	}
+	if log == nil {
+		opt := eventlog.Options{}
+		if outputs["explorer"] {
+			lim := cfg.Explorer.WithDefaults()
+			opt.Explorer = &lim
+		}
+		if rlog, row := rebuildFromLogs(ctx, logs.files, o.appID, opt); rlog != nil {
+			log = rlog
+			logs.sources = append(logs.sources, *row)
+			src.Detail = "No event log, so the run's jobs, stages, tasks and executors were rebuilt from the driver's log (" + rebuiltSource + "). Pass -eventlog with an S3 copy or a History Server download to add task metrics: rows, bytes, CPU and GC time, spill and memory."
+			con.sources(*row)
+		}
+	}
 	con.status("writing the report")
 	ain := analyze.Input{
 		AppID:       o.appID,

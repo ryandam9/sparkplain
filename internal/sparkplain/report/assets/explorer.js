@@ -828,12 +828,13 @@
     function host(h) { return el("span", { cls: "mono", title: h, text: String(h || "").split(".")[0] }); }
     function row(k) { return k ? el("span", { cls: "mono", text: k }) : el("span", { cls: "sub", text: "(table edge)" }); }
     var regions = x.regions || [], servers = x.servers || [];
+    var norows = x.fromLogs || x.rebuilt; // rows are only in the event log
     s.appendChild(el("h3", { text: "HBase regions read: " + x.table }));
-    s.appendChild(explain("TableInputFormat makes one split per region the scan overlaps, in key order, and Spark's partition n reads split n. " + (x.fromLogs ? "Each split line names its task by the executor thread that logged it, and each region's time runs from that task's Running line to its Finished line. A region whose task logged no end, or only failed, shows no time." : x.tiedBy === "task" ? "Each region's rows and time come from the task named by the executor thread on its split line, so the tie is exact." : "Each region's rows and time come from its task, checked against the executor that logged its split.")));
+    s.appendChild(explain("TableInputFormat makes one split per region the scan overlaps, in key order, and Spark's partition n reads split n. " + (x.fromLogs ? "Each split line names its task by the executor thread that logged it, and each region's time runs from that task's Running line to its Finished line. A region whose task logged no end, or only failed, shows no time." : x.rebuilt ? "The run was rebuilt from the driver's log: each region's time is its task's duration as the driver logged it, and rows per region need the event log. " + (x.tiedBy === "task" ? "Each region's task is the one named by the executor thread on its split line." : "Each region's task is checked against the executor that logged its split.") : x.tiedBy === "task" ? "Each region's rows and time come from the task named by the executor thread on its split line, so the tie is exact." : "Each region's rows and time come from its task, checked against the executor that logged its split.")));
     s.appendChild(el("div", { cls: "facts" },
       fact("Key range read", el("span", { cls: "mono", text: x.rows }), "From the executors' split lines: each region's range cut to the scan's start and stop rows."),
       fact("Regions read", num(regions.length + (x.regionsCut || 0)) + " on " + num(servers.length) + " region server" + (servers.length === 1 ? "" : "s"), "One task per region, so the stage cannot run more tasks at once than this."),
-      x.fromLogs ? fact("Rows returned", "needs the event log", "Spark records the rows each task read only in the event log; the executors' logs do not say.") : fact("Rows returned", num(x.totalRows), "Rows the scan returned to Spark, after its filters ran on the region servers. Spark counts no bytes for HBase input."),
+      norows ? fact("Rows returned", "needs the event log", "Spark records the rows each task read only in the event log; the logs do not say.") : fact("Rows returned", num(x.totalRows), "Rows the scan returned to Spark, after its filters ran on the region servers. Spark counts no bytes for HBase input."),
       x.sizedRegions ? fact("Estimated size", bytes(x.sizeBytes) + (x.sizedRegions < regions.length ? " · " + num(x.sizedRegions) + " of " + num(regions.length) + " regions" : ""), "HBase's estimate of each region's size on disk (Input split length), not bytes sent over the network.") : null,
       x.scan ? fact("Scan as the job defined it", el("span", { cls: "mono", text: ((x.facts || []).filter(function (f) { return f[0] === "Rows"; })[0] || ["", ""])[1] }), (x.facts || []).filter(function (f) { return f[0] !== "Rows"; }).map(function (f) { return f[0] + ": " + f[1]; }).join(". ") + ". From " + msrc(x.scan.source) + ".") : null));
     if (x.filter && x.filter.length) {
@@ -844,11 +845,11 @@
     }
     if (!x.tied) s.appendChild(explain("Rows and time per region are not shown: " + x.untied));
     s.appendChild(table({
-      rows: servers, sort: x.fromLogs ? 4 : x.tied ? 2 : 1,
+      rows: servers, sort: norows ? 4 : x.tied ? 2 : 1,
       cols: [
         { h: "Region server", v: function (r) { return r.server; }, f: function (r) { return host(r.server); } },
         { h: "Regions", num: true, v: function (r) { return r.regions; }, f: function (r) { return num(r.regions); } },
-        { h: "Rows", num: true, v: function (r) { return r.rows; }, f: function (r) { return x.tied && !x.fromLogs ? num(r.rows) : "—"; } },
+        { h: "Rows", num: true, v: function (r) { return r.rows; }, f: function (r) { return x.tied && !norows ? num(r.rows) : "—"; } },
         { h: "Estimated size", num: true, v: function (r) { return r.sizeBytes; }, f: function (r) { return r.sizeBytes ? bytes(r.sizeBytes) : "—"; } },
         { h: "Task time", num: true, v: function (r) { return r.taskMs; }, f: function (r) { return x.tied ? dur(r.taskMs) : "—"; } }
       ]
@@ -861,7 +862,7 @@
         { h: "Start row", v: function (r) { return r.g.startRow; }, f: function (r) { return row(r.g.startRow); } },
         { h: "End row", v: function (r) { return r.g.endRow; }, f: function (r) { return row(r.g.endRow); } },
         { h: "Region server", v: function (r) { return r.g.server; }, f: function (r) { return host(r.g.server); } },
-        { h: "Rows", num: true, v: function (r) { return r.g.task && !x.fromLogs ? r.g.task.rows : -1; }, f: function (r) { return r.g.task && !x.fromLogs ? num(r.g.task.rows) : "—"; } },
+        { h: "Rows", num: true, v: function (r) { return r.g.task && !norows ? r.g.task.rows : -1; }, f: function (r) { return r.g.task && !norows ? num(r.g.task.rows) : "—"; } },
         { h: "Took", num: true, v: function (r) { return r.g.task ? r.g.task.durationMs : -1; }, f: function (r) { return r.g.task ? dur(r.g.task.durationMs) : "—"; } },
         { h: "Executor", v: function (r) { return r.g.task ? r.g.task.executorId : ""; }, f: function (r) { return r.g.task ? el("span", null, x.fromLogs ? (r.g.task.executorId || "—") : execLink(r.g.task.executorId), el("span", { cls: "sub", text: "task " + r.g.task.taskId })) : "—"; } },
         { h: "Estimated size", num: true, v: function (r) { return r.g.sizeBytes || 0; }, f: function (r) { return r.g.sizeBytes ? bytes(r.g.sizeBytes) : "—"; } },
@@ -1255,7 +1256,7 @@
   function drawGraph(wrap, lay, info, g) {
     var svg = sv("svg", { "class": "dag", viewBox: "0 0 " + lay.w + " " + lay.h, width: lay.w, height: lay.h, role: "img" });
     var W = 200, H = 48;
-    lay.edges.forEach(function (e) {
+    (lay.edges || []).forEach(function (e) { // a graph of one node has no edges (null)
       var a = lay.pos[e[0]], b = lay.pos[e[1]];
       var x1 = a[0] + W / 2, y1 = a[1] + H, x2 = b[0] + W / 2, y2 = b[1], my = (y1 + y2) / 2;
       svg.appendChild(sv("path", { "class": "edge" + (g.edgeCls ? " " + g.edgeCls(e) : ""), d: "M" + x1 + "," + y1 + " C" + x1 + "," + my + " " + x2 + "," + my + " " + x2 + "," + (y2 - 4), "marker-end": "url(#sp-arrow)" }));

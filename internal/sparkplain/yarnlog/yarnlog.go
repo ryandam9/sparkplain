@@ -55,6 +55,10 @@ type Result struct {
 	// the run (flushes, compactions, closes and opens, moves, splits,
 	// refused writes, slow calls), up to maxRegionEvents.
 	RegionEvents []model.HBaseRegionEvent
+	// DriverEvents are the driver's lines about jobs, stages, tasks and
+	// executors, in file order, up to maxDriverEvents: they rebuild the run
+	// when there is no event log.
+	DriverEvents []model.DriverEvent
 }
 
 // Caps on what one kept line carries.
@@ -311,6 +315,10 @@ func (c *classifier) header(h header, line string) {
 	problem := h.level == "WARN" || h.level == "ERROR" || h.level == "FATAL"
 	if t := threadTask(h.thread); t != nil {
 		c.taskLine(t.TaskID, h)
+	}
+	switch c.res.File.Kind {
+	case ContainerStderr, ContainerStdout, StepStderr:
+		c.driverLine(h)
 	}
 
 	// spark-submit's YARN client, in the step's stderr.
@@ -646,6 +654,132 @@ func InZone(t time.Time, loc *time.Location, kind FileKind) time.Time {
 		return t
 	}
 	return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), loc).UTC()
+}
+
+// maxDriverEvents caps the driver lines kept per log: two per task, so a
+// run of half a million tasks.
+const maxDriverEvents = 1_000_000
+
+// driverLine keeps a driver's line about how Spark ran the application.
+func (c *classifier) driverLine(h header) {
+	if len(c.res.DriverEvents) >= maxDriverEvents {
+		return
+	}
+	msg := h.msg
+	e := model.DriverEvent{Time: h.time, Source: model.Source{File: c.res.Name, Line: c.n}}
+	atoi := func(s string) int { n, _ := strconv.Atoi(s); return n }
+	atoi64 := func(s string) int64 { n, _ := strconv.ParseInt(s, 10, 64); return n }
+	secs := func(s string) int64 { f, _ := strconv.ParseFloat(s, 64); return int64(f * 1000) }
+	switch {
+	case strings.HasPrefix(msg, "Starting task "):
+		m := drvTaskStartRE.FindStringSubmatch(msg)
+		if m == nil {
+			return
+		}
+		e.Kind, e.Index, e.Attempt, e.Stage, e.StageAttempt, e.TaskID = model.DrvTaskStart, atoi(m[1]), atoi(m[2]), atoi(m[3]), atoi(m[4]), atoi64(m[5])
+		e.Host, e.Executor, e.Partition, e.Locality, e.Bytes = m[6], m[7], atoi(m[8]), m[9], atoi64(m[10])
+	case strings.HasPrefix(msg, "Finished task "):
+		m := drvTaskEndRE.FindStringSubmatch(msg)
+		if m == nil {
+			return // an executor's own "Finished task …. N bytes result sent"
+		}
+		e.Kind, e.Index, e.Attempt, e.Stage, e.StageAttempt, e.TaskID = model.DrvTaskEnd, atoi(m[1]), atoi(m[2]), atoi(m[3]), atoi(m[4]), atoi64(m[5])
+		e.Ms, e.Host, e.Executor, e.N = atoi64(m[6]), m[7], m[8], atoi(m[10])
+	case strings.HasPrefix(msg, "Lost task "):
+		m := drvTaskLostRE.FindStringSubmatch(msg)
+		if m == nil {
+			return
+		}
+		e.Kind, e.Index, e.Attempt, e.Stage, e.StageAttempt, e.TaskID = model.DrvTaskLost, atoi(m[1]), atoi(m[2]), atoi(m[3]), atoi(m[4]), atoi64(m[5])
+		e.Host, e.Executor, e.Text = firstOf(m[6], m[8]), firstOf(m[7], m[9]), clip(redact.Text(m[10]), maxText)
+	case drvJobStartRE.MatchString(msg):
+		m := drvJobStartRE.FindStringSubmatch(msg)
+		e.Kind, e.Job, e.Name, e.N = model.DrvJobStart, atoi(m[2]), redact.Text(m[3]), atoi(m[4])
+		if m[1] != "" {
+			e.Text = "map stage" // an adaptive query's map stage job: no "Job J finished" line ends it
+		}
+	case drvFinalRE.MatchString(msg):
+		m := drvFinalRE.FindStringSubmatch(msg)
+		e.Kind, e.StageType, e.Stage, e.Name = model.DrvFinalStage, m[1], atoi(m[2]), redact.Text(m[3])
+	case drvParentsRE.MatchString(msg):
+		e.Kind = model.DrvParents
+		for _, p := range drvStageRefRE.FindAllStringSubmatch(drvParentsRE.FindStringSubmatch(msg)[1], -1) {
+			e.Parents = append(e.Parents, atoi(p[1]))
+		}
+	case drvStageTasksRE.MatchString(msg):
+		m := drvStageTasksRE.FindStringSubmatch(msg)
+		e.Kind, e.N, e.StageType, e.Stage, e.Name = model.DrvStageTasks, atoi(m[1]), m[2], atoi(m[3]), clip(redact.Text(m[4]), maxText)
+	case drvStageDoneRE.MatchString(msg):
+		m := drvStageDoneRE.FindStringSubmatch(msg)
+		e.Kind, e.StageType, e.Stage, e.Name, e.Ms = model.DrvStageDone, m[1], atoi(m[2]), redact.Text(m[3]), secs(m[4])
+	case drvStageFailRE.MatchString(msg):
+		m := drvStageFailRE.FindStringSubmatch(msg)
+		e.Kind, e.StageType, e.Stage, e.Name, e.Ms, e.Text = model.DrvStageFailed, m[1], atoi(m[2]), redact.Text(m[3]), secs(m[4]), clip(redact.Text(m[5]), maxText)
+	case drvJobEndRE.MatchString(msg):
+		m := drvJobEndRE.FindStringSubmatch(msg)
+		e.Kind, e.Job, e.Name, e.Ms = model.DrvJobDone, atoi(m[1]), redact.Text(m[3]), secs(m[4])
+		if m[2] == "failed" {
+			e.Kind = model.DrvJobFailed
+		}
+	case drvJobIsDoneRE.MatchString(msg):
+		// "Job J is finished. Cancelling potential speculative or zombie
+		// tasks": a job that logs no "Job J finished: …" line ends here.
+		e.Kind, e.Job = model.DrvJobDone, atoi(drvJobIsDoneRE.FindStringSubmatch(msg)[1])
+	case drvVersionRE.MatchString(msg):
+		e.Kind, e.Name = model.DrvSparkVersion, drvVersionRE.FindStringSubmatch(msg)[1]
+	case drvAppNameRE.MatchString(msg):
+		e.Kind, e.Name = model.DrvAppName, redact.Text(drvAppNameRE.FindStringSubmatch(msg)[1])
+	case drvExecProfileRE.MatchString(msg):
+		m := drvExecProfileRE.FindStringSubmatch(msg)
+		e.Kind, e.Bytes, e.Ms, e.N = model.DrvExecResources, atoi64(m[1])<<20, atoi64(m[2])<<20, atoi(m[3]) // heap, overhead (as bytes), cores
+	case drvContainerRE.MatchString(msg):
+		m := drvContainerRE.FindStringSubmatch(msg)
+		e.Kind, e.Name, e.Host, e.Executor = model.DrvContainer, m[1], m[2], m[3]
+	case drvExecAddedRE.MatchString(msg):
+		m := drvExecAddedRE.FindStringSubmatch(msg)
+		e.Kind, e.Host, e.Executor = model.DrvExecAdded, m[1], m[2]
+	case drvBlockMgrRE.MatchString(msg):
+		m := drvBlockMgrRE.FindStringSubmatch(msg)
+		e.Kind, e.Bytes, e.Executor, e.Host = model.DrvBlockManager, SparkBytes(m[1]), strings.TrimSpace(m[2]), strings.TrimSpace(m[3])
+	case drvExecLostRE.MatchString(msg):
+		m := drvExecLostRE.FindStringSubmatch(msg)
+		e.Kind, e.Executor, e.Host, e.Text = model.DrvExecLost, m[1], m[2], clip(redact.Text(m[3]), maxText)
+	case drvExecIdleRE.MatchString(msg):
+		e.Kind, e.Name = model.DrvExecIdle, drvExecIdleRE.FindStringSubmatch(msg)[1]
+	case drvContDoneRE.MatchString(msg):
+		m := drvContDoneRE.FindStringSubmatch(msg)
+		e.Kind, e.Name, e.Host, e.N = model.DrvContainerDone, m[1], m[2], atoi(m[3])
+	case msg == "Successfully stopped SparkContext":
+		e.Kind = model.DrvAppStopped
+	case drvFinalStatusRE.MatchString(msg):
+		m := drvFinalStatusRE.FindStringSubmatch(msg)
+		e.Kind, e.Name, e.N = model.DrvAppFinal, m[1], atoi(m[2])
+	default:
+		return
+	}
+	c.res.DriverEvents = append(c.res.DriverEvents, e)
+}
+
+func firstOf(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
+// SparkBytes reads a size as Spark's Utils.bytesToString writes it
+// ("1048.8 MiB", "3.0 KiB", "12 B"), or 0.
+func SparkBytes(s string) int64 {
+	m := sparkSizeRE.FindStringSubmatch(strings.TrimSpace(s))
+	if m == nil {
+		return 0
+	}
+	f, err := strconv.ParseFloat(m[1], 64)
+	if err != nil {
+		return 0
+	}
+	shift := map[string]uint{"B": 0, "KiB": 10, "MiB": 20, "GiB": 30, "TiB": 40, "PiB": 50, "EiB": 60}[m[2]]
+	return int64(f * float64(int64(1)<<shift))
 }
 
 // maxRegionEvents caps the region events kept per server log.

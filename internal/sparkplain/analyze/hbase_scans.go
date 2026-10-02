@@ -61,7 +61,8 @@ func hbaseScans(c *ctx, r *model.Report, h *model.HBaseSection) map[model.Source
 					if s.ID == sp.Task.Stage && s.Attempt == sp.Task.StageAttempt {
 						best = s
 					}
-				case s.IsHadoopScan() && during(s, sp.Time) && (best == nil || s.Submitted.After(best.Submitted)):
+				// a rebuilt run does not say which stages scan: any may
+				case (s.IsHadoopScan() || c.rebuilt) && during(s, sp.Time) && (best == nil || s.Submitted.After(best.Submitted)):
 					best = s
 				}
 			}
@@ -122,7 +123,7 @@ func hbaseScans(c *ctx, r *model.Report, h *model.HBaseSection) map[model.Source
 		}
 		sort.Strings(names)
 		sc := model.HBaseScanRead{StageID: s.ID, Attempt: s.Attempt, Table: strings.Join(names, ", "), Regions: sorted,
-			Tasks: s.NumTasks, TotalRows: s.Totals.InputRecords, FromLogs: fromLogs, Source: s.Source}
+			Tasks: s.NumTasks, TotalRows: s.Totals.InputRecords, FromLogs: fromLogs, Rebuilt: c.rebuilt, Source: s.Source}
 		if len(sorted) > 0 {
 			sc.Rows = model.HBaseScan{StartRow: sorted[0].StartRow, StopRow: sorted[len(sorted)-1].EndRow, IncludeStart: true}.Rows()
 		}
@@ -336,6 +337,15 @@ func scanSkew(c *ctx, sc model.HBaseScanRead, s *model.Stage) {
 	}
 	took := fmt.Sprintf("%s, %s rows", model.Duration(t.DurationMs), model.Num(t.Rows))
 	ref := fmt.Sprintf("stage:%d.%d", s.ID, s.Attempt)
+	if sc.Rebuilt {
+		// Rebuilt from the driver's log: no rows.
+		why = " Rows per region need the event log."
+		if slow.SizeBytes > 0 && sc.SizedRegions == len(sc.Regions) {
+			why = fmt.Sprintf(" Its region holds %s of the scan's %s (%s, HBase's estimate), so it had the most to read if that share is large; rows per region need the event log.",
+				model.Bytes(slow.SizeBytes), model.Bytes(sc.SizeBytes), model.Percent(share(slow.SizeBytes, sc.SizeBytes)))
+		}
+		took = model.Duration(t.DurationMs) + ", as the driver logged it"
+	}
 	if sc.FromLogs {
 		// No event log: no rows, and no stage page to link to.
 		why = " Rows per region need the event log."

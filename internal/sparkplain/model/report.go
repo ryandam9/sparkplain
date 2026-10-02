@@ -557,6 +557,10 @@ type LogFile struct {
 	// HBaseRegionEvents are what this HBase server log said about single
 	// regions during the run.
 	HBaseRegionEvents []HBaseRegionEvent `json:"hbaseRegionEvents,omitempty"`
+	// DriverEvents are the driver's lines about jobs, stages, tasks and
+	// executors; they rebuild the run when there is no event log, and the
+	// rebuilt run is what the JSON report carries.
+	DriverEvents []DriverEvent `json:"-"`
 	// HBaseScans are the scans the job printed (sparkplain-scan lines),
 	// decoded and redacted; the scan strings themselves are not kept.
 	HBaseScans []HBaseScan `json:"hbaseScans,omitempty"`

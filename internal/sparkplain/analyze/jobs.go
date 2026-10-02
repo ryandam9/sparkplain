@@ -17,6 +17,10 @@ func analyzeJobs(c *ctx, r *model.Report) {
 		return
 	}
 	s.Coverage = model.Complete
+	if c.rebuilt {
+		s.Coverage = model.Partial
+		s.Missing = []string{rebuiltNote, "The SQL queries run, with their plans and tables", "Stages Spark skipped further up a job's graph than its final stage's parents (the driver's log does not name them)"}
+	}
 	s.Jobs, s.Stages, s.SQL = c.log.Jobs, c.log.Stages, c.log.SQL
 	s.RunningTasks, s.RunningCapped = c.log.RunningTasks, c.log.RunningCapped
 	if s.Jobs == nil {
