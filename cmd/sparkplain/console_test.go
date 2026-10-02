@@ -12,8 +12,9 @@ import (
 
 var ansiRE = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
 
-// Piped, the summary on stdout carries everything: the sources read, what
-// happened, each finding and the files, in plain text.
+// Piped, the summary on stdout carries the sources read, what happened, how
+// many findings (not each one: the report lists them) and the files, in
+// plain text.
 func TestConsoleSummaryPiped(t *testing.T) {
 	dir := t.TempDir()
 	code, out, errs := runCLI(t, "-app-id", "application_1790380000000_0042", "-eventlog", filepath.Join(fx, "application_1790380000000_0042"), "-out", dir)
@@ -29,7 +30,7 @@ func TestConsoleSummaryPiped(t *testing.T) {
 		"\n    from ../../testdata/eventlog/application_1790380000000_0042\n", // the file itself, not just its size
 		"\n▸ What happened\n  ",
 		"\n▸ Findings  1 critical · ",
-		"\n  !! ",
+		" · listed in the report\n",
 		"\n▸ Written  " + dir + "/\n  application_1790380000000_0042-report.html ·",
 		"application_1790380000000_0042-explorer.html ·",
 		"  Open it " + map[bool]string{true: "open", false: "xdg-open"}[runtime.GOOS == "darwin"] + " " + outPath(dir, "report.html") + "\n",
@@ -43,8 +44,8 @@ func TestConsoleSummaryPiped(t *testing.T) {
 	if strings.Contains(out, "Not asked for") {
 		t.Error("the access check already said what was not asked for")
 	}
-	if strings.Contains(out, "What needs attention") {
-		t.Error("the findings list replaces the summary's attention sentence")
+	if strings.Contains(out, "What needs attention") || strings.Contains(out, "\n  !! ") {
+		t.Error("the console lists no findings, nor the summary's attention sentence: the report does")
 	}
 	if ansiRE.MatchString(out + errs) {
 		t.Error("piped output must not be coloured")
@@ -143,8 +144,8 @@ func TestConsoleAnimated(t *testing.T) {
 	if !regexp.MustCompile(`[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] \x1b\[2mreading the event log…  \d`).MatchString(ansiRE.ReplaceAllString(errs, "")+errs) && !strings.Contains(errs, "reading the event log…  ") {
 		t.Errorf("no spinner with a clock on the status line:\n%q", errs)
 	}
-	if !strings.Contains(out, "◇") || !strings.Contains(ansiRE.ReplaceAllString(out, ""), "─────") || !strings.Contains(out, "∙") {
-		t.Errorf("stdout lacks the header, the finding dots growing or the closing rule:\n%q", out)
+	if !strings.Contains(out, "◇") || !strings.Contains(ansiRE.ReplaceAllString(out, ""), "─────") {
+		t.Errorf("stdout lacks the header or the closing rule:\n%q", out)
 	}
 	// What is left once the frames are drawn over is the still console's
 	// text (less its timings).
