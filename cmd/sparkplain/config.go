@@ -210,6 +210,23 @@ type thresholds struct {
 	HBaseConnections *int           `yaml:"hbase-connections"`
 	HBaseHotspot     *float64       `yaml:"hbase-hotspot-share"`
 	HBaseLoadMin     *time.Duration `yaml:"hbase-load-min"`
+	NetworkMin       *byteSize      `yaml:"network-min"`
+	BroadcastLarge   *byteSize      `yaml:"broadcast-large"`
+	BroadcastSlow    *time.Duration `yaml:"broadcast-slow"`
+	SpillMin         *byteSize      `yaml:"spill-min"`
+	CommitShare      *float64       `yaml:"commit-share"`
+}
+
+// byteSize is a size in the config file, such as 512MiB or 1GiB.
+type byteSize int64
+
+func (b *byteSize) UnmarshalYAML(n *yaml.Node) error {
+	v := parseSize(n.Value)
+	if v < 0 {
+		return fmt.Errorf("line %d: %q is not a size (such as 512MiB or 1GiB)", n.Line, n.Value)
+	}
+	*b = byteSize(v)
+	return nil
 }
 
 func (t thresholds) apply(d analyze.Thresholds) analyze.Thresholds {
@@ -245,6 +262,16 @@ func (t thresholds) apply(d analyze.Thresholds) analyze.Thresholds {
 	}
 	setF(&d.HBaseHotspot, t.HBaseHotspot)
 	setD(&d.HBaseLoadMin, t.HBaseLoadMin)
+	setB := func(dst *int64, v *byteSize) {
+		if v != nil {
+			*dst = int64(*v)
+		}
+	}
+	setB(&d.NetworkMin, t.NetworkMin)
+	setB(&d.BroadcastLarge, t.BroadcastLarge)
+	setD(&d.BroadcastSlow, t.BroadcastSlow)
+	setB(&d.SpillMin, t.SpillMin)
+	setF(&d.CommitShare, t.CommitShare)
 	return d
 }
 

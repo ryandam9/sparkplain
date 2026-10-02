@@ -145,6 +145,8 @@ type xData struct {
 	HBaseTaskStages []model.HBaseTaskStage `json:"hbaseTaskStages,omitempty"`
 	// TaskStories is what the executors' logs tell of each task, compact.
 	TaskStories *xTaskStories `json:"taskStories,omitempty"`
+	// Flows is the data moved and memory used over time, from them.
+	Flows *model.FlowSection `json:"flows,omitempty"`
 	// HBaseLoad is each region server's scan tasks at once over time.
 	HBaseLoad       []model.HBaseServerLoad `json:"hbaseLoad,omitempty"`
 	HBaseLoadTotal  []model.Point           `json:"hbaseLoadTotal,omitempty"`
@@ -497,7 +499,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 	}
 
 	d.HBaseScans = hbaseScans(r)
-	d.TaskStories = taskStories(r)
+	d.TaskStories, d.Flows = taskStories(r), r.Flows
 	if r.HBase != nil {
 		d.HBaseTasks, d.HBaseTaskStages = r.HBase.Tasks, r.HBase.TaskStages
 		d.HBaseLoad, d.HBaseLoadTotal, d.HBaseLoadStepMs = r.HBase.Load, r.HBase.LoadTotal, r.HBase.LoadStepMs
@@ -1000,7 +1002,7 @@ const maxExplorerStories = 20_000
 // xTaskStories is the report's TaskStories for the explorer: each task's
 // log file is named once, by its executor (File indexes Executors), and
 // its steps are arrays: [ms since the task started, kind, bytes, n, ms,
-// name, line].
+// name, line, bytes over the network, storage memory free].
 type xTaskStories struct {
 	Coverage  model.Coverage        `json:"coverage"`
 	Missing   []string              `json:"missing,omitempty"`
@@ -1024,8 +1026,12 @@ func taskStories(r *model.Report) *xTaskStories {
 	if s == nil {
 		return nil
 	}
-	x := &xTaskStories{Coverage: s.Coverage, Missing: s.Missing, ByThread: s.ByThread, ByTID: s.ByTID, Executors: s.Executors,
+	x := &xTaskStories{Coverage: s.Coverage, Missing: s.Missing, ByThread: s.ByThread, ByTID: s.ByTID,
 		Totals: s.Totals, Untied: s.Untied, Tasks: []xTaskStory{}, Cut: s.Cut}
+	for _, e := range s.Executors {
+		e.Untied.Steps, e.Totals.Steps = nil, nil // the charts over time (Flows) carry them
+		x.Executors = append(x.Executors, e)
+	}
 	file := map[string]int{}
 	for i, e := range s.Executors {
 		file[e.Source.File] = i
@@ -1041,7 +1047,7 @@ func taskStories(r *model.Report) *xTaskStories {
 			if !t.Start.IsZero() {
 				at = st.T.Sub(t.Start).Milliseconds()
 			}
-			xt.Steps = append(xt.Steps, []any{at, st.Kind, st.Bytes, st.N, st.Ms, st.Name, st.Line})
+			xt.Steps = append(xt.Steps, []any{at, st.Kind, st.Bytes, st.N, st.Ms, st.Name, st.Line, st.Remote, st.Free})
 		}
 		xt.TaskLog.Steps = nil
 		xt.TaskLog.Source.File, xt.TaskLog.EndSource.File = "", ""

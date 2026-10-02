@@ -455,6 +455,26 @@
             <td class="num" data-v="{{.Untied.Lines}}">{{if .Untied.Lines}}{{numi .Untied.Lines}}{{else}}—{{end}}</td><td class="srcref">{{src .Source}}</td></tr>
           {{end}}</tbody>
         </table></div>
+        {{with $r.Flows}}<h3 id="flows">Data moved and memory over time</h3>
+        <p class="explain">Laid out from the same lines: the shuffle data each task asked for, from its own node and over the network ({{bytes .LocalBytes}} and {{bytes .RemoteBytes}} in all), what tasks spilled to disk ({{bytes .SpillBytes}}) and cached ({{bytes .CachedBytes}}), and each executor's storage memory left after every block it cached or dropped. Shuffle sizes are Spark's estimates from the map outputs; the event log has the exact bytes.</p>
+        {{flowChart $r}}{{memoryChart $r}}
+        {{if .Broadcasts}}<h3>Broadcast variables read</h3>
+        <p class="explain">Each broadcast variable the executors read: its size as Spark estimated it, how many executors logged reading it, and how long that took. Every executor that needs one fetches all of it and keeps it in memory.</p>
+        <div class="tbl"><table>
+          <thead><tr><th data-sort="text">Broadcast</th><th class="num" data-sort="num">Size</th><th class="num" data-sort="num">Pieces</th><th class="num" data-sort="num">Executors</th><th class="num" data-sort="num">Read time, all executors</th><th class="num" data-sort="num">Slowest read</th><th data-sort="text">First read</th><th>Found in</th></tr></thead>
+          <tbody>{{range $i, $b := .Broadcasts}}{{if lt $i 50}}<tr><td>{{$b.Name}}</td><td class="num" data-v="{{$b.Bytes}}">{{bytes $b.Bytes}}</td><td class="num" data-v="{{$b.Pieces}}">{{numi $b.Pieces}}</td><td class="num" data-v="{{$b.Executors}}">{{numi $b.Executors}}</td>
+            <td class="num" data-v="{{$b.ReadMs}}">{{dur $b.ReadMs}}</td><td class="num" data-v="{{$b.MaxMs}}">{{dur $b.MaxMs}}{{with $b.SlowestOn}}<span class="sub">executor {{.}}</span>{{end}}</td><td>{{time $b.First "hms"}}</td><td class="srcref">{{src $b.Source}}{{if $b.MaxSource.File}}<br>{{src $b.MaxSource}}{{end}}</td></tr>{{end}}
+          {{end}}</tbody>
+        </table></div>{{if gt (len .Broadcasts) 50}}<p class="explain">The 50 largest of {{numi (len .Broadcasts)}}; the JSON report lists them all.</p>{{end}}{{end}}
+        {{if .Spills}}<h3>Spills by stage</h3>
+        <div class="tbl"><table>
+          <thead><tr><th class="num" data-sort="num">Stage</th><th class="num" data-sort="num">Tasks that spilled</th><th class="num" data-sort="num">Spills</th><th class="num" data-sort="num">Spilled</th><th class="num" data-sort="num">Most by one task</th><th>Found in</th></tr></thead>
+          <tbody>{{range .Spills}}<tr><td class="num" data-v="{{.Stage}}">{{if ge .Stage 0}}{{.Stage}}{{if .Attempt}}.{{.Attempt}}{{end}}{{else}}lines naming no task{{end}}</td><td class="num" data-v="{{.Tasks}}">{{if .Tasks}}{{numi .Tasks}}{{else}}—{{end}}</td><td class="num" data-v="{{.Spills}}">{{numi .Spills}}</td>
+            <td class="num" data-v="{{.Bytes}}">{{bytes .Bytes}}</td><td class="num" data-v="{{.MostBytes}}">{{if .MostBytes}}{{bytes .MostBytes}}<span class="sub">TID {{.MostTask}}</span>{{else}}—{{end}}</td><td class="srcref">{{src .Source}}</td></tr>
+          {{end}}</tbody>
+        </table></div>
+        <p class="explain">Sizes are what the spilled data took in memory, as each spill line says.</p>{{end}}
+        {{end}}
         {{$notable := notableTasks .Tasks}}{{if $notable}}<h3>Tasks worth a look</h3>
         <p class="explain">Failed and killed tasks first, then those that read the most over the network or spilled the most, at most {{numi maxNotable}}. Every task, with each step it logged, is in the explorer's Task stories view and the JSON report.</p>
         <div class="tbl"><table>

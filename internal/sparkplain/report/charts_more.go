@@ -836,5 +836,7 @@ func chartFuncs(loc *time.Location, explorer string) template.FuncMap {
 		"nodeCPUChart":    func(r *model.Report) template.HTML { return nodeCPUChart(r, loc) },
 		"queriesChart":    func(r *model.Report) template.HTML { return queriesChart(r, explorer) },
 		"hbaseLoadChart":  func(r *model.Report) template.HTML { return hbaseLoadChart(r, loc) },
+		"flowChart":       func(r *model.Report) template.HTML { return flowChart(r, loc) },
+		"memoryChart":     func(r *model.Report) template.HTML { return memoryChart(r, loc) },
 	}
 }
