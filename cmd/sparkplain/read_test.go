@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/awsmeta"
 	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
+	"github.com/ryandam9/sparkplain/internal/sparkplain/source"
 )
 
 // The read: block turns sources off with yes or no (true, false, on and
@@ -101,6 +103,74 @@ func TestReadSwitchesOnline(t *testing.T) {
 	for _, f := range r.Logs.Files {
 		if f.Step != "" || f.Instance != "" {
 			t.Errorf("read %s, which was turned off", f.Location)
+		}
+	}
+}
+
+// With node logs and CloudWatch off, the nodes that ran the application
+// are still read: their NodeManager logs (what YARN offered on each) and
+// their own CloudWatch metrics, and nothing of any other node. Without the
+// event log, its container logs say which nodes those are.
+func TestReadSwitchesKeepAppNodes(t *testing.T) {
+	for _, withLog := range []bool{true, false} {
+		t.Run(map[bool]string{true: "with the event log", false: "without"}[withLog], func(t *testing.T) { keepAppNodes(t, withLog) })
+	}
+}
+
+func keepAppNodes(t *testing.T, withLog bool) {
+	rec := replayAWS(t, "j-FIXTURE0062CLUSTER")
+	if !withLog {
+		bucket, _, _ := source.ParseS3(aws.ToString(rec.Cluster.LogUri))
+		store := routeStore{bucket: bucket, routes: map[string]string{"emr-logs": emrlogs}} // no spark-events: no event log
+		awsDeps.s3 = func(_ context.Context, _ aws.Config, b string) (source.Store, error) { return store, nil }
+	}
+	cfg := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(cfg, []byte("read:\n  node-logs: no\n  cloudwatch: no\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out := t.TempDir()
+	runCLI(t, "-app-id", "application_1790380000000_0062", "-cluster-id", "j-FIXTURE0062CLUSTER", "-profile", "test", "-config", cfg, "-format", "json", "-out", out)
+	r := readReport(t, out)
+	if rebuilt := r.EventLog != nil && r.EventLog.Layout == model.LayoutRebuilt; rebuilt == withLog {
+		t.Fatalf("event log %v: layout %+v", withLog, r.EventLog)
+	}
+	got := map[string]model.SourceStatus{}
+	for _, s := range r.Sources {
+		got[s.Name] = s
+	}
+	if s := got["Node logs"]; s.Status != "read" || !strings.Contains(s.Detail, "that ran this application were read anyway") {
+		t.Errorf("event log %v: Node logs: %s %q", withLog, s.Status, s.Detail)
+	}
+	if s := got["CloudWatch"]; s.Status == "not-requested" || !strings.Contains(s.Detail, "were read anyway; nothing else") {
+		t.Errorf("event log %v: CloudWatch: %s %q", withLog, s.Status, s.Detail)
+	}
+	ran := map[string]bool{}
+	for _, h := range r.Nodes.Hosts {
+		if h.Instance != nil && (len(h.Executors) > 0 || h.DriverContainerBytes > 0) {
+			ran[h.Instance.ID] = true
+		}
+	}
+	if len(ran) == 0 {
+		t.Fatalf("event log %v: no node ran the application", withLog)
+	}
+	nodeLogs := 0
+	for _, f := range r.Logs.Files {
+		if f.Instance != "" && (f.Kind == "nodemanager" || f.Kind == "resourcemanager") {
+			nodeLogs++
+			if !ran[f.Instance] {
+				t.Errorf("event log %v: read %s, of a node that did not run the application", withLog, f.Location)
+			}
+		}
+	}
+	if nodeLogs == 0 {
+		t.Errorf("event log %v: read no NodeManager log of the application's nodes", withLog)
+	}
+	if r.Metrics == nil || len(r.Metrics.Cluster) != 0 || len(r.Metrics.Hosts) == 0 {
+		t.Fatalf("event log %v: metrics: %+v", withLog, r.Metrics)
+	}
+	for _, s := range r.Metrics.Hosts {
+		if !ran[s.Scope] {
+			t.Errorf("event log %v: CloudWatch series of %s, which did not run the application", withLog, s.Scope)
 		}
 	}
 }

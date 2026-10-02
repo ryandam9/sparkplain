@@ -261,6 +261,7 @@ div.run b{display:block;margin-bottom:2px} .run ul{margin:0 0 0 1.25em;padding:0
 .anat .nbox{fill:var(--surface);stroke:var(--muted);stroke-width:1.5}
 .anat .panel{fill:var(--surface);stroke:var(--line)}
 .anat .unknown{stroke-dasharray:5 4;fill:var(--surface-2)}
+.anat .idle{stroke-dasharray:5 4;stroke:var(--line);fill:var(--surface-2)}
 .anat .rm{fill:var(--accent-soft);stroke:var(--accent)}
 .anat .yarn{fill:var(--surface-2);stroke:var(--line)}
 .anat .drv{fill:var(--viz-2);opacity:.85} .anat .exc{fill:var(--viz-1);opacity:.85}

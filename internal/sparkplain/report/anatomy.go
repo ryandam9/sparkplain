@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -27,12 +28,16 @@ type anatomy struct {
 	Primary     *anatNode
 	Nodes       []*anatNode // worker nodes shown
 	Folded      string      // "and 22 more nodes: …" when there were too many
-	Detail      *anatJVM    // one executor drawn in full
-	Driver      *anatJVM
-	Badges      []anatBadge
-	Unpinned    []int // findings not about placement (1-based)
-	PeakNote    string
-	Shared      bool // other applications ran on the cluster too
+	// Unused adds up the worker nodes that ran nothing of this
+	// application, when the run says which did: on a shared cluster they
+	// are most of it, and one box says more than a card each.
+	Unused   *anatUnused
+	Detail   *anatJVM // one executor drawn in full
+	Driver   *anatJVM
+	Badges   []anatBadge
+	Unpinned []int // findings not about placement (1-based)
+	PeakNote string
+	Shared   bool // other applications ran on the cluster too
 	// NoCapacity says why YARN's capacity is missing, on up to two lines,
 	// and NoNodeCapacity in short on each node.
 	NoCapacity     []string
@@ -41,6 +46,22 @@ type anatomy struct {
 
 	detailBadges []int // findings for the executor drawn in full
 }
+
+// anatUnused is the worker nodes this application did not use.
+type anatUnused struct {
+	Count     int
+	Groups    []string // "10 core nodes (r5.4xlarge)", largest first
+	YARNBytes int64    // what their NodeManagers offered, when known
+	YARNCores int
+	Known     int // nodes whose offer is known
+	Badges    []int
+	// Left and Joined count the nodes that went away or joined while the
+	// application ran, so their offer was not there throughout.
+	Left, Joined int
+}
+
+// used reports whether the node ran any of the application's containers.
+func (n *anatNode) used() bool { return len(n.Execs) > 0 || n.DriverBytes > 0 || n.ClientDriver }
 
 type anatRM struct {
 	Known        bool
@@ -307,6 +328,19 @@ func buildAnatomy(r *model.Report) *anatomy {
 	// Nodes in a useful order: the driver's, those with findings or lost
 	// executors, then by name; past the limit the rest fold into one line.
 	pinFindings(a, r)
+	// When the run says which nodes it used, those are drawn each in
+	// full, and the rest add up to one box.
+	if slices.ContainsFunc(a.Nodes, (*anatNode).used) {
+		var kept, unused []*anatNode
+		for _, n := range a.Nodes {
+			if n.used() {
+				kept = append(kept, n)
+			} else {
+				unused = append(unused, n)
+			}
+		}
+		a.Nodes, a.Unused = kept, unusedNodes(unused)
+	}
 	sort.SliceStable(a.Nodes, func(i, j int) bool {
 		ri, rj := nodeRank(a.Nodes[i]), nodeRank(a.Nodes[j])
 		if ri != rj {
@@ -315,8 +349,9 @@ func buildAnatomy(r *model.Report) *anatomy {
 		return a.Nodes[i].Name < a.Nodes[j].Name
 	})
 	// Nodes that look alike collapse into one card, so a big uniform
-	// cluster reads as "25 nodes like this" instead of a wall of copies.
-	if len(a.Nodes) > 4 {
+	// cluster reads as "25 nodes like this" instead of a wall of copies;
+	// not the nodes the application used, which are each worth a card.
+	if len(a.Nodes) > 4 && a.Unused == nil {
 		first := map[string]*anatNode{}
 		var kept []*anatNode
 		for _, n := range a.Nodes {
@@ -369,6 +404,66 @@ func buildAnatomy(r *model.Report) *anatomy {
 		a.Driver = d
 	}
 	return a
+}
+
+// unusedNodes adds up the worker nodes the application did not use, by
+// role and instance type.
+func unusedNodes(ns []*anatNode) *anatUnused {
+	if len(ns) == 0 {
+		return nil
+	}
+	u := &anatUnused{Count: len(ns)}
+	type group struct {
+		role, typ string
+		n         int
+	}
+	by := map[[2]string]*group{}
+	for _, n := range ns {
+		k := [2]string{strings.ToLower(n.Role), n.Type}
+		if by[k] == nil {
+			by[k] = &group{role: k[0], typ: k[1]}
+		}
+		by[k].n++
+		switch {
+		case strings.HasPrefix(n.Away, "went away"):
+			u.Left++
+		case strings.HasPrefix(n.Away, "joined"):
+			u.Joined++
+		}
+		if n.YARNBytes > 0 && n.Away == "" {
+			u.YARNBytes += n.YARNBytes
+			u.YARNCores += n.YARNCores
+			u.Known++
+		}
+		for _, b := range n.Badges {
+			if !hasInt(u.Badges, b) {
+				u.Badges = append(u.Badges, b)
+			}
+		}
+	}
+	gs := make([]*group, 0, len(by))
+	for _, g := range by {
+		gs = append(gs, g)
+	}
+	sort.Slice(gs, func(i, j int) bool {
+		if gs[i].n != gs[j].n {
+			return gs[i].n > gs[j].n
+		}
+		return gs[i].role+gs[i].typ < gs[j].role+gs[j].typ
+	})
+	for _, g := range gs {
+		what := map[string]string{"core": "core node", "task": "task node", "master": "primary node"}[g.role]
+		if what == "" {
+			what = "node"
+		}
+		s := model.Plural(g.n, what, what+"s")
+		if g.typ != "" {
+			s += " (" + g.typ + ")"
+		}
+		u.Groups = append(u.Groups, s)
+	}
+	sort.Ints(u.Badges)
+	return u
 }
 
 // detailJVM picks the executor worth drawing in full: one killed for
@@ -774,6 +869,9 @@ func anatomySVG(a *anatomy, l anatLinks) string {
 			body.text(anPad+14, y+8, "m", "", a.Folded+".")
 			y += 24
 		}
+		if a.Unused != nil {
+			y = drawUnused(body, a, a.Unused, y, l) + anGap
+		}
 	} else {
 		body.text(anPad+14, y+16, "m", "", "No worker node is known for this run: the event log names the hosts that ran executors.")
 		y += 30
@@ -854,6 +952,58 @@ func nodeCols(n int) int {
 func nodeWidth(n int) float64 {
 	cols := nodeCols(n)
 	return (anW - 2*(anPad+14) - float64(cols-1)*anGap) / float64(cols)
+}
+
+// drawUnused draws the worker nodes the application did not use as one
+// box: how many, of which roles and types, and what YARN offered on them.
+func drawUnused(b *svgw, a *anatomy, u *anatUnused, y float64, l anatLinks) float64 {
+	x, w := anPad+14, anW-2*anPad-28
+	// the groups, on as many lines as they need
+	var lines []string
+	cur := ""
+	for _, g := range u.Groups {
+		next := g
+		if cur != "" {
+			next = cur + " · " + g
+		}
+		if cur != "" && textW(next, 12, false) > w-28 {
+			lines, cur = append(lines, cur), g
+			continue
+		}
+		cur = next
+	}
+	lines = append(lines, cur)
+	var notes []string
+	if u.Known > 0 {
+		offered := fmt.Sprintf("Their NodeManagers offered %s and %d vcores", model.Bytes(u.YARNBytes), u.YARNCores)
+		if u.Known < u.Count {
+			offered += fmt.Sprintf(" (the %d there throughout whose offer the logs give)", u.Known)
+		}
+		notes = append(notes, offered+".")
+	}
+	var moved []string
+	if u.Left > 0 {
+		moved = append(moved, fmt.Sprintf("%d went away", u.Left))
+	}
+	if u.Joined > 0 {
+		moved = append(moved, fmt.Sprintf("%d joined", u.Joined))
+	}
+	if len(moved) > 0 {
+		notes = append(notes, strings.Join(moved, " and ")+" while the application ran.")
+	}
+	h := 50 + 16*float64(len(lines)+len(notes))
+	b.f(`<g class="unused"><rect class="nbox idle" x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="8"/>`, x, y, w, h)
+	b.text(x+12, y+20, "h", "", fmt.Sprintf("Not used by this application: %s", model.Plural(u.Count, "worker node", "worker nodes")))
+	b.text(x+12, y+37, "m", "", "No executor or driver of this application ran on them; other applications may have.")
+	for i, line := range lines {
+		b.text(x+12, y+56+16*float64(i), "", "", line)
+	}
+	for i, note := range notes {
+		b.text(x+12, y+56+16*float64(len(lines)+i), "m", "", note)
+	}
+	b.badges(a, u.Badges, x+w-16, y+18, l)
+	b.WriteString(`</g>`)
+	return y + h
 }
 
 // drawKey says what each colour and mark in the node boxes means, for the
@@ -1387,7 +1537,7 @@ func drawBadgeKey(b *svgw, a *anatomy, y float64, l anatLinks) float64 {
 // anatGuide explains the run-at-a-glance diagram; the explorer shows the same.
 var anatGuide = chartGuide{
 	Axes: [][2]string{
-		{"Boxes", "The cluster's nodes: the primary node runs YARN's ResourceManager, and each worker node below shows what it did for this application."},
+		{"Boxes", "The cluster's nodes: the primary node runs YARN's ResourceManager, and each worker node that ran this application's driver or executors shows what it did. The worker nodes it did not use add up to one box, counted by role and instance type."},
 		{"Bar in each node", "The memory the node offered YARN, to scale, with this application's driver and executor containers placed on it at the application's busiest moment."},
 		{"Cards", "One per executor on the node: its peak heap against the heap it was given, its cores and container size, and how busy its cores were."},
 		{"Bottom panels", "Inside one executor (the one with the highest heap) and the driver: the Java heap's regions, to scale, with how far each peaked."},

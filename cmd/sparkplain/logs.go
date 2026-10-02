@@ -31,6 +31,9 @@ type clusterLogs struct {
 	calls     *model.AWSCallsSection
 	files     []model.LogFile
 	sources   []model.SourceStatus
+	// appNodes are the instances that ran the application's driver or
+	// executors, as its container logs name them.
+	appNodes []string
 	// logLoc is the zone the cluster writes its log times in.
 	logLoc *time.Location
 }
@@ -149,12 +152,23 @@ func (out *clusterLogs) readLogs(ctx context.Context, cloud *awsSession, log *mo
 		plan.Until, plan.WindowFrom = log.Application.End, "the event log"
 	}
 	plan.Others = otherNodes(out.instances, plan.Instances)
+	plan.HostIDs, plan.Guessed = map[string]string{}, log == nil || len(log.Executors) == 0
+	for _, in := range out.instances {
+		for _, h := range []string{in.PrivateDNS, in.PrivateIP} {
+			if h != "" {
+				plan.HostIDs[shortHost(h)] = in.ID
+			}
+		}
+		if in.Primary || in.Role == "MASTER" {
+			plan.Primary = append(plan.Primary, in.ID)
+		}
+	}
 	plan.Lifetimes = map[string][2]time.Time{}
 	for _, in := range out.instances {
 		plan.Lifetimes[in.ID] = [2]time.Time{in.Created, in.Ended}
 	}
 	col := yarnlog.Collect(ctx, st, plan)
-	out.files, out.sources = col.Files, col.Sources
+	out.files, out.sources, out.appNodes = col.Files, col.Sources, col.AppNodes
 	api := awsDeps.emr(cfg)
 	for i := range out.steps {
 		for _, s := range col.Steps {
@@ -632,7 +646,8 @@ func logZoneCheck(log *model.EventLog, files []model.LogFile, steps []model.Step
 func (out *clusterLogs) readMetrics(ctx context.Context, cloud *awsSession, log *model.EventLog, off string, pad time.Duration) {
 	row := model.SourceStatus{Name: "CloudWatch", Status: "read"}
 	defer func() { out.sources = append(out.sources, row) }()
-	if off != "" {
+	app := appInstances(out.cluster.Instances, log, out.files)
+	if off != "" && len(app) == 0 {
 		row.Status, row.Detail = "not-requested", "Not called: "+off+"."
 		return
 	}
@@ -642,19 +657,25 @@ func (out *clusterLogs) readMetrics(ctx context.Context, cloud *awsSession, log 
 		return
 	}
 	from, to = from.Add(-pad), to.Add(pad)
-	var ids []string
-	for _, in := range out.cluster.Instances {
-		if (!in.Ended.IsZero() && in.Ended.Before(from)) || (!in.Created.IsZero() && in.Created.After(to)) {
-			continue
-		}
-		ids = append(ids, in.ID)
-		if len(ids) == maxNodesWithoutEventLog {
-			break
+	// The nodes that ran the application always, and first; with
+	// CloudWatch on, the others up during the run too, up to the cap.
+	ids, clusterID := slices.Clone(app), out.cluster.ID
+	if off != "" {
+		clusterID = "" // off: only the application's nodes' own metrics
+	} else {
+		for _, in := range out.cluster.Instances {
+			if len(ids) >= maxNodesWithoutEventLog {
+				break
+			}
+			if (!in.Ended.IsZero() && in.Ended.Before(from)) || (!in.Created.IsZero() && in.Created.After(to)) || slices.Contains(ids, in.ID) {
+				continue
+			}
+			ids = append(ids, in.ID)
 		}
 	}
 	cfg, err := cloud.config(ctx)
 	if err == nil {
-		out.metrics, err = awsmeta.Metrics(ctx, awsDeps.cloudwatch(cfg), out.cluster.ID, ids, from, to, awsDeps.now())
+		out.metrics, err = awsmeta.Metrics(ctx, awsDeps.cloudwatch(cfg), clusterID, ids, from, to, awsDeps.now())
 	}
 	if err != nil {
 		row.Status, row.Class, row.Detail = "error", awsmeta.ErrorClass(err), "Could not read metrics (needs cloudwatch:GetMetricData and cloudwatch:ListMetrics): "+err.Error()
@@ -668,6 +689,10 @@ func (out *clusterLogs) readMetrics(ctx context.Context, cloud *awsSession, log 
 		model.Plural(len(ids), "node", "nodes"), from.UTC().Format("2006-01-02 15:04"), to.UTC().Format("15:04"), pad,
 		model.Num(int64(len(out.metrics.Cluster)+len(out.metrics.Hosts))), model.Num(int64(points)))
 	row.Brief = fmt.Sprintf("%s series, %s–%s UTC", model.Num(int64(len(out.metrics.Cluster)+len(out.metrics.Hosts))), from.UTC().Format("15:04"), to.UTC().Format("15:04"))
+	if off != "" {
+		row.Detail = fmt.Sprintf("CloudWatch is off (%s), but the metrics of the %s that ran this application were read anyway; nothing else. ", off, model.Plural(len(ids), "node", "nodes")) + row.Detail
+		row.Brief = "only the application's nodes: " + row.Brief
+	}
 	if out.metrics.Coverage == model.NoData {
 		row.Status = "none"
 		row.Detail += " " + strings.Join(out.metrics.Missing, " ")
@@ -733,6 +758,9 @@ func callers(instances []model.Instance, log *model.EventLog, files []model.LogF
 			hosts[shortHost(log.Driver.Host)] = true
 		}
 	} else {
+		for _, h := range yarnlog.AppHosts(files) {
+			hosts[h] = true
+		}
 		for _, f := range files {
 			for _, l := range f.Found {
 				if h := l.Fields["appMasterHost"]; h != "" {
@@ -749,7 +777,7 @@ func callers(instances []model.Instance, log *model.EventLog, files []model.LogF
 		up := !(!in.Ended.IsZero() && in.Ended.Before(from)) && !(!in.Created.IsZero() && in.Created.After(to))
 		ran := hosts[shortHost(in.PrivateDNS)] || hosts[shortHost(in.PrivateIP)]
 		worker := !in.Primary && in.Role != "MASTER"
-		if ran || (log == nil && up && worker) {
+		if ran || (log == nil && len(hosts) == 0 && up && worker) {
 			out = append(out, in.ID)
 		}
 	}
@@ -766,6 +794,35 @@ func noCluster(id string, err error) clusterLogs {
 	for _, name := range []string{"Container logs", "Step logs", "Node logs", "CloudWatch", "CloudTrail"} {
 		out.sources = append(out.sources, model.SourceStatus{Name: name, Status: "not-supplied",
 			Detail: "Not read: finding it needs the cluster's details from the EMR API, which could not be read."})
+	}
+	return out
+}
+
+// appInstances are the instances that ran the application's driver or
+// executors: the hosts the event log names, and those its container logs
+// name.
+func appInstances(instances []model.Instance, log *model.EventLog, files []model.LogFile) []string {
+	hosts := map[string]bool{}
+	if log != nil {
+		for _, x := range log.Executors {
+			hosts[shortHost(x.Host)] = true
+		}
+		if log.Driver != nil {
+			hosts[shortHost(log.Driver.Host)] = true
+		}
+		if h := log.Application.DriverAttributes["NM_HOST"]; h != "" {
+			hosts[shortHost(h)] = true
+		}
+	}
+	for _, h := range yarnlog.AppHosts(files) {
+		hosts[h] = true
+	}
+	delete(hosts, "")
+	var out []string
+	for _, in := range instances {
+		if hosts[shortHost(in.PrivateDNS)] || hosts[shortHost(in.PrivateIP)] {
+			out = append(out, in.ID)
+		}
 	}
 	return out
 }
