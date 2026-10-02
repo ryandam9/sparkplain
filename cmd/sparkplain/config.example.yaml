@@ -18,7 +18,7 @@
 #
 # A block's keys override the same keys at the top of this file. Each one
 # can set cluster-name, hbase-cluster-name, profile, region,
-# eventlog-prefix, timezone and out.
+# eventlog-prefix, timezone, out and read.
 # ---------------------------------------------------------------------
 environments:
   prod:
@@ -44,6 +44,11 @@ environments:
     # already on S3. One downloaded zip can always be given with -eventlog.
     # eventlog-prefix: s3://my-prod-logs/spark-events/
 
+    # Sources to skip in this environment, as under read: below; for
+    # example when its role may not call CloudTrail.
+    # read:
+    #   cloudtrail: no
+
   nonprod:
     cluster-name: my-spark-cluster-dev
     profile: dev-readonly
@@ -65,6 +70,18 @@ environments:
 
 # Where reports are written (default ~/sparkplain/<yyyy-mm-dd>/<app-id>/).
 # out: ~/reports
+
+# What to read, each yes or no (default yes). A source set to no is not
+# checked, listed or read, and the report says it was turned off; it does
+# not make the run partial. Container logs, the EMR API and the event log
+# are always read. The flags -no-step-logs, -no-node-logs, -no-hbase-logs,
+# -no-cloudwatch and -no-cloudtrail turn one off for a single run.
+# read:
+#   step-logs: yes   # EMR step logs: the spark-submit command, the step's status
+#   node-logs: yes   # YARN's NodeManager and ResourceManager logs, bootstrap actions
+#   hbase-logs: yes  # HBase's Master and region server logs
+#   cloudwatch: yes  # CloudWatch metrics: node CPU, YARN memory and containers
+#   cloudtrail: yes  # CloudTrail: AWS calls and refusals during the run
 
 # Which files to write: html, json and explorer (default all three).
 # format: html,json,explorer

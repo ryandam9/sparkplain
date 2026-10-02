@@ -55,6 +55,10 @@ type Plan struct {
 	// SkipHBase leaves HBase Master and region-server logs for a separate
 	// collector, for example when HBase runs on another EMR cluster.
 	SkipHBase bool
+	// Off names the sources the run was told not to read ("Step logs",
+	// "Node logs", "HBase server logs") and why; each gets a Sources row
+	// saying so, and nothing of it is listed or read.
+	Off map[string]string
 	// MaxFiles caps the files read per kind of log; default 5000.
 	MaxFiles int
 }
@@ -90,13 +94,28 @@ func Collect(ctx context.Context, st source.Store, p Plan) Collection {
 		}
 		return c
 	}
-	c.steps(ctx, st, p)
+	if !c.off(st, p, "Step logs", "steps/") {
+		c.steps(ctx, st, p)
+	}
 	p = p.withDriverNodes(c.Files)
-	c.nodes(ctx, st, p)
-	if !p.SkipHBase {
+	if !c.off(st, p, "Node logs", "node/") {
+		c.nodes(ctx, st, p)
+	}
+	if !p.SkipHBase && !c.off(st, p, "HBase server logs", "node/*/applications/hbase/") {
 		c.hbase(ctx, st, p.WithWindow(c.Files))
 	}
 	return c
+}
+
+// off reports whether the run was told not to read a source, and adds its
+// Sources row saying so.
+func (c *Collection) off(st source.Store, p Plan, name, under string) bool {
+	why, ok := p.Off[name]
+	if ok {
+		c.Sources = append(c.Sources, model.SourceStatus{Name: name, Status: "not-requested", Location: st.Location(p.Root) + under,
+			Detail: "Not read: " + why + "."})
+	}
+	return ok
 }
 
 // CollectHBase reads only HBase Master and region-server logs. It is used

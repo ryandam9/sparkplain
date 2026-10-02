@@ -218,6 +218,16 @@ func accessCheck(ctx context.Context, cloud *awsSession, in checkInput) checked 
 				Detail: "HBase is not installed on this Spark cluster. If HBase runs on another EMR cluster, pass -hbase-cluster-name <name> (or set hbase-cluster-name in the config file)."})
 		}
 	}
+	// Sources the run was told not to read are not checked either.
+	kept := logRows[:0]
+	for _, lr := range logRows {
+		if why, off := o.off[lr.name]; off {
+			c.rows = append(c.rows, model.AccessCheck{Name: lr.name, Status: "skipped", Detail: "Not asked for: " + why + "."})
+			continue
+		}
+		kept = append(kept, lr)
+	}
+	logRows = kept
 	if !ok {
 		for _, lr := range logRows {
 			c.rows = append(c.rows, model.AccessCheck{Name: lr.name, Status: "skipped", Detail: "The cluster has no log URI, so EMR kept no logs in S3."})
@@ -246,7 +256,9 @@ func accessCheck(ctx context.Context, cloud *awsSession, in checkInput) checked 
 		})
 	}
 
-	if separateHBase {
+	if why, off := o.off["HBase server logs"]; separateHBase && off {
+		c.rows = append(c.rows, model.AccessCheck{Name: "HBase server logs", Status: "skipped", Location: firstNonEmpty(o.hbaseClusterID, o.hbaseClusterName), Detail: "Not asked for: " + why + "."})
+	} else if separateHBase {
 		jobs = append(jobs, func(x context.Context) {
 			r := model.AccessCheck{Name: "HBase server logs", Location: firstNonEmpty(o.hbaseClusterID, o.hbaseClusterName),
 				Call: "DescribeCluster, ListInstances, ListObjectsV2 and GetObject (one byte)",
@@ -322,8 +334,9 @@ func accessCheck(ctx context.Context, cloud *awsSession, in checkInput) checked 
 
 	// CloudWatch, EC2 and CloudTrail.
 	if o.noCloudWatch {
-		c.rows = append(c.rows, model.AccessCheck{Name: "CloudWatch", Status: "skipped", Detail: "Not asked for (-no-cloudwatch)."},
-			model.AccessCheck{Name: "EC2 instance types", Status: "skipped", Detail: "Not asked for (-no-cloudwatch)."})
+		why := "Not asked for: " + firstNonEmpty(o.off["CloudWatch"], "turned off with -no-cloudwatch") + "."
+		c.rows = append(c.rows, model.AccessCheck{Name: "CloudWatch", Status: "skipped", Detail: why},
+			model.AccessCheck{Name: "EC2 instance types", Status: "skipped", Detail: why})
 	} else {
 		jobs = append(jobs, func(x context.Context) { add(cloudWatchCheck(x, cfg, cl.ID, try)) }, func(x context.Context) {
 			r := model.AccessCheck{Name: "EC2 instance types", Call: "DescribeInstanceTypes"}
@@ -343,7 +356,7 @@ func accessCheck(ctx context.Context, cloud *awsSession, in checkInput) checked 
 		})
 	}
 	if o.noCloudTrail {
-		c.rows = append(c.rows, model.AccessCheck{Name: "CloudTrail", Status: "skipped", Detail: "Not asked for (-no-cloudtrail)."})
+		c.rows = append(c.rows, model.AccessCheck{Name: "CloudTrail", Status: "skipped", Detail: "Not asked for: " + firstNonEmpty(o.off["CloudTrail"], "turned off with -no-cloudtrail") + "."})
 	} else {
 		jobs = append(jobs, func(x context.Context) {
 			r := model.AccessCheck{Name: "CloudTrail", Call: "LookupEvents (one event)", Try: try("aws cloudtrail lookup-events --max-results 1")}
@@ -655,6 +668,11 @@ func offlineCheck(o options, prefix string) checked {
 		{"HBase server logs", "node/*/applications/hbase"},
 	} {
 		r := model.AccessCheck{Name: lr.name, Location: path.Join(o.from, lr.glob) + "/"}
+		if why, off := o.off[lr.name]; off {
+			r.Status, r.Detail = "skipped", "Not asked for: "+why+"."
+			c.rows = append(c.rows, r)
+			continue
+		}
 		found := false
 		for _, x := range objs {
 			switch {
