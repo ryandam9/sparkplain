@@ -66,6 +66,10 @@ type Input struct {
 	// node logs).
 	LogsRead   bool
 	LogSources []model.SourceStatus
+	// RunStart and RunEnd are when the application ran without the event
+	// log: from YARN's summary in the logs, or the step that submitted it
+	// (zero when nothing says). With the event log, its own times are used.
+	RunStart, RunEnd time.Time
 }
 
 // ctx is shared state for the analyzers.

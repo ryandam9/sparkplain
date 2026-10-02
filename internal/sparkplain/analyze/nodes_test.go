@@ -253,3 +253,38 @@ func TestNodeCapacityFromContainerPlacements(t *testing.T) {
 		t.Errorf("node from placements = %d MiB, %d vcores, driver %d MiB", h.YARNMemoryBytes>>20, h.YARNVCores, h.DriverContainerBytes>>20)
 	}
 }
+
+// Without the event log, the nodes shown (and drawn at a glance) are the
+// instances up at some point while the application ran, from YARN's
+// summary or the step: EMR lists every instance a cluster has had, and on
+// a long-lived cluster that scales most were never there for this run.
+func TestNodesWithoutEventLogKeepTheRunsInstances(t *testing.T) {
+	t.Parallel()
+	start := time.Unix(1_790_000_000, 0).UTC()
+	end := start.Add(30 * time.Minute)
+	inst := func(id string, created, ended time.Time) model.Instance {
+		return model.Instance{ID: id, PrivateDNS: "ip-" + id, Role: "CORE", Created: created, Ended: ended}
+	}
+	cl := &model.Cluster{ID: "j-1", Instances: []model.Instance{
+		inst("i-up", start.Add(-time.Hour), time.Time{}),
+		inst("i-left", start.Add(-time.Hour), start.Add(10*time.Minute)), // ended during the run: kept
+		inst("i-before", start.Add(-3*time.Hour), start.Add(-time.Hour)),
+		inst("i-after", end.Add(time.Hour), time.Time{}),
+	}}
+	hosts := func(r *model.Report) string {
+		var ids []string
+		for _, h := range r.Nodes.Hosts {
+			ids = append(ids, h.Instance.ID)
+		}
+		return strings.Join(ids, ",")
+	}
+	r := Run(Input{Tool: "t", Cluster: cl, RunStart: start, RunEnd: end})
+	if hosts(r) != "i-up,i-left" || !strings.Contains(r.Nodes.Lede, "The cluster had 2 nodes up while the application ran; 2 others that ended before it or joined after it are left out.") {
+		t.Errorf("hosts %s, lede %q", hosts(r), r.Nodes.Lede)
+	}
+	// Nothing says when it ran: all are shown, and the lede says so.
+	r = Run(Input{Tool: "t", Cluster: cl})
+	if hosts(r) != "i-up,i-left,i-before,i-after" || !strings.Contains(r.Nodes.Lede, "EMR lists 4 nodes for the cluster. Nothing says when the application ran") {
+		t.Errorf("hosts %s, lede %q", hosts(r), r.Nodes.Lede)
+	}
+}

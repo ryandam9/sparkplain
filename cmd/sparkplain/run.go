@@ -433,6 +433,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		AWSCalls:    logs.calls,
 		LogsRead:    online || o.from != "",
 	}
+	if log == nil {
+		ain.RunStart, ain.RunEnd, _ = runWindow(nil, logs.files, logs.steps, logs.cluster)
+	}
 	if logs.cluster != nil {
 		cl := *logs.cluster
 		cl.Instances = logs.instances
