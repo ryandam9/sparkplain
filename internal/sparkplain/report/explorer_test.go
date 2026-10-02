@@ -464,3 +464,39 @@ func TestResourceUse(t *testing.T) {
 		}
 	}
 }
+
+// The Logs tab lists the nodes up during the run (the Nodes section's,
+// as At a glance counts them), not every instance the cluster ever had:
+// primary first, then core and task nodes, each numbered within its role.
+func TestClusterNodesUpDuringTheRun(t *testing.T) {
+	t.Parallel()
+	t0 := time.Date(2026, 10, 2, 9, 0, 0, 0, time.UTC)
+	inst := func(id, role string, ready time.Duration) model.Instance {
+		return model.Instance{ID: id, Role: role, Primary: role == "MASTER", PrivateDNS: id + ".example.internal", Type: "m5.xlarge", Ready: t0.Add(ready)}
+	}
+	all := []model.Instance{inst("i-p", "MASTER", 0), inst("i-c2", "CORE", 2*time.Minute), inst("i-c1", "CORE", time.Minute), inst("i-t1", "TASK", 3*time.Minute),
+		inst("i-old1", "TASK", -48*time.Hour), inst("i-old2", "TASK", -47*time.Hour)} // ended long before the run
+	r := &model.Report{Cluster: &model.Cluster{ID: "j-1", Instances: all}}
+	for _, k := range []int{3, 0, 1, 2} {
+		in := all[k]
+		h := &model.Host{Name: in.PrivateDNS, Instance: &in}
+		if k == 1 {
+			h.Executors = []string{"1", "2"}
+		}
+		if k == 0 {
+			h.Driver = true
+		}
+		r.Nodes.Hosts = append(r.Nodes.Hosts, *h)
+	}
+	d := embedded(t, renderExplorer(t, r, nil))
+	c, _ := d["cluster"].(map[string]any)
+	nodes, _ := c["nodes"].([]any)
+	var got []string
+	for _, n := range nodes {
+		m := n.(map[string]any)
+		got = append(got, fmt.Sprintf("%v %v %v", m["kind"], m["seq"], m["id"]))
+	}
+	if strings.Join(got, ", ") != "primary 1 i-p, core 1 i-c1, core 2 i-c2, task 1 i-t1" || c["allInstances"] != float64(6) {
+		t.Errorf("nodes = %v, all = %v", got, c["allInstances"])
+	}
+}
