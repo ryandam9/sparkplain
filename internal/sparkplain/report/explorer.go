@@ -135,7 +135,10 @@ type xData struct {
 	RunPath    *xRunPath             `json:"runPath,omitempty"`
 	Resources  []xUse                `json:"resources"` // the Overview's utilisation panel
 	StageOps   map[string]xStageOps  `json:"stageOps"`  // by "id.attempt": the RDDs each stage computes, laid out as a graph
-	Adaptive   map[string][][]any    `json:"adaptive"`  // by query ID: metrics adaptive execution added, rows as in a plan node
+	// HBaseScans are the TableInputFormat scan stages, region by region, by
+	// "id.attempt"; RegionsCut counts regions left out past the cap.
+	HBaseScans map[string]xHBaseScan `json:"hbaseScans,omitempty"`
+	Adaptive   map[string][][]any    `json:"adaptive"` // by query ID: metrics adaptive execution added, rows as in a plan node
 	RDDs       table                 `json:"rdds"`
 	Runtime    table                 `json:"runtime"`
 	Config     []xConfigGroup        `json:"config"`
@@ -563,7 +566,35 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 			d.PlanLays[strconv.FormatInt(g.QueryID, 10)] = layered(len(nodes), edges)
 		}
 	}
+	if r.HBase != nil {
+		for _, sc := range r.HBase.Scans {
+			x := xHBaseScan{HBaseScanRead: sc}
+			if sc.Scan != nil {
+				x.Facts, x.Filter = sc.Scan.Facts(), sc.Scan.Filter.Lines()
+			}
+			if len(x.Regions) > maxExplorerRegions {
+				x.RegionsCut = len(x.Regions) - maxExplorerRegions
+				x.Regions = x.Regions[:maxExplorerRegions]
+			}
+			if d.HBaseScans == nil {
+				d.HBaseScans = map[string]xHBaseScan{}
+			}
+			d.HBaseScans[fmt.Sprintf("%d.%d", sc.StageID, sc.Attempt)] = x
+		}
+	}
 	return d
+}
+
+// maxExplorerRegions caps the regions of one scan on the page.
+const maxExplorerRegions = 5000
+
+// xHBaseScan is a scan stage for the explorer: the scan's settings and
+// filter tree are pre-rendered, as the report shows them.
+type xHBaseScan struct {
+	model.HBaseScanRead
+	Facts      [][2]string `json:"facts,omitempty"`
+	Filter     []string    `json:"filter,omitempty"`
+	RegionsCut int         `json:"regionsCut,omitempty"`
 }
 
 func orEmpty[T any](v []T) []T {

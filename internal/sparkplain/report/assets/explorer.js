@@ -98,9 +98,9 @@
   });
   var LOG_KIND = { exception: "Exception", traceback: "Python traceback", "out-of-memory": "Out of memory", "memory-kill": "Memory kill", "container-exit": "Container exit",
     "app-exit": "Application master exit", "lost-executor": "Lost executor", "task-error": "Task error", signal: "Signal", "access-denied": "Access denied",
-    kerberos: "Kerberos", metastore: "Metastore", hbase: "HBase", "hbase-use": "HBase table use", "hbase-server": "HBase server event", localized: "Localized file", classpath: "Missing class", identity: "Identity", submit: "spark-submit command", submitted: "Submitted application",
+    kerberos: "Kerberos", metastore: "Metastore", hbase: "HBase", "hbase-use": "HBase table use", "hbase-server": "HBase server event", "hbase-scan": "HBase scan printed", localized: "Localized file", classpath: "Missing class", identity: "Identity", submit: "spark-submit command", submitted: "Submitted application",
     resource: "Uploaded file", "step-status": "Step status", "app-report": "YARN report", "app-summary": "YARN summary", bootstrap: "Bootstrap", error: "Error" };
-  var FILE_KIND = { "container-stderr": "Container stderr", "container-stdout": "Container stdout", "step-controller": "Step controller", "step-stderr": "Step stderr",
+  var FILE_KIND = { "container-stderr": "Container stderr", "container-stdout": "Container stdout", "step-controller": "Step controller", "step-stderr": "Step stderr", "step-stdout": "Step stdout",
     nodemanager: "NodeManager", resourcemanager: "ResourceManager", bootstrap: "Bootstrap log", "bootstrap-output": "Bootstrap action output",
     "hbase-master": "HBase Master", "hbase-regionserver": "HBase region server" };
   function sevPill(sev) {
@@ -646,6 +646,8 @@
           read: ["Read it top to bottom, like the code.", "A long chain is fine; what matters is which step is slow, which the task table below shows."] });
     }
     s.appendChild(codePanel(st.code, st.submitted, null));
+    var hsc = (D.hbaseScans || {})[st.key];
+    if (hsc) hbaseScanPanel(s, hsc);
     if (st.details) s.appendChild(el("details", null, el("summary", { text: "Where in the code: the full call stack Spark recorded" }), el("div", { cls: "inner" }, el("pre", { cls: "plan", text: st.details }))));
     if (st.rp || st.pushOn || st.barrier || Object.keys(st.props || {}).length) {
       s.appendChild(el("div", { cls: "facts" },
@@ -689,6 +691,58 @@
     } else if (D.cellsCapped) s.appendChild(explain("Per-executor totals stopped before this stage (the app-wide cap was reached)."));
     return s;
   };
+
+  // hbaseScanPanel shows what a TableInputFormat scan stage read, region
+  // by region, as the report's HBase section does.
+  function hbaseScanPanel(s, x) {
+    function msrc(o) { return o && o.file ? o.file + ":" + (o.line || "") : ""; }
+    function host(h) { return el("span", { cls: "mono", title: h, text: String(h || "").split(".")[0] }); }
+    function row(k) { return k ? el("span", { cls: "mono", text: k }) : el("span", { cls: "sub", text: "(table edge)" }); }
+    var regions = x.regions || [], servers = x.servers || [];
+    s.appendChild(el("h3", { text: "HBase regions read: " + x.table }));
+    s.appendChild(explain("TableInputFormat makes one split per region the scan overlaps, in key order, and Spark's partition n reads split n. Each region's rows and time come from its task, checked against the executor that logged its split."));
+    s.appendChild(el("div", { cls: "facts" },
+      fact("Key range read", el("span", { cls: "mono", text: x.rows }), "From the executors' split lines: each region's range cut to the scan's start and stop rows."),
+      fact("Regions read", num(regions.length + (x.regionsCut || 0)) + " on " + num(servers.length) + " region server" + (servers.length === 1 ? "" : "s"), "One task per region, so the stage cannot run more tasks at once than this."),
+      fact("Rows returned", num(x.totalRows), "Rows the scan returned to Spark, after its filters ran on the region servers. Spark counts no bytes for HBase input."),
+      x.sizedRegions ? fact("Estimated size", bytes(x.sizeBytes) + (x.sizedRegions < regions.length ? " · " + num(x.sizedRegions) + " of " + num(regions.length) + " regions" : ""), "HBase's estimate of each region's size on disk (Input split length), not bytes sent over the network.") : null,
+      x.scan ? fact("Scan as the job defined it", el("span", { cls: "mono", text: ((x.facts || []).filter(function (f) { return f[0] === "Rows"; })[0] || ["", ""])[1] }), (x.facts || []).filter(function (f) { return f[0] !== "Rows"; }).map(function (f) { return f[0] + ": " + f[1]; }).join(". ") + ". From " + msrc(x.scan.source) + ".") : null));
+    if (x.filter && x.filter.length) {
+      s.appendChild(explain("Filters, which the region servers apply before returning rows:"));
+      s.appendChild(el("pre", { cls: "plan", text: x.filter.join("\n") }));
+    } else if (!x.scan) {
+      s.appendChild(explain("The scan's columns and filters are not in the logs: TableInputFormat logs only each region's key range. Run sparkplain -decode-scan - on the job's scan string, or have a non-production run print it as a sparkplain-scan line."));
+    }
+    if (!x.tied) s.appendChild(explain("Rows and time per region are not shown: " + x.untied));
+    s.appendChild(table({
+      rows: servers, sort: x.tied ? 2 : 1,
+      cols: [
+        { h: "Region server", v: function (r) { return r.server; }, f: function (r) { return host(r.server); } },
+        { h: "Regions", num: true, v: function (r) { return r.regions; }, f: function (r) { return num(r.regions); } },
+        { h: "Rows", num: true, v: function (r) { return r.rows; }, f: function (r) { return x.tied ? num(r.rows) : "—"; } },
+        { h: "Estimated size", num: true, v: function (r) { return r.sizeBytes; }, f: function (r) { return r.sizeBytes ? bytes(r.sizeBytes) : "—"; } },
+        { h: "Task time", num: true, v: function (r) { return r.taskMs; }, f: function (r) { return x.tied ? dur(r.taskMs) : "—"; } }
+      ]
+    }));
+    var rows = regions.map(function (g, i) { return { i: i, g: g }; });
+    s.appendChild(table({
+      rows: rows, sort: 0, dir: "asc", page: 50, filter: "Filter by row key, server or region",
+      cols: [
+        { h: "#", num: true, v: function (r) { return r.i; }, f: function (r) { return String(r.i); } },
+        { h: "Start row", v: function (r) { return r.g.startRow; }, f: function (r) { return row(r.g.startRow); } },
+        { h: "End row", v: function (r) { return r.g.endRow; }, f: function (r) { return row(r.g.endRow); } },
+        { h: "Region server", v: function (r) { return r.g.server; }, f: function (r) { return host(r.g.server); } },
+        { h: "Rows", num: true, v: function (r) { return r.g.task ? r.g.task.rows : -1; }, f: function (r) { return r.g.task ? num(r.g.task.rows) : "—"; } },
+        { h: "Took", num: true, v: function (r) { return r.g.task ? r.g.task.durationMs : -1; }, f: function (r) { return r.g.task ? dur(r.g.task.durationMs) : "—"; } },
+        { h: "Executor", v: function (r) { return r.g.task ? r.g.task.executorId : ""; }, f: function (r) { return r.g.task ? el("span", null, execLink(r.g.task.executorId), el("span", { cls: "sub", text: "task " + r.g.task.taskId })) : "—"; } },
+        { h: "Estimated size", num: true, v: function (r) { return r.g.sizeBytes || 0; }, f: function (r) { return r.g.sizeBytes ? bytes(r.g.sizeBytes) : "—"; } },
+        { h: "Region", v: function (r) { return r.g.region; }, f: function (r) { return el("span", { cls: "mono", text: r.g.region }); } },
+        { h: "Found in", v: function (r) { return msrc(r.g.source); }, f: function (r) { return el("span", { cls: "srcref" }, msrc(r.g.source), r.g.task ? el("br") : null, r.g.task ? msrc(r.g.task.source) : null); } }
+      ],
+      text: function (r) { return [r.g.startRow, r.g.endRow, r.g.server, r.g.region].join(" "); }
+    }));
+    if (x.regionsCut) s.appendChild(explain(num(x.regionsCut) + " more regions are left out to keep the page small; the JSON report lists them all."));
+  }
 
   // cellTable lists per-executor totals; mark is an executor ID whose row
   // is highlighted.

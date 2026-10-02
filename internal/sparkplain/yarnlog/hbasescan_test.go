@@ -1,10 +1,13 @@
-package analyze
+package yarnlog
 
 import (
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
 )
 
 // The scans below are encoded by hand from HBase 2.4.17's .proto field
@@ -180,4 +183,35 @@ func FuzzDecodeScan(f *testing.F) {
 			_ = sc.Filter.String()
 		}
 	})
+}
+
+// A job may print its scan as a sparkplain-scan line (not in production);
+// only the decoded, redacted scan is kept, never the string with its
+// values.
+func TestScanLine(t *testing.T) {
+	scan := concat(pbS(3, "2026-08-15"), pbS(4, "2026-10-10"),
+		filter(5, "SingleColumnValueFilter", pbS(1, "d"), pbS(2, "api_token"), pbV(3, 2), cmp(4, "BinaryComparator", []byte("PLANTED-SECRET-0042"))))
+	b64 := base64.StdEncoding.EncodeToString(scan) + `\n` // as print(json.dumps(...)) shows b2a_base64's newline
+	log := "Starting job\n" +
+		`sparkplain-scan {"table": "orders", "scan": "` + b64 + `"}` + "\n" +
+		"26/10/02 05:00:01 INFO Demo: sparkplain-scan {\"table\": \"orders\", \"scan\": \"!!\"}\n" +
+		"sparkplain-scan not json\n"
+	res, err := Classify(strings.NewReader(log), "stdout", File{Kind: ContainerStdout, Container: "container_1_0001_01_000001"}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Scans) != 1 || res.Scans[0].Table != "orders" || res.Scans[0].Rows() != "[2026-08-15, 2026-10-10)" || res.Scans[0].Source.Line != 2 ||
+		res.Scans[0].Filter.String() != "SingleColumnValueFilter d:api_token EQUAL Binary [redacted]" {
+		t.Fatalf("scans = %+v", res.Scans)
+	}
+	var warnings int
+	for _, l := range res.Lines {
+		if l.Kind == model.LogHBaseScan && l.Severity == model.Warning {
+			warnings++
+		}
+	}
+	all, _ := json.Marshal(res)
+	if warnings != 2 || strings.Contains(string(all), "PLANTED-SECRET") || strings.Contains(string(all), base64.StdEncoding.EncodeToString(scan)[:20]) {
+		t.Errorf("%d warnings; result: %s", warnings, all)
+	}
 }

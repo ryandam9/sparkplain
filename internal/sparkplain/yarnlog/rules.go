@@ -193,7 +193,12 @@ var (
 	// region server holding it, and TableOutputFormat opening a table.
 	hbaseSizingRE = regexp.MustCompile(`^Calculating region sizes for table "([\w:.-]+)"`)
 	hbaseSplitRE  = regexp.MustCompile(`^Input split: Split\(tablename=([\w:.-]+), .*\bregionLocation=([\w.-]+), regionname=`)
-	hbaseOutputRE = regexp.MustCompile(`^Created table instance for ([\w:.-]+)`)
+	// The same line's key range and region (HBase 2.4's TableSplit text,
+	// row keys as Bytes.toStringBinary prints them), and the region's size
+	// as TableInputFormat estimated it, in Hadoop's humanReadableInt.
+	hbaseSplitRowsRE = regexp.MustCompile(`, startrow=(.*?), endrow=(.*), regionLocation=[\w.-]+, regionname=(\w*)\)$`)
+	hbaseSplitLenRE  = regexp.MustCompile(`^Input split length: ([\d.]+) ?([KMGTPE]?) ?bytes\.$`)
+	hbaseOutputRE    = regexp.MustCompile(`^Created table instance for ([\w:.-]+)`)
 	// The ZooKeeper client's connection line, up to its quorum: the
 	// watcher after it differs on every connection.
 	zkConnectRE = regexp.MustCompile(`^Initiating client connection, connectString=\S+`)

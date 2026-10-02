@@ -143,7 +143,7 @@ tr.lost td{color:var(--muted)}
 .fact{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;display:grid;gap:4px;align-content:start}
 .fact .l{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
 .fact .v{font-weight:500}
-.fact .x{font-size:13px;color:var(--muted)}
+.fact .x{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
 
 .missing{border:1px dashed var(--na);border-radius:8px;padding:14px 16px;display:grid;gap:8px;background:transparent}
 .missing h3{color:var(--na);font-size:13px;letter-spacing:.05em;text-transform:uppercase;font-family:var(--sans);font-weight:500}
@@ -198,6 +198,7 @@ pre.plan{margin:0;padding:12px 14px;overflow:auto;max-height:420px;font:12px/1.5
 .lbl{fill:var(--muted);font:11px var(--mono)}
 .mk-crit{fill:var(--crit)} .mk-warn{fill:var(--warn)} .st-ok{fill:var(--accent)} .st-failed{fill:var(--crit)} .st-other{fill:var(--na)}
 .srcref{font-family:var(--mono);font-size:12px;color:var(--muted);overflow-wrap:break-word}
+.fact .srcref,.explain .srcref{overflow-wrap:anywhere}
 .kv{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 16px;font-size:14px}
 .kv dt{color:var(--muted)} .kv dd{margin:0}
 @media print{nav.toc,.themebtn,.filter{display:none}.tbl{max-height:none;overflow:visible}.tbl th,.tbl td{position:static!important}.layout{grid-template-columns:minmax(0,1fr)}details{break-inside:avoid}}

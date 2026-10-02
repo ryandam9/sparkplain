@@ -40,7 +40,9 @@ type HBaseSection struct {
 	// hosts, or a whole region server. The others may be other work on the
 	// cluster at the same time.
 	ServerEvents []HBaseServerEvent `json:"serverEvents,omitempty"`
-	Missing      []string           `json:"missing,omitempty"`
+	// Scans are the TableInputFormat scan stages, region by region.
+	Scans   []HBaseScanRead `json:"scans,omitempty"`
+	Missing []string        `json:"missing,omitempty"`
 }
 
 // HBaseServerEvent is one kind of thing an HBase server logged, how often,
@@ -77,6 +79,10 @@ type HBaseStage struct {
 	// ServerEvents counts what HBase's servers logged while it ran, of the
 	// events tied to this run.
 	ServerEvents map[string]int `json:"serverEvents,omitempty"`
+	// RetrySources and ServerEventSources are a line behind each count,
+	// the first read, so a reader can check it.
+	RetrySources       map[string]Source `json:"retrySources,omitempty"`
+	ServerEventSources map[string]Source `json:"serverEventSources,omitempty"`
 	// Slowest is its slowest task, and MedianMs the median task's time.
 	Slowest  *TaskRef `json:"slowest,omitempty"`
 	MedianMs int64    `json:"medianMs"`

@@ -156,6 +156,7 @@ func hbaseStages(c *ctx, r *model.Report, h *model.HBaseSection) {
 					hs.Retries = map[string]int{}
 				}
 				hs.Retries[x.l.Fields["hbase"]] += x.l.Count
+				firstSource(&hs.RetrySources, x.l.Fields["hbase"], x.l)
 				if v := x.l.Fields["server"]; v != "" && !slices.Contains(hs.Servers, v) {
 					hs.Servers = append(hs.Servers, v)
 				}
@@ -390,4 +391,15 @@ func upperFirst(s string) string {
 		return s
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// firstSource keeps, per key, the source of the first line behind a
+// count, in the order the logs were read.
+func firstSource(m *map[string]model.Source, key string, l *model.LogLine) {
+	if *m == nil {
+		*m = map[string]model.Source{}
+	}
+	if _, ok := (*m)[key]; !ok {
+		(*m)[key] = l.Source
+	}
 }

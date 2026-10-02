@@ -24,7 +24,7 @@ func TestDescribe(t *testing.T) {
 		"containers/application_1_0001/container_1790380000000_0001_01_000001/directory.info.gz":            {App: "application_1_0001", Container: "container_1790380000000_0001_01_000001"},
 		"steps/s-FIXTURESTEP0001/controller.gz":                                                             {Kind: StepController, Step: "s-FIXTURESTEP0001"},
 		"steps/s-FIXTURESTEP0001/stderr.gz":                                                                 {Kind: StepStderr, Step: "s-FIXTURESTEP0001"},
-		"steps/s-FIXTURESTEP0001/stdout.gz":                                                                 {Step: "s-FIXTURESTEP0001"},
+		"steps/s-FIXTURESTEP0001/stdout.gz":                                                                 {Kind: StepStdout, Step: "s-FIXTURESTEP0001"},
 		"node/i-0fee0000000000001/applications/hadoop-yarn/hadoop-yarn-nodemanager-ip-10-0-2-10.log.gz":     {Kind: NodeManager, Instance: "i-0fee0000000000001"},
 		"node/i-0fee0000000000001/applications/hadoop-yarn/hadoop-yarn-resourcemanager-ip-10-0-2-10.log.gz": {Kind: ResourceManager, Instance: "i-0fee0000000000001"},
 		"node/i-0fee0000000000001/applications/hadoop-yarn/hadoop-yarn-nodemanager-ip-10-0-2-10.out.gz":     {Instance: "i-0fee0000000000001"},

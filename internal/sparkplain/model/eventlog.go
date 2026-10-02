@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // EventLog is everything read from one Spark event log, already redacted.
 type EventLog struct {
@@ -442,6 +445,40 @@ type Stage struct {
 	Source          Source            `json:"source"`
 	TaskSource      Source            `json:"taskSource,omitzero"`
 	EndSource       Source            `json:"endSource,omitzero"`
+	// ScanTasks are the successful tasks of a stage that read with
+	// newAPIHadoopRDD, one per partition (the first to succeed), up to
+	// MaxScanTasks: for a TableInputFormat scan, partition i read the
+	// i-th region in key order. ScanTasksCapped says some were left out.
+	ScanTasks       []ScanTask `json:"-"`
+	ScanTasksCapped bool       `json:"-"`
+}
+
+// MaxScanTasks caps the tasks kept per scan stage.
+const MaxScanTasks = 20000
+
+// ScanTask is one task of a newAPIHadoopRDD stage: its partition, where it
+// ran, how long, and the rows it read.
+type ScanTask struct {
+	Index      int    `json:"index"`
+	TaskID     int64  `json:"taskId"`
+	Attempt    int    `json:"attempt"`
+	ExecutorID string `json:"executorId"`
+	Host       string `json:"host"`
+	DurationMs int64  `json:"durationMs"`
+	RunTimeMs  int64  `json:"runTimeMs"`
+	Rows       int64  `json:"rows"`
+	Source     Source `json:"source"`
+}
+
+// IsHadoopScan reports whether the stage reads with newAPIHadoopRDD, as a
+// TableInputFormat scan does.
+func (s *Stage) IsHadoopScan() bool {
+	for _, r := range s.RDDs {
+		if r.Name == "NewHadoopRDD" && strings.HasPrefix(r.Callsite, "newAPIHadoopRDD") {
+			return true
+		}
+	}
+	return false
 }
 
 // DurationMs is the wall-clock time of the stage attempt, or 0 if unknown.

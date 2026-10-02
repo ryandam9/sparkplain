@@ -126,6 +126,7 @@ func hbaseServer(c *ctx, h *model.HBaseSection) {
 						hs.ServerEvents = map[string]int{}
 					}
 					hs.ServerEvents[ev] += x.l.Count
+					firstSource(&hs.ServerEventSources, ev, x.l)
 				}
 			}
 		}

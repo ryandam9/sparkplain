@@ -10,6 +10,7 @@
 package yarnlog
 
 import (
+	"encoding/json"
 	"io"
 	"regexp"
 	"strconv"
@@ -41,6 +42,8 @@ type Result struct {
 	Read      int64           // lines read
 	Truncated int             // lines longer than 64 KiB, cut
 	Dropped   int             // distinct lines past MaxEntries, not kept
+	Splits    []model.HBaseSplit
+	Scans     []model.HBaseScan // sparkplain-scan lines, decoded
 }
 
 // Caps on what one kept line carries.
@@ -111,6 +114,12 @@ type classifier struct {
 	lastTime time.Time
 	lastOOM  int // index of the last HotSpot out-of-memory line, or -1
 
+	// TableInputFormat splits whose size line has not come yet: one group
+	// while tasks overlap, since their lines interleave (see splitSize).
+	splitGroup []int
+	splitSizes []splitSize
+	splitOpen  int
+
 	// The most executors the driver asked for at once, kept as one line.
 	maxDesired     int
 	maxDesiredLine *model.LogLine
@@ -167,6 +176,14 @@ func (c *classifier) feed(line string) {
 			return
 		}
 		c.closeReport()
+	}
+	if i := strings.Index(line, scanMarker); i >= 0 && (kind == ContainerStdout || kind == ContainerStderr || kind == StepStdout || kind == StepStderr) {
+		c.flush()
+		if h, ok := parseHeader(kind, line); ok && !h.time.IsZero() {
+			c.lastTime = h.time
+		}
+		c.scanLine(line[i+len(scanMarker):])
+		return
 	}
 	if h, ok := parseHeader(kind, line); ok {
 		c.flush()
@@ -460,11 +477,16 @@ func (c *classifier) header(h header, line string) {
 		return
 	case hbaseSplitRE.MatchString(msg):
 		// One line per task; kept as one entry per table and region
-		// server, whose count is the regions read there.
+		// server, whose count is the regions read there, and each as a
+		// split of its own.
 		m := hbaseSplitRE.FindStringSubmatch(msg)
 		l = c.entry(model.LogHBaseUse, model.Info, h.time, "TableInputFormat read a region of "+m[1]+" held on "+m[2])
 		l.Fields["table"], l.Fields["access"], l.Fields["api"], l.Fields["server"] = m[1], "read", "TableInputFormat", m[2]
 		c.add(l)
+		c.split(m[1], m[2], msg, h.time)
+		return
+	case hbaseSplitLenRE.MatchString(msg):
+		c.splitSize(hbaseSplitLenRE.FindStringSubmatch(msg))
 		return
 	case hbaseOutputRE.MatchString(msg):
 		m := hbaseOutputRE.FindStringSubmatch(msg)
@@ -1069,3 +1091,104 @@ func clip(s string, n int) string {
 }
 
 func isRuneStart(b byte) bool { return b&0xC0 != 0x80 }
+
+// maxSplits caps the TableInputFormat splits kept from one file: one per
+// task the executor ran.
+const maxSplits = 20000
+
+type splitSize struct {
+	bytes int64
+	src   model.Source
+}
+
+// split keeps one TableInputFormat split.
+func (c *classifier) split(table, server, msg string, t time.Time) {
+	if len(c.res.Splits) == maxSplits {
+		return
+	}
+	sp := model.HBaseSplit{Table: table, Server: server, Time: t, Source: model.Source{File: c.res.Name, Line: c.n}}
+	if m := hbaseSplitRowsRE.FindStringSubmatch(msg); m != nil {
+		sp.StartRow, sp.EndRow, sp.Region = redact.Clean(m[1]), redact.Clean(m[2]), m[3]
+	}
+	c.res.Splits = append(c.res.Splits, sp)
+	c.splitGroup = append(c.splitGroup, len(c.res.Splits)-1)
+	c.splitOpen++
+}
+
+// splitSize gives a split its size line. Each task logs its split, then
+// its size, but tasks running at once interleave their lines and the log
+// format names no thread. So the lines are taken a group at a time, from
+// a split with none open to the moment none is open again: a group of one
+// split gets its size; a larger group's splits get theirs only when every
+// size in it is the same, and otherwise none, never a guess.
+func (c *classifier) splitSize(m []string) {
+	if c.splitOpen == 0 {
+		return
+	}
+	v, err := strconv.ParseFloat(m[1], 64)
+	if err != nil {
+		return
+	}
+	mult := map[string]float64{"": 1, "K": 1 << 10, "M": 1 << 20, "G": 1 << 30, "T": 1 << 40, "P": 1 << 50, "E": 1 << 60}[m[2]]
+	c.splitSizes = append(c.splitSizes, splitSize{int64(v * mult), model.Source{File: c.res.Name, Line: c.n}})
+	if c.splitOpen--; c.splitOpen > 0 {
+		return
+	}
+	same := len(c.splitSizes) == len(c.splitGroup)
+	for _, z := range c.splitSizes {
+		same = same && z.bytes == c.splitSizes[0].bytes
+	}
+	if same {
+		for i, k := range c.splitGroup {
+			c.res.Splits[k].SizeBytes, c.res.Splits[k].SizeSource = c.splitSizes[i].bytes, c.splitSizes[i].src
+		}
+	}
+	c.splitGroup, c.splitSizes = c.splitGroup[:0], c.splitSizes[:0]
+}
+
+// scanMarker starts a line a job prints to show sparkplain its
+// TableInputFormat scan, where it may (not in production, where printing
+// it is often not allowed): sparkplain-scan {"table": …, "scan": …}, the
+// scan being what the job passes as hbase.mapreduce.scan.
+const scanMarker = "sparkplain-scan "
+
+// scanLine decodes a sparkplain-scan line. Only the decoded, redacted scan
+// is kept, never the string, which holds the filters' values as they are.
+func (c *classifier) scanLine(js string) {
+	var m map[string]any
+	if len(js) > 1<<20 || json.Unmarshal([]byte(strings.TrimSpace(js)), &m) != nil {
+		l := c.entry(model.LogHBaseScan, model.Warning, c.lastTime, "A sparkplain-scan line is not a JSON object with \"table\" and \"scan\"")
+		c.add(l)
+		return
+	}
+	str := func(keys ...string) string {
+		for _, k := range keys {
+			if v, ok := m[k].(string); ok && v != "" {
+				return v
+			}
+		}
+		return ""
+	}
+	table, raw := redact.Clean(str("table", "hbase.mapreduce.inputtable")), str("scan", "hbase.mapreduce.scan")
+	sc, err := DecodeScan(raw)
+	if raw == "" || err != nil {
+		why := "it has no scan"
+		if err != nil {
+			why = err.Error()
+		}
+		l := c.entry(model.LogHBaseScan, model.Warning, c.lastTime, "A sparkplain-scan line could not be decoded: "+why)
+		l.Fields["table"] = table
+		c.add(l)
+		return
+	}
+	if sc.Table == "" {
+		sc.Table = table
+	}
+	sc.Source, sc.Time = model.Source{File: c.res.Name, Line: c.n}, c.lastTime
+	if len(c.res.Scans) < 1000 {
+		c.res.Scans = append(c.res.Scans, *sc)
+	}
+	l := c.entry(model.LogHBaseScan, model.Info, c.lastTime, "The job printed its scan of "+sc.Table+": rows "+sc.Rows())
+	l.Fields["table"] = sc.Table
+	c.add(l)
+}

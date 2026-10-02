@@ -300,10 +300,35 @@
           <tbody>{{range .Stages}}<tr><td data-v="{{.StageID}}">{{.StageID}}{{if .Attempt}}.{{.Attempt}}{{end}}</td><td>{{short .Description 90}}<span class="sub srcref">{{src .Source}}</span></td>
             <td class="mono">{{join .Reads ", "}}</td><td class="mono">{{join .Writes ", "}}</td><td>{{.API}}</td>
             <td class="num" data-v="{{.DurationMs}}">{{dur .DurationMs}}</td><td class="num" data-v="{{hbaseCPUMs .CPUTimeNs}}">{{pct (ratio (hbaseCPUMs .CPUTimeNs) .RunTimeMs)}}</td>
-            <td>{{hbaseRetries .Retries}}{{if .Servers}}<span class="sub">on {{join .Servers ", "}}</span>{{end}}{{with .ServerEvents}}<span class="sub">servers logged {{hbaseServer .}}</span>{{end}}</td>
+            <td>{{hbaseRetries .Retries}}{{if .Servers}}<span class="sub">on {{join .Servers ", "}}</span>{{end}}{{with .ServerEvents}}<span class="sub">servers logged {{hbaseServer .}}</span>{{end}}{{with hbaseSrcs .RetrySources .ServerEventSources}}<span class="sub srcref">{{.}}</span>{{end}}</td>
             <td>{{with .Slowest}}{{dur .DurationMs}} on {{.Host}}{{end}}{{if .MedianMs}}<span class="sub">median {{dur .MedianMs}}</span>{{end}}</td></tr>
           {{end}}</tbody>
         </table></div>{{end}}
+        {{range $sc := .Scans}}<h3 id="hbase-scan-{{.StageID}}">Stage {{.StageID}}{{if .Attempt}}.{{.Attempt}}{{end}}: TableInputFormat scan of <span class="mono">{{.Table}}</span></h3>
+        <div class="facts">
+          <div class="fact"><span class="l">Key range read</span><span class="v mono">{{.Rows}}</span><span class="x">The key range the scan's regions cover, from the executors' split lines: each region's range cut to the scan's start and stop rows. Row keys are shown as HBase prints them, other bytes as \xNN.</span></div>
+          <div class="fact"><span class="l">Regions read</span><span class="v num">{{numi (len .Regions)}} on {{numi (len .Servers)}} region server{{if ne (len .Servers) 1}}s{{end}} · {{numi .Tasks}} task{{if ne .Tasks 1}}s{{end}}</span><span class="x">TableInputFormat makes one split per region the scan overlaps, and Spark runs one task per split, so the stage cannot run more tasks at once than this.</span></div>
+          <div class="fact"><span class="l">Rows returned</span><span class="v num">{{num .TotalRows}}</span><span class="x">Rows the scan returned to Spark, after its filters ran on the region servers, from the event log. Spark counts no bytes for HBase input.</span></div>
+          {{if .SizedRegions}}<div class="fact"><span class="l">Estimated size</span><span class="v num">{{bytes .SizeBytes}}{{if lt .SizedRegions (len .Regions)}} · {{numi .SizedRegions}} of {{numi (len .Regions)}} regions{{end}}</span><span class="x">HBase's estimate of each region's size on disk, as TableInputFormat logged it (Input split length); not the bytes sent over the network. A region's size is left out when its line could not be told apart from another task's.</span></div>{{end}}
+          {{with .Scan}}<div class="fact"><span class="l">Scan as the job defined it</span><span class="v mono">{{.Rows}}</span><span class="x">{{range scanFacts .}}{{index . 0}}: <span class="mono">{{index . 1}}</span>. {{end}}From <span class="srcref">{{src .Source}}</span>.</span></div>{{end}}
+        </div>
+        {{with .Scan}}{{with .Filter}}<p class="explain">Filters, which the region servers apply before returning rows (<span class="srcref">{{src $sc.Scan.Source}}</span>):</p><pre class="mono">{{range .Lines}}{{.}}
+{{end}}</pre>{{end}}{{else}}<p class="explain">The scan's columns and filters are not in the logs: TableInputFormat logs only each region's key range. Run <span class="mono">sparkplain -decode-scan -</span> on the job's scan string to read it, or have a non-production run print it as a <span class="mono">sparkplain-scan</span> line.</p>{{end}}
+        <div class="tbl"><table>
+          <thead><tr><th data-sort="text">Region server</th><th class="num" data-sort="num">Regions</th><th class="num" data-sort="num">Rows</th><th class="num" data-sort="num">Estimated size</th><th class="num" data-sort="num">Task time</th></tr></thead>
+          <tbody>{{range .Servers}}<tr><td class="mono">{{.Server}}</td><td class="num" data-v="{{.Regions}}">{{numi .Regions}}</td><td class="num" data-v="{{.Rows}}">{{if $sc.Tied}}{{num .Rows}}{{else}}—{{end}}</td><td class="num" data-v="{{.SizeBytes}}">{{if .SizeBytes}}{{bytes .SizeBytes}}{{else}}—{{end}}</td><td class="num" data-v="{{.TaskMs}}">{{if $sc.Tied}}{{dur .TaskMs}}{{else}}—{{end}}</td></tr>
+          {{end}}</tbody>
+        </table></div>
+        {{$regions := headRegions .Regions 50}}<div class="tbl"><table>
+          <thead><tr><th class="num" data-sort="num">#</th><th data-sort="text">Start row</th><th data-sort="text">End row</th><th data-sort="text">Region server</th><th class="num" data-sort="num">Rows</th><th class="num" data-sort="num">Took</th><th data-sort="text">Executor</th><th class="num" data-sort="num">Estimated size</th><th>Found in</th></tr></thead>
+          <tbody>{{range $regions}}<tr><td class="num" data-v="{{.Index}}">{{.Index}}</td><td class="mono">{{if .Region.StartRow}}{{.Region.StartRow}}{{else}}(first row){{end}}</td><td class="mono">{{if .Region.EndRow}}{{.Region.EndRow}}{{else}}(last row){{end}}</td><td class="mono" title="{{.Region.Server}}">{{shortHost .Region.Server}}</td>
+            {{with .Region.Task}}<td class="num" data-v="{{.Rows}}">{{num .Rows}}</td><td class="num" data-v="{{.DurationMs}}">{{dur .DurationMs}}</td><td>{{.ExecutorID}}<span class="sub">task {{.TaskID}}</span></td>{{else}}<td class="num">—</td><td class="num">—</td><td>—</td>{{end}}
+            <td class="num" data-v="{{.Region.SizeBytes}}">{{if .Region.SizeBytes}}{{bytes .Region.SizeBytes}}{{else}}—{{end}}</td><td class="srcref">{{src .Region.Source}}{{with .Region.Task}}<br>{{src .Source}}{{end}}</td></tr>
+          {{end}}</tbody>
+        </table></div>
+        {{if gt (len .Regions) (len $regions)}}<p class="explain">The {{numi (len $regions)}} regions {{if .Tied}}that returned the most rows{{else}}first in key order{{end}} of {{numi (len .Regions)}}; the explorer and the JSON report list them all.</p>{{end}}
+        {{if .Tied}}<p class="explain">Each region is tied to the task that read it: TableInputFormat makes its splits in key order and Spark's partition <i>n</i> reads split <i>n</i>, checked against the executor that logged each split.</p>{{else}}<p class="explain">Rows and time per region are not shown: {{.Untied}}</p>{{end}}
+        {{end}}
         {{if .ServerEvents}}<h3>What HBase's servers logged while the run went on</h3>
         <div class="tbl"><table>
           <thead><tr><th data-sort="text">Event</th><th data-sort="text">Server</th><th data-sort="text">Table</th><th class="num" data-sort="num">Times</th><th>This run's</th><th>Detail</th><th>Found in</th></tr></thead>

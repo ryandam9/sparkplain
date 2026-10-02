@@ -1,6 +1,9 @@
 package model
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // HBaseScan is a TableInputFormat scan as the job defined it, decoded from
 // its base64 string (hbase.mapreduce.scan). Row keys and values are shown
@@ -27,7 +30,10 @@ type HBaseScan struct {
 	PartialResults bool         `json:"allowPartialResults,omitempty"`
 	Attributes     []string     `json:"attributes,omitempty"`
 	Filter         *HBaseFilter `json:"filter,omitempty"`
-	Source         Source       `json:"source,omitzero"`
+	// Source is where the scan string was found, and Time when (a
+	// sparkplain-scan line's time, or the last logged before it).
+	Source Source    `json:"source,omitzero"`
+	Time   time.Time `json:"time,omitzero"`
 }
 
 // HBaseFilter is one filter of a scan: its class (without the package),
@@ -160,4 +166,70 @@ func (s HBaseScan) Facts() [][2]string {
 	}
 	add("Attributes", strings.Join(s.Attributes, ", "))
 	return out
+}
+
+// HBaseSplit is one region a TableInputFormat scan read: the line an
+// executor logged as its task began (Input split: Split(tablename=…,
+// startrow=…, endrow=…, regionLocation=…, regionname=…)), and the region's
+// size as TableInputFormat estimated it (Input split length: 50 M bytes),
+// when its line can be told apart from another task's. StartRow and
+// EndRow are the scan's range cut to the region, as Bytes.toStringBinary
+// prints them; empty means the table's first or last row.
+type HBaseSplit struct {
+	Table      string    `json:"table"`
+	StartRow   string    `json:"startRow"`
+	EndRow     string    `json:"endRow"`
+	Server     string    `json:"server"`
+	Region     string    `json:"region"`
+	SizeBytes  int64     `json:"sizeBytes,omitempty"`
+	Time       time.Time `json:"time,omitzero"`
+	Source     Source    `json:"source"`
+	SizeSource Source    `json:"sizeSource,omitzero"`
+}
+
+// HBaseScanRead is what one TableInputFormat scan stage read, from its
+// executors' split lines and the event log: its key range, the regions in
+// key order, and per region server how many regions, rows and bytes.
+// Regions are tied to their tasks (rows, time, executor) when the stage's
+// splits match its partitions one for one (Untied says why not).
+type HBaseScanRead struct {
+	StageID   int               `json:"stageId"`
+	Attempt   int               `json:"attempt"`
+	Table     string            `json:"table"`
+	Rows      string            `json:"rows"` // the key range its splits cover
+	Scan      *HBaseScan        `json:"scan,omitempty"`
+	Regions   []HBaseRegionRead `json:"regions"`
+	Servers   []HBaseServerRead `json:"servers"`
+	Tasks     int               `json:"tasks"`
+	TotalRows int64             `json:"totalRows"`
+	// SizeBytes adds up the sizes TableInputFormat estimated, of the
+	// SizedRegions whose size line could be told apart.
+	SizeBytes    int64  `json:"sizeBytes"`
+	SizedRegions int    `json:"sizedRegions"`
+	Tied         bool   `json:"tied"`
+	Untied       string `json:"untied,omitempty"`
+	Source       Source `json:"source"`
+}
+
+// HBaseRegionRead is one region a scan read, and the task that read it
+// when the region could be tied to one.
+type HBaseRegionRead struct {
+	Region     string    `json:"region"`
+	StartRow   string    `json:"startRow"`
+	EndRow     string    `json:"endRow"`
+	Server     string    `json:"server"`
+	SizeBytes  int64     `json:"sizeBytes,omitempty"`
+	Task       *ScanTask `json:"task,omitempty"`
+	Source     Source    `json:"source"`
+	SizeSource Source    `json:"sizeSource,omitzero"`
+}
+
+// HBaseServerRead is what a scan read from one region server. Rows and
+// TaskMs count only the regions tied to their tasks.
+type HBaseServerRead struct {
+	Server    string `json:"server"`
+	Regions   int    `json:"regions"`
+	Rows      int64  `json:"rows"`
+	SizeBytes int64  `json:"sizeBytes"`
+	TaskMs    int64  `json:"taskMs"`
 }

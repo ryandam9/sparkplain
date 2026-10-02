@@ -551,6 +551,12 @@ type LogFile struct {
 	Lines          int64     `json:"lines"`
 	Dropped        int       `json:"dropped,omitempty"` // distinct lines past the per-file cap
 	Found          []LogLine `json:"found,omitempty"`
+	// HBaseSplits are the regions this executor's TableInputFormat tasks
+	// read, one per task, in file order.
+	HBaseSplits []HBaseSplit `json:"hbaseSplits,omitempty"`
+	// HBaseScans are the scans the job printed (sparkplain-scan lines),
+	// decoded and redacted; the scan strings themselves are not kept.
+	HBaseScans []HBaseScan `json:"hbaseScans,omitempty"`
 }
 
 // HostCPU is a node's CPU use over the run, as a percentage of all its
