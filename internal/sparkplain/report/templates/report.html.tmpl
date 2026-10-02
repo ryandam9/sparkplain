@@ -52,6 +52,7 @@
       <a href="#cpu">CPU <span class="dot {{cov $r.CPU.Coverage}}"></span></a>
       <a href="#io">Storage and I/O <span class="dot {{cov $r.IO.Coverage}}"></span></a>
       <a href="#stages">Jobs and stages <span class="dot {{cov $r.Jobs.Coverage}}"></span></a>
+      {{with $r.TaskStories}}<a href="#tasklogs">What each task did <span class="dot {{cov .Coverage}}"></span></a>{{end}}
       <a href="#sql">SQL queries <span class="dot {{cov $r.Jobs.Coverage}}"></span></a>
       <a href="#runtime">Runtime environment <span class="dot {{cov $r.Config.Coverage}}"></span></a>
       <a href="#config">Configuration <span class="dot {{cov $r.Config.Coverage}}"></span></a>
@@ -428,6 +429,44 @@
         </div></details>{{end}}{{end}}
         {{else}}<div class="missing"><h3>Needs the event log</h3><ul>{{range $j.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
       </section>
+
+      {{with $r.TaskStories}}{{$ts := .}}{{$t := .Totals}}<section id="tasklogs">
+        <div class="sechead"><h2>What each task did</h2><span class="pill {{cov .Coverage}}">{{covLabel .Coverage}}</span></div>
+        <p class="lede">Each executor logs what its tasks do: the broadcast variables they read, the shuffle blocks they fetched from their own node or over the network, the files or HBase regions they read, the blocks they cached, the data they spilled to disk, the output they committed and the result they sent back to the driver. {{numi (len .Tasks)}} task attempts have a story here{{if and .ByThread .ByTID}}: {{numi .ByThread}} told apart by the thread that logged each line, {{numi .ByTID}} by the lines that name their task{{else if .ByThread}}, every line told apart by the thread that logged it{{else}}, told apart by the lines that name their task (TID) and, for other lines, by being the only task its executor was running{{end}}.</p>
+        <div class="facts">
+          <div class="fact"><span class="l">Broadcasts read</span><span class="v num">{{numi $t.Broadcasts}}{{if $t.Broadcasts}} · {{bytes $t.BroadcastBytes}} · {{dur $t.BroadcastMs}}{{end}}</span><span class="x">Variables the driver shared with the executors (a lookup table, a broadcast join's small side), read once per executor by the first task to need them. Sizes are Spark's estimates; the time is how long reading them took.</span></div>
+          <div class="fact"><span class="l">Shuffle blocks read</span><span class="v num">{{numi $t.ShuffleBlocks}}{{if $t.ShuffleBlocks}} · {{bytes $t.ShuffleBytes}}{{end}}</span><span class="x">Pieces of the previous stage's output each task fetched. {{bytes $t.ShuffleLocalBytes}} came from the task's own node and {{bytes $t.ShuffleRemoteBytes}} over the network from other nodes ({{numi $t.RemoteBlocks}} blocks in {{numi $t.RemoteFetches}} requests). Sizes are Spark's estimates from the map outputs, within a few percent; the event log has the exact bytes.</span></div>
+          <div class="fact"><span class="l">Input read</span><span class="v num">{{numi $t.Inputs}}{{if $t.InputBytes}} · {{bytes $t.InputBytes}}{{end}}</span><span class="x">Files, file ranges or HBase regions the tasks opened. The size adds up the file ranges' lengths, not the bytes read: a columnar file such as Parquet is read only in part.</span></div>
+          <div class="fact"><span class="l">Cached in memory</span><span class="v num">{{numi $t.CachedBlocks}}{{if $t.CachedBlocks}} · {{bytes $t.CachedBytes}}{{end}}</span><span class="x">Partitions of cached data (persist or cache) the tasks stored in executor memory, as Spark estimated them.{{if $t.Dropped}} {{numi $t.Dropped}} blocks were dropped from memory to make room.{{end}}{{if $t.NotCached}} {{numi $t.NotCached}} did not fit and were not cached.{{end}}</span></div>
+          <div class="fact"><span class="l">Spilled to disk</span><span class="v num">{{if $t.Spills}}{{numi $t.Spills}} times · {{bytes $t.SpillBytes}}{{else}}none{{end}}</span><span class="x">Data a task's sort or aggregation could not keep in memory and wrote to local disk, as its in-memory size. Spilling is slow: the data is written and read again.</span></div>
+          <div class="fact"><span class="l">Output committed</span><span class="v num">{{numi $t.Commits}}{{if $t.Commits}} · {{dur $t.CommitMs}}{{end}}</span><span class="x">Task outputs moved into place at the end of a write, and the time that took in all.</span></div>
+          <div class="fact"><span class="l">Results sent back</span><span class="v num">{{bytes $t.ResultBytes}}</span><span class="x">What the tasks returned to the driver (a collect's rows, counts, write statistics), serialized. Large results go through the block manager; results over spark.driver.maxResultSize are dropped.</span></div>
+          <div class="fact"><span class="l">Warnings and errors</span><span class="v num">{{numi $t.Warnings}} · {{numi $t.Errors}}</span><span class="x">Lines logged at WARN and ERROR as a task's, besides its end. The Logs section groups every warning and error.</span></div>
+        </div>
+        <h3>Per executor</h3>
+        <div class="tbl"><table>
+          <thead><tr><th data-sort="text">Executor</th><th class="num" data-sort="num">Tasks</th><th class="num" data-sort="num">Broadcasts</th><th class="num" data-sort="num">Shuffle, own node</th><th class="num" data-sort="num">Shuffle, network</th><th class="num" data-sort="num">Input</th><th class="num" data-sort="num">Cached</th><th class="num" data-sort="num">Spilled</th><th class="num" data-sort="num">Commits</th><th class="num" data-sort="num">Results</th><th class="num" data-sort="num">Lines not tied to a task</th><th>Log</th></tr></thead>
+          <tbody>{{range .Executors}}{{$x := .Totals}}<tr><td>{{.Executor}}{{with .Host}}<span class="sub" title="{{.}}">{{shortHost .}}</span>{{end}}</td><td class="num" data-v="{{.Tasks}}">{{numi .Tasks}}</td>
+            <td class="num" data-v="{{$x.BroadcastBytes}}">{{if $x.Broadcasts}}{{numi $x.Broadcasts}}<span class="sub">{{bytes $x.BroadcastBytes}} · {{dur $x.BroadcastMs}}</span>{{else}}—{{end}}</td>
+            <td class="num" data-v="{{$x.ShuffleLocalBytes}}">{{if $x.ShuffleReads}}{{bytes $x.ShuffleLocalBytes}}{{else}}—{{end}}</td><td class="num" data-v="{{$x.ShuffleRemoteBytes}}">{{if $x.ShuffleReads}}{{bytes $x.ShuffleRemoteBytes}}<span class="sub">{{numi $x.RemoteBlocks}} blocks</span>{{else}}—{{end}}</td>
+            <td class="num" data-v="{{$x.InputBytes}}">{{if $x.Inputs}}{{numi $x.Inputs}}{{if $x.InputBytes}}<span class="sub">{{bytes $x.InputBytes}}</span>{{end}}{{else}}—{{end}}</td>
+            <td class="num" data-v="{{$x.CachedBytes}}">{{if $x.CachedBlocks}}{{bytes $x.CachedBytes}}<span class="sub">{{numi $x.CachedBlocks}} blocks</span>{{else}}—{{end}}</td><td class="num" data-v="{{$x.SpillBytes}}">{{if $x.Spills}}{{bytes $x.SpillBytes}}{{else}}—{{end}}</td>
+            <td class="num" data-v="{{$x.CommitMs}}">{{if $x.Commits}}{{numi $x.Commits}}<span class="sub">{{dur $x.CommitMs}}</span>{{else}}—{{end}}</td><td class="num" data-v="{{$x.ResultBytes}}">{{bytes $x.ResultBytes}}</td>
+            <td class="num" data-v="{{.Untied.Lines}}">{{if .Untied.Lines}}{{numi .Untied.Lines}}{{else}}—{{end}}</td><td class="srcref">{{src .Source}}</td></tr>
+          {{end}}</tbody>
+        </table></div>
+        {{$notable := notableTasks .Tasks}}{{if $notable}}<h3>Tasks worth a look</h3>
+        <p class="explain">Failed and killed tasks first, then those that read the most over the network or spilled the most, at most {{numi maxNotable}}. Every task, with each step it logged, is in the explorer's Task stories view and the JSON report.</p>
+        <div class="tbl"><table>
+          <thead><tr><th class="num" data-sort="num">Stage</th><th class="num" data-sort="num">Task</th><th class="num" data-sort="num">TID</th><th data-sort="text">Executor</th><th data-sort="text">Started</th><th class="num" data-sort="num">Took</th><th data-sort="text">Outcome</th><th class="num" data-sort="num">Shuffle, network</th><th class="num" data-sort="num">Spilled</th><th class="num" data-sort="num">Result</th><th>What it said</th><th>Found in</th></tr></thead>
+          <tbody>{{range $notable}}<tr><td class="num" data-v="{{.Stage}}">{{if ge .Stage 0}}{{.Stage}}{{if .StageAttempt}}.{{.StageAttempt}}{{end}}{{else}}—{{end}}</td><td class="num" data-v="{{.Partition}}">{{if ge .Partition 0}}{{.Partition}}.{{.Attempt}}{{else}}—{{end}}</td><td class="num" data-v="{{.TaskID}}">{{.TaskID}}</td>
+            <td>{{.Executor}}{{with .Host}}<span class="sub" title="{{.}}">{{shortHost .}}</span>{{end}}</td><td>{{time .Start "hms"}}</td><td class="num" data-v="{{.DurationMs}}">{{if or .Start.IsZero .End.IsZero}}—{{else if .DurationMs}}{{dur .DurationMs}}{{else}}under 1 s{{end}}</td><td>{{if .Outcome}}{{.Outcome}}{{else}}no end logged{{end}}</td>
+            <td class="num" data-v="{{.ShuffleRemoteBytes}}">{{if .ShuffleReads}}{{bytes .ShuffleRemoteBytes}}{{else}}—{{end}}</td><td class="num" data-v="{{.SpillBytes}}">{{if .Spills}}{{bytes .SpillBytes}}{{else}}—{{end}}</td><td class="num" data-v="{{.ResultBytes}}">{{if .ResultBytes}}{{bytes .ResultBytes}}{{else}}—{{end}}</td>
+            <td>{{if .Error}}{{short .Error 200}}{{else if .Problem}}{{short .Problem 200}}{{else}}—{{end}}</td><td class="srcref">{{src .Source}}{{if .EndSource.File}}<br>{{src .EndSource}}{{end}}</td></tr>
+          {{end}}</tbody>
+        </table></div>{{end}}
+        {{if .Missing}}<div class="missing"><h3>Not shown</h3><ul>{{range .Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+      </section>{{end}}
 
       <section id="sql">
         <div class="sechead"><h2>SQL queries</h2><span class="pill {{cov $r.Jobs.Coverage}}">{{covLabel $r.Jobs.Coverage}}</span></div>

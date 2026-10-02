@@ -143,6 +143,8 @@ type xData struct {
 	HBaseTasks      []model.HBaseTaskRead  `json:"hbaseTasks,omitempty"`
 	HBaseTasksCut   int                    `json:"hbaseTasksCut,omitempty"`
 	HBaseTaskStages []model.HBaseTaskStage `json:"hbaseTaskStages,omitempty"`
+	// TaskStories is what the executors' logs tell of each task, compact.
+	TaskStories *xTaskStories `json:"taskStories,omitempty"`
 	// HBaseLoad is each region server's scan tasks at once over time.
 	HBaseLoad       []model.HBaseServerLoad `json:"hbaseLoad,omitempty"`
 	HBaseLoadTotal  []model.Point           `json:"hbaseLoadTotal,omitempty"`
@@ -495,6 +497,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 	}
 
 	d.HBaseScans = hbaseScans(r)
+	d.TaskStories = taskStories(r)
 	if r.HBase != nil {
 		d.HBaseTasks, d.HBaseTaskStages = r.HBase.Tasks, r.HBase.TaskStages
 		d.HBaseLoad, d.HBaseLoadTotal, d.HBaseLoadStepMs = r.HBase.Load, r.HBase.LoadTotal, r.HBase.LoadStepMs
@@ -988,4 +991,61 @@ func toneLow(sh, warn, crit float64) string {
 		return "warn"
 	}
 	return "ok"
+}
+
+// maxExplorerStories caps the task stories on the page, each with its
+// steps; the JSON report has them all.
+const maxExplorerStories = 20_000
+
+// xTaskStories is the report's TaskStories for the explorer: each task's
+// log file is named once, by its executor (File indexes Executors), and
+// its steps are arrays: [ms since the task started, kind, bytes, n, ms,
+// name, line].
+type xTaskStories struct {
+	Coverage  model.Coverage        `json:"coverage"`
+	Missing   []string              `json:"missing,omitempty"`
+	ByThread  int                   `json:"byThread"`
+	ByTID     int                   `json:"byTid"`
+	Executors []model.TaskStoryExec `json:"executors"`
+	Totals    model.TaskLog         `json:"totals"`
+	Untied    model.TaskLog         `json:"untied"`
+	Tasks     []xTaskStory          `json:"tasks"`
+	Cut       int                   `json:"cut,omitempty"` // left off the page, or past the per-file cap
+}
+
+type xTaskStory struct {
+	model.TaskLog
+	File  int     `json:"file"`
+	Steps [][]any `json:"s,omitempty"`
+}
+
+func taskStories(r *model.Report) *xTaskStories {
+	s := r.TaskStories
+	if s == nil {
+		return nil
+	}
+	x := &xTaskStories{Coverage: s.Coverage, Missing: s.Missing, ByThread: s.ByThread, ByTID: s.ByTID, Executors: s.Executors,
+		Totals: s.Totals, Untied: s.Untied, Tasks: []xTaskStory{}, Cut: s.Cut}
+	file := map[string]int{}
+	for i, e := range s.Executors {
+		file[e.Source.File] = i
+	}
+	for i, t := range s.Tasks {
+		if i == maxExplorerStories {
+			x.Cut += len(s.Tasks) - i
+			break
+		}
+		xt := xTaskStory{TaskLog: t, File: file[t.Source.File]}
+		for _, st := range t.Steps {
+			var at int64
+			if !t.Start.IsZero() {
+				at = st.T.Sub(t.Start).Milliseconds()
+			}
+			xt.Steps = append(xt.Steps, []any{at, st.Kind, st.Bytes, st.N, st.Ms, st.Name, st.Line})
+		}
+		xt.TaskLog.Steps = nil
+		xt.TaskLog.Source.File, xt.TaskLog.EndSource.File = "", ""
+		x.Tasks = append(x.Tasks, xt)
+	}
+	return x
 }

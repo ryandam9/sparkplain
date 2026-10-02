@@ -272,11 +272,12 @@
     ["sql", "SQL / DataFrame", queries.length], ["storage", "Storage", rdds.length], ["code", "Code"], ["environment", "Environment"], ["log", "Event log"]]);
   if (D.aws) TABS.push(["cluster", "Cluster", D.aws.nodes.length]);
   if ((D.hbaseTasks || []).length) TABS.push(["hbaseTasks", "HBase tasks", D.hbaseTasks.length + (D.hbaseTasksCut || 0)]);
+  if (D.taskStories) TABS.push(["tasks", "Task stories", D.taskStories.tasks.length + (D.taskStories.cut || 0)]);
   if (logFiles.length || (D.logSources || []).length) TABS.push(["logs", "Logs", logFiles.length]);
   var tabs = document.getElementById("sp-tabs");
   // Less-used tabs sit under More (a native disclosure, so it works from the
   // keyboard); the row keeps the ones a diagnosis starts from.
-  var MORE = { storage: 1, code: 1, environment: 1, log: 1, logs: 1, hbaseTasks: 1 };
+  var MORE = { storage: 1, code: 1, environment: 1, log: 1, logs: 1, hbaseTasks: 1, tasks: 1 };
   var tabLink = function (t) { return el("a", { href: "#" + t[0], "data-tab": t[0] }, t[1], t[2] != null ? el("span", { cls: "n", text: num(t[2]) }) : null); };
   TABS.filter(function (t) { return !MORE[t[0]]; }).forEach(function (t) { tabs.appendChild(tabLink(t)); });
   var moreTabs = TABS.filter(function (t) { return MORE[t[0]]; });
@@ -635,6 +636,125 @@
       }));
     }
     if (tasks.some(function (t) { return !t.rowsKnown; })) s.appendChild(explain("Rows are shown only for tasks the event log records (one successful attempt per partition); the executors' logs do not count rows."));
+    return s;
+  };
+
+  // ---------- task stories ----------
+  // What each task did, as its executor logged it: views.tasks lists every
+  // task with its totals, views.task one task's steps in order. A step is
+  // [ms since the task started, kind, bytes, n, ms, name, line].
+  var TS = D.taskStories;
+  var STEP = {
+    start: function () { return "Started."; },
+    broadcast: function (s) { return "Began reading " + s[5] + ": " + bytes(s[2]) + " in " + num(s[3]) + " piece" + (s[3] === 1 ? "" : "s") + ", as Spark estimated it."; },
+    "broadcast-read": function (s) { return "Had " + s[5] + " after " + dur(s[4]) + "."; },
+    shuffle: function (s) { return "Asked for " + num(s[3]) + " shuffle block" + (s[3] === 1 ? "" : "s") + " (" + bytes(s[2]) + ", Spark's estimate) from the previous stage's output."; },
+    fetch: function (s) { return s[3] ? "Started " + num(s[3]) + " remote fetch" + (s[3] === 1 ? "" : "es") + " over the network in " + dur(s[4]) + "." : "Needed nothing over the network; set up in " + dur(s[4]) + "."; },
+    spill: function (s) { return "Spilled " + bytes(s[2]) + " from memory to disk."; },
+    cache: function (s) { return "Cached " + s[5] + " in memory (" + bytes(s[2]) + ")."; },
+    drop: function (s) { return "Dropped " + num(s[3]) + " cached block" + (s[3] === 1 ? "" : "s") + " from memory to make room; " + bytes(s[2]) + " free after."; },
+    "no-room": function (s) { return "Could not cache " + s[5] + ": not enough storage memory (" + bytes(s[2]) + " computed so far)."; },
+    input: function (s) { return "Read " + s[5] + (s[2] ? " (" + bytes(s[2]) + " of file)" : "") + "."; },
+    commit: function (s) { return "Committed its output in " + dur(s[4]) + "."; },
+    problem: function (s) { return "Logged: " + s[5]; },
+    end: function (s) { return "Finished, sending a " + bytes(s[2]) + " result back to the driver."; },
+    "result-too-big": function (s) { return "Finished, but its " + bytes(s[2]) + " result was over spark.driver.maxResultSize and was dropped."; },
+    failed: function () { return "Failed."; },
+    killed: function () { return "Was killed."; }
+  };
+  function storyFile(t) { var x = TS.executors[t.file]; return x ? x.source.file : ""; }
+  function storyRef(t, line) { return storyFile(t) + ":" + line; }
+  function storyTook(t) { if (!t.start || !t.end) return -1; return Date.parse(t.end) - Date.parse(t.start); }
+  function storyStage(t) { return t.stage < 0 ? "—" : stagesByID[t.stage] ? link("#stage/" + t.stage + "." + t.stageAttempt, String(t.stage) + (t.stageAttempt ? "." + t.stageAttempt : "")) : String(t.stage); }
+  function storyFacts(t, title, one) {
+    // one task: only what it did
+    function has(n) { return !one || !!n; }
+    return el("div", { cls: "facts" },
+      has(t.broadcasts) && fact("Broadcasts read", num(t.broadcasts || 0) + (t.broadcasts ? " · " + bytes(t.broadcastBytes) + " · " + dur(t.broadcastMs || 0) : ""), "Variables the driver shared with the executors, read once per executor by the first task to need them. Sizes are Spark's estimates."),
+      has(t.shuffleBlocks) && fact("Shuffle blocks read", num(t.shuffleBlocks || 0) + (t.shuffleBlocks ? " · " + bytes(t.shuffleBytes) : ""), bytes(t.shuffleLocalBytes || 0) + " from " + title + " own node and " + bytes(t.shuffleRemoteBytes || 0) + " over the network (" + num(t.remoteBlocks || 0) + " blocks in " + num(t.remoteFetches || 0) + " requests). Sizes are Spark's estimates from the map outputs, within a few percent."),
+      has(t.inputs) && fact("Input read", num(t.inputs || 0) + (t.inputBytes ? " · " + bytes(t.inputBytes) : ""), "Files, file ranges or HBase regions opened; the size adds up file ranges, not bytes read."),
+      has(t.cachedBlocks || t.dropped || t.notCached) && fact("Cached in memory", num(t.cachedBlocks || 0) + (t.cachedBlocks ? " · " + bytes(t.cachedBytes) : ""), "Cached partitions stored in executor memory." + (t.dropped ? " " + num(t.dropped) + " blocks dropped to make room." : "") + (t.notCached ? " " + num(t.notCached) + " did not fit." : "")),
+      has(t.spills) && fact("Spilled to disk", t.spills ? num(t.spills) + " times · " + bytes(t.spillBytes) : "none", "Data a sort or aggregation could not keep in memory, as its in-memory size."),
+      has(t.commits) && fact("Output committed", num(t.commits || 0) + (t.commits ? " · " + dur(t.commitMs) : ""), "Task outputs moved into place at the end of a write."),
+      has(t.resultBytes) && fact("Results sent back", bytes(t.resultBytes || 0), "What the tasks returned to the driver, serialized."),
+      has(t.warnings || t.errors) && fact("Warnings and errors", num(t.warnings || 0) + " · " + num(t.errors || 0), "Lines logged at WARN and ERROR as a task's, besides its end."));
+  }
+  views.tasks = function () {
+    var s = section("Task stories", "What each task did, as its executor logged it: the broadcast variables it read, the shuffle blocks it fetched from its own node or over the network, the files or HBase regions it read, the blocks it cached, the data it spilled to disk, the output it committed and the result it sent back.");
+    s.appendChild(explain(TS.byThread && !TS.byTid ? "Every line is told apart by the executor thread that logged it, which names its task." :
+      "Lines are told apart by the task they name (TID) and, otherwise, by being the only task their executor was running" + (TS.byThread ? "; " + num(TS.byThread) + " tasks by the thread that logged them" : "") + ". Lines no task could be found for are counted per executor."));
+    s.appendChild(storyFacts(TS.totals, "the task's"));
+    s.appendChild(el("h3", { text: "Per executor" }));
+    s.appendChild(table({
+      rows: TS.executors, sort: 1,
+      cols: [
+        { h: "Executor", v: function (x) { return x.executor; }, f: function (x) { return el("span", null, execByID[x.executor] ? execLink(x.executor) : x.executor, x.host ? el("span", { cls: "sub", title: x.host, text: String(x.host).split(".")[0] }) : null); } },
+        { h: "Tasks", num: true, v: function (x) { return x.tasks; }, f: function (x) { return num(x.tasks); } },
+        { h: "Broadcasts", num: true, v: function (x) { return x.totals.broadcastBytes || 0; }, f: function (x) { return x.totals.broadcasts ? el("span", null, num(x.totals.broadcasts), el("span", { cls: "sub", text: bytes(x.totals.broadcastBytes) + " · " + dur(x.totals.broadcastMs || 0) })) : "—"; } },
+        { h: "Shuffle, own node", num: true, v: function (x) { return x.totals.shuffleLocalBytes || 0; }, f: function (x) { return x.totals.shuffleReads ? bytes(x.totals.shuffleLocalBytes || 0) : "—"; } },
+        { h: "Shuffle, network", num: true, v: function (x) { return x.totals.shuffleRemoteBytes || 0; }, f: function (x) { return x.totals.shuffleReads ? el("span", null, bytes(x.totals.shuffleRemoteBytes || 0), el("span", { cls: "sub", text: num(x.totals.remoteBlocks || 0) + " blocks" })) : "—"; } },
+        { h: "Input", num: true, v: function (x) { return x.totals.inputBytes || 0; }, f: function (x) { return x.totals.inputs ? el("span", null, num(x.totals.inputs), x.totals.inputBytes ? el("span", { cls: "sub", text: bytes(x.totals.inputBytes) }) : null) : "—"; } },
+        { h: "Cached", num: true, v: function (x) { return x.totals.cachedBytes || 0; }, f: function (x) { return x.totals.cachedBlocks ? bytes(x.totals.cachedBytes) : "—"; } },
+        { h: "Spilled", num: true, v: function (x) { return x.totals.spillBytes || 0; }, f: function (x) { return x.totals.spills ? bytes(x.totals.spillBytes) : "—"; } },
+        { h: "Commits", num: true, v: function (x) { return x.totals.commitMs || 0; }, f: function (x) { return x.totals.commits ? el("span", null, num(x.totals.commits), el("span", { cls: "sub", text: dur(x.totals.commitMs) })) : "—"; } },
+        { h: "Results", num: true, v: function (x) { return x.totals.resultBytes || 0; }, f: function (x) { return bytes(x.totals.resultBytes || 0); } },
+        { h: "Lines not tied to a task", num: true, v: function (x) { return x.untied.lines || 0; }, f: function (x) { return x.untied.lines ? num(x.untied.lines) : "—"; } },
+        { h: "Log", v: function (x) { return x.source.file; }, f: function (x) { return el("span", { cls: "srcref", text: x.source.file }); } }
+      ]
+    }));
+    s.appendChild(el("h3", { text: "Every task" }));
+    s.appendChild(table({
+      rows: TS.tasks, sort: 4, dir: "asc", page: 50, filter: "Filter by stage, TID, executor, outcome or what it read",
+      cols: [
+        { h: "Stage", num: true, v: function (t) { return t.stage * 1000 + t.stageAttempt; }, f: storyStage },
+        { h: "Task", num: true, v: function (t) { return t.partition; }, f: function (t) { return t.partition < 0 ? "—" : t.partition + "." + t.attempt; } },
+        { h: "TID", num: true, v: function (t) { return t.taskId; }, f: function (t) { return link("#task/" + t.taskId, String(t.taskId)); } },
+        { h: "Executor", v: function (t) { return t.executor || ""; }, f: function (t) { return t.executor || "—"; } },
+        { h: "Started", v: function (t) { return t.start || ""; }, f: function (t) { return when(t.start ? Date.parse(t.start) : 0); } },
+        { h: "Took", num: true, v: storyTook, f: function (t) { var d = storyTook(t); return d < 0 ? "—" : d === 0 ? "under 1 s" : dur(d); } },
+        { h: "Outcome", v: function (t) { return t.outcome || ""; }, f: function (t) { return t.outcome || "no end logged"; } },
+        { h: "Broadcasts", num: true, v: function (t) { return t.broadcastBytes || 0; }, f: function (t) { return t.broadcasts ? bytes(t.broadcastBytes) : "—"; } },
+        { h: "Shuffle, own node", num: true, v: function (t) { return t.shuffleLocalBytes || 0; }, f: function (t) { return t.shuffleReads ? bytes(t.shuffleLocalBytes || 0) : "—"; } },
+        { h: "Shuffle, network", num: true, v: function (t) { return t.shuffleRemoteBytes || 0; }, f: function (t) { return t.shuffleReads ? bytes(t.shuffleRemoteBytes || 0) : "—"; } },
+        { h: "Input", v: function (t) { return t.input || ""; }, f: function (t) { return t.inputs ? el("span", null, el("span", { cls: "mono", text: t.input }), t.inputs > 1 ? el("span", { cls: "sub", text: "and " + num(t.inputs - 1) + " more" }) : null, t.inputBytes ? el("span", { cls: "sub", text: bytes(t.inputBytes) }) : null) : "—"; } },
+        { h: "Cached", num: true, v: function (t) { return t.cachedBytes || 0; }, f: function (t) { return t.cachedBlocks ? bytes(t.cachedBytes) : "—"; } },
+        { h: "Spilled", num: true, v: function (t) { return t.spillBytes || 0; }, f: function (t) { return t.spills ? bytes(t.spillBytes) : "—"; } },
+        { h: "Commit", num: true, v: function (t) { return t.commitMs || 0; }, f: function (t) { return t.commits ? dur(t.commitMs) : "—"; } },
+        { h: "Result", num: true, v: function (t) { return t.resultBytes || 0; }, f: function (t) { return t.resultBytes ? bytes(t.resultBytes) : "—"; } },
+        { h: "What it said", v: function (t) { return t.error || t.problem || ""; }, f: function (t) { return t.error || t.problem || "—"; } }
+      ],
+      text: function (t) { return ["stage " + t.stage, "TID " + t.taskId, t.executor || "", t.outcome || "", t.input || "", t.error || "", t.problem || ""].join(" "); }
+    }));
+    if (TS.cut) s.appendChild(explain(num(TS.cut) + " more task stories are left out to keep the page small; the JSON report lists them all."));
+    if ((TS.missing || []).length) s.appendChild(el("div", { cls: "missing" }, el("h3", { text: "Not shown" }), el("ul", null, TS.missing.map(function (m) { return el("li", { text: m }); }))));
+    return s;
+  };
+  var storyByTID = null;
+  views.task = function (arg) {
+    if (!storyByTID) { storyByTID = {}; TS.tasks.forEach(function (t) { storyByTID[t.taskId] = t; }); }
+    var t = storyByTID[arg];
+    if (!t) return section("Task " + arg, "This task has no story: its executor's log was not read, or it is past the page's cap (the JSON report lists every task).");
+    var s = section("Task " + (t.partition < 0 ? "" : t.partition + "." + t.attempt + " ") + "(TID " + t.taskId + ")" + (t.stage < 0 ? "" : " in stage " + t.stage + (t.stageAttempt ? "." + t.stageAttempt : "")),
+      "What this task did, in order, as executor " + (t.executor || "?") + " logged it" + (t.host ? " on " + String(t.host).split(".")[0] : "") + ".");
+    s.insertBefore(el("div", { cls: "crumbs" }, link("#tasks", "Task stories"), " / TID " + t.taskId), s.firstChild);
+    var d = storyTook(t);
+    s.appendChild(el("div", { cls: "facts" },
+      fact("Stage", storyStage(t), "The stage this task ran a partition of."),
+      fact("Executor", t.executor && execByID[t.executor] ? execLink(t.executor) : t.executor || "—", t.host || ""),
+      fact("Ran", t.start ? el("span", null, when(Date.parse(t.start)), t.end ? " to " : "", t.end ? when(Date.parse(t.end)) : "") : "—", d < 0 ? "Its end is not in the log." : "Took " + (d === 0 ? "under 1 s" : dur(d)) + ", from its Running line to its end."),
+      fact("Outcome", t.outcome || "no end logged", t.error || (t.resultVia === "BlockManager" ? "Its result was large, so it went through the block manager." : ""))));
+    s.appendChild(storyFacts(t, "the task's", true));
+    s.appendChild(el("h3", { text: "What it did" }));
+    s.appendChild(table({
+      rows: (t.s || []).map(function (st, i) { return { i: i, st: st }; }), sort: 0, dir: "asc",
+      cols: [
+        { h: "After", num: true, v: function (r) { return r.i; }, f: function (r) { return "+" + dur(r.st[0]); } },
+        { h: "What it did", v: function (r) { return r.st[1]; }, f: function (r) { var w = STEP[r.st[1]]; return w ? w(r.st) : r.st[1]; } },
+        { h: "Found in", v: function (r) { return r.st[6]; }, f: function (r) { return el("span", { cls: "srcref", text: storyRef(t, r.st[6]) }); } }
+      ]
+    }));
+    if (t.cutSteps) s.appendChild(explain(num(t.cutSteps) + " more steps are not kept; its totals above count them."));
+    if (t.tiedBy === "tid") s.appendChild(explain("This executor's log prints no thread, so lines that do not name the task are its only when it was the only task the executor was running then. Its totals may miss lines logged while other tasks ran."));
     return s;
   };
 
@@ -2834,7 +2954,7 @@
     var name = slash < 0 ? h : h.slice(0, slash), arg = null;
     try { arg = slash < 0 ? null : decodeURIComponent(h.slice(slash + 1)); } catch (e) { arg = h.slice(slash + 1); }
     if (!views[name]) { name = "overview"; arg = null; }
-    var tab = { job: "jobs", stage: "stages", executor: "executors", query: "sql", finding: "overview" }[name] || name;
+    var tab = { job: "jobs", stage: "stages", executor: "executors", query: "sql", finding: "overview", task: "tasks" }[name] || name;
     tabs.querySelectorAll("a").forEach(function (a) { if (a.getAttribute("data-tab") === tab) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
     if (moreBox) {
       // a tab under More shows its name on the menu while it is open
