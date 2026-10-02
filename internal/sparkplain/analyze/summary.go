@@ -304,6 +304,7 @@ func analyzeCoverage(c *ctx, r *model.Report) {
 				row(s.id, s.title, model.NeedsEventLog, "Nothing: this section is built from the event log", []string{"The event log"})
 			}
 		}
+		taskStoriesRow(r, row)
 		if c.logs != nil {
 			row("findings", "Findings", model.Partial, "Rules that read the container, step and node logs: first error, memory kills, out-of-memory, access, Kerberos, metastore and HBase errors", []string{"Rules that read the event log"})
 		}
@@ -323,6 +324,7 @@ func analyzeCoverage(c *ctx, r *model.Report) {
 	row("stages", "Jobs, stages, tasks", r.Jobs.Coverage, "Every job and stage, task time spread, skew, retries, failures, SQL plans", r.Jobs.Missing)
 	row("config", "Configuration", r.Config.Coverage, "The full effective configuration, grouped, with key settings explained", r.Config.Missing)
 	row("access", "Identity and access", r.Identity.Coverage, "User, queue, Kerberos, table catalog, Spark security settings, credentials in settings", r.Identity.Missing)
+	taskStoriesRow(r, row)
 	if c.logs != nil {
 		row("findings", "Findings", model.Partial, "Rules that read the event log (skew, spill, GC, CPU, memory size, lost executors, failures) and the container, step and node logs (first error, memory kills, out-of-memory, access, Kerberos, metastore and HBase errors)", []string{"Rules that need CloudWatch and CloudTrail: host pressure, spot interruptions, every AWS call and AccessDenied (phase 3)"})
 	} else {
@@ -506,6 +508,14 @@ func summaryFromLogs(c *ctx, r *model.Report) {
 	}
 	sentences = append(sentences, "There is no event log, so jobs, stages and resource use are not shown; this summary comes from YARN's records and the container, step and node logs.")
 	r.Summary.Sentences = sentences
+}
+
+// taskStoriesRow is the coverage of the task stories, when the executors'
+// logs told any.
+func taskStoriesRow(r *model.Report, row func(id, title string, cov model.Coverage, shown string, missing []string)) {
+	if s := r.TaskStories; s != nil {
+		row("tasklogs", "Task stories", s.Coverage, "What each task did, from its executor's log: broadcasts read, shuffle blocks read locally and over the network, input, spills, cached blocks, commits, its result, warnings and errors", s.Missing)
+	}
 }
 
 func orUnknown(s string) string {

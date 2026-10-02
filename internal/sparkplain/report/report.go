@@ -238,7 +238,9 @@ func funcs(loc *time.Location) template.FuncMap {
 			}
 			return ts
 		},
-		"shortHost": shortHost,
+		"shortHost":    shortHost,
+		"notableTasks": notableTasks,
+		"maxNotable":   func() int { return maxNotable },
 		"scanFacts": func(sc *model.HBaseScan) [][2]string { // all but the key range, which the card shows
 			var out [][2]string
 			for _, f := range sc.Facts() {
@@ -400,5 +402,37 @@ func headRegions(rs []model.HBaseRegionRead, n int) []scanRegion {
 	})
 	out = out[:n]
 	sort.Slice(out, func(i, j int) bool { return out[i].Index < out[j].Index })
+	return out
+}
+
+// maxNotable caps the report's table of tasks worth a look.
+const maxNotable = 50
+
+// notableTasks are the task stories worth a look: failed and killed
+// tasks, then those that read the most shuffle data over the network or
+// spilled the most, at most maxNotable.
+func notableTasks(ts []model.TaskLog) []model.TaskLog {
+	var out []model.TaskLog
+	for _, t := range ts {
+		if t.Outcome == "failed" || t.Outcome == "killed" || t.ShuffleRemoteBytes > 0 || t.SpillBytes > 0 || t.NotCached > 0 {
+			out = append(out, t)
+		}
+	}
+	rank := func(t model.TaskLog) int {
+		if t.Outcome == "failed" || t.Outcome == "killed" {
+			return 0
+		}
+		return 1
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if rank(a) != rank(b) {
+			return rank(a) < rank(b)
+		}
+		return a.ShuffleRemoteBytes+a.SpillBytes > b.ShuffleRemoteBytes+b.SpillBytes
+	})
+	if len(out) > maxNotable {
+		out = out[:maxNotable]
+	}
 	return out
 }
