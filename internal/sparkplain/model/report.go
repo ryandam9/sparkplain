@@ -554,6 +554,9 @@ type LogFile struct {
 	// HBaseSplits are the regions this executor's TableInputFormat tasks
 	// read, one per task, in file order.
 	HBaseSplits []HBaseSplit `json:"hbaseSplits,omitempty"`
+	// HBaseRegionEvents are what this HBase server log said about single
+	// regions during the run.
+	HBaseRegionEvents []HBaseRegionEvent `json:"hbaseRegionEvents,omitempty"`
 	// HBaseScans are the scans the job printed (sparkplain-scan lines),
 	// decoded and redacted; the scan strings themselves are not kept.
 	HBaseScans []HBaseScan `json:"hbaseScans,omitempty"`

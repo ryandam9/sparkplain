@@ -243,6 +243,19 @@ var (
 	hbFlushRE   = regexp.MustCompile(`^Flushing [0-9a-f]{32} \d+/\d+ column families, dataSize=`)
 	hbCompactRE = regexp.MustCompile(`^Completed compaction region=([\w:.-]+),`)
 
+	// What a server logged about one region, named by its encoded name
+	// (32 hex digits, the last part of a region's full name), as HBase
+	// 2.4.17 writes it on EMR 7 (checked on the 0083 cluster's logs; slow
+	// calls did not happen there and follow HBase's own format).
+	rgFlushRE   = regexp.MustCompile(`^Finished flush of dataSize ~([\d.]+ ?[KMGT]?B)/\d+,.* for ([0-9a-f]{32}) in (\d+)ms`)
+	rgCompactRE = regexp.MustCompile(`^Completed (?:major )?compaction of (\d+)(?: \(all\))? file\(s\) in ([0-9a-f]{32})/\S+ of [0-9a-f]{32} into \S+?\(size=([^)]*)\).*?took (\d+)sec to execute`)
+	rgCloseRE   = regexp.MustCompile(`^Close ([0-9a-f]{32})$`)
+	rgOpenedRE  = regexp.MustCompile(`^Opened ([\w:.-]+),.*\.([0-9a-f]{32})\.$`)
+	rgMoveRE    = regexp.MustCompile(`move hri=([0-9a-f]{32}), source=([\w.-]+),\d+,\d+, destination=([\w.-]+),\d+,\d+(, running balancer)?`)
+	rgSplitRE   = regexp.MustCompile(`^Finished pid=\d+, state=SUCCESS; SplitTableRegionProcedure table=([\w:.-]+), parent=([0-9a-f]{32}), daughterA=([0-9a-f]{32}), daughterB=([0-9a-f]{32}) in ([\d.]+) sec`)
+	rgBusyRE    = regexp.MustCompile(`RegionTooBusyException: Over memstore limit=([^,]+), regionName=([0-9a-f]{32})`)
+	rgSlowRE    = regexp.MustCompile(`region= .*?\.([0-9a-f]{32})\.`)
+
 	// A file YARN localized for the application, as the application
 	// master lists them: "    hbase-client-2.4.17-amzn-7.jar -> resource { scheme: …".
 	localizedRE = regexp.MustCompile(`^\s+([\w.+-]+) -> resource \{`)

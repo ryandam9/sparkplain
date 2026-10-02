@@ -376,3 +376,51 @@ func TestWindowFromLogs(t *testing.T) {
 		t.Errorf("nothing: %s %q", since, from)
 	}
 }
+
+// HBase's servers name the region in what they log about one: flushes,
+// compactions, closes and opens, the Master's moves and splits, and
+// refused writes (in the exception under the warning). Each is kept with
+// its region's encoded name, the server and the line.
+func TestRegionEvents(t *testing.T) {
+	t.Parallel()
+	st := source.NewLocalStore(filepath.Join(emrlogs, "j-FIXTURE0083CLUSTER"))
+	c := Collect(context.Background(), st, Plan{AppID: "application_1790380000000_0092",
+		Since: time.Date(2026, 9, 29, 4, 0, 0, 0, time.UTC), Until: time.Date(2026, 9, 29, 7, 0, 0, 0, time.UTC)})
+	n := map[string]int{}
+	first := map[string]string{}
+	for _, f := range c.Files {
+		for _, e := range f.HBaseRegionEvents {
+			n[e.Event]++
+			if first[e.Event] == "" {
+				first[e.Event] = fmt.Sprintf("%s %s %s %d %s @%d", e.Time.Format("15:04:05"), e.Region[:8], strings.SplitN(e.Host, ".", 2)[0], e.DurationMs, e.Detail, e.Source.Line)
+			}
+		}
+	}
+	if fmt.Sprint(n) != "map[busy:291 closed:101 compaction:103 flush:202 move:85 opened:126 split:5]" {
+		t.Errorf("counts = %v", n)
+	}
+	want := map[string]string{
+		"flush":      "04:40:47 1595e783 ip-10-0-2-11 531 wrote 24.30 KB of memstore to disk @280",
+		"move":       "05:57:51 554f89fb ip-10-0-2-11 0 the Master moved it from ip-10-0-2-10.us-east-1.compute.internal to ip-10-0-2-12.us-east-1.compute.internal (the balancer asked) @35",
+		"split":      "05:58:28 554f89fb ip-10-0-2-11 1014 the Master split it into 41cb3e223d21ae06a99d9b96de202028 and f984214657cc7d77ce5f0f6210a254ca @563",
+		"closed":     "05:57:51 554f89fb ip-10-0-2-10 0 closed the region: it stopped serving it @62",
+		"opened":     "04:43:55 554f89fb ip-10-0-2-10 0 opened the region: it serves it from now @236",
+		"busy":       "06:07:47 3d7e470d ip-10-0-2-12 0 refused writes: its memstore was over 2.0 M @559",
+		"compaction": "06:25:48 1595e783 ip-10-0-2-11 0 rewrote 4 store files into one of 10.1 K @1238",
+	}
+	for ev, w := range want {
+		if first[ev] != w {
+			t.Errorf("%s:\n got %s\nwant %s", ev, first[ev], w)
+		}
+	}
+	// A slow call names its region in its parameters.
+	log := `2026-09-29 06:08:00,001 WARN  [RpcServer.default.FPBQ.Fifo.handler=3,queue=0,port=16020] ipc.RpcServer: (responseTooSlow): {"call":"Scan(org.apache.hadoop.hbase.shaded.protobuf.generated.ClientProtos$ScanRequest)","starttimems":"1790662080000","responsesize":"12","method":"Scan","param":"region= sp_orders,4,1790657034348.456201869c63248e892eb7dff56d6e04., scanner_id= 1 number_of_rows= 100","processingtimems":12500,"client":"10.0.2.12:41000","queuetimems":0,"class":"HRegionServer"}` + "\n"
+	res, err := Classify(strings.NewReader(log), "rs.log", File{Kind: HBaseRegion, Host: "ip-10-0-2-12"}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.RegionEvents) != 1 || res.RegionEvents[0].Event != "slow-call" || res.RegionEvents[0].Region != "456201869c63248e892eb7dff56d6e04" || res.RegionEvents[0].DurationMs != 12500 ||
+		res.RegionEvents[0].Detail != "a Scan call on it was slow (responseTooSlow)" {
+		t.Errorf("slow call = %+v", res.RegionEvents)
+	}
+}

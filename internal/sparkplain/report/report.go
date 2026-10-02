@@ -226,6 +226,12 @@ func funcs(loc *time.Location) template.FuncMap {
 			}
 			return n
 		},
+		"headEvents": func(es []model.HBaseRegionEvent) []model.HBaseRegionEvent {
+			if len(es) > maxReportEvents {
+				return es[:maxReportEvents]
+			}
+			return es
+		},
 		"headTasks": func(ts []model.HBaseTaskRead) []model.HBaseTaskRead {
 			if len(ts) > maxReportTasks {
 				return ts[:maxReportTasks]
@@ -360,6 +366,9 @@ func hbaseSrcs(maps ...map[string]model.Source) string {
 // maxReportTasks caps the HBase tasks table in the report; the explorer
 // and the JSON report list them all.
 const maxReportTasks = 500
+
+// maxReportEvents caps the HBase region events table in the report.
+const maxReportEvents = 200
 
 // scanRegion is a region of a scan with its place in key order.
 type scanRegion struct {

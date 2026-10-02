@@ -541,7 +541,7 @@
   // views.hbaseTasks lists every task attempt that read an HBase region,
   // across all stages, as the report's HBase tasks table does, in full.
   views.hbaseTasks = function () {
-    var tasks = D.hbaseTasks || [], sums = D.hbaseTaskStages || [];
+    var tasks = D.hbaseTasks || [], sums = D.hbaseTaskStages || [], evs = D.hbaseRegionEvents || [];
     var s = section("HBase tasks", "Every task attempt that read an HBase region with TableInputFormat, across all stages, in stage, partition and attempt order. A retried task has a row per attempt.");
     s.appendChild(explain("The region comes from the split line its executor logged; the stage and task from the executor thread named on that line, or, with the event log, from the scan's tie. Times run from the task's Running line to its Finished line, or come from the event log, which also has its rows. — means not known."));
     function msrc(o) { return o && o.file ? o.file + ":" + (o.line || "") : ""; }
@@ -603,15 +603,37 @@
         { h: "Executor", v: function (r) { return r.t.executorId || ""; }, f: function (r) { return el("span", null, r.t.executorId || "—", r.t.host ? el("span", { cls: "sub", title: r.t.host, text: String(r.t.host).split(".")[0] }) : null); } },
         { h: "Started", v: function (r) { return r.t.start || ""; }, f: function (r) { return when(r.t.start ? Date.parse(r.t.start) : 0); } },
         { h: "Ended", v: function (r) { return r.t.end || ""; }, f: function (r) { return when(r.t.end ? Date.parse(r.t.end) : 0); } },
-        { h: "Took", num: true, v: function (r) { return r.t.timed ? r.t.durationMs : -1; }, f: function (r) { return r.t.timed ? el("span", null, dur(r.t.durationMs), el("span", { cls: "sub", text: r.t.timeFrom })) : "—"; } },
+        { h: "Took", num: true, v: function (r) { return r.t.timed ? r.t.durationMs : -1; }, f: function (r) { return r.t.timed ? el("span", null, dur(r.t.durationMs), el("span", { cls: "sub", text: (r.t.slow ? "slow · " : "") + r.t.timeFrom })) : "—"; } },
         { h: "Outcome", v: function (r) { return r.t.outcome || ""; }, f: function (r) { return r.t.outcome || "—"; } },
         { h: "Estimated size", num: true, v: function (r) { return r.t.sizeBytes || 0; }, f: function (r) { return r.t.sizeBytes ? bytes(r.t.sizeBytes) : "—"; } },
         { h: "Rows", num: true, v: function (r) { return r.t.rowsKnown ? r.t.rows : -1; }, f: function (r) { return r.t.rowsKnown ? num(r.t.rows) : "—"; } },
+        { h: "Its server logged", v: function (r) { return (r.t.events || []).length; }, f: function (r) {
+            var es = (r.t.events || []).map(function (k) { return evs[k]; }).filter(Boolean);
+            return es.length ? el("span", null, es.map(function (e) { return el("span", { cls: "sub", title: e.detail, text: e.event + (e.count > 1 ? " ×" + e.count : "") + (e.durationMs ? " " + dur(e.durationMs) : "") }); })) : "—"; } },
         { h: "Found in", v: function (r) { return msrc(r.t.source); }, f: function (r) { return el("span", { cls: "srcref" }, msrc(r.t.source), r.t.endSource ? el("br") : null, r.t.endSource ? msrc(r.t.endSource) : null, r.t.taskSource ? el("br") : null, r.t.taskSource ? msrc(r.t.taskSource) : null); } }
       ],
       text: function (r) { var t = r.t; return [t.stage < 0 ? "" : "stage " + t.stage, t.table, t.startRow, t.endRow, t.region, t.server, t.executorId || "", t.host || "", t.outcome || "", t.taskId < 0 ? "" : "TID " + t.taskId].join(" "); }
     }));
     if (D.hbaseTasksCut) s.appendChild(explain(num(D.hbaseTasksCut) + " more task attempts are left out to keep the page small; the JSON report lists them all."));
+    if (evs.length) {
+      s.appendChild(el("h3", { text: "What the region servers logged about the regions read" }));
+      s.appendChild(explain("What HBase's servers logged about a region the run read, while one of its tasks was reading it: flushes and compactions, the region going offline (closed on one server, opened on another), moves and splits the Master ran, refused writes, and slow calls. Events on a slow task's region (at least twice its stage's median) come first."));
+      s.appendChild(table({
+        rows: evs.map(function (e, i) { return { i: i, e: e }; }), sort: 0, dir: "asc", page: 50, filter: "Filter by event, region, server or task",
+        cols: [
+          { h: "#", num: true, v: function (r) { return r.i; }, f: function (r) { return String(r.i + 1); } },
+          { h: "When", v: function (r) { return r.e.time; }, f: function (r) { return el("span", null, r.e.count > 1 ? when(Date.parse(r.e.first)) : null, r.e.count > 1 ? " to " : null, when(Date.parse(r.e.time))); } },
+          { h: "Event", v: function (r) { return r.e.event; }, f: function (r) { return r.e.event + (r.e.count > 1 ? " ×" + num(r.e.count) : ""); } },
+          { h: "Region", v: function (r) { return r.e.region; }, f: function (r) { return el("span", { cls: "mono", text: r.e.region }); } },
+          { h: "Server", v: function (r) { return r.e.host || ""; }, f: function (r) { return host(r.e.host); } },
+          { h: "What it logged", v: function (r) { return r.e.detail || ""; }, f: function (r) { return r.e.detail || "—"; } },
+          { h: "Took", num: true, v: function (r) { return r.e.durationMs || 0; }, f: function (r) { return r.e.durationMs ? dur(r.e.durationMs) : "—"; } },
+          { h: "While these tasks read it", v: function (r) { return (r.e.slow || []).length; }, f: function (r) { return el("span", null, (r.e.tasks || []).join("; "), (r.e.slow || []).length ? el("span", { cls: "sub", text: "slow: " + r.e.slow.join("; ") }) : null); } },
+          { h: "Found in", v: function (r) { return msrc(r.e.source); }, f: function (r) { return el("span", { cls: "srcref", text: msrc(r.e.source) }); } }
+        ],
+        text: function (r) { return [r.e.event, r.e.region, r.e.host || "", (r.e.tasks || []).join(" ")].join(" "); }
+      }));
+    }
     if (tasks.some(function (t) { return !t.rowsKnown; })) s.appendChild(explain("Rows are shown only for tasks the event log records (one successful attempt per partition); the executors' logs do not count rows."));
     return s;
   };

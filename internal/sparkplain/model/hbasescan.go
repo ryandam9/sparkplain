@@ -294,6 +294,11 @@ type HBaseTaskRead struct {
 	SizeSource Source `json:"sizeSource,omitzero"`
 	EndSource  Source `json:"endSource,omitzero"`  // the Finished or Exception line
 	TaskSource Source `json:"taskSource,omitzero"` // the event log's task end
+	// Slow marks a task that took at least twice its stage's median (and
+	// skew-min-task more); Events are what its region's server logged
+	// while it read it, as indexes into the section's RegionEvents.
+	Slow   bool  `json:"slow,omitempty"`
+	Events []int `json:"events,omitempty"`
 }
 
 // HBaseTaskStage sums one stage's rows of the tasks table: its tables, its
@@ -309,4 +314,28 @@ type HBaseTaskStage struct {
 	Servers      int       `json:"servers"`
 	Start        time.Time `json:"start,omitzero"`
 	End          time.Time `json:"end,omitzero"`
+}
+
+// HBaseRegionEvent is something an HBase server logged about one region
+// while the run went on, named by the region's encoded name: a flush, a
+// compaction, the region closed or opened, a move or split the Master
+// ran, refused writes (busy) or a slow call. DurationMs is how long it
+// took, when the line says, ending at Time. Tasks are the run's tasks
+// that were reading the region then, and Slow the ones that took at least
+// twice their stage's median.
+type HBaseRegionEvent struct {
+	Time       time.Time `json:"time"`
+	Event      string    `json:"event"`
+	Region     string    `json:"region"`
+	Table      string    `json:"table,omitempty"`
+	Host       string    `json:"host,omitempty"`
+	Detail     string    `json:"detail,omitempty"`
+	DurationMs int64     `json:"durationMs,omitempty"`
+	Source     Source    `json:"source"`
+	// Count is how many such lines were folded into one (the same event on
+	// the same region and server, a minute apart at most), from First.
+	Count int       `json:"count,omitempty"`
+	First time.Time `json:"first,omitzero"`
+	Tasks []string  `json:"tasks,omitempty"`
+	Slow  []string  `json:"slow,omitempty"`
 }
