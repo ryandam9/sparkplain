@@ -25,6 +25,7 @@ var chartRules = map[string][]string{
 	"spread":     {"stage-skew"},
 	"skew":       {"stage-skew"},
 	"health":     {"stage-skew", "memory-spill", "stage-retried"},
+	"attention":  {"job-failed", "stage-retried", "stage-skew", "memory-spill"},
 	"heatmap":    {"stage-skew", "executors-excluded"},
 	"data":       {"memory-spill"},
 	"spill":      {"memory-spill"},

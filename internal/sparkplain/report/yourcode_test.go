@@ -26,9 +26,12 @@ func TestYourCode(t *testing.T) {
 		{ID: 1, JobIDs: []int{1}, Code: []model.CodeLocation{{File: "PythonRDD.scala", Line: 160}}, Submitted: at(2)},
 		{ID: 2, JobIDs: []int{2}, Submitted: at(3)},
 		{ID: 3, JobIDs: []int{2}}, // skipped: never submitted
+		// Spark's background work, run by the JVM's thread pool
+		{ID: 4, JobIDs: []int{2}, Code: []model.CodeLocation{{File: "FutureTask.java", Line: 264}}, Submitted: at(4)},
 	}
 	got := yourCode(r, nil)
-	for key, want := range map[string]string{"0.0": "etl.py:10|", "1.0": "etl.py:20|the action of job 1", "2.0": "etl.py:20|nearest line recorded before it; Spark recorded none for this stage"} {
+	for key, want := range map[string]string{"0.0": "etl.py:10|", "1.0": "etl.py:20|the action of job 1", "2.0": "etl.py:20|nearest line recorded before it; Spark recorded none for this stage",
+		"4.0": "etl.py:20|nearest line recorded before it; Spark recorded none for this stage"} {
 		y := got[key]
 		if y == nil || y.Label()+"|"+y.Via != want {
 			t.Errorf("stage %s: %+v, want %s", key, y, want)

@@ -228,7 +228,7 @@ svg.dag .edge.branch{stroke-dasharray:4 3}
 .rp-slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:4px}
 .rp-slot{height:24px;border-radius:4px;border:1px dashed var(--line);font-size:11px;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:background .15s}
 .rp-slot.on{border-style:solid;border-color:transparent}
-.rp-slot.on a{color:#fff;text-decoration:none;white-space:nowrap;font-weight:600;text-shadow:0 0 2px rgba(0,0,0,.45)}
+.rp-slot.on a{color:#fff;text-decoration:none;white-space:nowrap;font-weight:600;text-shadow:0 0 2px rgba(0,0,0,.45);display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;padding:0 3px;text-align:center}
 .rp-gauge{display:grid;grid-template-columns:78px 1fr auto;gap:8px;align-items:center;font-size:12px;color:var(--muted)}
 .rp-val{font-variant-numeric:tabular-nums;white-space:nowrap}
 .rp-bar{height:8px;border-radius:4px;background:var(--surface-2);overflow:hidden}
@@ -253,3 +253,22 @@ svg.dag .edge.branch{stroke-dasharray:4 3}
 @media (prefers-reduced-motion:reduce){.rp-slot,.rp-bar span{transition:none}}
 .anatexec{display:grid;gap:8px;padding:12px;border:1px solid var(--accent);border-radius:10px;background:var(--surface)}
 td .dl{display:block;font-size:13px;overflow-wrap:anywhere}
+/* stages worth a look: a ranked list, one bar and its reasons per row */
+.attn{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:2em minmax(140px,1.2fr) minmax(80px,1.4fr) max-content minmax(0,1.4fr);column-gap:12px}
+.attn-row{display:grid;grid-column:1/-1;grid-template-columns:subgrid;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.attn-n{color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+.attn-name{min-width:0} .attn-name .sub{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attn-bar{height:10px;border-radius:3px;background:var(--surface-2);overflow:hidden}
+.attn-bar span{display:block;height:100%;background:var(--viz-series)}
+.attn-row.failed .attn-bar span{background:var(--viz-fail)}
+.attn-dur{font-variant-numeric:tabular-nums;white-space:nowrap} .attn-dur .sub{display:block;white-space:normal}
+.attn-why{display:flex;flex-wrap:wrap;gap:4px}
+.attn-chip{font-size:12px;padding:1px 8px;border-radius:10px;border:1px solid var(--line);white-space:nowrap}
+.attn-chip.bad{color:var(--crit);border-color:var(--crit);background:var(--crit-soft)}
+.attn-chip.crit{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.attn-chip.warn{color:var(--warn);border-color:var(--warn)}
+@media (max-width:720px){.attn{grid-template-columns:2em minmax(0,1fr) auto}.attn-row{row-gap:4px}
+  .attn-n{grid-column:1;grid-row:1}.attn-name{grid-column:2;grid-row:1}.attn-dur{grid-column:3;grid-row:1;text-align:right}.attn-dur .sub{display:none}
+  .attn-bar{grid-column:2/-1;grid-row:2}.attn-why{grid-column:2/-1;grid-row:3}}
+.explain.bullets ul{margin:2px 0 0;padding-left:18px;display:grid;gap:2px}
+.explain.bullets{margin:6px 0}
