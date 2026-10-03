@@ -421,3 +421,31 @@ func TestAnatomyNodeIcons(t *testing.T) {
 		t.Error("icons must be drawn in the page, not fetched")
 	}
 }
+
+// The capacity card says in plain words what the cluster had and how
+// (nodes × what each gave YARN, and the settings behind it), what this
+// application used of it, whether anything waited, and whether other
+// applications shared the cluster; it claims no reason for the waiting.
+func TestAnatomyCapacityCard(t *testing.T) {
+	t.Parallel()
+	r := anatReport()
+	r.Metrics = &model.MetricsSection{Summary: []model.Fact{{Label: "Containers waiting", Value: "5 at most, for 1 min 0 s"}, {Label: "Applications at once", Value: "1 at most"}}}
+	got := strings.Join(rmLines(buildAnatomy(r).RM), "\n")
+	want := strings.Join([]string{
+		"The cluster had 24.0 GiB of memory and 8 vCPUs: 2 worker nodes × 12.0 GiB and 4 vCPUs each.",
+		"What each node gives YARN is set by yarn.nodemanager.resource.memory-mb and yarn.nodemanager.resource.cpu-vcores.",
+		"At its busiest, this application used 13.4 GiB (56%) and 4 of the 8 vCPUs; 10.6 GiB was left.",
+		"Up to 5 containers had to wait for room, for 1 min 0 s in all.",
+		"No other application ran at the same time, so this one had the cluster to itself.",
+	}, "\n")
+	if got != want {
+		t.Errorf("capacity card:\n%s\nwant\n%s", got, want)
+	}
+	r.Metrics.Summary = []model.Fact{{Label: "Containers waiting", Value: "0 at most, for 0 s"}, {Label: "Applications at once", Value: "3 at most"}}
+	got = strings.Join(rmLines(buildAnatomy(r).RM), "\n")
+	for _, w := range []string{"Nothing had to wait for room.", "Up to 2 other applications ran at the same time, so this one shared the cluster."} {
+		if !strings.Contains(got, w) {
+			t.Errorf("shared, nothing waiting: %s", got)
+		}
+	}
+}
