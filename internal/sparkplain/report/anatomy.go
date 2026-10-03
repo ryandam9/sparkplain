@@ -1277,7 +1277,7 @@ func drawKey(b *svgw, a *anatomy, y float64) float64 {
 			b.f(`<rect class="heap" x="%.1f" y="%.1f" width="22" height="8" rx="2"/><rect class="hpeak" x="%.1f" y="%.1f" width="15" height="8" rx="2"/>`, x, y-8, x, y-8)
 		}, "Executor heap: fill is its peak"})
 		items = append(items, item{func(x, y float64) {
-			b.f(`<rect class="core" x="%.1f" y="%.1f" width="7" height="7" rx="1.5" style="opacity:.4"/><rect class="core" x="%.1f" y="%.1f" width="7" height="7" rx="1.5"/>`, x, y-8, x+9, y-8)
+			b.f(`<rect class="core" x="%.1f" y="%.1f" width="7" height="7" rx="1.5" style="fill-opacity:.35"/><rect class="core" x="%.1f" y="%.1f" width="7" height="7" rx="1.5"/>`, x, y-8, x+9, y-8)
 		}, "One core each; the more solid, the busier"})
 	}
 	if squares {
@@ -1582,9 +1582,9 @@ func drawChip(b *svgw, a *anatomy, e anatExec, container int64, x, y float64, l 
 	if size := execSize(e.Cores, container); size != "" {
 		b.text(x+8, y+57, "s", "", size)
 	}
-	// Cores, shaded by CPU share.
+	// Cores, outlined, filled by CPU share.
 	for i := 0; i < min(e.Cores, 16); i++ {
-		b.f(`<rect class="core" x="%.1f" y="%.1f" width="7" height="7" rx="1.5" style="opacity:%.2f"/>`, x+8+float64(i)*9, y+63, 0.25+0.75*e.CPUShare)
+		b.f(`<rect class="core" x="%.1f" y="%.1f" width="7" height="7" rx="1.5" style="fill-opacity:%.2f"/>`, x+8+float64(i)*9, y+63, coreFill(e.CPUShare))
 	}
 	if e.CPUShare > 0 {
 		b.text(x+anChipW-8, y+70, "s", "end", fmt.Sprintf("CPU %.0f%%", 100*e.CPUShare))
@@ -1716,7 +1716,7 @@ func drawJVM(b *svgw, a *anatomy, j *anatJVM, y float64, l anatLinks) float64 {
 	if j.Cores > 0 {
 		b.text(bx, cy, "", "", fmt.Sprintf("%d cores: each runs one task at a time, so each task has about %s of heap", j.Cores, model.Bytes(j.Heap/int64(j.Cores))))
 		for i := 0; i < min(j.Cores, 32); i++ {
-			b.f(`<rect class="core" x="%.1f" y="%.1f" width="12" height="12" rx="2" style="opacity:%.2f"/>`, bx+float64(i)*16, cy+8, 0.25+0.75*j.CPUShare)
+			b.f(`<rect class="core" x="%.1f" y="%.1f" width="12" height="12" rx="2" style="fill-opacity:%.2f"/>`, bx+float64(i)*16, cy+8, coreFill(j.CPUShare))
 		}
 		var st []string
 		if j.CPUShare > 0 {
@@ -1808,4 +1808,11 @@ func anatomyHTML(r *model.Report, explorer string) template.HTML {
 		return ""
 	}
 	return template.HTML(`<div class="chart anatbox">` + svg + string(anatGuide.html()) + `</div>`)
+}
+
+// coreFill is how solid a core's square is filled: from .35 for an idle
+// core to 1 for a busy one; its outline is always solid, so even an idle
+// core stands out on the executor's pale card.
+func coreFill(share float64) float64 {
+	return 0.35 + 0.65*min(max(share, 0), 1)
 }
