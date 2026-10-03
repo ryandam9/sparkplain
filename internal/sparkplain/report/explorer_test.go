@@ -569,3 +569,14 @@ func TestExplorerStagesWorthALook(t *testing.T) {
 		}
 	}
 }
+
+// The node chart's memory axis steps in whole units (1 GiB, 2 GiB), never
+// halves.
+func TestExplorerNodeChartWholeTicks(t *testing.T) {
+	t.Parallel()
+	for _, want := range []string{`note: D.aws.nodeMemNote, wholeTicks: true }, "bytes");`, `if (kind === "count" || whole) ticks = ticks.filter(Number.isInteger);`} {
+		if !strings.Contains(explorerJS, want) {
+			t.Errorf("explorer.js has no %q", want)
+		}
+	}
+}
