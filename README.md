@@ -294,7 +294,7 @@ Pass your code with `-source` to see it beside the jobs and stages that ran it (
 sparkplain -app-id application_1700000000000_0042 -eventlog ./application_1700000000000_0042.lz4 -source ./jobs
 ```
 
-PySpark records a code location for some actions only. The explorer says so where none was recorded.
+PySpark records a code location for some actions only (`collect()`, not `count()`, `show()` or `write`). When it recorded none, a stage is tied to the line that set its job's description with `sc.setJobDescription("...")`, so describing your jobs also places them in your code. The script spark-submit ran is shown in the explorer's Code tab either way. The explorer says where no line could be found.
 
 ## AWS permissions
 

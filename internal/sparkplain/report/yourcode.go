@@ -3,6 +3,7 @@ package report
 import (
 	"fmt"
 	"path"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,8 +19,10 @@ const DefaultSourceContext = 20
 // YourCode is where in the application's own code something ran. Via says
 // how it was found: "" for its own call site; "the action of job 3" when
 // its call site is Spark's (a PySpark stage named after PythonRDD.scala)
-// and its job's is the application's; or, when Spark recorded neither,
-// the nearest line it recorded before the stage, said to be so.
+// and its job's is the application's; the line that set its job's
+// description, when Spark recorded no line of the application's but the
+// code at hand has one; or, failing those, the nearest line recorded
+// before the stage, said to be so.
 type YourCode struct {
 	model.CodeLocation
 	Via string
@@ -87,6 +90,26 @@ func yourCode(r *model.Report, srcs []SourceFile) map[string]*YourCode {
 			out[key] = &YourCode{CodeLocation: c, Via: fmt.Sprintf("the action of job %d", best)}
 		}
 	}
+	// PySpark's DataFrame actions record no line of the application's
+	// (count, show and write name NativeMethodAccessorImpl.java:0), but a
+	// job description the code set names the line that set it.
+	descs := descriptionLines(srcs)
+	for _, st := range r.Jobs.Stages {
+		key := strconv.Itoa(st.ID) + "." + strconv.Itoa(st.Attempt)
+		if out[key] != nil {
+			continue
+		}
+		ids := append([]int(nil), st.JobIDs...)
+		sort.Ints(ids)
+		for _, id := range ids {
+			if j := jobs[id]; j != nil {
+				if c, ok := descs.find(j.Description); ok {
+					out[key] = &YourCode{CodeLocation: c, Via: fmt.Sprintf("the line that set job %d's description", id)}
+					break
+				}
+			}
+		}
+	}
 	// Spark records no line for some actions (PySpark's write, saveAsTable
 	// and sql name only NativeMethodAccessorImpl.java:0, for the stage and
 	// its job alike): point at the last line it recorded before the stage
@@ -119,6 +142,107 @@ func yourCode(r *model.Report, srcs []SourceFile) map[string]*YourCode {
 		}
 	}
 	return out
+}
+
+// descLine is a line of the application's code that sets a job description,
+// with the description as a pattern.
+type descLine struct {
+	re  *regexp.Regexp
+	loc model.CodeLocation
+}
+
+type descLines []descLine
+
+// setDesc finds a call that sets a job description and the start of its
+// string: sc.setJobDescription(f"…") in Python, Scala or Java, or
+// setLocalProperty("spark.job.description", "…"); the prefix letters say
+// whether the string interpolates.
+var setDesc = regexp.MustCompile(`(?:setJobDescription\(\s*|setLocalProperty\(\s*["']spark\.job\.description["']\s*,\s*)([A-Za-z]{0,2})("|')`)
+
+// interp is what a description string fills in at run time: Python's {x}
+// and %s, Scala's ${x} and $x.
+var interp = regexp.MustCompile(`\$\{[^}]*\}|\{[^}]*\}|%[-+ #0-9.]*[sdifr]|\$[A-Za-z_][A-Za-z0-9_]*`)
+
+// minDescFixed is the least literal text a description pattern needs, so a
+// string that is all placeholders does not match every job.
+const minDescFixed = 8
+
+// descriptionLines lists the lines in the application's files that set a
+// job description to a string literal written on that line.
+func descriptionLines(srcs []SourceFile) descLines {
+	var out descLines
+	for _, sf := range srcs {
+		if len(sf.Logged) == 0 {
+			continue
+		}
+		for i, line := range sf.Lines {
+			for _, m := range setDesc.FindAllStringSubmatchIndex(line, -1) {
+				prefix, quote := strings.ToLower(line[m[2]:m[3]]), line[m[4]]
+				body, ok := stringBody(line[m[5]:], quote)
+				if !ok {
+					continue
+				}
+				// An f-string or Scala s"…" fills its placeholders in; so may
+				// % or .format() after a plain string, but not a raw or
+				// bytes one.
+				pat, fixed, last := "", 0, 0
+				if strings.ContainsAny(prefix, "fs") || !strings.ContainsAny(prefix, "rb") {
+					for _, ph := range interp.FindAllStringIndex(body, -1) {
+						pat += regexp.QuoteMeta(body[last:ph[0]]) + ".*?"
+						fixed += ph[0] - last
+						last = ph[1]
+					}
+				}
+				pat += regexp.QuoteMeta(body[last:])
+				fixed += len(body) - last
+				if fixed < minDescFixed {
+					continue
+				}
+				out = append(out, descLine{re: regexp.MustCompile(`^` + pat + `$`), loc: model.CodeLocation{File: sf.Logged[0], Line: i + 1, Action: "setJobDescription"}})
+			}
+		}
+	}
+	return out
+}
+
+// stringBody is a string literal's text up to its closing quote, with
+// backslash escapes undone; false when it does not close on the line.
+func stringBody(s string, quote byte) (string, bool) {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case c == '\\' && i+1 < len(s):
+			i++
+			b.WriteByte(s[i])
+		case c == quote:
+			return b.String(), true
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return "", false
+}
+
+// find is the one line whose description pattern matches desc; none when
+// no line does or several different lines do.
+func (d descLines) find(desc string) (model.CodeLocation, bool) {
+	if desc == "" {
+		return model.CodeLocation{}, false
+	}
+	var hit *model.CodeLocation
+	for i := range d {
+		if !d[i].re.MatchString(desc) {
+			continue
+		}
+		if hit != nil && *hit != d[i].loc {
+			return model.CodeLocation{}, false
+		}
+		hit = &d[i].loc
+	}
+	if hit == nil {
+		return model.CodeLocation{}, false
+	}
+	return *hit, true
 }
 
 // Label is "etl.py:32", the file's base name and the line.

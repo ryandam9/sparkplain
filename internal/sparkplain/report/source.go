@@ -52,6 +52,11 @@ func codeFiles(r *model.Report) []string {
 	for _, q := range r.Jobs.SQL {
 		add(q.Code)
 	}
+	// The script spark-submit ran is the application's code even when Spark
+	// recorded no line of it (PySpark's DataFrame actions).
+	if sc := r.Application.Script; sc != "" {
+		seen[sc] = true
+	}
 	if r.Logs != nil {
 		// Tracebacks name the script even when there is no event log.
 		for _, f := range r.Logs.Files {

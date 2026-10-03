@@ -70,15 +70,20 @@ type FileRead struct {
 
 // Application is the run as a whole.
 type Application struct {
-	ID           string    `json:"id"`
-	AttemptID    string    `json:"attemptId,omitempty"`
-	Name         string    `json:"name"`
-	User         string    `json:"user"`
-	SparkVersion string    `json:"sparkVersion"`
-	VersionSrc   Source    `json:"sparkVersionSource,omitzero"`
-	Master       string    `json:"master,omitempty"`
-	DeployMode   string    `json:"deployMode,omitempty"`
-	Queue        string    `json:"queue,omitempty"`
+	ID           string `json:"id"`
+	AttemptID    string `json:"attemptId,omitempty"`
+	Name         string `json:"name"`
+	User         string `json:"user"`
+	SparkVersion string `json:"sparkVersion"`
+	VersionSrc   Source `json:"sparkVersionSource,omitzero"`
+	Master       string `json:"master,omitempty"`
+	DeployMode   string `json:"deployMode,omitempty"`
+	Queue        string `json:"queue,omitempty"`
+	// Script is the PySpark or SparkR file spark-submit ran, from the
+	// driver's command line: what -source shows even when Spark recorded
+	// no line of it.
+	Script       string    `json:"script,omitempty"`
+	ScriptSource Source    `json:"scriptSource,omitzero"`
 	Start        time.Time `json:"start,omitzero"`
 	End          time.Time `json:"end,omitzero"`
 	DurationMs   int64     `json:"durationMs"`

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -860,9 +861,50 @@ func (p *parser) environment(e *envEvent, src model.Source) {
 		return v
 	}
 	a.Master, a.DeployMode, a.Queue = get("spark.master"), get("spark.submit.deployMode"), get("spark.yarn.queue")
+	if sc := mainScript(e.System["sun.java.command"]); sc != "" {
+		a.Script, a.ScriptSource = redact.Text(sc), src
+	}
 	if a.Name == "" {
 		a.Name = get("spark.app.name")
 	}
+}
+
+// mainScript is the Python or R file a driver's command line runs. In YARN
+// cluster mode the application master names it (--primary-py-file
+// orders.py); in client mode SparkSubmit's first argument that is not an
+// option or an option's value is the script (or a jar, which is not one).
+func mainScript(cmd string) string {
+	f := strings.Fields(cmd)
+	if len(f) == 0 {
+		return ""
+	}
+	isScript := func(s string) bool {
+		e := strings.ToLower(path.Ext(s))
+		return e == ".py" || e == ".r"
+	}
+	for i := 1; i+1 < len(f); i++ {
+		if f[i] == "--primary-py-file" || f[i] == "--primary-r-file" {
+			return f[i+1]
+		}
+	}
+	if !strings.HasSuffix(f[0], ".SparkSubmit") {
+		return ""
+	}
+	for i := 1; i < len(f); i++ {
+		switch {
+		case f[i] == "--verbose" || f[i] == "-v" || f[i] == "--supervise":
+		case strings.HasPrefix(f[i], "-"):
+			if !strings.Contains(f[i], "=") {
+				i++ // the option's value
+			}
+		default:
+			if isScript(f[i]) {
+				return f[i]
+			}
+			return ""
+		}
+	}
+	return ""
 }
 
 // configGroup sorts a setting into one of the report's groups.
