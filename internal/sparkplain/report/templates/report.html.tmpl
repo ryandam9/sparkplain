@@ -43,27 +43,24 @@
     <nav class="toc" aria-label="Sections">
       <a href="#summary">What happened <span class="dot full"></span></a>
       <a href="#anatomy">The run at a glance <span class="dot full"></span></a>
-      <a href="#coverage">What this report covers <span class="dot full"></span></a>
       <a href="#findings">Findings <span class="dot full"></span></a>
-      <a href="#timeline">Timeline <span class="dot {{cov $r.Timeline.Coverage}}"></span></a>
-      <a href="#nodes">Cluster and nodes <span class="dot {{cov $r.Nodes.Coverage}}"></span></a>
-      <a href="#executors">Executors <span class="dot {{cov $r.Executors.Coverage}}"></span></a>
-      <a href="#memory">Memory <span class="dot {{cov $r.Memory.Coverage}}"></span></a>
-      <a href="#cpu">CPU <span class="dot {{cov $r.CPU.Coverage}}"></span></a>
-      <a href="#io">Storage and I/O <span class="dot {{cov $r.IO.Coverage}}"></span></a>
-      <a href="#stages">Jobs and stages <span class="dot {{cov $r.Jobs.Coverage}}"></span></a>
-      {{with $r.TaskStories}}<a href="#tasklogs">What each task did <span class="dot {{cov .Coverage}}"></span></a>{{end}}
-      <a href="#sql">SQL queries <span class="dot {{cov $r.Jobs.Coverage}}"></span></a>
-      <a href="#runtime">Runtime environment <span class="dot {{cov $r.Config.Coverage}}"></span></a>
-      <a href="#config">Configuration <span class="dot {{cov $r.Config.Coverage}}"></span></a>
-      <a href="#access">Identity and access <span class="dot {{cov $r.Identity.Coverage}}"></span></a>
+      <a href="#coverage">What this report covers <span class="dot full"></span></a>
       <a href="#sources">Sources <span class="dot full"></span></a>
+      {{if .Explorer}}<div class="tocx">
+        <span class="tocxh">More in the explorer</span>
+        <a href="{{xTab .Explorer "timeline"}}">Timeline →</a>
+        <a href="{{xTab .Explorer "stages"}}">Jobs and stages →</a>
+        <a href="{{xTab .Explorer "executors"}}">Executors, memory and CPU →</a>
+        <a href="{{xTab .Explorer "sql"}}">SQL queries →</a>
+        {{if $r.TaskStories}}<a href="{{xTab .Explorer "tasklogs"}}">What each task did →</a>{{end}}
+        <a href="{{xTab .Explorer "config"}}">Configuration, identity and access →</a>
+      </div>{{end}}
     </nav>
 
     <main>
       <section id="summary">
         <div class="story">
-          <h2>What happened</h2>
+          <div class="sechead"><h2>What happened</h2>{{if .Explorer}}<a class="xlink" href="{{xTab .Explorer "summary"}}">Open in the explorer →</a>{{end}}</div>
           <ul>{{range $r.Summary.Sentences}}<li>{{.}}</li>{{end}}</ul>
         </div>
         {{if $r.Summary.KPIs}}<div class="kpis">
@@ -73,22 +70,22 @@
       </section>
 
       {{with anatomy $r}}<section id="anatomy">
-        <div class="sechead"><h2>The run at a glance</h2><span class="note">The whole run in one picture: where it ran, how much it was given, and what it used.</span></div>
+        <div class="sechead"><h2>The run at a glance</h2><span class="note">The whole run in one picture: where it ran, how much it was given, and what it used.</span>{{if $.Explorer}}<a class="xlink" href="{{xTab $.Explorer "anatomy"}}">Open in the explorer →</a>{{end}}</div>
         {{.}}
       </section>{{end}}
 
       <section id="coverage">
         <div class="sechead"><h2>What this report covers</h2></div>
-        <p class="lede">Every section appears, even when its data is missing. Each one says where its data came from and what it can't show yet.</p>
+        <p class="lede">What each part of the analysis could show for this run, where its data came from, and what it can't show yet. This page is the summary; {{if .Explorer}}each part opens in the explorer, which has the detail{{else}}the explorer (sparkplain -format explorer) has the detail{{end}}.</p>
         <div class="tbl"><table>
           <thead><tr><th>Section</th><th>Status</th><th>Shown</th><th>Not shown yet</th></tr></thead>
-          <tbody>{{range $r.Coverage}}<tr><td><a href="#{{.ID}}">{{.Title}}</a></td><td><span class="pill {{cov .Coverage}}">{{covLabel .Coverage}}</span></td><td>{{.Shown}}</td><td>{{if .Missing}}{{join .Missing "; "}}{{else}}—{{end}}</td></tr>
+          <tbody>{{range $r.Coverage}}<tr><td>{{$t := .Title}}{{with xTab $.Explorer .ID}}<a href="{{.}}">{{$t}} →</a>{{else}}{{$t}}{{end}}</td><td><span class="pill {{cov .Coverage}}">{{covLabel .Coverage}}</span></td><td>{{.Shown}}</td><td>{{if .Missing}}{{join .Missing "; "}}{{else}}—{{end}}</td></tr>
           {{end}}</tbody>
         </table></div>
       </section>
 
       <section id="findings">
-        <div class="sechead"><h2>Findings</h2><span class="note">{{.Crit}} critical · {{.Warn}} warning · {{.Info}} info. Ranked by severity; each points to the log line it came from.</span></div>
+        <div class="sechead"><h2>Findings</h2><span class="note">{{.Crit}} critical · {{.Warn}} warning · {{.Info}} info. Ranked by severity; each points to the log line it came from.</span>{{if .Explorer}}<a class="xlink" href="{{xTab .Explorer "findings"}}">Open in the explorer →</a>{{end}}</div>
         {{if $r.Findings}}<div class="findings">
           {{range $i, $f := $r.Findings}}<article class="finding {{sev .Severity}}" id="finding-{{add $i 1}}"><div class="stripe"></div><div class="body">
             <div class="t"><span class="fnum {{sev .Severity}}">{{add $i 1}}</span><span class="pill {{sevPill .Severity}}">{{sevLabel .Severity}}</span><h3>{{.Title}}</h3></div>
@@ -100,461 +97,8 @@
         </div>{{else}}<p class="note">No rule found anything to report.</p>{{end}}
       </section>
 
-      <section id="timeline">
-        <div class="sechead"><h2>Timeline</h2><span class="pill {{cov $r.Timeline.Coverage}}">{{covLabel $r.Timeline.Coverage}}</span></div>
-        {{if $r.Timeline.ExecutorSeries}}
-        <div class="chart">
-          <h4>Executors over time</h4>
-          {{execChart $r}}
-          <div class="legend">
-            <span><i class="sw" style="background:var(--accent);opacity:.35"></i>Executors running</span>
-            <span><svg width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="4.5" fill="var(--crit)"/></svg>Executor killed or lost</span>
-            <span><svg width="12" height="12" aria-hidden="true"><rect x="1" y="1" width="10" height="10" fill="var(--crit)"/></svg>Job failed</span>
-            <span><svg width="12" height="12" aria-hidden="true"><rect x="2" y="2" width="8" height="8" transform="rotate(45 6 6)" fill="var(--warn)"/></svg>Stage retried</span>
-          </div>
-          {{guide (axes "Across" "Time of day, while the application ran." "Up" "Executors alive at that moment, rebuilt from when Spark added and removed each one." "Markers" "An executor that died, a job that failed or a stage that was retried; hover for details.") (points "A line that stays level at the top: Spark had the executors it wanted." "Drops while work was still running: executors were lost or released." "Red markers are the first thing to check.") "" (runNotes $r "executors")}}
-        </div>
-        <div class="chart">
-          <h4>Jobs over time</h4>
-          {{gantt $r}}
-          <div class="legend">
-            <span><i class="sw" style="background:var(--accent)"></i>Succeeded</span>
-            <span><i class="sw" style="background:var(--crit)"></i>Failed</span>
-            <span><i class="sw" style="background:var(--na)"></i>Running when the log ends</span>
-            {{if $r.Jobs.DriverGaps}}<span><i class="sw gapsw"></i>No job running ({{dur $r.Jobs.DriverGapMs}} in all)</span>{{end}}
-          </div>
-          {{guide (axes "Across" "Time of day, while the application ran." "Rows" "One job each: its bar runs from when it was submitted to when it finished, and the thin lines under it are its stages." "Shading" "Stretches when no job was running.") (points "Longer bars took longer." "Shaded stretches are time the executors sat waiting while the driver worked alone: planning, listing files, Python code, or handling results it collected." "Bars that overlap ran at the same time.") (or (and (gt (len $r.Timeline.Jobs) 80) (printf "Showing the 80 longest of %d jobs." (len $r.Timeline.Jobs))) "") (runNotes $r "jobs")}}
-        </div>
-        <div class="tbl"><table>
-          <thead><tr><th>Time (<span class="tzlabel">{{.Zone}}</span>)</th><th>Event</th><th>Source</th></tr></thead>
-          <tbody class="num">{{range $r.Timeline.Events}}<tr><td>{{time .Time "hms"}}</td><td>{{.Text}}</td><td class="srcref">{{src .Source}}</td></tr>
-          {{end}}</tbody>
-        </table></div>
-        {{else}}<div class="missing"><h3>Needs the event log</h3><ul><li>Executors over time</li><li>Every job on a timeline</li></ul></div>{{end}}
-      </section>
-
-      <section id="nodes">
-        <div class="sechead"><h2>Cluster and nodes</h2><span class="pill {{cov $r.Nodes.Coverage}}">{{covLabel $r.Nodes.Coverage}}</span></div>
-        {{if $r.Nodes.Lede}}<p class="lede">{{$r.Nodes.Lede}}</p>{{end}}
-        {{if $r.Nodes.Hosts}}<div class="tbl"><table>
-          <thead><tr><th data-sort="text">Host</th><th data-sort="text">Role</th><th data-sort="text">Instance</th><th class="num" data-sort="num">Executors</th><th class="num" data-sort="num">Cores</th><th class="num" data-sort="num">Tasks</th><th class="num" data-sort="num">Failed</th><th class="num" data-sort="num">Lost</th><th data-sort="num" title="The node's CPU while the application ran, from CloudWatch">Node CPU</th><th data-sort="num">CPU share</th><th data-sort="num">Cores busy</th><th class="num" data-sort="num">Peak heap</th></tr></thead>
-          <tbody>{{range $r.Nodes.Hosts}}<tr{{if gt .Lost 0}} class="lost"{{end}}>
-            <td><span class="mono">{{.Name}}</span>{{if .Source.File}}<span class="sub srcref">{{src .Source}}</span>{{end}}</td>
-            <td>{{if and .Driver (gt (len .Executors) 0)}}Driver + executors{{else if .Driver}}Driver only{{with .NoRoomBesideDriver}}<span class="sub">{{.}}</span>{{end}}{{else if gt (len .Executors) 0}}Executors{{else if and .Instance (or .Instance.Primary (eq .Instance.Role "MASTER"))}}Primary node{{else}}<span class="bad">Nothing</span>{{end}}</td>
-            <td>{{with .Instance}}<span class="mono">{{.ID}}</span><span class="sub">{{if .Role}}{{lower .Role}} · {{end}}{{.Type}}{{if .VCPU}} · {{.VCPU}} vCPU, {{bytes .MemoryBytes}}{{end}}{{if .Market}} · {{market .Market}}{{end}}{{if not .Ended.IsZero}} · ended {{time .Ended "hms"}}{{end}}</span>{{else}}{{if not .YARNMemoryBytes}}—{{end}}{{end}}{{if .YARNMemoryBytes}}<span class="sub">YARN offered {{bytes .YARNMemoryBytes}}, {{.YARNVCores}} vCores</span>{{end}}</td>
-            <td class="num" data-v="{{len .Executors}}">{{len .Executors}}</td><td class="num">{{.Cores}}</td>
-            <td class="num" data-v="{{.Tasks.Tasks}}">{{num .Tasks.Tasks}}</td>
-            <td class="num" data-v="{{.Tasks.Failed}}">{{if gt .Tasks.Failed 0}}<span class="bad">{{num .Tasks.Failed}}</span>{{else}}0{{end}}</td>
-            <td class="num" data-v="{{.Lost}}">{{if gt .Lost 0}}<span class="bad">{{.Lost}}</span>{{else}}0{{end}}</td>
-            <td data-v="{{with .HostCPU}}{{.Average}}{{else}}-1{{end}}">{{with .HostCPU}}{{printf "%.0f" .Average}}% avg<span class="sub">{{printf "%.0f" .Peak}}% peak</span>{{else}}—{{end}}</td>
-            <td data-v="{{sharev .CPUShare}}">{{if .Tasks.RunTimeMs}}{{share .CPUShare}}{{else}}—{{end}}</td>
-            <td data-v="{{sharev .AllocatedCore}}">{{if .Tasks.RunTimeMs}}{{share .AllocatedCore}}{{else}}—{{end}}</td>
-            <td class="num" data-v="{{.PeakHeap}}">{{if .PeakHeap}}{{bytes .PeakHeap}}{{else}}—{{end}}</td></tr>
-          {{end}}</tbody>
-        </table></div>
-        <p class="explain"><b>Instance</b> is the EC2 instance behind the host, from the EMR API: its group (primary, core or task), type, size and whether it was spot or on-demand. <b>YARN offered</b> is what the node's NodeManager gave YARN to place containers in, which is less than the machine's memory. <b>Node CPU</b> is the whole machine's CPU while the application ran, from CloudWatch, so it includes other applications and daemons. <b>CPU share</b> is task CPU time divided by task run time: how much of the time tasks were computing rather than waiting. <b>Cores busy</b> is task run time divided by the core time the executors held: how much of what YARN gave them was used.</p>{{end}}
-        {{with $r.Metrics}}{{if .Summary}}<h3>The cluster while it ran</h3>
-        <p class="explain">From CloudWatch, for the whole cluster, so other applications running at the same time are included.</p>
-        <div class="facts">{{range .Summary}}<div class="fact"><span class="l">{{.Label}}</span><span class="v">{{.Value}}</span><span class="x">{{.Explain}}</span></div>{{end}}</div>
-        {{with clusterChart $r}}<div class="chart"><h4>Containers on the cluster</h4>{{.}}
-          <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>Containers allocated</span><span><i class="sw" style="background:var(--warn)"></i>Containers waiting</span><span><i class="sw" style="background:var(--accent);opacity:.2"></i>This application's run</span></div>
-          {{guide (axes "Across" "Time of day; the shaded band is when this application ran." "Up" "Containers across the whole cluster, every minute: those YARN had placed, and those waiting for room.") (points "Waiting should stay at zero." "Waiting while YARN memory is free: the containers were too big to fit on any one node." "Waiting with memory full: the cluster was too small, or busy with other applications.") "" (runNotes $r "containers")}}</div>{{end}}
-        {{if .Missing}}<div class="missing"><h3>Not in CloudWatch</h3><ul>{{range .Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}{{end}}{{end}}
-        {{nodeMemoryChart $r}}{{nodeCPUChart $r}}
-        {{if $r.Nodes.Missing}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $r.Nodes.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
-      </section>
-
-      <section id="executors">
-        <div class="sechead"><h2>Executors</h2><span class="pill {{cov $r.Executors.Coverage}}">{{covLabel $r.Executors.Coverage}}</span></div>
-        {{$e := $r.Executors}}{{if $e.Executors}}
-        <div class="facts">
-          <div class="fact"><span class="l">Started</span><span class="v num">{{$e.Started}} executors{{if $e.Driver}} + 1 driver{{end}}</span><span class="x">Worker processes Spark launched during the run.</span></div>
-          <div class="fact"><span class="l">Most running at once</span><span class="v num">{{$e.Peak}}{{if not $e.PeakAt.IsZero}}, first at {{time $e.PeakAt "hms"}}{{end}}</span><span class="x">Dynamic allocation: {{$e.DynamicAlloc}}.</span></div>
-          <div class="fact"><span class="l">How they ended</span><span class="v num">{{range $i, $c := $e.EndedBy}}{{if $i}} · {{end}}{{$c.N}} {{$c.Label}}{{end}}</span><span class="x">From the removal reason Spark logged for each executor.</span></div>
-          <div class="fact"><span class="l">Size</span><span class="v num">{{$e.Cores}} cores · {{bytes $r.Memory.Config.ContainerBytes}}</span><span class="x">Each core runs one task at a time. Memory is the YARN container: heap plus overhead.</span></div>
-        </div>
-        <div class="tbl"><table>
-          <thead><tr><th data-sort="num">ID</th><th data-sort="text">Host</th><th class="num" data-sort="num">Cores</th><th data-sort="text">Started</th><th class="num" data-sort="num">Lifetime</th><th data-sort="text">Ended</th><th class="num" data-sort="num">Tasks</th><th class="num" data-sort="num">Failed</th><th data-sort="num">CPU share</th><th data-sort="num">GC</th><th class="num" data-sort="num">Input</th><th class="num" data-sort="num">Shuffle read</th><th class="num" data-sort="num">Shuffle write</th><th class="num" data-sort="num">Peak heap</th></tr></thead>
-          <tbody>{{range $e.Executors}}<tr{{if removalBad .RemovalKind}} class="lost"{{end}}>
-            <td data-v="{{.ID}}" class="mono">{{.ID}}</td><td class="mono">{{.Host}}</td><td class="num">{{.Cores}}</td>
-            <td>{{time .Added "hms"}}</td>
-            <td class="num">{{if .Removed.IsZero}}{{span .Added $r.Timeline.End}}{{else}}{{span .Added .Removed}}{{end}}</td>
-            <td>{{if removalBad .RemovalKind}}<span class="bad">{{removal .RemovalKind}}</span>{{else}}{{removal .RemovalKind}}{{end}}{{if .RemovedReason}}<span class="sub">{{short .RemovedReason 160}}</span><span class="sub srcref">{{src .RemovedSource}}</span>{{end}}</td>
-            <td class="num" data-v="{{.Tasks.Tasks}}">{{num .Tasks.Tasks}}</td>
-            <td class="num" data-v="{{.Tasks.Failed}}">{{if gt .Tasks.Failed 0}}<span class="bad">{{num .Tasks.Failed}}</span>{{else}}0{{end}}</td>
-            <td data-v="{{sharev (cpuShare .Tasks)}}">{{if .Tasks.RunTimeMs}}{{pct (cpuShare .Tasks)}}{{else}}—{{end}}</td>
-            <td data-v="{{sharev (ratio .Tasks.GCTimeMs .Tasks.RunTimeMs)}}">{{if .Tasks.RunTimeMs}}{{if gcBad (ratio .Tasks.GCTimeMs .Tasks.RunTimeMs)}}<span class="warnv">{{pct (ratio .Tasks.GCTimeMs .Tasks.RunTimeMs)}}</span>{{else}}{{pct (ratio .Tasks.GCTimeMs .Tasks.RunTimeMs)}}{{end}}{{else}}—{{end}}</td>
-            <td class="num" data-v="{{.Tasks.InputBytes}}">{{bytes .Tasks.InputBytes}}</td>
-            <td class="num" data-v="{{.Tasks.ShuffleReadBytes}}">{{bytes .Tasks.ShuffleReadBytes}}</td>
-            <td class="num" data-v="{{.Tasks.ShuffleWriteBytes}}">{{bytes .Tasks.ShuffleWriteBytes}}</td>
-            <td class="num" data-v="{{.Peak.JVMHeap}}">{{if .Peak.JVMHeap}}{{bytes .Peak.JVMHeap}}{{else}}—{{end}}</td></tr>
-          {{end}}</tbody>
-        </table></div>
-        <p class="explain"><b>CPU share</b>: task CPU time over task run time. <b>GC</b>: share of task run time spent in garbage collection (over 10% is flagged). <b>Input</b>: bytes read from files and tables. <b>Shuffle</b>: data exchanged between executors. <b>Peak heap</b>: highest sampled Java heap use.</p>
-        {{else}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $e.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
-      </section>
-
-      <section id="memory">
-        <div class="sechead"><h2>Memory</h2><span class="pill {{cov $r.Memory.Coverage}}">{{covLabel $r.Memory.Coverage}}</span></div>
-        {{$m := $r.Memory}}{{if $m.Lede}}<p class="lede">{{$m.Lede}}</p>
-        <div class="facts">
-          <div class="fact"><span class="l">Heap</span><span class="v num">{{bytes $m.Config.HeapBytes}}</span><span class="x">From {{$m.Config.HeapFrom}}. The Java heap holds Spark's data and your code's objects.</span></div>
-          <div class="fact"><span class="l">Overhead</span><span class="v num">{{bytes $m.Config.OverheadBytes}}</span><span class="x">From {{$m.Config.OverheadFrom}}. Memory outside the heap: thread stacks, network buffers, Python workers.</span></div>
-          <div class="fact"><span class="l">Heap per running task</span><span class="v num">{{if $m.Config.Cores}}{{bytes (divBytes $m.Config.HeapBytes $m.Config.Cores)}}{{else}}—{{end}}</span><span class="x">Heap divided by {{$m.Config.Cores}} cores, since each core runs one task at a time.</span></div>
-          <div class="fact"><span class="l">Spark's working memory</span><span class="v num">{{bytes $m.Config.UnifiedBytes}}</span><span class="x">(heap − 300 MiB) × spark.memory.fraction ({{$m.Config.MemoryFraction}}). Shuffles, joins and cache share it; when it runs out, data spills to disk.</span></div>
-          <div class="fact"><span class="l">Spilled to disk</span><span class="v num">{{bytes $m.TotalDiskSpill}}</span><span class="x">{{bytes $m.TotalMemSpill}} of in-memory data was written out as {{bytes $m.TotalDiskSpill}} on disk because it did not fit.</span></div>
-          <div class="fact"><span class="l">Garbage collection</span><span class="v num">{{pct $m.GCShare}} of task time</span><span class="x">Time the JVM spent reclaiming memory instead of running tasks. Above 10% is a warning sign.</span></div>
-        </div>
-        {{if $m.HeapKnown}}<div class="chart"><h4>Peak heap against the configured heap</h4>{{memChart $r}}
-          <div class="legend"><span><i class="sw" style="background:var(--surface-2);border:1px solid var(--line)"></i>Configured heap</span><span><i class="sw" style="background:var(--accent)"></i>Peak heap used</span><span><i class="sw" style="background:var(--crit)"></i>Over 90% of the heap</span></div>
-          {{guide (axes "Rows" "One executor each." "Bar length" "The most Java heap it used, against the heap it was given (the full row).") (points "Bars close to the end (red, over 90%) risk running out of memory." "Bars that stay well short: executors had more heap than they used and could be smaller.") "Heap is sampled, so short spikes can be missed." (runNotes $r "peakHeap")}}
-        </div>{{end}}
-        {{spillChart $r}}
-        <p class="explain"><b>These are peaks, not continuous readings.</b> Spark samples executor memory on heartbeats and at the end of each task, so short spikes can be missed.{{if not $m.HeapKnown}} <b>This run recorded no executor memory samples</b>, so peak heap, off-heap and execution memory show as —; set spark.eventLog.logStageExecutorMetrics=true to record them.{{end}}{{if not $m.RSSKnown}} Whole-process memory (RSS, including Python) was not recorded; set spark.executor.processTreeMetrics.enabled=true to get it.{{end}}</p>
-        <div class="tbl"><table>
-          <thead><tr><th data-sort="num">Executor</th><th data-sort="text">Host</th><th class="num" data-sort="num">Peak heap</th><th class="num" data-sort="num">Off-heap</th><th class="num" data-sort="num">Execution</th><th class="num" data-sort="num">Storage</th><th class="num" data-sort="num">Process RSS</th><th data-sort="num">GC</th></tr></thead>
-          <tbody>{{if $m.Driver}}{{with $m.Driver}}<tr><td class="mono">driver</td><td class="mono">{{.Host}}</td><td class="num" data-v="{{.PeakHeap}}">{{if .PeakHeap}}{{bytes .PeakHeap}}{{else}}—{{end}} <span class="sub">of {{bytes .HeapBytes}}</span></td><td class="num" data-v="{{.PeakOffHeap}}">{{if .PeakOffHeap}}{{bytes .PeakOffHeap}}{{else}}—{{end}}</td><td class="num">—</td><td class="num">—</td><td class="num" data-v="{{.PeakRSS}}">{{if .PeakRSS}}{{bytes .PeakRSS}}{{else}}—{{end}}</td><td>—</td></tr>{{end}}{{end}}
-          {{range $m.Executors}}<tr><td class="mono" data-v="{{.ID}}">{{.ID}}</td><td class="mono">{{.Host}}</td>
-            <td class="num" data-v="{{.PeakHeap}}">{{if .PeakHeap}}{{bytes .PeakHeap}}{{else}}—{{end}} <span class="sub">of {{bytes .HeapBytes}}</span></td>
-            <td class="num" data-v="{{.PeakOffHeap}}">{{if $m.HeapKnown}}{{bytes .PeakOffHeap}}{{else}}—{{end}}</td>
-            <td class="num" data-v="{{.PeakExecution}}">{{if $m.HeapKnown}}{{bytes .PeakExecution}}{{else}}—{{end}}</td>
-            <td class="num" data-v="{{.PeakStorage}}">{{if $m.HeapKnown}}{{bytes .PeakStorage}}{{else}}—{{end}}</td>
-            <td class="num" data-v="{{.PeakRSS}}">{{if .PeakRSS}}{{bytes .PeakRSS}}{{else}}—{{end}}</td>
-            <td data-v="{{sharev .GCShare}}">{{if gcBad .GCShare}}<span class="warnv">{{pct .GCShare}}</span>{{else}}{{pct .GCShare}}{{end}}</td></tr>
-          {{end}}</tbody>
-        </table></div>
-        <p class="explain"><b>Off-heap</b>: JVM memory outside the heap (metaspace, code cache). <b>Execution</b> and <b>Storage</b>: the parts of Spark's working memory used for shuffles and joins, and for cached data. <b>Process RSS</b>: memory the whole executor process tree used, as the operating system sees it.</p>
-        {{if $m.Spill}}<h3>Stages that spilled</h3>
-        <div class="tbl"><table>
-          <thead><tr><th data-sort="num">Stage</th><th>Name</th><th class="num" data-sort="num">Spill (memory)</th><th class="num" data-sort="num">Spill (disk)</th><th class="num" data-sort="num">Shuffle write</th><th>Source</th></tr></thead>
-          <tbody>{{range $m.Spill}}<tr><td class="num" data-v="{{.StageID}}">{{.StageID}}{{if .Attempt}}.{{.Attempt}}{{end}}</td><td>{{.Name}}</td><td class="num" data-v="{{.MemoryBytes}}">{{bytes .MemoryBytes}}</td><td class="num" data-v="{{.DiskBytes}}">{{bytes .DiskBytes}}</td><td class="num" data-v="{{.ShuffleWrite}}">{{bytes .ShuffleWrite}}</td><td class="srcref">{{src .Source}}</td></tr>
-          {{end}}</tbody>
-        </table></div>
-        <p class="explain"><b>Spill (memory)</b> is the size of the data while it was in memory; <b>spill (disk)</b> is its size once written, usually smaller because it is serialised and compressed.</p>{{end}}
-        {{end}}
-        {{if $m.Missing}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $m.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
-      </section>
-
-      <section id="cpu">
-        <div class="sechead"><h2>CPU</h2><span class="pill {{cov $r.CPU.Coverage}}">{{covLabel $r.CPU.Coverage}}</span></div>
-        {{$c := $r.CPU}}{{if $c.RunMs}}
-        <div class="facts">
-          <div class="fact"><span class="l">CPU time used</span><span class="v num">{{dur $c.CPUMs}} of {{dur $c.RunMs}} run time</span><span class="x">{{pct $c.Share}}. Tasks spent the rest waiting on I/O, shuffle fetches, garbage collection or Python workers.</span></div>
-          <div class="fact"><span class="l">Executor cores busy</span><span class="v num">{{pct $c.BusyShare}}</span><span class="x">Task run time ({{dur $c.RunMs}}) out of the core time executors held ({{dur $c.AllocatedCoreMs}}).</span></div>
-        </div>
-        {{timeChart $r}}
-        {{splitChart $r}}
-        <h3>Stages with the most task time</h3>
-        <div class="tbl"><table>
-          <thead><tr><th data-sort="num">Stage</th><th>Name</th><th class="num" data-sort="num">Run time</th><th class="num" data-sort="num">CPU time</th><th data-sort="num">CPU share</th></tr></thead>
-          <tbody>{{range $c.Stages}}<tr><td data-v="{{.ID}}">{{.ID}}</td><td>{{.Label}}<span class="sub srcref">{{src .Source}}</span></td><td class="num" data-v="{{.RunMs}}">{{dur .RunMs}}</td><td class="num" data-v="{{.CPUMs}}">{{dur .CPUMs}}</td><td data-v="{{sharev .Share}}">{{share .Share}}</td></tr>
-          {{end}}</tbody>
-        </table></div>
-        <p class="explain"><b>Run time</b> adds up every task's time in the stage, so it can exceed the stage's wall-clock time. {{if hasPrefix $r.Application.Master "yarn"}}{{end}}Spark measures CPU time on the JVM task thread only; work done in Python UDFs is not counted.</p>
-        {{end}}
-        {{if $c.Missing}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $c.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
-      </section>
-
-      <section id="io">
-        <div class="sechead"><h2>Storage and I/O</h2><span class="pill {{cov $r.IO.Coverage}}">{{covLabel $r.IO.Coverage}}</span></div>
-        {{$io := $r.IO}}{{if $r.EventLog}}
-        <div class="facts">
-          <div class="fact"><span class="l">Read</span><span class="v num">{{bytes $io.Totals.InputBytes}} · {{num $io.Totals.InputRecords}} rows</span><span class="x">From files and tables. Cached data read back is not counted here.</span></div>
-          <div class="fact"><span class="l">Written</span><span class="v num">{{bytes $io.Totals.OutputBytes}} · {{num $io.Totals.OutputRecords}} rows</span><span class="x">To files and tables.</span></div>
-          <div class="fact"><span class="l">Shuffled</span><span class="v num">{{bytes $io.Totals.ShuffleWriteBytes}} written · {{bytes $io.Totals.ShuffleReadBytes}} read</span><span class="x">Data exchanged between executors for joins, groupings and repartitions. {{bytes $io.Totals.ShuffleRemoteBytes}} came over the network.</span></div>
-          <div class="fact"><span class="l">Waiting for shuffle data</span><span class="v num">{{dur $io.Totals.ShuffleFetchWaitMs}}</span><span class="x">Task time spent waiting for shuffle blocks from other executors.</span></div>
-        </div>
-        {{dataChart $r}}{{dataOverTime $r}}
-        {{if $io.Data}}<h3>Tables and paths</h3>
-        <div class="tbl"><table>
-          <thead><tr><th data-sort="text">Access</th><th data-sort="text">What</th><th data-sort="text">Name</th><th>Format</th><th>Found in</th></tr></thead>
-          <tbody>{{range $io.Data}}<tr><td>{{.Access}}</td><td>{{.Kind}}</td><td class="mono">{{.Name}}</td><td>{{.Format}}</td><td class="srcref">{{src .Source}}</td></tr>
-          {{end}}</tbody>
-        </table></div>
-        <p class="explain">From SQL physical plans and catalog events. Reads and writes done with RDD code, or inside Python, do not appear in plans.</p>{{end}}
-        {{if $io.Stages}}<h3>Stages that moved the most data</h3>
-        <div class="tbl"><table>
-          <thead><tr><th data-sort="num">Stage</th><th>Name</th><th class="num" data-sort="num">Input</th><th class="num" data-sort="num">Output</th><th class="num" data-sort="num">Shuffle read</th><th class="num" data-sort="num">Shuffle write</th><th class="num" data-sort="num">Spill (disk)</th></tr></thead>
-          <tbody>{{range $io.Stages}}<tr><td data-v="{{.StageID}}">{{.StageID}}{{if .Attempt}}.{{.Attempt}}{{end}}</td><td>{{.Name}}<span class="sub srcref">{{src .Source}}</span></td>
-            <td class="num" data-v="{{.Totals.InputBytes}}">{{bytes .Totals.InputBytes}}<span class="sub">{{num .Totals.InputRecords}} rows</span></td>
-            <td class="num" data-v="{{.Totals.OutputBytes}}">{{bytes .Totals.OutputBytes}}<span class="sub">{{num .Totals.OutputRecords}} rows</span></td>
-            <td class="num" data-v="{{.Totals.ShuffleReadBytes}}">{{bytes .Totals.ShuffleReadBytes}}</td>
-            <td class="num" data-v="{{.Totals.ShuffleWriteBytes}}">{{bytes .Totals.ShuffleWriteBytes}}</td>
-            <td class="num" data-v="{{.Totals.DiskSpillBytes}}">{{bytes .Totals.DiskSpillBytes}}</td></tr>
-          {{end}}</tbody>
-        </table></div>{{end}}
-        <h3>Cached data</h3>
-        {{if $io.Cached}}<div class="tbl"><table>
-          <thead><tr><th>RDD</th><th>What was cached</th><th>Kept in</th><th class="num">Partitions</th><th class="num">Size</th><th>Released</th></tr></thead>
-          <tbody>{{range $io.Cached}}<tr><td>{{.ID}}</td><td><span class="mono">{{short .Name 160}}</span><span class="sub srcref">{{src .Source}}</span></td><td>{{.StorageLevel}}</td><td class="num">{{.Partitions}}</td><td class="num">{{if .SizeKnown}}{{bytes .MemoryBytes}} memory · {{bytes .DiskBytes}} disk{{else}}not logged{{end}}</td><td>{{if .Unpersisted}}yes{{else}}no{{end}}</td></tr>
-          {{end}}</tbody>
-        </table></div>{{else}}<p class="note">Nothing was cached (persist() or cache()) in this run.</p>{{end}}
-        {{end}}
-        {{with $r.HBase}}<h3 id="hbase">HBase</h3>
-        <div class="facts">
-          {{if .Quorum}}<div class="fact"><span class="l">ZooKeeper quorum</span><span class="v">{{.Quorum}}</span><span class="x">Where the HBase clients asked for HBase's address, from their own logs. <span class="srcref">{{src .QuorumSource}}</span></span></div>
-          <div class="fact"><span class="l">ZooKeeper connections</span><span class="v num">{{numi .Sessions}}{{if .MostSessionsBy}} · most {{numi .MostSessions}}, by {{.MostSessionsBy}}{{end}}</span><span class="x">Each HBase connection a process opens makes one, and each is a trip to ZooKeeper. Code that opens a connection per task makes one per task.</span></div>{{end}}
-          {{range .Libraries}}<div class="fact"><span class="l">{{.Name}}</span><span class="v">{{.Version}}</span><span class="x">From <span class="mono">{{.Path}}</span>. <span class="srcref">{{src .Source}}</span></span></div>{{end}}
-          {{if .Stages}}<div class="fact"><span class="l">Time in HBase stages</span><span class="v num">{{dur .TimeMs}} of {{dur .RunMs}}{{if .RunTimeMs}} · CPU {{pct (ratio (hbaseCPUMs .CPUTimeNs) .RunTimeMs)}} of task time{{end}}</span><span class="x">Wall-clock time while a stage that read or wrote HBase ran. Task time the CPU was not busy is mostly time spent waiting, usually on HBase.</span></div>{{end}}
-          {{if or .LocalRegions .RemoteRegions}}<div class="fact"><span class="l">Regions read on their node</span><span class="v num">{{numi .LocalRegions}} of {{numi (hbaseRegions .LocalRegions .RemoteRegions)}}</span><span class="x">TableInputFormat regions an executor read on the node of the region server holding them; the rest crossed the network between nodes.</span></div>{{end}}
-        </div>
-        {{if .Stages}}<div class="tbl"><table>
-          <thead><tr><th data-sort="num">Stage</th><th>What</th><th>Reads</th><th>Writes</th><th>How</th><th class="num" data-sort="num">Took</th><th class="num" data-sort="num">CPU of task time</th><th>HBase retries and errors</th><th>Slowest task</th></tr></thead>
-          <tbody>{{range .Stages}}<tr><td data-v="{{.StageID}}">{{.StageID}}{{if .Attempt}}.{{.Attempt}}{{end}}</td><td>{{short .Description 90}}<span class="sub srcref">{{src .Source}}</span></td>
-            <td class="mono">{{join .Reads ", "}}</td><td class="mono">{{join .Writes ", "}}</td><td>{{.API}}</td>
-            <td class="num" data-v="{{.DurationMs}}">{{dur .DurationMs}}</td><td class="num" data-v="{{hbaseCPUMs .CPUTimeNs}}">{{pct (ratio (hbaseCPUMs .CPUTimeNs) .RunTimeMs)}}</td>
-            <td>{{hbaseRetries .Retries}}{{if .Servers}}<span class="sub">on {{join .Servers ", "}}</span>{{end}}{{with .ServerEvents}}<span class="sub">servers logged {{hbaseServer .}}</span>{{end}}{{with hbaseSrcs .RetrySources .ServerEventSources}}<span class="sub srcref">{{.}}</span>{{end}}</td>
-            <td>{{with .Slowest}}{{dur .DurationMs}} on {{.Host}}{{end}}{{if .MedianMs}}<span class="sub">median {{dur .MedianMs}}</span>{{end}}</td></tr>
-          {{end}}</tbody>
-        </table></div>{{end}}
-        {{range $sc := .Scans}}<h3 id="hbase-scan-{{.StageID}}">Stage {{.StageID}}{{if .Attempt}}.{{.Attempt}}{{end}}: TableInputFormat scan of <span class="mono">{{.Table}}</span></h3>
-        <div class="facts">
-          <div class="fact"><span class="l">Key range read</span><span class="v mono">{{.Rows}}</span><span class="x">The key range the scan's regions cover, from the executors' split lines: each region's range cut to the scan's start and stop rows. Row keys are shown as HBase prints them, other bytes as \xNN.</span></div>
-          <div class="fact"><span class="l">Regions read</span><span class="v num">{{numi (len .Regions)}} on {{numi (len .Servers)}} region server{{if ne (len .Servers) 1}}s{{end}} · {{numi .Tasks}} task{{if ne .Tasks 1}}s{{end}}</span><span class="x">TableInputFormat makes one split per region the scan overlaps, and Spark runs one task per split, so the stage cannot run more tasks at once than this.</span></div>
-          {{if or .FromLogs .Rebuilt}}<div class="fact"><span class="l">Rows returned</span><span class="v">needs the event log</span><span class="x">Spark records the rows each task read only in the event log; the logs do not say. Spark counts no bytes for HBase input.</span></div>{{else}}<div class="fact"><span class="l">Rows returned</span><span class="v num">{{num .TotalRows}}</span><span class="x">Rows the scan returned to Spark, after its filters ran on the region servers, from the event log. Spark counts no bytes for HBase input.</span></div>{{end}}
-          {{if .SizedRegions}}<div class="fact"><span class="l">Estimated size</span><span class="v num">{{bytes .SizeBytes}}{{if lt .SizedRegions (len .Regions)}} · {{numi .SizedRegions}} of {{numi (len .Regions)}} regions{{end}}</span><span class="x">HBase's estimate of each region's size on disk, as TableInputFormat logged it (Input split length); not the bytes sent over the network. A region's size is left out when its line could not be told apart from another task's.</span></div>{{end}}
-          {{with .Scan}}<div class="fact"><span class="l">Scan as the job defined it</span><span class="v mono">{{.Rows}}</span><span class="x">{{range scanFacts .}}{{index . 0}}: <span class="mono">{{index . 1}}</span>. {{end}}From <span class="srcref">{{src .Source}}</span>.</span></div>{{end}}
-        </div>
-        {{with .Scan}}{{with .Filter}}<p class="explain">Filters, which the region servers apply before returning rows (<span class="srcref">{{src $sc.Scan.Source}}</span>):</p><pre class="mono">{{range .Lines}}{{.}}
-{{end}}</pre>{{end}}{{else}}<p class="explain">The scan's columns and filters are not in the logs: TableInputFormat logs only each region's key range. Run <span class="mono">sparkplain -decode-scan -</span> on the job's scan string to read it, or have a non-production run print it as a <span class="mono">sparkplain-scan</span> line.</p>{{end}}
-        <div class="tbl"><table>
-          <thead><tr><th data-sort="text">Region server</th><th class="num" data-sort="num">Regions</th><th class="num" data-sort="num">Rows</th><th class="num" data-sort="num">Estimated size</th><th class="num" data-sort="num">Task time</th></tr></thead>
-          <tbody>{{range .Servers}}<tr><td class="mono">{{.Server}}</td><td class="num" data-v="{{.Regions}}">{{numi .Regions}}</td><td class="num" data-v="{{.Rows}}">{{if and $sc.Tied (not $sc.FromLogs) (not $sc.Rebuilt)}}{{num .Rows}}{{else}}—{{end}}</td><td class="num" data-v="{{.SizeBytes}}">{{if .SizeBytes}}{{bytes .SizeBytes}}{{else}}—{{end}}</td><td class="num" data-v="{{.TaskMs}}">{{if $sc.Tied}}{{dur .TaskMs}}{{else}}—{{end}}</td></tr>
-          {{end}}</tbody>
-        </table></div>
-        {{$regions := headRegions .Regions 50}}<div class="tbl"><table>
-          <thead><tr><th class="num" data-sort="num">#</th><th data-sort="text">Start row</th><th data-sort="text">End row</th><th data-sort="text">Region server</th><th class="num" data-sort="num">Rows</th><th class="num" data-sort="num">Took</th><th data-sort="text">Executor</th><th class="num" data-sort="num">Estimated size</th><th>Found in</th></tr></thead>
-          <tbody>{{range $regions}}<tr><td class="num" data-v="{{.Index}}">{{.Index}}</td><td class="mono">{{if .Region.StartRow}}{{.Region.StartRow}}{{else}}(first row){{end}}</td><td class="mono">{{if .Region.EndRow}}{{.Region.EndRow}}{{else}}(last row){{end}}</td><td class="mono" title="{{.Region.Server}}">{{shortHost .Region.Server}}</td>
-            {{with .Region.Task}}<td class="num" data-v="{{.Rows}}">{{if or $sc.FromLogs $sc.Rebuilt}}—{{else}}{{num .Rows}}{{end}}</td><td class="num" data-v="{{.DurationMs}}">{{dur .DurationMs}}</td><td>{{.ExecutorID}}<span class="sub">task {{.TaskID}}</span></td>{{else}}<td class="num">—</td><td class="num">—</td><td>—</td>{{end}}
-            <td class="num" data-v="{{.Region.SizeBytes}}">{{if .Region.SizeBytes}}{{bytes .Region.SizeBytes}}{{else}}—{{end}}</td><td class="srcref">{{src .Region.Source}}{{with .Region.Task}}<br>{{src .Source}}{{end}}</td></tr>
-          {{end}}</tbody>
-        </table></div>
-        {{if gt (len .Regions) (len $regions)}}<p class="explain">The {{numi (len $regions)}} regions {{if or .FromLogs .Rebuilt}}that took longest{{else if .Tied}}that returned the most rows{{else}}first in key order{{end}} of {{numi (len .Regions)}}; the explorer and the JSON report list them all.</p>{{end}}
-        {{if .FromLogs}}<p class="explain">Built without the event log: each split line names its task by the executor thread that logged it (for task <i>p</i> in stage <i>s</i> (TID <i>t</i>)), and each region's time runs from that task's "Running task" line to its "Finished task" line in the executor's log. A region whose task logged no end, or only failed, shows no time. Rows per region and the stage's own record need the event log.</p>{{else if .Rebuilt}}<p class="explain">The run was rebuilt from the driver's log, so rows per region need the event log. {{if eq .TiedBy "task"}}Each region is tied to the task named by the executor thread on its split line{{else if .Tied}}Each region is tied to its task by key order (Spark's partition <i>n</i> reads split <i>n</i>), checked against the executor that logged each split{{end}}{{if .Tied}}, and its time is that task's duration as the driver logged it ("Finished task … in <i>n</i> ms").{{else}}Time per region is not shown: {{.Untied}}{{end}}</p>{{else if eq .TiedBy "task"}}<p class="explain">Each region is tied to the task that read it by the executor thread named on its split line (for task <i>p</i> in stage <i>s</i> (TID <i>t</i>)), so the tie is exact.</p>{{else if .Tied}}<p class="explain">Each region is tied to the task that read it: TableInputFormat makes its splits in key order and Spark's partition <i>n</i> reads split <i>n</i>, checked against the executor that logged each split.</p>{{else}}<p class="explain">Rows and time per region are not shown: {{.Untied}}</p>{{end}}
-        {{end}}
-        {{if .Tasks}}<h3 id="hbase-tasks">Every HBase task, all stages</h3>
-        <p class="explain">One row per task attempt that read an HBase region with TableInputFormat, across every stage, in stage, partition and attempt order. The region comes from the split line its executor logged; the stage and task from the executor thread named on that line, or, with the event log, from the scan's tie. A retried task has a row per attempt. Times run from the task's "Running task" line to its "Finished task" line, or come from the event log, which also has its rows.</p>
-        <div class="tbl"><table>
-          <thead><tr><th class="num" data-sort="num">Stage</th><th>Tables</th><th class="num" data-sort="num">Task attempts</th><th class="num" data-sort="num">Failed</th><th class="num" data-sort="num">Regions</th><th class="num" data-sort="num">Region servers</th><th data-sort="text">First start</th><th data-sort="text">Last end</th><th class="num" data-sort="num">Ran for</th></tr></thead>
-          <tbody>{{range .TaskStages}}<tr><td class="num" data-v="{{.Stage}}">{{if ge .Stage 0}}{{.Stage}}{{if .StageAttempt}}.{{.StageAttempt}}{{end}}{{else}}not known{{end}}</td><td class="mono">{{join .Tables ", "}}</td><td class="num" data-v="{{.Tasks}}">{{numi .Tasks}}</td><td class="num" data-v="{{.Failed}}">{{if .Failed}}{{numi .Failed}}{{else}}—{{end}}</td><td class="num" data-v="{{.Regions}}">{{numi .Regions}}</td><td class="num" data-v="{{.Servers}}">{{numi .Servers}}</td><td>{{time .Start "hms"}}</td><td>{{time .End "hms"}}</td><td class="num">{{span .Start .End}}</td></tr>
-          {{end}}</tbody>
-        </table></div>
-        {{$tasks := headTasks .Tasks}}<div class="tbl"><table>
-          <thead><tr><th class="num" data-sort="num">Stage</th><th class="num" data-sort="num">Task</th><th class="num" data-sort="num">TID</th><th data-sort="text">Table</th><th data-sort="text">Start row</th><th data-sort="text">End row</th><th data-sort="text">Region</th><th data-sort="text">Region server</th><th data-sort="text">Executor</th><th data-sort="text">Started</th><th data-sort="text">Ended</th><th class="num" data-sort="num">Took</th><th data-sort="text">Outcome</th><th class="num" data-sort="num">Estimated size</th><th class="num" data-sort="num">Rows</th><th>Its server logged</th><th>Found in</th></tr></thead>
-          <tbody>{{range $tasks}}<tr><td class="num" data-v="{{.Stage}}">{{if ge .Stage 0}}{{.Stage}}{{if .StageAttempt}}.{{.StageAttempt}}{{end}}{{else}}—{{end}}</td><td class="num" data-v="{{.Partition}}">{{if ge .Partition 0}}{{.Partition}}.{{.Attempt}}{{else}}—{{end}}</td><td class="num" data-v="{{.TaskID}}">{{if ge .TaskID 0}}{{.TaskID}}{{else}}—{{end}}</td>
-            <td class="mono">{{.Table}}</td><td class="mono">{{if .StartRow}}{{.StartRow}}{{else}}(first row){{end}}</td><td class="mono">{{if .EndRow}}{{.EndRow}}{{else}}(last row){{end}}</td><td class="mono">{{.Region}}</td><td class="mono" title="{{.Server}}">{{shortHost .Server}}</td>
-            <td>{{if .ExecutorID}}{{.ExecutorID}}{{else}}—{{end}}{{with .Host}}<span class="sub" title="{{.}}">{{shortHost .}}</span>{{end}}</td><td>{{time .Start "hms"}}</td><td>{{time .End "hms"}}</td>
-            <td class="num" data-v="{{.DurationMs}}">{{if .Timed}}{{dur .DurationMs}}<span class="sub">{{if .Slow}}<b>slow</b> · {{end}}{{.TimeFrom}}</span>{{else}}—{{end}}</td><td>{{if .Outcome}}{{.Outcome}}{{else}}—{{end}}</td>
-            <td class="num" data-v="{{.SizeBytes}}">{{if .SizeBytes}}{{bytes .SizeBytes}}{{else}}—{{end}}</td><td class="num" data-v="{{.Rows}}">{{if .RowsKnown}}{{num .Rows}}{{else}}—{{end}}</td>
-            <td>{{range .Events}}{{with index $r.HBase.RegionEvents .}}<span class="sub">{{.Event}}{{if gt .Count 1}} ×{{.Count}}{{end}}{{if .DurationMs}} {{dur .DurationMs}}{{end}}</span>{{end}}{{else}}—{{end}}</td>
-            <td class="srcref">{{src .Source}}{{if .EndSource.File}}<br>{{src .EndSource}}{{end}}{{if .TaskSource.File}}<br>{{src .TaskSource}}{{end}}</td></tr>
-          {{end}}</tbody>
-        </table></div>
-        {{if gt (len .Tasks) (len $tasks)}}<p class="explain">The first {{numi (len $tasks)}} of {{numi (len .Tasks)}} task attempts, in stage order; the explorer's HBase tasks view and the JSON report list them all.</p>{{end}}
-        {{if lt (tasksWithRows .Tasks) (len .Tasks)}}<p class="explain">Rows are shown only for tasks the event log records (one successful attempt per partition); the executors' logs do not count rows.</p>{{end}}
-        {{end}}
-        {{if .RegionEvents}}<h3 id="hbase-region-events">What the region servers logged about the regions read</h3>
-        <p class="explain">What HBase's servers logged about a region the run read, while one of its tasks was reading it: flushes and compactions, the region going offline (closed on one server, opened on another), moves and splits the Master ran, refused writes, and slow calls. Servers name a region by its encoded name, the same as the split lines. Events on a slow task's region (at least twice its stage's median) come first; such work competes with the scan for the region's disk and memory, or makes the client wait and retry.</p>
-        {{$evs := headEvents .RegionEvents}}<div class="tbl"><table>
-          <thead><tr><th data-sort="text">When</th><th data-sort="text">Event</th><th data-sort="text">Region</th><th data-sort="text">Server</th><th>What it logged</th><th class="num" data-sort="num">Took</th><th>While these tasks read it</th><th>Found in</th></tr></thead>
-          <tbody>{{range $evs}}<tr><td>{{if gt .Count 1}}{{time .First "hms"}} to {{end}}{{time .Time "hms"}}</td><td>{{.Event}}{{if gt .Count 1}} ×{{numi .Count}}{{end}}</td><td class="mono">{{.Region}}</td><td class="mono" title="{{.Host}}">{{shortHost .Host}}</td><td>{{.Detail}}</td>
-            <td class="num" data-v="{{.DurationMs}}">{{if .DurationMs}}{{dur .DurationMs}}{{else}}—{{end}}</td><td>{{range $i, $t := .Tasks}}{{if $i}}<br>{{end}}{{$t}}{{end}}{{with .Slow}}<span class="sub"><b>slow:</b> {{join . "; "}}</span>{{end}}</td><td class="srcref">{{src .Source}}</td></tr>
-          {{end}}</tbody>
-        </table></div>
-        {{if gt (len .RegionEvents) (len $evs)}}<p class="explain">The first {{numi (len $evs)}} of {{numi (len .RegionEvents)}}; the explorer's HBase tasks view and the JSON report list them all.</p>{{end}}{{end}}
-        {{if .Load}}<h3 id="hbase-load">Region server load over time</h3>
-        <p class="explain">How many of the run's TableInputFormat tasks each region server was serving at once, from each task's start and end (its Running and Finished lines, or the event log). Each task reads one region, so a server serving most of the tasks running at once is where the reads queued.</p>
-        {{hbaseLoadChart $r}}
-        <div class="tbl"><table>
-          <thead><tr><th data-sort="text">Region server</th><th class="num" data-sort="num">Tasks</th><th class="num" data-sort="num">Task time</th><th class="num" data-sort="num">Busy for</th><th class="num" data-sort="num">Most at once</th><th data-sort="text">When</th><th class="num" data-sort="num">On average while busy</th><th>Served most of the scans running</th></tr></thead>
-          <tbody>{{range .Load}}<tr><td class="mono" title="{{.Server}}">{{shortHost .Server}}</td><td class="num" data-v="{{.Tasks}}">{{numi .Tasks}}</td><td class="num" data-v="{{.TaskMs}}">{{dur .TaskMs}}</td><td class="num" data-v="{{.BusyMs}}">{{dur .BusyMs}}</td><td class="num" data-v="{{.Peak}}">{{numi .Peak}}</td><td>{{time .PeakAt "hms"}}</td><td class="num" data-v="{{ratio .TaskMs .BusyMs}}">{{if .BusyMs}}{{printf "%.1f" (ratio .TaskMs .BusyMs)}} tasks{{else}}—{{end}}</td>
-            <td>{{with .Hot}}{{time .From "hms"}} to {{time .To "hms"}} ({{span .From .To}}): up to {{numi .Tasks}} of {{numi .All}}{{else}}—{{end}}</td></tr>
-          {{end}}</tbody>
-        </table></div>
-        <p class="explain"><b>Busy for</b> is the time at least one scan task was reading from the server; <b>on average while busy</b> is its task time over that. A stretch counts as serving most of the scans when it served at least <span class="mono">hbase-hotspot-share</span> (75% unless the config file sets it) of those running, and at least 4.</p>{{end}}
-        {{if .ServerEvents}}<h3>What HBase's servers logged while the run went on</h3>
-        <div class="tbl"><table>
-          <thead><tr><th data-sort="text">Event</th><th data-sort="text">Server</th><th data-sort="text">Table</th><th class="num" data-sort="num">Times</th><th>This run's</th><th>Detail</th><th>Found in</th></tr></thead>
-          <tbody>{{range .ServerEvents}}<tr><td>{{hbaseEvent .Event}}</td><td class="mono">{{.Host}}</td><td class="mono">{{.Table}}</td><td class="num" data-v="{{.Count}}">{{numi .Count}}</td><td>{{if .Mine}}yes{{else}}—{{end}}</td><td>{{.Detail}}</td><td class="srcref">{{src .Source}}</td></tr>
-          {{end}}</tbody>
-        </table></div>
-        <p class="explain">From the HBase Master's and region servers' own logs, kept to the run's time. They are the whole cluster's logs: a row marked "yes" names one of this run's tables, a scan from one of its executors, or a whole region server, which every client depends on. The other rows may be other work on the cluster at the same time.</p>{{end}}
-        {{if .Tables}}<div class="tbl"><table>
-          <thead><tr><th data-sort="text">Table</th><th>Read</th><th>Written</th><th>How</th><th>Regions read, by region server</th><th>Found in</th></tr></thead>
-          <tbody>{{range .Tables}}<tr><td class="mono">{{.Name}}</td><td>{{if .Read}}yes{{end}}</td><td>{{if .Written}}yes{{end}}</td><td>{{join .APIs ", "}}</td>
-            <td>{{range .Regions}}<span class="mono">{{.Server}}</span>: {{.Regions}}<br>{{else}}—{{end}}</td><td class="srcref">{{src .Source}}</td></tr>
-          {{end}}</tbody>
-        </table></div>
-        <p class="explain">Tables come from the hbase-spark connector's SQL plans and from the log lines of HBase's TableInputFormat and TableOutputFormat. A TableInputFormat scan reads one region per task; the region server is where that region was held.</p>{{end}}
-        {{if .Missing}}<div class="missing"><h3>Not shown for HBase</h3><ul>{{range .Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
-        {{end}}
-        {{if $io.Missing}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $io.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
-      </section>
-
-      <section id="stages">
-        <div class="sechead"><h2>Jobs and stages</h2><span class="pill {{cov $r.Jobs.Coverage}}">{{covLabel $r.Jobs.Coverage}}</span></div>
-        {{$j := $r.Jobs}}{{if $r.EventLog}}
-        <p class="lede">A job is one action in the code (such as count, collect or write). Spark splits each job into stages at every shuffle, and each stage into one task per partition. {{numi (len $j.Jobs)}} jobs ran, {{$j.Failed}} failed; {{numi (len $j.Stages)}} stage attempts, {{num .Tasks}} tasks.</p>
-        {{if gt (len $j.CriticalPath) 1}}<p class="explain"><b>Critical path:</b> the longest job was job {{$j.CriticalJob}}; within it, the slowest chain of dependent stages was {{ints $j.CriticalPath}}. Speeding up other stages would not shorten that job.</p>{{end}}
-        {{stagesChart $r}}{{spreadChart $r}}
-        <h3>Jobs</h3>
-        <div class="tbl"><table>
-          <thead><tr><th data-sort="num">Job</th><th data-sort="text">What</th><th data-sort="text">Status</th><th data-sort="text">Started</th><th class="num" data-sort="num">Duration</th><th class="num" data-sort="num">Stages</th><th data-sort="num">SQL</th></tr></thead>
-          <tbody>{{range $j.Jobs}}<tr><td data-v="{{.ID}}">{{.ID}}</td>
-            <td>{{if .Description}}{{.Description}}<span class="sub mono">{{.Name}}</span>{{else}}<span class="mono">{{.Name}}</span>{{end}}{{if .Failure}}<span class="sub bad">{{short .Failure 300}}</span>{{end}}</td>
-            <td><span class="pill {{if eq .Status "succeeded"}}full{{else if eq .Status "failed"}}crit{{else}}none{{end}}">{{statusLabel .Status}}</span></td>
-            <td>{{time .Submitted "hms"}}</td><td class="num" data-v="{{jobDur .}}">{{dur (jobDur .)}}</td><td class="num">{{len .StageIDs}}</td><td data-v="{{if .SQLExecutionID}}{{.SQLExecutionID}}{{end}}">{{with .SQLExecutionID}}<a href="#sql-{{.}}">{{.}}</a>{{end}}</td></tr>
-          {{end}}</tbody>
-        </table></div>
-        <h3>Stages</h3>
-        <div class="tbl"><table>
-          <thead><tr><th data-sort="num">Stage</th><th data-sort="text">Name</th><th data-sort="text" title="The line of your code that ran the stage: its own call site, or, for a stage named after Spark's own code, its job's action">Your code</th><th data-sort="text" title="The folders and tables the stage read and wrote, from its executors' logs, its SQL plan and the HBase section">Reads / writes</th><th data-sort="text">Status</th><th class="num" data-sort="num">Duration</th><th class="num" data-sort="num">Tasks</th><th class="num" data-sort="num">Median task</th><th class="num" data-sort="num">p95</th><th class="num" data-sort="num">Slowest</th><th class="num" data-sort="num">Skew</th><th class="num" data-sort="num">Spill (disk)</th><th class="num" data-sort="num">Failed tasks</th></tr></thead>
-          <tbody>{{range $j.Stages}}<tr><td data-v="{{.ID}}">{{.ID}}{{if .Attempt}}.{{.Attempt}}{{end}}</td>
-            <td>{{.Name}}{{if .JobIDs}}<span class="sub">job {{ints .JobIDs}}</span>{{end}}{{if .FailureReason}}<span class="sub bad">{{short .FailureReason 300}}</span>{{end}}</td>
-            {{with index $.Mine (stageKey .)}}<td class="mono" title="{{.File}}:{{.Line}}">{{.Label}}{{with .Via}}<span class="sub">{{.}}</span>{{end}}</td>{{else}}<td>—</td>{{end}}
-            <td class="data">{{range $i, $d := .Data}}{{if lt $i maxDataCell}}<span class="dl" title="{{.Name}}{{with .From}} (from {{join . ", "}}){{end}}">{{short (dataLabel $d) 140}}</span>{{end}}{{else}}—{{end}}{{if gt (dataMore .Data) 0}}<span class="sub">and {{dataMore .Data}} more (the explorer lists them)</span>{{end}}</td>
-            <td><span class="pill {{if eq .Status "succeeded"}}full{{else if eq .Status "failed"}}crit{{else}}none{{end}}">{{statusLabel .Status}}</span></td>
-            <td class="num" data-v="{{stageDur .}}">{{if stageDur .}}{{dur (stageDur .)}}{{else}}—{{end}}</td>
-            <td class="num" data-v="{{.Totals.Tasks}}">{{num .Totals.Tasks}}</td>
-            <td class="num" data-v="{{.TaskDuration.P50}}">{{if .TaskDuration.Count}}{{dur .TaskDuration.P50}}{{else}}—{{end}}</td>
-            <td class="num" data-v="{{.TaskDuration.P95}}">{{if .TaskDuration.Count}}{{dur .TaskDuration.P95}}{{else}}—{{end}}</td>
-            <td class="num" data-v="{{.TaskDuration.Max}}">{{if .Slowest}}{{dur .TaskDuration.Max}}<span class="sub srcref">{{src .Slowest.Source}}</span>{{else}}—{{end}}</td>
-            <td class="num" data-v="{{skewv .TaskDuration}}">{{skewx .TaskDuration}}</td>
-            <td class="num" data-v="{{.Totals.DiskSpillBytes}}">{{if .Totals.DiskSpillBytes}}{{bytes .Totals.DiskSpillBytes}}{{else}}—{{end}}</td>
-            <td class="num" data-v="{{.Totals.Failed}}">{{if gt .Totals.Failed 0}}<span class="bad">{{num .Totals.Failed}}</span>{{else}}0{{end}}</td></tr>
-          {{end}}</tbody>
-        </table></div>
-        <p class="explain"><b>Median task</b> and <b>p95</b>: half the tasks finished faster than the median, 95% faster than p95 (successful tasks only). <b>Skew</b>: the slowest task's time over the median. Above {{printf "%.0f" 5.0}}× one partition is much bigger than the rest. Skipped stages reused earlier shuffle output and did no work. <b>Reads / writes</b>: the folders and tables each stage read and wrote, from its executors' logs, its SQL plan and the HBase section. A file split is a file, or a piece of a large one, that a task read; its size is the piece's length, more than was read from a columnar file such as Parquet. A write's size is the bytes uploaded.</p>
-        {{range $j.Stages}}{{if .Failures}}<details><summary>Stage {{.ID}}{{if .Attempt}}.{{.Attempt}}{{end}}: {{numi (len .Failures)}} kind{{if gt (len .Failures) 1}}s{{end}} of task failure</summary><div class="inner">
-          <div class="tbl"><table><thead><tr><th class="num">Count</th><th>Reason</th><th>Executors</th><th>First seen</th></tr></thead>
-          <tbody>{{range .Failures}}<tr><td class="num">{{num .Count}}</td><td>{{.Message}}<span class="sub">{{.Kind}}</span></td><td class="mono">{{join .Executors ", "}}</td><td class="srcref">{{src .Source}}</td></tr>{{end}}</tbody></table></div>
-        </div></details>{{end}}{{end}}
-        {{else}}<div class="missing"><h3>Needs the event log</h3><ul>{{range $j.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
-      </section>
-
-      {{with $r.TaskStories}}{{$ts := .}}{{$t := .Totals}}<section id="tasklogs">
-        <div class="sechead"><h2>What each task did</h2><span class="pill {{cov .Coverage}}">{{covLabel .Coverage}}</span></div>
-        <p class="lede">Each executor logs what its tasks do: the broadcast variables they read, the shuffle blocks they fetched from their own node or over the network, the files or HBase regions they read, the blocks they cached, the data they spilled to disk, the output they committed and the result they sent back to the driver. {{numi (len .Tasks)}} task attempts have a story here{{if and .ByThread .ByTID}}: {{numi .ByThread}} told apart by the thread that logged each line, {{numi .ByTID}} by the lines that name their task{{else if .ByThread}}, every line told apart by the thread that logged it{{else}}, told apart by the lines that name their task (TID) and, for other lines, by being the only task its executor was running{{end}}.</p>
-        <div class="facts">
-          <div class="fact"><span class="l">Broadcasts read</span><span class="v num">{{numi $t.Broadcasts}}{{if $t.Broadcasts}} · {{bytes $t.BroadcastBytes}} · {{dur $t.BroadcastMs}}{{end}}</span><span class="x">Variables the driver shared with the executors (a lookup table, a broadcast join's small side), read once per executor by the first task to need them. Sizes are Spark's estimates; the time is how long reading them took.</span></div>
-          <div class="fact"><span class="l">Shuffle blocks read</span><span class="v num">{{numi $t.ShuffleBlocks}}{{if $t.ShuffleBlocks}} · {{bytes $t.ShuffleBytes}}{{end}}</span><span class="x">Pieces of the previous stage's output each task fetched. {{bytes $t.ShuffleLocalBytes}} came from the task's own node and {{bytes $t.ShuffleRemoteBytes}} over the network from other nodes ({{numi $t.RemoteBlocks}} blocks in {{numi $t.RemoteFetches}} requests). Sizes are Spark's estimates from the map outputs, within a few percent; the event log has the exact bytes.</span></div>
-          <div class="fact"><span class="l">Input read</span><span class="v num">{{numi $t.Inputs}}{{if $t.InputBytes}} · {{bytes $t.InputBytes}}{{end}}</span><span class="x">Files, file ranges or HBase regions the tasks opened. The size adds up the file ranges' lengths, not the bytes read: a columnar file such as Parquet is read only in part.</span></div>
-          <div class="fact"><span class="l">Cached in memory</span><span class="v num">{{numi $t.CachedBlocks}}{{if $t.CachedBlocks}} · {{bytes $t.CachedBytes}}{{end}}</span><span class="x">Partitions of cached data (persist or cache) the tasks stored in executor memory, as Spark estimated them.{{if $t.Dropped}} {{numi $t.Dropped}} blocks were dropped from memory to make room.{{end}}{{if $t.NotCached}} {{numi $t.NotCached}} did not fit and were not cached.{{end}}</span></div>
-          <div class="fact"><span class="l">Spilled to disk</span><span class="v num">{{if $t.Spills}}{{numi $t.Spills}} times · {{bytes $t.SpillBytes}}{{else}}none{{end}}</span><span class="x">Data a task's sort or aggregation could not keep in memory and wrote to local disk, as its in-memory size. Spilling is slow: the data is written and read again.</span></div>
-          <div class="fact"><span class="l">Output committed</span><span class="v num">{{numi $t.Commits}}{{if $t.Commits}} · {{dur $t.CommitMs}}{{end}}</span><span class="x">Task outputs moved into place at the end of a write, and the time that took in all.</span></div>
-          <div class="fact"><span class="l">Results sent back</span><span class="v num">{{bytes $t.ResultBytes}}</span><span class="x">What the tasks returned to the driver (a collect's rows, counts, write statistics), serialized. Large results go through the block manager; results over spark.driver.maxResultSize are dropped.</span></div>
-          <div class="fact"><span class="l">Warnings and errors</span><span class="v num">{{numi $t.Warnings}} · {{numi $t.Errors}}</span><span class="x">Lines logged at WARN and ERROR as a task's, besides its end. The Logs section groups every warning and error.</span></div>
-        </div>
-        <h3>Per executor</h3>
-        <div class="tbl"><table>
-          <thead><tr><th data-sort="text">Executor</th><th class="num" data-sort="num">Tasks</th><th class="num" data-sort="num">Broadcasts</th><th class="num" data-sort="num">Shuffle, own node</th><th class="num" data-sort="num">Shuffle, network</th><th class="num" data-sort="num">Input</th><th class="num" data-sort="num">Cached</th><th class="num" data-sort="num">Spilled</th><th class="num" data-sort="num">Commits</th><th class="num" data-sort="num">Results</th><th class="num" data-sort="num">Lines not tied to a task</th><th>Log</th></tr></thead>
-          <tbody>{{range .Executors}}{{$x := .Totals}}<tr><td>{{.Executor}}{{with .Host}}<span class="sub" title="{{.}}">{{shortHost .}}</span>{{end}}</td><td class="num" data-v="{{.Tasks}}">{{numi .Tasks}}</td>
-            <td class="num" data-v="{{$x.BroadcastBytes}}">{{if $x.Broadcasts}}{{numi $x.Broadcasts}}<span class="sub">{{bytes $x.BroadcastBytes}} · {{dur $x.BroadcastMs}}</span>{{else}}—{{end}}</td>
-            <td class="num" data-v="{{$x.ShuffleLocalBytes}}">{{if $x.ShuffleReads}}{{bytes $x.ShuffleLocalBytes}}{{else}}—{{end}}</td><td class="num" data-v="{{$x.ShuffleRemoteBytes}}">{{if $x.ShuffleReads}}{{bytes $x.ShuffleRemoteBytes}}<span class="sub">{{numi $x.RemoteBlocks}} blocks</span>{{else}}—{{end}}</td>
-            <td class="num" data-v="{{$x.InputBytes}}">{{if $x.Inputs}}{{numi $x.Inputs}}{{if $x.InputBytes}}<span class="sub">{{bytes $x.InputBytes}}</span>{{end}}{{else}}—{{end}}</td>
-            <td class="num" data-v="{{$x.CachedBytes}}">{{if $x.CachedBlocks}}{{bytes $x.CachedBytes}}<span class="sub">{{numi $x.CachedBlocks}} blocks</span>{{else}}—{{end}}</td><td class="num" data-v="{{$x.SpillBytes}}">{{if $x.Spills}}{{bytes $x.SpillBytes}}{{else}}—{{end}}</td>
-            <td class="num" data-v="{{$x.CommitMs}}">{{if $x.Commits}}{{numi $x.Commits}}<span class="sub">{{dur $x.CommitMs}}</span>{{else}}—{{end}}</td><td class="num" data-v="{{$x.ResultBytes}}">{{bytes $x.ResultBytes}}</td>
-            <td class="num" data-v="{{.Untied.Lines}}">{{if .Untied.Lines}}{{numi .Untied.Lines}}{{else}}—{{end}}</td><td class="srcref">{{src .Source}}</td></tr>
-          {{end}}</tbody>
-        </table></div>
-        {{with $r.Flows}}<h3 id="flows">Data moved and memory over time</h3>
-        <p class="explain">Laid out from the same lines: the shuffle data each task asked for, from its own node and over the network ({{bytes .LocalBytes}} and {{bytes .RemoteBytes}} in all), what tasks spilled to disk ({{bytes .SpillBytes}}) and cached ({{bytes .CachedBytes}}), and each executor's storage memory left after every block it cached or dropped. Shuffle sizes are Spark's estimates from the map outputs; the event log has the exact bytes.</p>
-        {{flowChart $r}}{{memoryChart $r}}
-        {{if .Broadcasts}}<h3>Broadcast variables read</h3>
-        <p class="explain">Each broadcast variable the executors read: its size as Spark estimated it, how many executors logged reading it, and how long that took. Every executor that needs one fetches all of it and keeps it in memory.</p>
-        <div class="tbl"><table>
-          <thead><tr><th data-sort="text">Broadcast</th><th class="num" data-sort="num">Size</th><th class="num" data-sort="num">Pieces</th><th class="num" data-sort="num">Executors</th><th class="num" data-sort="num">Read time, all executors</th><th class="num" data-sort="num">Slowest read</th><th data-sort="text">First read</th><th>Found in</th></tr></thead>
-          <tbody>{{range $i, $b := .Broadcasts}}{{if lt $i 50}}<tr><td>{{$b.Name}}</td><td class="num" data-v="{{$b.Bytes}}">{{bytes $b.Bytes}}</td><td class="num" data-v="{{$b.Pieces}}">{{numi $b.Pieces}}</td><td class="num" data-v="{{$b.Executors}}">{{numi $b.Executors}}</td>
-            <td class="num" data-v="{{$b.ReadMs}}">{{dur $b.ReadMs}}</td><td class="num" data-v="{{$b.MaxMs}}">{{dur $b.MaxMs}}{{with $b.SlowestOn}}<span class="sub">executor {{.}}</span>{{end}}</td><td>{{time $b.First "hms"}}</td><td class="srcref">{{src $b.Source}}{{if $b.MaxSource.File}}<br>{{src $b.MaxSource}}{{end}}</td></tr>{{end}}
-          {{end}}</tbody>
-        </table></div>{{if gt (len .Broadcasts) 50}}<p class="explain">The 50 largest of {{numi (len .Broadcasts)}}; the JSON report lists them all.</p>{{end}}{{end}}
-        {{if .Spills}}<h3>Spills by stage</h3>
-        <div class="tbl"><table>
-          <thead><tr><th class="num" data-sort="num">Stage</th><th class="num" data-sort="num">Tasks that spilled</th><th class="num" data-sort="num">Spills</th><th class="num" data-sort="num">Spilled</th><th class="num" data-sort="num">Most by one task</th><th>Found in</th></tr></thead>
-          <tbody>{{range .Spills}}<tr><td class="num" data-v="{{.Stage}}">{{if ge .Stage 0}}{{.Stage}}{{if .Attempt}}.{{.Attempt}}{{end}}{{else}}lines naming no task{{end}}</td><td class="num" data-v="{{.Tasks}}">{{if .Tasks}}{{numi .Tasks}}{{else}}—{{end}}</td><td class="num" data-v="{{.Spills}}">{{numi .Spills}}</td>
-            <td class="num" data-v="{{.Bytes}}">{{bytes .Bytes}}</td><td class="num" data-v="{{.MostBytes}}">{{if .MostBytes}}{{bytes .MostBytes}}<span class="sub">TID {{.MostTask}}</span>{{else}}—{{end}}</td><td class="srcref">{{src .Source}}</td></tr>
-          {{end}}</tbody>
-        </table></div>
-        <p class="explain">Sizes are what the spilled data took in memory, as each spill line says.</p>{{end}}
-        {{end}}
-        {{$notable := notableTasks .Tasks}}{{if $notable}}<h3>Tasks worth a look</h3>
-        <p class="explain">Failed and killed tasks first, then those that read the most over the network or spilled the most, at most {{numi maxNotable}}. Every task, with each step it logged, is in the explorer's Task stories view and the JSON report.</p>
-        <div class="tbl"><table>
-          <thead><tr><th class="num" data-sort="num">Stage</th><th class="num" data-sort="num">Task</th><th class="num" data-sort="num">TID</th><th data-sort="text">Executor</th><th data-sort="text">Started</th><th class="num" data-sort="num">Took</th><th data-sort="text">Outcome</th><th class="num" data-sort="num">Shuffle, network</th><th class="num" data-sort="num">Spilled</th><th class="num" data-sort="num">Result</th><th>What it said</th><th>Found in</th></tr></thead>
-          <tbody>{{range $notable}}<tr><td class="num" data-v="{{.Stage}}">{{if ge .Stage 0}}{{.Stage}}{{if .StageAttempt}}.{{.StageAttempt}}{{end}}{{else}}—{{end}}</td><td class="num" data-v="{{.Partition}}">{{if ge .Partition 0}}{{.Partition}}.{{.Attempt}}{{else}}—{{end}}</td><td class="num" data-v="{{.TaskID}}">{{.TaskID}}</td>
-            <td>{{.Executor}}{{with .Host}}<span class="sub" title="{{.}}">{{shortHost .}}</span>{{end}}</td><td>{{time .Start "hms"}}</td><td class="num" data-v="{{.DurationMs}}">{{if or .Start.IsZero .End.IsZero}}—{{else if .DurationMs}}{{dur .DurationMs}}{{else}}under 1 s{{end}}</td><td>{{if .Outcome}}{{.Outcome}}{{else}}no end logged{{end}}</td>
-            <td class="num" data-v="{{.ShuffleRemoteBytes}}">{{if .ShuffleReads}}{{bytes .ShuffleRemoteBytes}}{{else}}—{{end}}</td><td class="num" data-v="{{.SpillBytes}}">{{if .Spills}}{{bytes .SpillBytes}}{{else}}—{{end}}</td><td class="num" data-v="{{.ResultBytes}}">{{if .ResultBytes}}{{bytes .ResultBytes}}{{else}}—{{end}}</td>
-            <td>{{if .Error}}{{short .Error 200}}{{else if .Problem}}{{short .Problem 200}}{{else}}—{{end}}</td><td class="srcref">{{src .Source}}{{if .EndSource.File}}<br>{{src .EndSource}}{{end}}</td></tr>
-          {{end}}</tbody>
-        </table></div>{{end}}
-        {{if .Missing}}<div class="missing"><h3>Not shown</h3><ul>{{range .Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
-      </section>{{end}}
-
-      <section id="sql">
-        <div class="sechead"><h2>SQL queries</h2><span class="pill {{cov $r.Jobs.Coverage}}">{{covLabel $r.Jobs.Coverage}}</span></div>
-        {{if $r.Jobs.SQL}}<p class="lede">Every DataFrame or SQL action runs as a query with a physical plan: the steps Spark chose. {{numi (len $r.Jobs.SQL)}} queries ran.{{if gt (len $r.Jobs.SQL) 200}} The first 200 are listed; the JSON export has all of them.{{end}}</p>
-        {{queriesChart $r}}
-        {{range first 200 $r.Jobs.SQL}}<details id="sql-{{.ID}}"><summary>Query {{.ID}}: {{if .Description}}{{short .Description 140}}{{else}}(no description){{end}}{{if .Error}} <span class="pill crit">Failed</span>{{end}}</summary><div class="inner">
-          <dl class="kv"><dt>Ran</dt><dd>{{time .Start "hms"}} for {{span .Start .End}}{{if .JobIDs}}, jobs {{ints .JobIDs}}{{end}}</dd>
-          {{if .Reads}}<dt>Reads</dt><dd>{{range $i, $d := .Reads}}{{if $i}}, {{end}}<span class="mono">{{$d.Name}}</span>{{end}}</dd>{{end}}
-          {{if .Writes}}<dt>Writes</dt><dd>{{range $i, $d := .Writes}}{{if $i}}, {{end}}<span class="mono">{{$d.Name}}</span>{{end}}</dd>{{end}}
-          {{if .Error}}<dt>Error</dt><dd class="bad">{{short .Error 600}}</dd>{{end}}
-          <dt>Source</dt><dd class="srcref">{{src .Source}}</dd></dl>
-          {{if .Plan}}<pre class="plan">{{planCap .Plan}}</pre>{{end}}
-        </div></details>
-        {{end}}{{else if $r.EventLog}}<p class="note">No SQL or DataFrame queries ran (the job used RDDs only).</p>{{else}}<div class="missing"><h3>Needs the event log</h3><ul><li>SQL queries, their plans and the tables they touched</li></ul></div>{{end}}
-      </section>
-
-      <section id="config">
-        <div class="sechead"><h2>Configuration</h2><span class="pill {{cov $r.Config.Coverage}}">{{covLabel $r.Config.Coverage}}</span></div>
-        {{$cf := $r.Config}}{{if $cf.Runtime}}
-        <div id="runtime" class="subsection">
-          <h3>Runtime environment</h3>
-          <p class="note">Versions, runtime settings and locations the driver recorded when the application started. The event log holds the driver's environment only; executors on other hosts are not recorded and may differ.{{with $r.EventLog}}{{if .Files}} Line numbers refer to <span class="mono">{{(index .Files 0).Name}}</span>{{if gt (len .Files) 1}} and the parts after it{{end}}.{{end}}{{end}}</p>
-          <div class="tbl"><table class="runtime">
-            <colgroup><col style="width:20%"><col style="width:30%"><col style="width:22%"><col style="width:28%"></colgroup>
-            <thead><tr><th>Item</th><th>Value</th><th>Read from</th><th>What it means</th></tr></thead>
-            <tbody>{{$g := ""}}{{range $cf.Runtime}}{{if ne .Group $g}}{{$g = .Group}}<tr class="grp"><th colspan="4">{{.Group}}</th></tr>{{end}}
-            <tr{{if .Missing}} class="missingrow"{{end}}><td>{{.Label}}</td><td class="mono">{{.Value}}</td><td>{{.From}}{{if .Source.File}}<span class="sub srcref" title="{{src .Source}}">line {{.Source.Line}}</span>{{end}}</td><td>{{.Explain}}</td></tr>
-            {{end}}</tbody>
-          </table></div>
-        </div>
-        {{end}}{{if $cf.Total}}
-        <p class="lede">{{num (int64 $cf.Total)}} settings were in effect. {{$cf.NonDefault}} of the key settings below differ from Spark 3.5's defaults (marked with a bar). {{$cf.Redacted}} values are hidden because their names suggest secrets.</p>
-        <div class="tbl"><table class="cfg keycfg">
-          <colgroup><col style="width:32%"><col style="width:20%"><col style="width:12%"><col style="width:36%"></colgroup>
-          <thead><tr><th>Setting</th><th>Value</th><th>Spark default</th><th>What it does</th></tr></thead>
-          <tbody>{{range $cf.Key}}<tr{{if .NonDefault}} class="nondefault"{{end}}><td class="mono">{{.Key}}</td><td class="mono">{{if .Redacted}}Set · value hidden{{else}}{{short .Value 200}}{{end}}{{if .SetBy}}<span class="sub">set by {{.SetBy}}</span>{{end}}</td><td class="mono">{{if .Default}}{{.Default}}{{else}}—{{end}}</td><td>{{.Explain}}{{if .Risk}}<span class="sub bad">{{.Risk}}</span>{{end}}</td></tr>
-          {{end}}</tbody>
-        </table></div>
-        <p class="note">Defaults are Spark 3.5's. EMR sets its own defaults on top (in spark-defaults.conf), which sparkplain can compare once it reads the EMR API.</p>
-        <input type="search" id="configfilter" class="filter" placeholder="Search all settings" aria-label="Search all settings" hidden>
-        {{range $cf.Groups}}<details class="cfggroup"><summary>{{.Name}} ({{numi (len .Entries)}})</summary><div class="inner">
-          <div class="tbl"><table class="cfg"><thead><tr><th>Setting</th><th>Value</th><th>From</th></tr></thead>
-          <tbody>{{range .Entries}}<tr{{if .NonDefault}} class="nondefault"{{end}}><td class="mono">{{.Key}}</td><td class="mono">{{if .Redacted}}Set · value hidden{{else}}{{short .Value 300}}{{end}}</td><td>{{.Origin}}{{if .SetBy}}<span class="sub">set by {{.SetBy}}</span>{{end}}</td></tr>{{end}}</tbody></table></div>
-        </div></details>{{end}}
-        {{end}}
-        {{if $cf.Missing}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $cf.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
-      </section>
-
-      <section id="access">
-        <div class="sechead"><h2>Identity and access</h2><span class="pill {{cov $r.Identity.Coverage}}">{{covLabel $r.Identity.Coverage}}</span></div>
-        {{if $r.Identity.Facts}}<div class="facts">
-          {{range $r.Identity.Facts}}<div class="fact"><span class="l">{{.Label}}</span><span class="v">{{.Value}}</span><span class="x">{{.Explain}}</span></div>{{end}}
-        </div>{{end}}
-        {{with $r.AWSCalls}}{{if .Denied}}<h3>Calls AWS refused</h3>
-        <div class="tbl"><table><thead><tr><th>Time <span class="tzlabel">{{$.Zone}}</span></th><th>Node</th><th>Call</th><th>Error</th></tr></thead>
-          <tbody>{{range .Denied}}<tr class="lost"><td class="num">{{time .Time "hms"}}</td><td class="mono">{{.User}}</td><td><span class="mono">{{.Service}} {{.Action}}</span>{{range .Resources}}<span class="sub mono">{{.}}</span>{{end}}{{if .Role}}<span class="sub">as {{.Role}}</span>{{end}}</td><td><span class="bad">{{.ErrorCode}}</span>{{if .Message}}<span class="sub">{{.Message}}</span>{{end}}</td></tr>{{end}}</tbody></table></div>{{end}}
-        {{if .Calls}}<details><summary>AWS calls from the application's nodes: {{len .Calls}} actions, {{num (int64 .Events)}} calls</summary><div class="inner">
-          <p class="explain">From CloudTrail's event history for the nodes' sessions (their instance profile) while the application ran, so EMR's own agents on those nodes are included. S3 object reads and writes are not.</p>
-          <div class="tbl"><table><thead><tr><th>Service</th><th>Action</th><th class="num">Calls</th><th class="num">Errors</th></tr></thead>
-          <tbody>{{range .Calls}}<tr><td class="mono">{{.Service}}</td><td class="mono">{{.Action}}{{if .ReadOnly}}<span class="sub">read-only</span>{{end}}</td><td class="num">{{.Count}}</td><td class="num">{{if .Errors}}<span class="bad">{{.Errors}}</span>{{else}}0{{end}}</td></tr>{{end}}</tbody></table></div>
-        </div></details>{{end}}{{end}}
-        {{if $r.Identity.Missing}}<div class="missing"><h3>Not shown yet</h3><ul>{{range $r.Identity.Missing}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
-      </section>
-
       <section id="sources">
-        <div class="sechead"><h2>Sources</h2></div>
+        <div class="sechead"><h2>Sources</h2>{{if .Explorer}}<a class="xlink" href="{{xTab .Explorer "sources"}}">Open in the explorer →</a>{{end}}</div>
         <div class="tbl"><table>
           <thead><tr><th>Source</th><th>Status</th><th>What was read</th></tr></thead>
           <tbody>{{range $r.Sources}}<tr><td>{{.Name}}{{if .Location}}<span class="sub mono">{{.Location}}</span>{{end}}</td><td><span class="pill {{srcPill .Status}}">{{srcLabel .Status}}</span>{{if .Class}}<span class="sub">{{.Class}}</span>{{end}}</td><td>{{.Detail}}</td></tr>

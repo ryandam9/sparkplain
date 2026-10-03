@@ -351,17 +351,10 @@ func TestHBaseScanPrinted(t *testing.T) {
 		if strings.Contains(string(b), b64[:16]) {
 			t.Errorf("%s holds the scan string", name)
 		}
-		// Both pages show the scan stage, region by region, with the
+		// The explorer shows the scan stage, region by region, with the
 		// decoded filters.
-		region := "(first row)" // the report's regions table; the explorer's data names each region
-		if strings.HasSuffix(name, "explorer.html") {
-			region = "554f89fb3a319d50d2ea3299dc1270c1"
-		}
-		if strings.HasSuffix(name, ".html") && (!strings.Contains(string(b), "PrefixFilter") || !strings.Contains(string(b), region)) {
+		if strings.HasSuffix(name, "explorer.html") && (!strings.Contains(string(b), "PrefixFilter") || !strings.Contains(string(b), "554f89fb3a319d50d2ea3299dc1270c1")) {
 			t.Errorf("%s lacks the scan's filters or regions", name)
 		}
-	}
-	if b, _ := os.ReadFile(filepath.Join(dir, app+"-report.html")); !strings.Contains(string(b), "TableInputFormat scan of <span class=\"mono\">sp_orders</span>") {
-		t.Error("the report lacks the scan block")
 	}
 }

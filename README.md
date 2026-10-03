@@ -4,9 +4,9 @@ sparkplain turns one Spark application's logs into a plain-language report. The 
 
 One command gives you three files:
 
-- **`<app-id>-report.html`**: the plain-language report. It opens with a short "What happened" summary. It explains every number and lists findings, each with a suggested fix.
-- **`<app-id>-explorer.html`**: an interactive view of the run, like a richer Spark History Server for this one application. It has jobs, stages, executors, SQL plans, storage, environment and your code.
-- **`<app-id>-report.json`**: the same content as the report, for other tools.
+- **`<app-id>-report.html`**: a short plain-language summary. It opens with "What happened", draws the run at a glance, and lists findings, each with its evidence and a suggested fix. Each part links to the explorer for the detail.
+- **`<app-id>-explorer.html`**: everything else, like a richer Spark History Server for this one application. It has the timeline, jobs, stages, executors, memory and CPU, SQL plans, storage, what each task did, environment, identity and access, and your code.
+- **`<app-id>-report.json`**: every section of the analysis, for other tools.
 
 Both pages are single self-contained files. They make no network calls, so they work offline and you can attach them to a ticket or an email.
 
@@ -50,18 +50,18 @@ The rules look for:
 | Settings and access | `AccessDenied` (CloudTrail and logs), static AWS keys in the Spark configuration, unlimited `spark.driver.maxResultSize`, dynamic allocation without a shuffle service, AQE turned off, results large enough to hurt the driver, classes missing at run time (with the jar that needed them) |
 | HBase | a missing table, an unreachable ZooKeeper (and the port tried), region servers not answering, calls that ran out of retries, expired scanner leases, writes refused for a full memstore, regions moved or split during the run, a region server lost or paused, slow calls, HBase stages taking most of the run while their tasks waited, a ZooKeeper connection per task, one region server holding most of a table's regions, regions read from another node |
 
-The report also covers the timeline, cluster and nodes, executors, memory, CPU, storage and I/O, jobs and stages, SQL queries, the runtime environment and configuration, identity and access (user, queue, instance profile, EMR roles, security configuration, Hive and HBase connections), and a Sources panel. Every section says whether its data is complete or partial and what is missing.
+The report ends with what it covers and a Sources panel. The explorer has the rest: the timeline, cluster and nodes, executors, memory, CPU, storage and I/O, jobs and stages, SQL queries, the runtime environment and configuration, and identity and access (user, queue, instance profile, EMR roles, security configuration, Hive and HBase connections). The report's coverage table says, for each of these, whether its data is complete or partial and what is missing, and links to it in the explorer.
 
-**HBase.** For applications that read or write HBase, Storage and I/O adds an HBase block: the tables read and written and how (the hbase-spark connector, `TableInputFormat`, `TableOutputFormat`), the regions each scan read on each region server, the ZooKeeper quorum and how many connections the run opened, the client and connector versions, the stages that used HBase with their time, CPU share and the retries logged while they ran, and what HBase's own Master and region servers logged during the run. HBase trouble mostly shows as a slower job rather than a failure, and its client often logs nothing when a region server is lost or a region moves, so those come from the servers' logs, which EMR keeps beside the YARN logs when HBase runs on the cluster. The event log names only the connector's tables; everything else comes from the container and node logs.
+**HBase.** For applications that read or write HBase, the explorer adds an HBase block: the tables read and written and how (the hbase-spark connector, `TableInputFormat`, `TableOutputFormat`), the regions each scan read on each region server, the ZooKeeper quorum and how many connections the run opened, the client and connector versions, the stages that used HBase with their time, CPU share and the retries logged while they ran, and what HBase's own Master and region servers logged during the run. HBase trouble mostly shows as a slower job rather than a failure, and its client often logs nothing when a region server is lost or a region moves, so those come from the servers' logs, which EMR keeps beside the YARN logs when HBase runs on the cluster. The event log names only the connector's tables; everything else comes from the container and node logs.
 
 **HBase scans.** Each `TableInputFormat` scan (`sc.newAPIHadoopRDD(...)` with `TableInputFormat`, from Scala, Java or PySpark) gets its own block, and a panel on its stage's page in the explorer:
 - **The key range read:** taken from the executors' split lines, one per region.
 - **Region servers:** which ones served the scan, with the regions, rows, estimated size and task time on each.
 - **Every region:** its key range, region server, rows, time, executor and task, each with the file:line it came from.
 
-TableInputFormat makes its splits in key order and Spark's partition *n* reads split *n*, so each region is tied to the task that read it. That tie is checked against the executor that logged each split. When it can't be checked, rows and time per region are left out rather than guessed, and the report says why. A scan where one region held the stage up gets an `hbase-scan-skew` finding naming that region and its server.
+TableInputFormat makes its splits in key order and Spark's partition *n* reads split *n*, so each region is tied to the task that read it. That tie is checked against the executor that logged each split. When it can't be checked, rows and time per region are left out rather than guessed, and the explorer says why. A scan where one region held the stage up gets an `hbase-scan-skew` finding naming that region and its server.
 
-The scan's filters and columns are not in any log. To see them in the report, a non-production run can print the scan string the job passes as `hbase.mapreduce.scan`:
+The scan's filters and columns are not in any log. To see them in the explorer, a non-production run can print the scan string the job passes as `hbase.mapreduce.scan`:
 
 ```python
 print("sparkplain-scan " + json.dumps({"table": conf["hbase.mapreduce.inputtable"], "scan": conf["hbase.mapreduce.scan"]}))

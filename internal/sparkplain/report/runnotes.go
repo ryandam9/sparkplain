@@ -3,6 +3,7 @@ package report
 import (
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -356,4 +357,19 @@ func span(a, b time.Time) int64 {
 func shortName(s string) string {
 	s, _, _ = strings.Cut(s, " at ")
 	return s
+}
+
+// top returns up to n items with the highest key, highest first.
+func top[T any](items []T, n int, key func(T) float64) []T {
+	out := make([]T, 0, len(items))
+	for _, it := range items {
+		if key(it) > 0 {
+			out = append(out, it)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return key(out[i]) > key(out[j]) })
+	if len(out) > n {
+		out = out[:n]
+	}
+	return out
 }

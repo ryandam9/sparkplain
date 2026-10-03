@@ -37,7 +37,7 @@ func stageKey(id, attempt int) string { return strconv.Itoa(id) + "." + strconv.
 // On 0049 the executors' log says which files the write stage wrote and
 // the next query read back, with or without the event log; the bytes it
 // logged uploading are the event log's output bytes for that stage, and
-// the SQL plan names the same folder. Both pages show them.
+// the SQL plan names the same folder. The explorer shows them.
 func TestStageDataFromLogs(t *testing.T) {
 	app := "application_1790380000000_0049"
 	for _, withLog := range []bool{false, true} {
@@ -65,11 +65,7 @@ func TestStageDataFromLogs(t *testing.T) {
 				t.Errorf("write known from %v, format %q", w.From, w.Format)
 			}
 		}
-		html, _ := os.ReadFile(filepath.Join(dir, app+"-report.html"))
 		x, _ := os.ReadFile(filepath.Join(dir, app+"-explorer.html"))
-		if !strings.Contains(string(html), "wrote "+out+": 11 files, 2.0 GiB") || !strings.Contains(string(html), ">Reads / writes</th>") {
-			t.Errorf("event log %v: the report's Stages table does not show the write", withLog)
-		}
 		if !strings.Contains(string(x), `"executor logs"`) {
 			t.Errorf("event log %v: the explorer has no stage data", withLog)
 		}

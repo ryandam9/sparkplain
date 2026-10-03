@@ -149,6 +149,9 @@ type xData struct {
 	HBaseTaskStages []model.HBaseTaskStage `json:"hbaseTaskStages,omitempty"`
 	// TaskStories is what the executors' logs tell of each task, compact.
 	TaskStories *xTaskStories `json:"taskStories,omitempty"`
+	// Identity is who ran the application and with what access (the report
+	// no longer has this section; the Environment tab shows it).
+	Identity *model.IdentitySection `json:"identity,omitempty"`
 	// Flows is the data moved and memory used over time, from them.
 	Flows *model.FlowSection `json:"flows,omitempty"`
 	// HBaseLoad is each region server's scan tasks at once over time.
@@ -513,6 +516,9 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 
 	d.HBaseScans = hbaseScans(r)
 	d.TaskStories, d.Flows = taskStories(r), r.Flows
+	if len(r.Identity.Facts)+len(r.Identity.Missing) > 0 {
+		d.Identity = &r.Identity
+	}
 	if r.HBase != nil {
 		d.HBaseTasks, d.HBaseTaskStages = r.HBase.Tasks, r.HBase.TaskStages
 		d.HBaseLoad, d.HBaseLoadTotal, d.HBaseLoadStepMs = r.HBase.Load, r.HBase.LoadTotal, r.HBase.LoadStepMs

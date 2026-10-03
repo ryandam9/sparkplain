@@ -1726,6 +1726,14 @@
 
   views.environment = function () {
     var s = section("Environment", "Versions and settings the driver reported. Values of keys that look like secrets are redacted.");
+    // who ran it, and with what access
+    var id = D.identity;
+    if (id) {
+      s.appendChild(el("h3", { id: "access", text: "Identity and access" }));
+      if ((id.facts || []).length) s.appendChild(el("div", { cls: "facts" }, id.facts.map(function (f) { return fact(f.label, f.value, f.explain); })));
+      if ((id.missing || []).length) s.appendChild(bulletNote("Not shown yet", id.missing));
+      s.appendChild(el("h3", { text: "Versions and settings" }));
+    }
     var rt = objs(D.runtime);
     if (rt.length) s.appendChild(table({
       rows: rt, cls: "runtime", page: 500,
