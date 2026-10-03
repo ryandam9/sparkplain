@@ -12,7 +12,10 @@ a.themebtn{text-decoration:none}
 .crumbs{font-size:13px;color:var(--muted)}
 .crumbs a{text-decoration:none}
 .bar-tools{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
-.bar-tools select{font:inherit;font-size:14px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+/* every dropdown alike, wherever it sits (a toolbar, a section heading) */
+select{font:inherit;font-size:14px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);cursor:pointer}
+select:hover{border-color:var(--muted)}
+select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .bar-tools .count{font-size:13px;color:var(--muted)}
 .more{font:inherit;font-size:13px;color:var(--accent);background:none;border:1px dashed var(--line);border-radius:6px;padding:6px 12px;cursor:pointer;justify-self:start}
 td a,.ev a{text-decoration:none}
