@@ -2011,13 +2011,14 @@
   // unitAxis is a linear scale from 0 to max over range (so the largest
   // bar, such as a full heap, fills it), with round ticks in the chosen
   // unit and their labels.
-  function unitAxis(kind, max, range, n) {
+  // whole keeps only ticks that are whole units (1 GiB, 2 GiB, not 0.5 GiB).
+  function unitAxis(kind, max, range, n, whole) {
     var u = UNITS[kind][0];
     max = max || 1;
     UNITS[kind].forEach(function (x) { if (max >= 2 * x[0]) u = x; });
     var f = d3.format("~g");
     var ticks = d3.ticks(0, max / u[0], n);
-    if (kind === "count") ticks = ticks.filter(Number.isInteger); // no half tasks
+    if (kind === "count" || whole) ticks = ticks.filter(Number.isInteger); // no half tasks, or half GiBs where asked
     return { x: d3.scaleLinear().domain([0, max]).range(range), ticks: ticks.map(function (t) { return t * u[0]; }),
       label: function (v) { return v === 0 ? "0" : f(v / u[0]) + (u[1] === "%" ? "%" : u[1] ? " " + u[1] : ""); } };
   }
@@ -2053,7 +2054,7 @@
     var labelW = Math.min(170, Math.round(P.w * 0.36)), noteW = Math.min(Math.max(76, 12 + 6.4 * d3.max(rows, function (r) { return noteText(r).length; })), Math.round(P.w * 0.3));
     var val = function (sr, r) { return Math.max(sr.value(r), 0) || 0; };
     var sum = function (r, all) { return series.reduce(function (s, sr) { return s + (all || !sr.rest ? val(sr, r) : 0); }, 0); };
-    var U = unitAxis(kind, d3.max(rows, function (r) { return sum(r, true); }), [labelW, P.w - noteW], Math.max(2, Math.floor((P.w - labelW - noteW) / 80))), x = U.x;
+    var U = unitAxis(kind, d3.max(rows, function (r) { return sum(r, true); }), [labelW, P.w - noteW], Math.max(2, Math.floor((P.w - labelW - noteW) / 80)), g.wholeTicks), x = U.x;
     var ax = P.svg.append("g").attr("class", "ax").attr("transform", "translate(0," + (top + bandH) + ")")
       .call(d3.axisBottom(x).tickValues(U.ticks).tickFormat(U.label).tickSize(-bandH).tickPadding(6));
     ax.select(".domain").remove();
@@ -2915,7 +2916,7 @@
             var used = (r.n.driverMem || 0) + execBytes(r), cpu = r.ex.reduce(function (s, p) { return s + (p.cores || 0); }, 0);
             return bytes(used) + " of " + bytes(r.n.yarnMem) + (cpu && r.n.yarnCores ? " · " + cpu + " of " + r.n.yarnCores + " vCPU" : "");
           },
-          note: D.aws.nodeMemNote }, "bytes");
+          note: D.aws.nodeMemNote, wholeTicks: true }, "bytes");
     },
     clusterContainers: function (c) {
       var list = metric("ContainerAllocated").concat(metric("ContainerPending"));
