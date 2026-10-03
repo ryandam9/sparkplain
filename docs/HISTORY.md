@@ -338,6 +338,18 @@ Decided: keep each event with its time and source line, not only per-stage sums,
 
 **Real-cluster findings, 13: many executors on one node (2026-10-03).** On a node that ran five executors, At a glance showed "5 executors ran here" over five small grey squares that were hard to see. With two node cards side by side, two executor cards fit per row, and past two rows the executors were drawn as 20px squares in the page's grey, with only their peak heap filled in blue. Now full cards are drawn for up to three rows (six executors on such a node), and past that each executor is a 58×36 tile in the executor cards' colours, with its ID ("E7"), its peak heap as a bar, a red outline when it was killed or lost, and the full details in its tooltip; the key names the tile and the heap bar.
 
+**Plain language: ASD-STE100 (2026-10-03).** The user asked for the report and explorer text to follow ASD-STE100 Simplified Technical English wherever it applies. Plan, approved by the user, one PR per step:
+
+1. Rules and a check: `docs/STYLE.md` (the rules as applied here, the words to avoid, the technical names), CLAUDE.md pointing to it, and `TestPlainLanguage`, which reads every string that can reach the pages (the analyze, model and report packages' Go strings, the report template, explorer.js) and refuses long sentences, contractions and words STE does not approve. What broke a rule before is listed in a baseline that only shrinks.
+2. Findings: problem, evidence wording and "Try" (instructions, one in each sentence, alternatives as a list).
+3. The report page: What happened, metric explanations, At a glance, coverage and Sources.
+4. The explorer: chart guides, page introductions, notes, labels.
+5. The rest the check flags; then the baseline is empty, and new text must follow the rules.
+
+Not rewritten: quoted log lines and errors, Spark's own names, configuration keys and values, paths and IDs. The console's findings and the JSON's text fields change with the pages, since they are the same text; the JSON's structure does not change. The official STE dictionary is licensed and not in the repository, so the check refuses only words whose status is certain; `docs/STYLE.md` lists the ones to confirm against it (need, check, fix, see, since and others). "What happened" stays as the report's first section name, as CLAUDE.md asks.
+
+- Step 1 (built 2026-10-03): the check reads 1,469 strings. 175 broke a rule: 71 sentences over 25 words, 41 instructions over 20, 62 with words STE does not approve (most often may and whether, then lot and happen) and one contraction. Spark's "attempt" (task attempt, application attempt) is a technical name, not the verb STE refuses. The highlighter's keyword lists in explorer.js are skipped, as they are code.
+
 ## Appendix: the spec before it was simplified (2026-09-29)
 
 On 2026-09-29 the spec was rewritten to describe sparkplain as it is, and this history moved out of it. Its other sections as they stood then are kept here word for word, since they spell out details the rewrite summarises (for example exactly when each findings rule fires). Where they differ from the spec, the spec wins.
