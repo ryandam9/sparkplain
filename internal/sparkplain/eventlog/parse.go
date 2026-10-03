@@ -1043,8 +1043,12 @@ func (p *parser) finish() {
 		return l.Stages[i].Attempt < l.Stages[j].Attempt
 	})
 
-	// A job without a call site of its own takes its last stage's, as its
-	// name does.
+	// A job without a call site of its own takes its final stage's, as its
+	// name does, or none. The final stage is its highest stage ID (the
+	// result stage is created after its parents), not the last listed:
+	// Spark lists them unsorted ([9 10 11 8]), and a parent named after an
+	// earlier action (a cached shuffle "collect at job.py:121") would lend
+	// the job that action's line.
 	stageCode := map[int][]model.CodeLocation{}
 	for _, st := range l.Stages {
 		if len(st.Code) > 0 && stageCode[st.ID] == nil {
@@ -1055,12 +1059,11 @@ func (p *parser) finish() {
 		if len(j.Code) > 0 {
 			continue
 		}
-		for i := len(j.StageIDs) - 1; i >= 0; i-- {
-			if c := stageCode[j.StageIDs[i]]; c != nil {
-				j.Code = c
-				break
-			}
+		final := -1
+		for _, id := range j.StageIDs {
+			final = max(final, id)
 		}
+		j.Code = stageCode[final]
 	}
 	for id, q := range p.sql {
 		q.JobIDs = p.sqlJobs[id]
