@@ -86,6 +86,11 @@
     return s;
   }
   function explain(text) { return el("p", { cls: "explain", text: text }); }
+  // bulletNote is an explanation as short bullet points, with an optional
+  // heading: easier to scan than a paragraph.
+  function bulletNote(title, items) {
+    return el("div", { cls: "explain bullets" }, title ? el("b", { text: title }) : null, el("ul", null, items.map(function (t) { return el("li", { text: t }); })));
+  }
 
   // ---------- data ----------
   var jobs = objs(D.jobs), stages = objs(D.stages), execs = objs(D.executors), queries = objs(D.sql), rdds = objs(D.rdds);
@@ -957,9 +962,18 @@
   }
   views.replay = function () {
     var M = replayModel();
-    var s = section("Replay", "The run played back from its logs: each executor's task slots filling with the tasks it ran, coloured by stage (the legend above the executors says which colour is which); the jobs and stages the driver was running; each executor's shuffle reads over the network and storage memory left; and what happened, as a numbered list.");
-    s.appendChild(explain("Times are as the logs give them" + (TS.byThread ? "" : " (whole seconds in Spark's default layout, so a task shorter than a second shows briefly)") + ". A task's slot is the first free one on its executor; Spark does not log which core ran it. " +
-      num(M.ts.length) + " tasks on " + num(M.order.length) + " executor" + (M.order.length === 1 ? "" : "s") + (TS.cut ? "; " + num(TS.cut) + " tasks past the page's cap are not shown" : "") + "."));
+    var s = section("Replay", "Watch the run again, step by step, from its logs.");
+    s.appendChild(bulletNote("What you see", [
+      "Executors (right): each box is one slot where a task can run. A coloured box means a task is running there.",
+      "Driver (left): the jobs and stages running at that moment.",
+      "What happened (left): the latest events, as a numbered list.",
+      "Press Play, or drag the slider, to move through the run."
+    ]));
+    s.appendChild(bulletNote("Good to know", [
+      "Times come from the logs" + (TS.byThread ? "." : ", which record whole seconds only. A task shorter than a second flashes by."),
+      "The logs do not say which core ran a task, so a task is shown in the first free box.",
+      num(M.ts.length) + " tasks on " + num(M.order.length) + " executor" + (M.order.length === 1 ? "" : "s") + (TS.cut ? ". " + num(TS.cut) + " more tasks are not shown (too many for the page)" : "") + "."
+    ]));
     var span0 = M.t1 - M.t0;
     var state = { now: M.t0, playing: false, last: 0 };
     var playBtn = el("button", { cls: "more", type: "button", text: "Play" });
@@ -980,10 +994,16 @@
     var ticker = el("ol", { cls: "rp-ticker", "aria-live": "off" });
     stage.appendChild(el("div", { cls: "rp-col" }, el("h3", { text: "Driver" }), driver,
       el("div", { cls: "rp-head" }, el("h3", { text: "What happened" }), show),
-      explain("Newest first, numbered in order. Tasks of one stage that started or ended in the same second share a line; open it to see each one."), ticker));
+      bulletNote(null, ["Newest at the top.", "Tasks of the same stage that started or finished in the same second are grouped on one line. Click the line to see each task."]), ticker));
     stage.appendChild(el("div", { cls: "rp-col" }, el("h3", { text: "Executors" }), legend, grid,
-      explain("Each box is a task slot: \"s3 p12\" is stage 3's partition 12. There are " + V.viz.length + " colours, so stages " + V.viz.length + " apart share one; the slot's label tells them apart. " +
-        "The grey bars are not stages: Network in is the shuffle data an executor fetched over the network in the last " + dur((D.flows || {}).stepMs || 0) + "; Storage free is the memory it had left for cached data.")));
+      bulletNote("How to read an executor box", [
+        "Each small box is one task slot. Empty means nothing is running there.",
+        "\"s3 p12\" means stage 3, piece 12 of the data.",
+        "The colour shows the stage. There are only " + V.viz.length + " colours, so two stages can share one. Read the label to be sure.",
+        "Network in: data this executor pulled from other machines in the last " + dur((D.flows || {}).stepMs || 0) + ".",
+        "Storage free: memory this executor still had for saved (cached) data.",
+        "The grey bars are amounts, not stages."
+      ])));
     s.appendChild(stage);
     // executor cards, side by side, in executor order, each naming its host
     var cards = {};

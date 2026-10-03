@@ -270,3 +270,5 @@ td .dl{display:block;font-size:13px;overflow-wrap:anywhere}
 @media (max-width:720px){.attn{grid-template-columns:2em minmax(0,1fr) auto}.attn-row{row-gap:4px}
   .attn-n{grid-column:1;grid-row:1}.attn-name{grid-column:2;grid-row:1}.attn-dur{grid-column:3;grid-row:1;text-align:right}.attn-dur .sub{display:none}
   .attn-bar{grid-column:2/-1;grid-row:2}.attn-why{grid-column:2/-1;grid-row:3}}
+.explain.bullets ul{margin:2px 0 0;padding-left:18px;display:grid;gap:2px}
+.explain.bullets{margin:6px 0}
