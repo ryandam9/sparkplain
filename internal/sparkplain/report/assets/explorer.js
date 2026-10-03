@@ -2041,6 +2041,18 @@
   // fitChars cuts s to about px pixels of 11px text, keeping the full text
   // for the tooltip.
   function fitChars(s, px) { var n = Math.max(4, Math.floor(px / 6.3)); return s.length <= n ? s : s.slice(0, n - 1) + "…"; }
+  // inkOn says whether text on a shape's fill reads better dark ("dark")
+  // or white (""), by WCAG contrast against the fill as drawn; charts
+  // redraw on a theme switch, so it follows the theme's colours.
+  function inkOn(node) {
+    var m = (getComputedStyle(node).fill || "").match(/\d+(\.\d+)?/g);
+    if (!m || m.length < 3) return "";
+    var lum = [0, 1, 2].reduce(function (s, i) {
+      var c = +m[i] / 255;
+      return s + [0.2126, 0.7152, 0.0722][i] * (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+    }, 0);
+    return (lum + 0.05) / 0.06 > 1.05 / (lum + 0.05) ? "dark" : "";
+  }
 
   // hbarChart draws horizontal bars, stacked from series, one row each,
   // with the row's total at its end (series marked rest, such as unused
@@ -2055,7 +2067,7 @@
     // a series with legend: false shares the entry of the one before it
     var keyed = series.filter(function (sr) { return sr.legend !== false; });
     if (keyed.length > 1) plot.parentNode.insertBefore(legendNode(keyed), plot);
-    var rowH = 26, top = 4, bandH = rows.length * rowH;
+    var rowH = 30, top = 4, bandH = rows.length * rowH;
     var P = plotSvg(plot, top + bandH + 26, g.t);
     // room on the right for the longest note, such as "5.9 GiB of 6.0 GiB · 5 of 8 vCPU"
     var noteText = function (r) { return g.rowNote ? g.rowNote(r) : format(sum(r)); };
@@ -2078,10 +2090,11 @@
         if (!v) return;
         var tip = r.label + "\n" + (sr.tip ? sr.tip(r) : sr.label + ": " + format(v)) + (sr.detail ? " (" + sr.detail(r) + ")" : "");
         var w = Math.max(x(at + v) - x(at), 1), sc = sr.fill ? sr.fill(r) : sr.color;
-        gr.append("rect").datum({ tip: tip }).attr("x", x(at)).attr("y", rowH * 0.14).attr("width", w).attr("height", rowH * 0.72).style("fill", sc);
-        // text inside the piece: the first of its labels that fits
-        var fit = (sr.text ? sr.text(r) : []).filter(function (t) { return t.length * 6.2 <= w - 8; })[0];
-        if (fit) gr.append("text").datum({ tip: tip }).attr("class", "inbar").attr("x", x(at) + w / 2).attr("y", rowH / 2).attr("dy", "0.35em").attr("text-anchor", "middle").text(fit);
+        var piece = gr.append("rect").datum({ tip: tip }).attr("x", x(at)).attr("y", rowH * 0.12).attr("width", w).attr("height", rowH * 0.76).style("fill", sc);
+        // text inside the piece: the first of its labels that fits, dark or
+        // white, whichever stands out more on the piece's colour
+        var fit = (sr.text ? sr.text(r) : []).filter(function (t) { return t.length * 6.9 <= w - 10; })[0];
+        if (fit) gr.append("text").datum({ tip: tip }).attr("class", "inbar " + inkOn(piece.node())).attr("x", x(at) + w / 2).attr("y", rowH / 2).attr("dy", "0.35em").attr("text-anchor", "middle").text(fit);
         at += v;
       });
       gr.append("text").attr("class", "note").attr("x", x(at) + 6).attr("y", rowH / 2).attr("dy", "0.35em").text(noteText(r));
