@@ -36,7 +36,9 @@ func hbaseScanFindings(c *ctx, h *model.HBaseSection) {
 
 // repeatedScans finds a table whose same regions several stages read: an
 // RDD read from HBase and used by two actions without being cached is
-// read twice.
+// read twice. PySpark's newAPIHadoopRDD first takes one record to check it
+// can be sent to Python ("take at SerDeUtil.scala"), reading the first
+// region again; that probe is not a second read of the table.
 func repeatedScans(c *ctx, h *model.HBaseSection) {
 	type read struct {
 		stage   int
@@ -44,9 +46,17 @@ func repeatedScans(c *ctx, h *model.HBaseSection) {
 		ms      int64
 		src     model.Source
 	}
+	probe := map[int]bool{}
+	if c.log != nil {
+		for _, s := range c.log.Stages {
+			if strings.HasPrefix(s.Name, "take at SerDeUtil.scala") {
+				probe[s.ID] = true
+			}
+		}
+	}
 	byTable := map[string]map[int]*read{}
 	for _, t := range h.Tasks {
-		if t.Stage < 0 {
+		if t.Stage < 0 || probe[t.Stage] {
 			continue
 		}
 		if byTable[t.Table] == nil {

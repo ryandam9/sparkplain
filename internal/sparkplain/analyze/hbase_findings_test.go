@@ -56,6 +56,37 @@ func TestHBaseRepeatedScan(t *testing.T) {
 	}
 }
 
+// PySpark's newAPIHadoopRDD takes one record first to check it can be sent
+// to Python ("take at SerDeUtil.scala", stage 1), reading the first region
+// again before the scan proper (stage 2); that is not a repeated scan.
+func TestHBaseRepeatedScanSkipsPySparkProbe(t *testing.T) {
+	t.Parallel()
+	ts := []scanTask{{stage: 1, table: "orders", start: "", end: "k1", mib: 21, d: time.Second}}
+	for p := range 4 {
+		start := fmt.Sprintf("k%d", p)
+		if p == 0 {
+			start = ""
+		}
+		ts = append(ts, scanTask{stage: 2, part: p, table: "orders", start: start, end: fmt.Sprintf("k%d", p+1), mib: 21, at: 2 * time.Second, d: 8 * time.Second})
+	}
+	l := &model.EventLog{Stages: []*model.Stage{
+		{ID: 1, Name: "take at SerDeUtil.scala:173", NumTasks: 1},
+		{ID: 2, Name: "count at NativeMethodAccessorImpl.java:0", NumTasks: 4},
+	}}
+	r := runWithLogs(l, nil, scanLogs(ts...)...)
+	if f, ok := rules(r)["hbase-repeated-scan"]; ok {
+		t.Errorf("the probe was taken for a second scan: %+v", f)
+	}
+	if len(r.HBase.Tasks) != 5 {
+		t.Fatalf("%d HBase tasks, want 5 (the probe's and the scan's)", len(r.HBase.Tasks))
+	}
+	// Without the probe's name, the same reads are a repeated scan.
+	l.Stages[0].Name = "count at etl.py:12"
+	if _, ok := rules(runWithLogs(l, nil, scanLogs(ts...)...))["hbase-repeated-scan"]; !ok {
+		t.Error("two stages reading the same first region should still be a repeated scan")
+	}
+}
+
 // Twelve regions from the table's first row to its last: no start or
 // stop row.
 func TestHBaseFullScan(t *testing.T) {
