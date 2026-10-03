@@ -53,8 +53,8 @@ func TestHBaseServerLoad(t *testing.T) {
 		t.Errorf("total peak %v, step %d ms, %d points, last %v", peak, h.LoadStepMs, len(l.Points), l.Points[len(l.Points)-1])
 	}
 	f, ok := rules(r)["hbase-server-load"]
-	if !ok || f.Title != "Region server rs-hot.example.internal served 8 of the 10 HBase scan tasks running at 09:17:00 UTC" ||
-		!strings.Contains(f.Explanation, "From 09:17:00 UTC to 09:20:00 UTC (3 min 0 s)") || !strings.Contains(f.Explanation, "while 2 other region servers had the rest") ||
+	if !ok || f.Title != "Region server rs-hot.example.internal served 8 of the 10 HBase scan tasks that ran at 09:17:00 UTC" ||
+		!strings.Contains(f.Explanation, "From 09:17:00 UTC to 09:20:00 UTC (3 min 0 s)") || !strings.Contains(f.Explanation, "2 other region servers had the remaining tasks") ||
 		len(f.Evidence) != 3 || f.Evidence[0].Source.Line != 10 || !strings.Contains(f.Evidence[0].Text, "task 0.0 in stage 5.0 (TID 100)") {
 		t.Errorf("finding = %+v", f)
 	}
@@ -119,9 +119,9 @@ func TestHBaseRegionEvents(t *testing.T) {
 		t.Errorf("slow task %+v, task 1 %+v", slow, h.Tasks[1])
 	}
 	f, ok := rules(r)["hbase-region-events"]
-	if !ok || f.Title != "Task 5.0 in stage 7.0 (TID 205) took 4 min 0 s while its region on rs-1 was refusing writes, compacting for 42 s" ||
-		!strings.Contains(f.Explanation, "region 55555555555555555555555555555555 of orders on rs-1") || strings.Contains(f.Explanation, "flushing") ||
-		!strings.Contains(f.Fix, "major compactions outside the job's hours") || !strings.Contains(f.Fix, "move writes into the same regions") ||
+	if !ok || f.Title != "Task 5.0 in stage 7.0 (TID 205) took 4 min 0 s, and its region on rs-1 had write refusals and a compaction (42 s) at that time" ||
+		!strings.Contains(f.Explanation, "region 55555555555555555555555555555555 of orders on rs-1") || strings.Contains(f.Explanation, "a flush") ||
+		!strings.Contains(f.Fix, "major compactions outside the hours of the job") || !strings.Contains(f.Fix, "Do not write to the same regions") ||
 		len(f.Evidence) != 3 || f.Evidence[0].Source.Line != 15 || f.Evidence[1].Source.Line != 1 || f.Evidence[1].Text != "rs-1 logged 3 times from 09:17:30 UTC to 09:17:32 UTC: refused writes: its memstore was over 2.0 M" || f.Evidence[2].Source.Line != 4 {
 		t.Errorf("finding = %+v", f)
 	}

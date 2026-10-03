@@ -54,25 +54,25 @@ func cpuFindings(c *ctx, s *model.CPUSection) {
 		return
 	}
 	if s.Share < t.LowCPUShare {
-		why := "The rest was spent waiting: reading input, fetching shuffle data, garbage collection, or writing output."
+		why := "In the remaining time, the tasks waited. They read input, fetched shuffle data, did garbage collection or wrote output."
 		if c.pyspark {
-			why += " This is a PySpark job: Spark counts only JVM CPU time, so work done in Python UDFs shows up as waiting. Low CPU here may just mean the work happens in Python."
+			why += "\nThis is a PySpark job. Spark counts only the CPU time of the JVM, so the work in Python UDFs shows as waiting time. As a result, a low CPU share can only mean that the work is in Python."
 		}
 		c.add(model.Finding{
 			Rule: "cpu-low", Severity: model.Info, Section: "cpu",
 			Title:       fmt.Sprintf("Tasks used the CPU for only %s of their run time", model.Percent(s.Share)),
-			Explanation: fmt.Sprintf("Across all tasks, %s of CPU time was spent in %s of run time. %s", model.Duration(s.CPUMs), model.Duration(s.RunMs), why),
+			Explanation: fmt.Sprintf("All tasks together used %s of CPU time in %s of run time. %s", model.Duration(s.CPUMs), model.Duration(s.RunMs), why),
 			Evidence:    []model.Evidence{{Text: "sum of “Executor CPU Time” / sum of “Executor Run Time” over all task end events"}},
-			Fix:         "Look at the stages with the lowest CPU share below. High shuffle fetch wait points at the network or skew; high GC points at memory.",
+			Fix:         "Look at the stages with the lowest CPU share.\n- A long shuffle fetch wait shows a problem with the network or skew.\n- A long garbage collection time shows a problem with memory.",
 		})
 	}
 	if s.AllocatedCoreMs > 0 && s.BusyShare < t.LowCPUShare {
 		c.add(model.Finding{
 			Rule: "cpu-idle-executors", Severity: model.Info, Section: "cpu",
 			Title:       fmt.Sprintf("Executor cores were busy only %s of the time they were held", model.Percent(s.BusyShare)),
-			Explanation: fmt.Sprintf("Executors held %s of core time but ran tasks for %s. The rest of the time the cores sat idle, often between jobs, while the driver worked alone, or waiting at the end of skewed stages.", model.Duration(s.AllocatedCoreMs), model.Duration(s.RunMs)),
+			Explanation: fmt.Sprintf("The executors held %s of core time, but they ran tasks for only %s. In the remaining time, the cores did no work. This often occurs between jobs while the driver works alone, or at the end of skewed stages.", model.Duration(s.AllocatedCoreMs), model.Duration(s.RunMs)),
 			Evidence:    []model.Evidence{{Text: "executor cores × (removed − added), against the sum of task run time"}},
-			Fix:         "Enable dynamic allocation (spark.dynamicAllocation.enabled=true) so idle executors are released, or use fewer, larger batches of work.",
+			Fix:         "Do one of these:\n- Set spark.dynamicAllocation.enabled=true, so that Spark releases executors that do no work.\n- Put the work into fewer and larger batches.",
 		})
 	}
 }

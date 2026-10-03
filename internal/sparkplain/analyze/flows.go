@@ -251,18 +251,18 @@ func shuffleNetwork(c *ctx, f *model.FlowSection) {
 		med := rest[len(rest)/2]
 		c.add(model.Finding{Rule: "shuffle-network", Severity: model.Warning, Section: "tasklogs",
 			Title: fmt.Sprintf("Executor %s read %s of shuffle data over the network, %.0f× the median of the other executors", top.Executor, model.Bytes(top.RemoteBytes), float64(top.RemoteBytes)/float64(med)),
-			Explanation: fmt.Sprintf("Its tasks fetched %s from other nodes, where the other executors that fetched any read a median of %s. A task reads one partition of the previous stage's output from every node that wrote it, so one executor fetching far more means its tasks had the largest partitions: a few keys held much of the data. In all, %s of the run's %s of shuffle reads (%s) crossed the network. Sizes are Spark's estimates from the map outputs.",
+			Explanation: fmt.Sprintf("Its tasks fetched %s from other nodes. The median of the other executors that fetched data was %s. A task reads one partition of the output of the stage before it from each node that wrote the partition. As a result, when one executor fetches much more, its tasks had the largest partitions. A few keys held much of the data.\nIn all, %s of the %s of shuffle reads in the run (%s) went over the network. The sizes are estimates that Spark makes from the map outputs.",
 				model.Bytes(top.RemoteBytes), model.Bytes(med), model.Bytes(f.RemoteBytes), model.Bytes(all), model.Percent(share(f.RemoteBytes, all))),
 			Evidence: ev,
-			Fix:      "Find the hot keys (count rows per key before the shuffle) and spread them: salt the key, filter null or default keys out first, or turn on adaptive execution's skew join handling (spark.sql.adaptive.skewJoin.enabled)."})
+			Fix:      "Find the keys that have too many rows. For example, count the rows for each key before the shuffle. Then do one of these:\n- Add a random salt to the key.\n- Remove null or default keys first.\n- Set spark.sql.adaptive.skewJoin.enabled=true."})
 		return
 	}
 	c.add(model.Finding{Rule: "shuffle-network", Severity: model.Info, Section: "tasklogs",
 		Title: fmt.Sprintf("%s of shuffle data crossed the network between nodes (%s of shuffle reads)", model.Bytes(f.RemoteBytes), model.Percent(share(f.RemoteBytes, all))),
-		Explanation: fmt.Sprintf("Tasks read %s of the previous stages' output: %s from their own node and %s from other nodes over the network, spread over %s. Moving data between nodes costs network time and the other nodes' disk reads; the less a job shuffles, the faster it runs. Sizes are Spark's estimates from the map outputs.",
+		Explanation: fmt.Sprintf("Tasks read %s of output from the stages before them. They read %s from their own node and %s from other nodes over the network, in %s. Data that moves between nodes uses network time and disk reads on the other nodes. When a job shuffles less data, it runs faster. The sizes are estimates that Spark makes from the map outputs.",
 			model.Bytes(all), model.Bytes(f.LocalBytes), model.Bytes(f.RemoteBytes), model.Plural(len(reads), "executor", "executors")),
 		Evidence: ev,
-		Fix:      "Shuffle less: filter and select columns before joins and aggregations, broadcast a small join side instead of shuffling both (spark.sql.autoBroadcastJoinThreshold), and reuse a partitioning instead of repartitioning again."})
+		Fix:      "Shuffle less data:\n- Filter the rows and select the columns before joins and aggregations.\n- Broadcast the small side of a join, so that Spark does not shuffle both sides (spark.sql.autoBroadcastJoinThreshold).\n- Use the same partitioning again. Do not repartition again."})
 }
 
 // cacheEvicted reports cached blocks dropped from memory, or that did not
@@ -292,11 +292,11 @@ func cacheEvicted(c *ctx, f *model.FlowSection) {
 		what = append(what, model.Plural(f.NotCached, "block did not fit and was not cached", "blocks did not fit and were not cached"))
 	}
 	c.add(model.Finding{Rule: "cache-evicted", Severity: model.Warning, Section: "tasklogs",
-		Title: "Cached data did not fit in memory: " + strings.Join(what, ", and "),
-		Explanation: "A cached partition that is dropped, or never stored, is computed again from its source the next time the code uses it, which can cost as much as the first time. On " + listAnd(where) +
+		Title: "Cached data did not fit in memory (" + strings.Join(what, ", and ") + ")",
+		Explanation: "When Spark drops a cached partition, or does not store it, Spark calculates the partition again from its source when the code uses it next. This can take as much time as the first calculation. This occurred on " + listAnd(where) +
 			". The executors cached " + model.Bytes(f.CachedBytes) + " in all, as Spark estimated it.",
 		Evidence: ev,
-		Fix:      "Cache only what is used more than once and unpersist it when done; store it serialized or spill it to disk instead of recomputing (persist(StorageLevel.MEMORY_AND_DISK_SER)); or give executors more memory (spark.executor.memory) or storage a larger share (spark.memory.storageFraction)."})
+		Fix:      "Cache only the data that the code uses two or more times. Unpersist it when the code no longer uses it.\nThen do one of these:\n- Store it in serialized form, or let it spill to disk (persist(StorageLevel.MEMORY_AND_DISK_SER)).\n- Give the executors more memory (spark.executor.memory).\n- Give storage a larger part of the memory (spark.memory.storageFraction)."})
 }
 
 // broadcastLarge reports a broadcast variable of at least broadcast-large,
@@ -307,7 +307,7 @@ func broadcastLarge(c *ctx, f *model.FlowSection) {
 		if !big && !slow {
 			continue
 		}
-		title := fmt.Sprintf("Broadcast variable %s is %s, read by %s", strings.TrimPrefix(b.Name, "broadcast "), model.Bytes(b.Bytes), model.Plural(b.Executors, "executor", "executors"))
+		title := fmt.Sprintf("Broadcast variable %s is %s, and %s read it", strings.TrimPrefix(b.Name, "broadcast "), model.Bytes(b.Bytes), model.Plural(b.Executors, "executor", "executors"))
 		if !big {
 			title = fmt.Sprintf("Executor %s took %s to read broadcast variable %s (%s)", b.SlowestOn, model.Duration(b.MaxMs), strings.TrimPrefix(b.Name, "broadcast "), model.Bytes(b.Bytes))
 		}
@@ -317,10 +317,10 @@ func broadcastLarge(c *ctx, f *model.FlowSection) {
 		}
 		c.add(model.Finding{Rule: "broadcast-large", Severity: model.Warning, Section: "tasklogs",
 			Title: title,
-			Explanation: fmt.Sprintf("Every executor that needs a broadcast variable fetches all of it and keeps it in memory, and the driver held it first. This one is %s (Spark's estimate); its reads took %s in all, the slowest %s. A large broadcast slows the stages that start with it and takes memory from caching and execution on every executor.",
+			Explanation: fmt.Sprintf("Each executor that uses a broadcast variable fetches all of it and keeps it in memory. The driver held it first. This variable is %s, as Spark estimated it. Its reads took %s in all, and the slowest read took %s. A large broadcast makes the stages that use it slower. It also takes memory from cache and execution on each executor.",
 				model.Bytes(b.Bytes), model.Duration(b.ReadMs), model.Duration(b.MaxMs)),
 			Evidence: ev,
-			Fix:      "Broadcast only small tables: lower spark.sql.autoBroadcastJoinThreshold or remove a broadcast hint so a large side is joined by a shuffle instead; select only the columns needed before broadcasting; and do not broadcast large Python or Java objects from the driver."})
+			Fix:      "Broadcast only small tables:\n- Decrease spark.sql.autoBroadcastJoinThreshold, or remove the broadcast hint. Then Spark joins a large side with a shuffle.\n- Select only the necessary columns before the broadcast.\n- Do not broadcast large Python or Java objects from the driver."})
 		return
 	}
 }
@@ -338,10 +338,10 @@ func taskSpill(c *ctx, f *model.FlowSection) {
 	}
 	c.add(model.Finding{Rule: "task-spill", Severity: model.Warning, Section: "tasklogs",
 		Title: fmt.Sprintf("Tasks spilled %s from memory to disk", model.Bytes(f.SpillBytes)),
-		Explanation: fmt.Sprintf("A sort, join or aggregation that cannot keep its data in memory writes part of it to local disk and reads it back, which is slow. The most was in %s: %s. Sizes are what the data took in memory.",
+		Explanation: fmt.Sprintf("When a sort, a join or an aggregation cannot keep its data in memory, it writes a part of the data to local disk. Then it reads that data back. This is slow. The largest spill was in %s, with %s. The sizes are the sizes of the data in memory.",
 			where, model.Bytes(top.Bytes)),
 		Evidence: []model.Evidence{{Source: top.Source, Text: "a task that spilled"}},
-		Fix:      "Give each task less data (more shuffle partitions: spark.sql.shuffle.partitions, or adaptive execution's coalescing) or more memory (spark.executor.memory, or fewer cores per executor so each task gets a larger share)."})
+		Fix:      "Do one of these:\n- Give each task less data. Increase spark.sql.shuffle.partitions, or let adaptive execution coalesce the partitions.\n- Give each task more memory. Increase spark.executor.memory, or use fewer cores for each executor."})
 }
 
 // commitSlow reports output commits that took at least commit-share of
@@ -368,9 +368,9 @@ func commitSlow(c *ctx, s *model.TaskStorySection) {
 		return
 	}
 	c.add(model.Finding{Rule: "commit-slow", Severity: model.Warning, Section: "tasklogs",
-		Title: fmt.Sprintf("Committing output took %s of the writing tasks' time (%s in all)", model.Percent(share(commitMs, taskMs)), model.Duration(commitMs)),
-		Explanation: fmt.Sprintf("%s committed output: each moves its files into place when it ends. The commits took %s of their %s, the slowest %s. On S3, a commit that renames files copies them, so many small files make it slow.",
+		Title: fmt.Sprintf("Output commits took %s of the time of the tasks that wrote output (%s in all)", model.Percent(share(commitMs, taskMs)), model.Duration(commitMs)),
+		Explanation: fmt.Sprintf("%s committed output. Each task moves its files to their final place when it ends. The commits took %s of their %s, and the slowest commit took %s. On S3, a commit that renames files copies them. As a result, many small files make the commit slow.",
 			model.Plural(writers, "task", "tasks"), model.Duration(commitMs), model.Duration(taskMs), model.Duration(worst)),
 		Evidence: []model.Evidence{{Source: src, Text: "the slowest commit: " + model.Duration(worst)}},
-		Fix:      "Write fewer, larger files (coalesce or repartition before writing), and on EMR keep the EMRFS S3-optimized committer on (spark.sql.parquet.fs.optimized.committer.optimization-enabled) so commits do not copy files."})
+		Fix:      "Write fewer and larger files. Use coalesce or repartition before the write.\nOn EMR, keep the EMRFS S3-optimized committer on (spark.sql.parquet.fs.optimized.committer.optimization-enabled). Then commits do not copy files."})
 }

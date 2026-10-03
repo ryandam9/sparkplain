@@ -68,7 +68,7 @@ func analyzeCalls(c *ctx, r *model.Report) {
 	}
 	if f := c.finding("access-denied"); f != nil {
 		f.Evidence = append(f.Evidence, ev...)
-		f.Explanation += " CloudTrail recorded the refusals too, with the role that made each call."
+		f.Explanation += "\nCloudTrail also recorded the refusals, with the role that made each call."
 		return
 	}
 	role := "the cluster's instance profile"
@@ -76,8 +76,8 @@ func analyzeCalls(c *ctx, r *model.Report) {
 		role = "the instance profile " + r.Cluster.InstanceProfile
 	}
 	c.add(model.Finding{Rule: "access-denied", Severity: model.Critical, Section: "access",
-		Title:       fmt.Sprintf("AWS refused %s: %s", model.Plural(len(a.Denied), "call", "calls"), strings.Join(order[:min(len(order), 3)], "; ")),
-		Explanation: "CloudTrail recorded calls from the application's nodes that AWS refused. The logs sparkplain read did not show the error, so the application may have caught it or retried.",
+		Title:       fmt.Sprintf("AWS refused %s (%s)", model.Plural(len(a.Denied), "call", "calls"), strings.Join(order[:min(len(order), 3)], "; ")),
+		Explanation: "CloudTrail recorded calls from the nodes of the application that AWS refused. The logs that sparkplain read do not show the error. It is possible that the application caught the error or tried the call again.",
 		Evidence:    ev,
-		Fix:         "Grant " + role + " (or the step's runtime role) the refused actions on those resources, or stop the job making the call."})
+		Fix:         "Do one of these:\n- Give " + role + ", or the runtime role of the step, the refused actions on those resources.\n- Change the job so that it does not make the call."})
 }

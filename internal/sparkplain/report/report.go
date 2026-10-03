@@ -192,7 +192,8 @@ func funcs(loc *time.Location) template.FuncMap {
 		"first": func(n int, v []*model.SQLQuery) []*model.SQLQuery { return v[:min(n, len(v))] },
 		// explorerURL links an Evidence.Ref ("stage:27.0") to its view in
 		// the explorer ("explorer.html#stage/27.0").
-		"xTab": explorerTab,
+		"xTab":  explorerTab,
+		"prose": proseHTML,
 		"explorerURL": func(href, ref string) template.URL {
 			kind, id, _ := strings.Cut(ref, ":")
 			if kind == "node" {
@@ -240,6 +241,35 @@ func runtimeValue(r *model.Report, label string) string {
 // explorerTabs maps the report's sections (as the coverage table names
 // them) to the explorer tab that has their detail; the report itself keeps
 // only the summary.
+// proseHTML renders a finding's text: each line a paragraph, and lines
+// that start with "- " a bulleted list, so alternatives read as a list.
+func proseHTML(text, cls string) template.HTML {
+	var b strings.Builder
+	inList := false
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		item, isItem := strings.CutPrefix(line, "- ")
+		if isItem != inList {
+			if isItem {
+				b.WriteString(`<ul class="` + cls + `">`)
+			} else {
+				b.WriteString(`</ul>`)
+			}
+			inList = isItem
+		}
+		switch {
+		case isItem:
+			b.WriteString("<li>" + template.HTMLEscapeString(item) + "</li>")
+		case line != "":
+			b.WriteString(`<p class="` + cls + `">` + template.HTMLEscapeString(line) + "</p>")
+		}
+	}
+	if inList {
+		b.WriteString(`</ul>`)
+	}
+	return template.HTML(b.String())
+}
+
 var explorerTabs = map[string]string{
 	"summary": "overview", "findings": "overview", "anatomy": "anatomy", "nodes": "anatomy",
 	"timeline": "timeline", "executors": "executors", "memory": "executors", "cpu": "executors",

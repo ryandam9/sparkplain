@@ -172,12 +172,12 @@ func serverLoad(c *ctx, h *model.HBaseSection) {
 		}
 	}
 	c.add(model.Finding{Rule: "hbase-server-load", Severity: model.Warning, Section: "stages",
-		Title: fmt.Sprintf("Region server %s served %d of the %d HBase scan tasks running at %s", worst.Server, hot.Tasks, hot.All, c.clock(hot.At)),
-		Explanation: fmt.Sprintf("From %s to %s (%s), %s served at least %s of the run's TableInputFormat tasks running at each moment, while %s other region server%s had the rest. Each task reads one region, so the reads queued on one server's handlers and disks instead of being spread across the cluster. Over the whole run it served %s, %s of task time.",
+		Title: fmt.Sprintf("Region server %s served %d of the %d HBase scan tasks that ran at %s", worst.Server, hot.Tasks, hot.All, c.clock(hot.At)),
+		Explanation: fmt.Sprintf("From %s to %s (%s), %s served at least %s of the TableInputFormat tasks that ran at each time. %s other region server%s had the remaining tasks. Each task reads one region. As a result, the reads waited for the handlers and disks of one server, and the cluster did not share the work.\nIn all of the run, the server served %s, with %s of task time.",
 			c.clock(hot.From), c.clock(hot.To), model.Duration(hot.To.Sub(hot.From).Milliseconds()), worst.Server, model.Percent(c.t.HBaseHotspot), model.Num(int64(len(h.Load)-1)), plural(len(h.Load)-1),
 			model.Plural(worst.Tasks, "task", "tasks"), model.Duration(worst.TaskMs)),
 		Evidence: ev,
-		Fix:      "Spread the regions the job reads: check that HBase's balancer is on (HBase shell: balance_switch true, then balancer), move or split the hot regions, or pre-split the table so its key range lands on several servers. Row keys that start with a date or a counter put the newest rows on one server; salting or hashing a prefix spreads them."})
+		Fix:      "Spread the regions that the job reads. Do one of these:\n- Make sure that the HBase balancer is on. In the HBase shell, use balance_switch true, and then balancer.\n- Move or split the busy regions.\n- Pre-split the table, so that its key range goes to more servers.\nRow keys that start with a date or a counter put the newest rows on one server. A salt or a hash as a prefix spreads them."})
 }
 
 // taskName names a tasks-table row as Spark does: 41.0 in stage 172.0 (TID

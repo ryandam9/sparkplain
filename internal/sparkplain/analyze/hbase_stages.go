@@ -244,15 +244,15 @@ func hbaseSlowFindings(c *ctx, h *model.HBaseSection) {
 		if len(h.Stages) == 1 {
 			their = "Its"
 		}
-		expl := fmt.Sprintf("Spark spent that long in the %s that read or wrote HBase. %s tasks were on the CPU %s of their run time", model.Plural(len(h.Stages), "stage", "stages"), their, model.Percent(cpu))
+		expl := fmt.Sprintf("Spark used that time in the %s that read or wrote HBase. %s tasks used the CPU for %s of their run time", model.Plural(len(h.Stages), "stage", "stages"), their, model.Percent(cpu))
 		if !c.metrics() { // CPU time is only in the event log
-			expl = fmt.Sprintf("Spark spent that long in the %s that read or wrote HBase", model.Plural(len(h.Stages), "stage", "stages"))
+			expl = fmt.Sprintf("Spark used that time in the %s that read or wrote HBase", model.Plural(len(h.Stages), "stage", "stages"))
 		}
 		if !c.metrics() {
 			expl += "."
 		} else if cpu < t.LowCPUShare {
 			sev = model.Warning
-			expl += ", so they spent most of it waiting, usually on HBase."
+			expl += ". As a result, they waited for most of the time, usually for HBase."
 		} else {
 			expl += "."
 		}
@@ -265,14 +265,13 @@ func hbaseSlowFindings(c *ctx, h *model.HBaseSection) {
 				longest = s
 			}
 		}
-		expl += fmt.Sprintf(" The longest was %s, %s", stageName(longest), model.Duration(longest.DurationMs))
+		expl += fmt.Sprintf("\nThe longest was %s, with %s.", stageName(longest), model.Duration(longest.DurationMs))
 		if sl := longest.Slowest; sl != nil && longest.MedianMs > 0 && sl.DurationMs >= 2*longest.MedianMs && sl.DurationMs >= 1000 {
-			expl += fmt.Sprintf("; its slowest task took %s on %s, against a median of %s", model.Duration(sl.DurationMs), sl.Host, model.Duration(longest.MedianMs))
+			expl += fmt.Sprintf(" Its slowest task took %s on %s, compared with a median of %s.", model.Duration(sl.DurationMs), sl.Host, model.Duration(longest.MedianMs))
 		}
-		expl += "."
-		fix := "HBase answered slowly without logging errors. Check the region servers' own logs for that time, how many regions each scan reads (one task per region), scanner caching for scans and the client's write buffer for writes."
+		fix := "HBase answered slowly, but it logged no errors. Examine these:\n- The logs of the region servers for that time.\n- The number of regions that each scan reads. Each region is one task.\n- The scanner caching for scans, and the write buffer of the client for writes."
 		if len(all) > 0 {
-			fix = "Start with the HBase findings below, which say what the clients retried and how to avoid it."
+			fix = "Start with the HBase findings below. They show what the clients tried again and how to prevent it."
 		}
 		var ev []model.Evidence
 		for _, s := range h.Stages {
@@ -303,7 +302,7 @@ func hbaseSlowFindings(c *ctx, h *model.HBaseSection) {
 			}
 		}
 		if len(names) > 0 {
-			f.Explanation += " They happened while " + strings.Join(names, " and ") + " ran."
+			f.Explanation += "\nThey occurred while " + strings.Join(names, " and ") + " ran."
 		}
 	}
 	// One process opening many ZooKeeper connections.
@@ -319,10 +318,10 @@ func hbaseSlowFindings(c *ctx, h *model.HBaseSection) {
 		}
 		c.add(model.Finding{Rule: "hbase-zk-connections", Severity: model.Warning, Section: "stages",
 			Title: fmt.Sprintf("%s opened %d ZooKeeper connections to reach HBase", upperFirst(h.MostSessionsBy), h.MostSessions),
-			Explanation: fmt.Sprintf("Every new HBase connection asks ZooKeeper where HBase's meta table is, then looks each region up there again, because a new connection has nothing cached. %d in one process (%d in the run) means the code opened a connection for each task or batch instead of sharing one, which adds those round trips to every task and load on ZooKeeper and the server holding the meta table.",
+			Explanation: fmt.Sprintf("Each new HBase connection asks ZooKeeper for the location of the meta table of HBase. Then it finds each region in the meta table again, because a new connection has no cache. %d connections in one process (%d in the run) show that the code opened a connection for each task or batch. It did not share one connection. This adds those calls to each task, and it adds load on ZooKeeper and on the server of the meta table.",
 				h.MostSessions, h.Sessions),
 			Evidence: ev,
-			Fix:      "Open one HBase Connection per executor and reuse it, for example a lazily created one per JVM, rather than one per partition. A Connection is thread-safe and meant to be shared."})
+			Fix:      "Open one HBase Connection for each executor and use it again. For example, make one Connection for each JVM when the code first needs it. Do not open one for each partition.\nA Connection is thread-safe, and you can share it."})
 	}
 	// One region server holding most of a table's regions.
 	servers := map[string]bool{}
@@ -346,20 +345,20 @@ func hbaseSlowFindings(c *ctx, h *model.HBaseSection) {
 		}
 		top := tb.Regions[0]
 		c.add(model.Finding{Rule: "hbase-hotspot", Severity: model.Warning, Section: "stages",
-			Title:       fmt.Sprintf("Region server %s held %d of the %d regions of %s the run read", top.Server, top.Regions, total, tb.Name),
-			Explanation: fmt.Sprintf("Each task of a TableInputFormat scan reads one region from the region server holding it, so %s answered %s of the scan while the other region servers the run used (%d in all) did little.", top.Server, model.Percent(share(int64(top.Regions), int64(total))), len(servers)),
+			Title:       fmt.Sprintf("Region server %s held %d of the %d regions of %s that the run read", top.Server, top.Regions, total, tb.Name),
+			Explanation: fmt.Sprintf("Each task of a TableInputFormat scan reads one region from the region server that holds it. As a result, %s answered %s of the scan. The other region servers that the run used (%d in all) did little work.", top.Server, model.Percent(share(int64(top.Regions), int64(total))), len(servers)),
 			Evidence: []model.Evidence{{Source: tb.Source, Text: fmt.Sprintf("%s: regions read per region server, from the executors' split lines", tb.Name)},
 				{Ref: model.NodeRef(top.Server), Text: fmt.Sprintf("region server %s: %d of %d regions", top.Server, top.Regions, total)}},
-			Fix: "Spread the table's regions across region servers (the HBase balancer, or move regions by hand), and split large regions; a table with few regions should be pre-split."})
+			Fix: "Spread the regions of the table across the region servers. Use the HBase balancer, or move the regions yourself.\nSplit large regions. Pre-split a table that has few regions."})
 		break
 	}
 	// Regions read from another node.
 	if n := h.LocalRegions + h.RemoteRegions; n >= 4 && float64(h.RemoteRegions) > t.LocalityAnyShare*float64(n) {
 		c.add(model.Finding{Rule: "hbase-remote-regions", Severity: model.Info, Section: "stages",
 			Title:       fmt.Sprintf("%d of %d HBase regions were read from another node", h.RemoteRegions, n),
-			Explanation: "TableInputFormat tells Spark which node holds each region, and Spark prefers to run the task there. These tasks ran on other nodes, so every row they read crossed the network between nodes. Spark does this when no executor on the region's node is free within spark.locality.wait.",
+			Explanation: "TableInputFormat tells Spark the node of each region, and Spark tries to run the task on that node. These tasks ran on other nodes. As a result, all rows that they read went over the network. Spark does this when no executor on the node of the region is free within spark.locality.wait.",
 			Evidence:    remoteReaders(c),
-			Fix:         "Run executors on the nodes that serve regions (with HBase on the same cluster, the core nodes). If tasks are short, a longer spark.locality.wait lets Spark wait for a local slot."})
+			Fix:         "Run executors on the nodes that serve the regions. When HBase is on the same cluster, these are the core nodes.\nIf the tasks are short, increase spark.locality.wait. Then Spark waits longer for a local slot."})
 	}
 }
 

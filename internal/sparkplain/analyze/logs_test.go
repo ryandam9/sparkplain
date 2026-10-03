@@ -161,7 +161,7 @@ java.io.IOException: No space left on device
 	}
 	lf := got["executor-lost"]
 	if len(lf.Evidence) != 2 || !strings.Contains(lf.Evidence[1].Text, "executor 3's own log: Exception in task 1.0 in stage 3.0 (TID 11) — IOException: No space left on device") ||
-		lf.Evidence[1].Ref != "executor:3" || !strings.Contains(lf.Fix, "last error in each lost executor's own log") {
+		lf.Evidence[1].Ref != "executor:3" || !strings.Contains(lf.Fix, "last error in the log of each lost executor") {
 		t.Errorf("lost = %+v", lf)
 	}
 	if n := strings.Count(strings.Join(keys(got), " "), "executor-memory-kill"); n != 1 {
@@ -193,9 +193,9 @@ org.apache.hadoop.hbase.client.RetriesExhaustedException: Failed after attempts=
 	got := rules(r)
 	want := map[string]string{
 		"out-of-memory":     "The driver ran out of memory (Java heap space)",
-		"access-denied":     "AWS refused access 1 time: glue:GetTable on arn:aws:glue:us-east-1:000000000000:table/db/t",
+		"access-denied":     "AWS refused access 1 time (glue:GetTable on arn:aws:glue:us-east-1:000000000000:table/db/t)",
 		"kerberos-failure":  "Kerberos authentication failed (1 error in the logs)",
-		"metastore-failure": "The table catalog could not be reached (1 error in the logs)",
+		"metastore-failure": "Spark could not reach the table catalog (1 error in the logs)",
 		"hbase-retries":     "HBase calls gave up after all their retries (1 error in the logs)",
 		"step-failed":       "The step failed although Spark finished",
 		"app-retried":       "YARN restarted the application after 1 failed attempt",
@@ -205,7 +205,7 @@ org.apache.hadoop.hbase.client.RetriesExhaustedException: Failed after attempts=
 			t.Errorf("%s: title %q, want %q", rule, got[rule].Title, title)
 		}
 	}
-	if !strings.Contains(got["access-denied"].Fix, "Grant the instance profile EMR_EC2_Fixture") {
+	if !strings.Contains(got["access-denied"].Fix, "Give the instance profile EMR_EC2_Fixture") {
 		t.Errorf("access fix = %q", got["access-denied"].Fix)
 	}
 	if !strings.Contains(got["app-retried"].Explanation, "exited with code 15 (the application's main class threw an exception)") {
@@ -315,14 +315,14 @@ func TestRetriedAttemptOnLostSpotNode(t *testing.T) {
 	if !ok {
 		t.Fatalf("no app-retried: %v", keys(rules(r)))
 	}
-	for _, want := range []string{"The first attempt's application master exited with code 1", "Its driver ran on ip-10-0-0-4.ec2.internal.",
+	for _, want := range []string{"The application master of the first attempt exited with code 1", "Its driver ran on ip-10-0-0-4.ec2.internal.",
 		"YARN reported that node DECOMMISSIONING at 14:12:09 UTC", "EMR reports instance i-4 ended at 14:14:20 UTC: Spot Instance was terminated",
-		"Its first error, in the driver's stderr in attempt 1: Lost task 1.0 in stage 0.0 (TID 1)", "INTERNAL_ERROR_BROADCAST", "and attempt 2 finished"} {
+		"The first error of that attempt, in the driver's stderr in attempt 1: Lost task 1.0 in stage 0.0 (TID 1)", "INTERNAL_ERROR_BROADCAST", "and attempt 2 finished"} {
 		if !strings.Contains(f.Explanation, want) {
 			t.Errorf("explanation lacks %q: %s", want, f.Explanation)
 		}
 	}
-	if !strings.HasPrefix(f.Fix, "The driver ran on a spot node that was taken back.") {
+	if !strings.HasPrefix(f.Fix, "The driver ran on a spot node, and AWS took the node back.") {
 		t.Errorf("fix = %q", f.Fix)
 	}
 	for _, e := range f.Evidence {
@@ -341,9 +341,9 @@ func TestRetriedAttemptOnLostSpotNode(t *testing.T) {
 	// The spot node ran none of attempt 2's executors, but it took attempt
 	// 1's driver, and EMR said it was a spot reclaim.
 	spot := rules(r)["spot-interrupted"]
-	if spot.Severity != model.Warning || !strings.Contains(spot.Explanation, "It took the driver of attempt 1 with it. Attempt 1 failed without its driver") ||
-		!strings.Contains(spot.Explanation, "EMR says why: Spot Instance was terminated due to not enough capacity in the Spot Instance pool.") ||
-		strings.Contains(spot.Explanation, "inferred") || len(spot.Evidence) != 3 || !strings.Contains(spot.Evidence[1].Text, "YARN reported the node DECOMMISSIONING at 14:12:09 UTC") {
+	if spot.Severity != model.Warning || !strings.Contains(spot.Explanation, "The application lost the driver of attempt 1. Attempt 1 failed without its driver") ||
+		!strings.Contains(spot.Explanation, "The reason from EMR: Spot Instance was terminated due to not enough capacity in the Spot Instance pool.") ||
+		strings.Contains(spot.Explanation, "from the market and the time") || len(spot.Evidence) != 3 || !strings.Contains(spot.Evidence[1].Text, "YARN reported the node DECOMMISSIONING at 14:12:09 UTC") {
 		t.Errorf("spot = %+v", spot)
 	}
 	if _, ok := rules(r)["idle-nodes"]; ok {
@@ -352,7 +352,7 @@ func TestRetriedAttemptOnLostSpotNode(t *testing.T) {
 	// Without the logs, a spot node that ran nothing of this application
 	// is only a note.
 	quiet := rules(runWithLogs(l, cl))["spot-interrupted"]
-	if quiet.Severity != model.Info || !strings.Contains(quiet.Explanation, "lost no work on it") {
+	if quiet.Severity != model.Info || !strings.Contains(quiet.Explanation, "lost no work") {
 		t.Errorf("quiet spot = %+v", quiet)
 	}
 }
@@ -364,7 +364,7 @@ func TestRetriedAttemptFromEventLogOnly(t *testing.T) {
 	l := synthetic(nil, &model.Executor{ID: "1", Host: "h", Cores: 2})
 	l.Application.AttemptID = "2"
 	f, ok := rules(runWithLogs(l, nil))["app-retried"]
-	if !ok || f.Title != "YARN restarted the application: the event log is from attempt 2" || !strings.Contains(f.Explanation, "why they failed is not known") {
+	if !ok || f.Title != "YARN started the application again, and the event log is from attempt 2" || !strings.Contains(f.Explanation, "the cause of their failure is not known") {
 		t.Errorf("app-retried = %+v", f)
 	}
 	l.Application.AttemptID = "1"

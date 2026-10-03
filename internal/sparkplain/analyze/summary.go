@@ -125,9 +125,9 @@ func analyzeIdentity(c *ctx, r *model.Report) {
 		c.add(model.Finding{
 			Rule: "access-static-keys", Severity: model.Warning, Section: "access",
 			Title:       "Static AWS credentials are set in the Spark configuration",
-			Explanation: "The application carried AWS keys in its settings. Anyone who can read the event log, the Spark UI or the History Server can see settings, and static keys do not expire. sparkplain hides the values, but Spark only hides them if spark.redaction.regex matches.",
+			Explanation: "The settings of the application had AWS keys. All persons who can read the event log, the Spark UI or the History Server can see the settings, and static keys do not expire. sparkplain hides the values. Spark hides them only if spark.redaction.regex matches them.",
 			Evidence:    []model.Evidence{{Source: src, Text: strings.Join(creds, ", ") + " (values hidden)"}},
-			Fix:         "Remove the keys and let EMR's instance profile or an EMR runtime role provide credentials. Rotate the keys if the logs were shared.",
+			Fix:         "Remove the keys. Let the EMR instance profile or an EMR runtime role give the credentials.\nIf someone shared the logs, replace the keys.",
 		})
 	}
 }

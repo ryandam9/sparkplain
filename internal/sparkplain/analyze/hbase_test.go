@@ -24,19 +24,19 @@ org.apache.hadoop.hbase.TableNotFoundException: sp_missing
 org.apache.hadoop.hbase.client.RetriesExhaustedWithDetailsException: Failed 250 actions: sp_missing: 250 times, servers with issues: null
 `, "hbase-table-missing", "HBase table sp_missing does not exist (2 errors in the logs)", "namespace", "create '<table>'"},
 		{"ZooKeeper on the wrong port", `26/09/29 05:23:54 WARN ReadOnlyZKClient: 0x38268de7 to zk.example.internal:2182 failed for get of /hbase/hbaseid, code = CONNECTIONLOSS, retries = 2, give up
-`, "hbase-zookeeper", "HBase's ZooKeeper could not be reached at zk.example.internal:2182 (1 error in the logs)", "this client dialled port 2182", "hbase.zookeeper.property.clientPort"},
+`, "hbase-zookeeper", "The HBase client could not reach ZooKeeper at zk.example.internal:2182 (1 error in the logs)", "This client used port 2182", "hbase.zookeeper.property.clientPort"},
 		{"scanner leases", `26/09/29 05:58:44 INFO ZooKeeper: closed
 org.apache.hadoop.hbase.UnknownScannerException: org.apache.hadoop.hbase.UnknownScannerException: Unknown scanner '-1'. This can happen due to any of the following reasons: b) Scanner lease expired because of long wait between consecutive client checkins
-`, "hbase-scanner-expired", "HBase scanner leases expired (1 time in the logs)", "60 s unless changed", "hbase.mapreduce.scan.cachedrows"},
+`, "hbase-scanner-expired", "HBase scanner leases expired (1 time in the logs)", "60 s by default", "hbase.mapreduce.scan.cachedrows"},
 		{"memstore full", `26/09/29 06:08:04 INFO AsyncRequestFutureImpl: id=10, table=sp_hot, attempt=6/16, failureCount=2048ops, last exception=org.apache.hadoop.hbase.RegionTooBusyException: org.apache.hadoop.hbase.RegionTooBusyException: Over memstore limit=2.0 M, regionName=bd53, server=rs1.example.internal,16020,1790655886216
 26/09/29 06:08:05 INFO AsyncRequestFutureImpl: id=10, table=sp_hot, attempt=3/16, failureCount=12ops, last exception=org.apache.hadoop.hbase.RegionTooBusyException: org.apache.hadoop.hbase.RegionTooBusyException: Over memstore limit=2.0 M, regionName=bd53, server=rs1.example.internal,16020,1790655886216
-`, "hbase-busy", "HBase pushed back on writes to sp_hot (2 times in the logs)", "The region server on rs1.example.internal refused writes because the region's memstore, the memory that holds writes until they are flushed to disk, was over its limit (2.0 M). The client waited and retried, up to attempt 6 of 16", "pre-split"},
+`, "hbase-busy", "HBase refused writes to sp_hot for a short time (2 times in the logs)", "The region server on rs1.example.internal refused writes because the memstore of the region was more than its limit (2.0 M). The memstore is the memory that holds writes until HBase flushes them to disk. The client waited and tried again, up to attempt 6 of 16", "Pre-split"},
 		{"call queue full", `24/01/01 10:00:00 WARN ScannerCallable: scan failed
 org.apache.hadoop.hbase.CallQueueTooBigException: Call queue is full on rs1.example.internal,16020,1700000000000, too many items queued ?
-`, "hbase-busy", "HBase pushed back on writes (1 time in the logs)", "its queue of waiting requests was full", "Fewer tasks"},
+`, "hbase-busy", "HBase refused writes for a short time (1 time in the logs)", "its queue of requests was full", "fewer tasks"},
 		{"regions moving", `24/01/01 10:00:00 WARN RpcRetryingCallerImpl: Call exception
 org.apache.hadoop.hbase.NotServingRegionException: sp_orders,2,1700000000000.c5f9. is not online on rs1.example.internal,16020,1700000000000
-`, "hbase-region-moved", "HBase regions were moving or opening during the run (1 error in the logs)", "moving, splitting or reopening", "balancer"},
+`, "hbase-region-moved", "HBase regions were moving or opening during the run (1 error in the logs)", "HBase moved, split or opened the region again", "balancer"},
 		{"region server timed out", `24/01/01 10:00:00 ERROR Executor: Exception in task 0.0 in stage 1.0 (TID 3)
 org.apache.hadoop.hbase.ipc.CallTimeoutException: Call to address=rs1.example.internal/10.0.0.6:16020 failed on local exception: org.apache.hadoop.hbase.ipc.CallTimeoutException: Call[id=5,methodName=Scan], waitTime=60001ms, rpcTimeout=60000ms
 24/01/01 10:00:01 ERROR AsyncProcess: gave up
@@ -47,10 +47,10 @@ org.apache.hadoop.hbase.client.RetriesExhaustedException: Failed after attempts=
 `, "hbase-retries", "HBase calls gave up after all their retries (1 error in the logs)", "hbase.client.retries.number", "first HBase error"},
 		{"an HBase error the report does not know", `24/01/01 10:00:04 ERROR HTable: odd
 org.apache.hadoop.hbase.DoNotRetryIOException: something new
-`, "hbase-error", "HBase calls failed (1 error in the logs)", "does not recognise", "first error"},
+`, "hbase-error", "HBase calls failed (1 error in the logs)", "does not know", "first error"},
 		{"HBase refuses the user", `24/01/01 10:00:00 ERROR Executor: write failed
 org.apache.hadoop.hbase.security.AccessDeniedException: org.apache.hadoop.hbase.security.AccessDeniedException: Insufficient permissions for user 'etl' (table=sp_orders, action=WRITE)
-`, "hbase-access-denied", "HBase refused access on sp_orders (1 time)", "not an AWS one", "grant '<user>'"},
+`, "hbase-access-denied", "HBase refused access on sp_orders (1 time)", "not in AWS", "grant '<user>'"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := runWithLogs(nil, nil, logFile(t, exec2Err, tc.text))
@@ -91,8 +91,8 @@ func TestClasspathFinding(t *testing.T) {
 `))
 	got := rules(r)
 	f := got["classpath-clash"]
-	if f.Title != "2 classes were missing at run time: com.google.protobuf.RpcChannel, org.slf4j.impl.StaticLoggerBinder" ||
-		!strings.Contains(f.Explanation, "hbase-client-2.4.17-amzn-7.jar needed com.google.protobuf.RpcChannel, but no jar on the classpath provided it (NoClassDefFoundError; 1 line in the logs)") ||
+	if f.Title != "2 classes were missing at run time (com.google.protobuf.RpcChannel, org.slf4j.impl.StaticLoggerBinder)" ||
+		!strings.Contains(f.Explanation, "hbase-client-2.4.17-amzn-7.jar needed com.google.protobuf.RpcChannel, but no jar on the classpath had it (NoClassDefFoundError, 1 line in the logs)") ||
 		!strings.Contains(f.Explanation, "hbase-spark-1.0.1.jar needed org.slf4j.impl.StaticLoggerBinder") ||
 		!strings.Contains(f.Fix, "/usr/lib/hadoop/lib/protobuf-java-2.5.0.jar") || !strings.Contains(f.Fix, "SLF4J 1.7 binding") {
 		t.Errorf("classpath = %q\n%s\nFix: %s", f.Title, f.Explanation, f.Fix)
@@ -197,11 +197,11 @@ org.apache.hadoop.hbase.UnknownScannerException: org.apache.hadoop.hbase.Unknown
 	}
 	got := rules(r)
 	for rule, want := range map[string][]string{
-		"hbase-time": {"Stages reading or writing HBase took 5 min 0 s of the 6 min 0 s run (83%)", "Its tasks were on the CPU 5.0% of their run time, so they spent most of it waiting",
-			"1 expired scanner lease", "its slowest task took 5 min 0 s on rs1.example.internal, against a median of 1 min 0 s"},
-		"hbase-scanner-expired": {"They happened while stage 0 (scan events) ran."},
-		"hbase-zk-connections":  {"Container container_1_1_01_000002 opened 60 ZooKeeper connections to reach HBase", "nothing cached"},
-		"hbase-hotspot":         {"Region server rs2.example.internal held 3 of the 4 regions of events the run read", "75%"},
+		"hbase-time": {"Stages reading or writing HBase took 5 min 0 s of the 6 min 0 s run (83%)", "Its tasks used the CPU for 5.0% of their run time. As a result, they waited for most of the time",
+			"1 expired scanner lease", "Its slowest task took 5 min 0 s on rs1.example.internal, compared with a median of 1 min 0 s"},
+		"hbase-scanner-expired": {"They occurred while stage 0 (scan events) ran."},
+		"hbase-zk-connections":  {"Container container_1_1_01_000002 opened 60 ZooKeeper connections to reach HBase", "has no cache"},
+		"hbase-hotspot":         {"Region server rs2.example.internal held 3 of the 4 regions of events that the run read", "75%"},
 		"hbase-remote-regions":  {"3 of 4 HBase regions were read from another node", "spark.locality.wait"},
 	} {
 		f, ok := got[rule]
@@ -277,12 +277,12 @@ org.apache.hadoop.hbase.UnknownScannerException: org.apache.hadoop.hbase.Unknown
 	r := runWithLogs(l, nil, exec, master, rs)
 	got := rules(r)
 	for rule, want := range map[string][]string{
-		"hbase-server-lost":     {"Region server ip-10-0-0-7.example.internal stopped while the run was using HBase", "moved the 3 regions it held to other region servers", "It happened while stage 0 (scan events) ran."},
-		"hbase-regions-changed": {"HBase moved 2 regions of events while the run used it", "closed for a moment"},
+		"hbase-server-lost":     {"Region server ip-10-0-0-7.example.internal stopped while the run used HBase", "moved its 3 regions to other region servers", "This occurred while stage 0 (scan events) ran."},
+		"hbase-regions-changed": {"HBase moved 2 regions of events while the run used it", "closes for a short time"},
 		"hbase-server-pause":    {"Region server ip-10-0-0-6.example.internal paused for 12 s", "garbage collection"},
-		"hbase-slow-calls":      {"Region servers logged 1 call from the run's tables as too slow or too large", "hbase.ipc.warn.response.time"},
-		"hbase-scanner-expired": {"The region servers' logs confirm 1 expired lease on events from this run's executors."},
-		"hbase-busy":            {"The region server's own log shows 2 refusals while the run wrote, and 1 memstore flush: it was flushing as fast as it could."},
+		"hbase-slow-calls":      {"Region servers logged 1 call to the tables of the run as too slow or too large", "hbase.ipc.warn.response.time"},
+		"hbase-scanner-expired": {"The logs of the region servers show 1 expired lease on events from the executors of this run."},
+		"hbase-busy":            {"The log of the region server shows 2 refusals while the run wrote. It also shows 1 memstore flush. The server flushed as fast as it could."},
 	} {
 		f, ok := got[rule]
 		if !ok {

@@ -155,7 +155,7 @@ func whileRan(names []string) string {
 	if len(names) > 3 {
 		names = append(names[:3], fmt.Sprintf("%d more", len(names)-3))
 	}
-	return " It happened while " + strings.Join(names, ", ") + " ran."
+	return "\nThis occurred while " + strings.Join(names, ", ") + " ran."
 }
 
 func serverEvidence(xs []hit, n int) []model.Evidence {
@@ -194,11 +194,10 @@ func hbaseServerFindings(c *ctx, h *model.HBaseSection, mine map[string][]hit) {
 				reasons = append(reasons, r)
 			}
 			if x.l.Fields["event"] == "server-lost" {
-				held = fmt.Sprintf(" The Master moved the %s regions it held", x.l.Fields["regions"])
+				held = fmt.Sprintf(" The Master moved its %s regions to other region servers.", x.l.Fields["regions"])
 				if x.l.Fields["meta"] == "true" {
-					held += ", including hbase:meta, which every client reads to find regions,"
+					held += " One of them was hbase:meta, which all clients read to find regions."
 				}
-				held += " to other region servers."
 			}
 			if at.IsZero() || x.l.Time.Before(at) {
 				at = x.l.Time
@@ -207,16 +206,16 @@ func hbaseServerFindings(c *ctx, h *model.HBaseSection, mine map[string][]hit) {
 		expl := fmt.Sprintf("It stopped at %s.", c.clock(at))
 		for _, r := range reasons {
 			if strings.HasPrefix(r, "Called by admin client") {
-				expl += " Its log gives the reason \"" + r + "\": a client or an administrator asked it to stop."
+				expl += " Its log gives the reason \"" + r + "\". A client or an administrator told it to stop."
 			} else {
 				expl += " Its log gives the reason \"" + r + "\"."
 			}
 		}
-		expl += held + " Until each region reopened, calls to it waited and retried; HBase's client logs nothing about this at its default settings, so only the servers' logs show it." + whileRan(stagesWith(h, "server-lost", "server-stopped"))
+		expl += held + "\nUntil each region opened again, calls to it waited and tried again. With its default settings, the HBase client logs nothing about this. As a result, only the logs of the servers show it." + whileRan(stagesWith(h, "server-lost", "server-stopped"))
 		c.add(model.Finding{Rule: "hbase-server-lost", Severity: model.Warning, Section: "stages",
-			Title:       fmt.Sprintf("Region server %s stopped while the run was using HBase", strings.Join(servers, ", ")),
+			Title:       fmt.Sprintf("Region server %s stopped while the run used HBase", strings.Join(servers, ", ")),
 			Explanation: expl, Evidence: append(serverEvidence(lost, 4), serverRefs(servers)...),
-			Fix: "Read that region server's log before it stopped for why, and its node's health at that time. Restarts and rolling upgrades of HBase belong outside the hours heavy jobs run."})
+			Fix: "Find the cause in the log of that region server, before it stopped. Examine the health of its node at that time.\nRestart or upgrade HBase only outside the hours of large jobs."})
 	}
 	// Regions of the run's tables moved or split.
 	if moved, split := count("moved"), count("split"); moved+split > 0 {
@@ -235,9 +234,9 @@ func hbaseServerFindings(c *ctx, h *model.HBaseSection, mine map[string][]hit) {
 		}
 		c.add(model.Finding{Rule: "hbase-regions-changed", Severity: model.Warning, Section: "stages",
 			Title:       fmt.Sprintf("HBase %s of %s while the run used %s", strings.Join(what, " and "), strings.Join(tbls, ", "), map[bool]string{true: "it", false: "them"}[len(tbls) == 1]),
-			Explanation: "While a region moves or splits it is closed for a moment, and calls to it wait and retry; HBase's client logs nothing about this at its default settings, so the tasks using it only look slower." + whileRan(stagesWith(h, "moved", "split")),
+			Explanation: "When a region moves or splits, it closes for a short time. Calls to it wait and try again. With its default settings, the HBase client logs nothing about this. As a result, the tasks that use the region only become slower." + whileRan(stagesWith(h, "moved", "split")),
 			Evidence:    serverEvidence(append(slices.Clone(mine["moved"]), mine["split"]...), 4),
-			Fix:         "The Master's log says what moved them: the balancer, an administrator, or regions splitting as they grow. Avoid balancing and major compactions while heavy jobs run, and pre-split tables that split while they are written."})
+			Fix:         "Read the log of the Master. It shows what moved the regions: the balancer, an administrator, or splits as the regions grew.\nDo not run the balancer or major compactions during large jobs.\nPre-split the tables that split during writes."})
 	}
 	// A region server paused.
 	if xs := mine["pause"]; len(xs) > 0 {
@@ -248,19 +247,19 @@ func hbaseServerFindings(c *ctx, h *model.HBaseSection, mine map[string][]hit) {
 			}
 		}
 		c.add(model.Finding{Rule: "hbase-server-pause", Severity: model.Warning, Section: "stages",
-			Title:       fmt.Sprintf("Region server %s paused for %s while the run was using HBase", on, model.Duration(int64(longest))),
-			Explanation: fmt.Sprintf("HBase's JVM pause monitor saw the whole region server stop for that long (%s in all), usually for Java garbage collection, and every call to it waited.", model.Plural(len(xs), "pause", "pauses")) + whileRan(stagesWith(h, "pause")),
+			Title:       fmt.Sprintf("Region server %s paused for %s while the run used HBase", on, model.Duration(int64(longest))),
+			Explanation: fmt.Sprintf("The JVM pause monitor of HBase found that all of the region server stopped for that time (%s in all). The cause is usually Java garbage collection. All calls to the server waited.", model.Plural(len(xs), "pause", "pauses")) + whileRan(stagesWith(h, "pause")),
 			Evidence:    append(serverEvidence(xs, 4), serverRefs([]string{on})...),
-			Fix:         "Check the region server's heap and garbage collector (HBASE_REGIONSERVER_OPTS) against its node's memory. Long pauses can also make ZooKeeper think the server died."})
+			Fix:         "Compare the heap and the garbage collector of the region server (HBASE_REGIONSERVER_OPTS) with the memory of its node.\nLong pauses can also make ZooKeeper think that the server stopped."})
 	}
 	// Calls the region servers logged as slow or too large.
 	if xs := append(slices.Clone(mine["slow-call"]), mine["large-response"]...); len(xs) > 0 {
 		n := count("slow-call") + count("large-response")
 		c.add(model.Finding{Rule: "hbase-slow-calls", Severity: model.Warning, Section: "stages",
-			Title:       fmt.Sprintf("Region servers logged %s from the run's tables as too slow or too large", model.Plural(n, "call", "calls")),
-			Explanation: "A region server logs a call that took longer than hbase.ipc.warn.response.time (10 s unless changed), or answered with more than hbase.ipc.warn.response.size, with its table and client." + whileRan(stagesWith(h, "slow-call", "large-response")),
+			Title:       fmt.Sprintf("Region servers logged %s to the tables of the run as too slow or too large", model.Plural(n, "call", "calls")),
+			Explanation: "A region server logs a call, with its table and client, in two conditions. The call took longer than hbase.ipc.warn.response.time (10 s by default). Or its answer was larger than hbase.ipc.warn.response.size." + whileRan(stagesWith(h, "slow-call", "large-response")),
 			Evidence:    serverEvidence(xs, 4),
-			Fix:         "For scans, fetch fewer rows per call (scanner caching) and filter on the server; for writes, send smaller batches. The region server's log around those calls says whether it was busy flushing, compacting or paused."})
+			Fix:         "- For scans, fetch fewer rows in each call (scanner caching), and filter on the server.\n- For writes, send smaller batches.\nThe log of the region server shows if a flush, a compaction or a pause made it busy then."})
 	}
 	// The server's side of what the clients retried.
 	if f := c.finding("hbase-busy"); f != nil {
@@ -279,12 +278,12 @@ func hbaseServerFindings(c *ctx, h *model.HBaseSection, mine map[string][]hit) {
 					}
 				}
 			}
-			s := fmt.Sprintf(" The region server's own log shows %s while the run wrote", model.Plural(n, "refusal", "refusals"))
+			s := fmt.Sprintf("\nThe log of the region server shows %s while the run wrote", model.Plural(n, "refusal", "refusals"))
 			if flushes+compactions > 0 {
-				s += ", and " + model.HBaseServerEventsText(map[string]int{"flush": flushes, "compaction": compactions}) + ": it was flushing as fast as it could"
+				s += ". It also shows " + model.HBaseServerEventsText(map[string]int{"flush": flushes, "compaction": compactions}) + ". The server flushed as fast as it could"
 			}
 			if stores > 0 {
-				s += fmt.Sprintf(", and held back flushes %s because a region had too many store files", model.Plural(stores, "time", "times"))
+				s += fmt.Sprintf(". It stopped flushes %s because a region had too many store files", model.Plural(stores, "time", "times"))
 			}
 			f.Explanation += s + "."
 			f.Evidence = append(f.Evidence, serverEvidence(mine["busy"], 1)...)
@@ -292,7 +291,7 @@ func hbaseServerFindings(c *ctx, h *model.HBaseSection, mine map[string][]hit) {
 	}
 	if f := c.finding("hbase-scanner-expired"); f != nil {
 		if xs := mine["scanner"]; len(xs) > 0 {
-			f.Explanation += fmt.Sprintf(" The region servers' logs confirm %s on %s from this run's executors.", model.Plural(count("scanner"), "expired lease", "expired leases"), xs[0].l.Fields["table"])
+			f.Explanation += fmt.Sprintf("\nThe logs of the region servers show %s on %s from the executors of this run.", model.Plural(count("scanner"), "expired lease", "expired leases"), xs[0].l.Fields["table"])
 			f.Evidence = append(f.Evidence, serverEvidence(xs, 2)...)
 		}
 	}

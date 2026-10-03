@@ -175,20 +175,20 @@ func fitFindings(c *ctx, r *model.Report) {
 		}
 		ev = append(ev, model.Evidence{Source: src, Text: text})
 	}
-	expl := fmt.Sprintf("Spark wanted up to %d executors of %s each, but the %s YARN could use had room for only %d at that size", wanted, mb(execMB), model.Plural(len(list), "node", "nodes"), total)
+	expl := fmt.Sprintf("Spark wanted up to %d executors of %s each. But the %s that YARN could use had room for only %s of that size.", wanted, mb(execMB), model.Plural(len(list), "node", "nodes"), model.Plural(int(total), "executor", "executors"))
 	if len(zero) > 0 {
-		expl += fmt.Sprintf("; %s had room for none", joinAnd(zero))
+		expl += fmt.Sprintf(" %s had room for no executor.", joinAnd(zero))
 	}
-	expl += ". YARN places containers by memory, and each executor asks for its heap plus overhead in one piece, so memory left over on a node is wasted when it is smaller than an executor."
-	fix := "Use smaller executors so several fit on each node, or add nodes."
+	expl += "\nYARN places containers by memory. Each executor asks for its heap and its overhead in one container. If the memory that remains on a node is smaller than an executor, no executor can use it."
+	fix := "Do one of these:\n- Use smaller executors, so that two or more fit on each node.\n- Add nodes."
 	if s := suggestSize(list, amMB, heapMB, overheadMB, execCores); s != "" {
 		fix = s
 	}
 	c.add(model.Finding{Rule: "executor-fit", Severity: model.Warning, Section: "nodes",
-		Title:       fmt.Sprintf("Spark wanted %d executors; the cluster had room for %d", wanted, total),
+		Title:       fmt.Sprintf("Spark wanted %d executors, but the cluster had room for %d", wanted, total),
 		Explanation: expl, Evidence: ev, Fix: fix})
 	if f := c.finding("idle-nodes"); f != nil {
-		f.Fix = "See the finding “Spark wanted " + strconv.Itoa(wanted) + " executors; the cluster had room for " + strconv.FormatInt(total, 10) + "”: executors of a size that fits more than one per node would put these nodes to work."
+		f.Fix = "Refer to the finding “Spark wanted " + strconv.Itoa(wanted) + " executors, but the cluster had room for " + strconv.FormatInt(total, 10) + "”.\nMake the executors smaller, so that two or more fit on each node. Then these nodes also do work."
 	}
 }
 
@@ -229,7 +229,7 @@ func suggestSize(nodes []*fitNode, amMB, heapMB, overheadMB int64, cores int) st
 	if cores > 0 && c > cores {
 		c = cores
 	}
-	return fmt.Sprintf("Size executors so two fit beside the driver: spark.executor.memory=%dm and spark.executor.cores=%d, about %s each with overhead. Then the node running the driver holds 2 and every other node %d. Or add nodes.",
+	return fmt.Sprintf("Make the executors small enough that two fit next to the driver. Set spark.executor.memory=%dm and spark.executor.cores=%d. Each executor is then about %s with its overhead.\nThe node of the driver then holds 2 executors, and each other node holds %d.\nOr add nodes.",
 		heap, c, mb(heap+max(384, int64(float64(heap)*factor))), perNode)
 }
 

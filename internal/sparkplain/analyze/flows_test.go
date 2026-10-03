@@ -124,7 +124,7 @@ func TestRuleCacheEvicted(t *testing.T) {
 		"2": {flowTask(2, 1, 0, 5, model.TaskStep{T: at(3), Kind: model.StepNoRoom, Name: "rdd_3_2", Bytes: 1 << 30})},
 	})
 	f, ok := got["cache-evicted"]
-	if !ok || f.Severity != model.Warning || f.Title != "Cached data did not fit in memory: 2 cached blocks were dropped from memory to make room, and 1 block did not fit and was not cached" ||
+	if !ok || f.Severity != model.Warning || f.Title != "Cached data did not fit in memory (2 cached blocks were dropped from memory to make room, and 1 block did not fit and was not cached)" ||
 		!strings.Contains(f.Explanation, "executor 1 (2 dropped, 0 did not fit; least storage memory free 50.0 MiB)") || len(f.Evidence) != 2 || f.Evidence[0].Source.Line != 12 {
 		t.Errorf("cache-evicted = %+v", f)
 	}
@@ -138,7 +138,7 @@ func TestRuleBroadcastLarge(t *testing.T) {
 			model.TaskStep{T: at(sec + 1), Kind: model.StepBcastRead, Name: "broadcast 7", Ms: ms})
 	}
 	_, got := runFlows(map[string][]model.TaskLog{"1": {bc(1, 1, 600<<20, 2000)}, "2": {bc(2, 2, 600<<20, 3000)}})
-	if f := got["broadcast-large"]; f.Title != "Broadcast variable 7 is 600 MiB, read by 2 executors" || len(f.Evidence) != 2 || !strings.Contains(f.Explanation, "5.0 s in all, the slowest 3.0 s") {
+	if f := got["broadcast-large"]; f.Title != "Broadcast variable 7 is 600 MiB, and 2 executors read it" || len(f.Evidence) != 2 || !strings.Contains(f.Explanation, "5.0 s in all, and the slowest read took 3.0 s") {
 		t.Errorf("large: %+v", f)
 	}
 	_, got = runFlows(map[string][]model.TaskLog{"1": {bc(1, 1, 4<<20, 12_000)}})
@@ -160,7 +160,7 @@ func TestRuleTaskSpill(t *testing.T) {
 	}
 	r, got := runFlows(map[string][]model.TaskLog{"1": {spill(1, 4, 800<<20), spill(2, 4, 500<<20)}, "2": {spill(3, 5, 100<<20)}})
 	f := got["task-spill"]
-	if f.Severity != model.Warning || f.Title != "Tasks spilled 1.4 GiB from memory to disk" || !strings.Contains(f.Explanation, "stage 4 (2 tasks, the most by task 1: 800 MiB): 1.3 GiB") {
+	if f.Severity != model.Warning || f.Title != "Tasks spilled 1.4 GiB from memory to disk" || !strings.Contains(f.Explanation, "stage 4 (2 tasks, the most by task 1: 800 MiB), with 1.3 GiB") {
 		t.Errorf("task-spill = %+v", f)
 	}
 	if len(r.Flows.Spills) != 2 || r.Flows.Spills[0].Stage != 4 || r.Flows.Spills[0].Spills != 2 {
@@ -180,7 +180,7 @@ func TestRuleCommitSlow(t *testing.T) {
 	}
 	_, got := runFlows(map[string][]model.TaskLog{"1": {commit(1, 40_000)}, "2": {commit(2, 30_000)}})
 	f := got["commit-slow"]
-	if f.Title != "Committing output took 35% of the writing tasks' time (1 min 10 s in all)" || f.Evidence[0].Source.Line != 11 || !strings.Contains(f.Evidence[0].Text, "40 s") {
+	if f.Title != "Output commits took 35% of the time of the tasks that wrote output (1 min 10 s in all)" || f.Evidence[0].Source.Line != 11 || !strings.Contains(f.Evidence[0].Text, "40 s") {
 		t.Errorf("commit-slow = %+v", f)
 	}
 	if _, got = runFlows(map[string][]model.TaskLog{"1": {commit(1, 5_000)}}); got["commit-slow"].Rule != "" {

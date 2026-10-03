@@ -41,7 +41,7 @@ func TestRunNotes(t *testing.T) {
 		t.Errorf("%s: no line with %q in %+v", chart, want, n[chart])
 	}
 	has("spread", "Stage 18's slowest task took 16.9× its median task")
-	has("spread", "Stage 18 is skewed")
+	has("spread", "One task in stage 18 ran 17× longer")
 	has("spill", "2 stages spilled 558 MiB (337 MiB on disk)")
 	has("executors", "1 ended early")
 	has("jobs", "(23% of the run) no job was running")

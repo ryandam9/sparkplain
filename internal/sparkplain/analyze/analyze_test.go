@@ -73,10 +73,10 @@ func TestMainFixtureFindings(t *testing.T) {
 			}
 		}
 	}
-	if tr := got["task-retries"].Title; !regexp.MustCompile(`^(1 task attempt failed and was|\d+ task attempts failed and were) retried successfully$`).MatchString(tr) {
+	if tr := got["task-retries"].Title; !regexp.MustCompile(`^(1 task attempt failed, and its retry succeeded|\d+ task attempts failed, and their retries succeeded)$`).MatchString(tr) {
 		t.Errorf("task-retries title = %q", tr)
 	}
-	if !strings.Contains(got["stage-skew"].Title, "Stage 18") || got["stage-skew"].Evidence[0].Source.Line == 0 {
+	if !strings.Contains(got["stage-skew"].Title, "stage 18") || got["stage-skew"].Evidence[0].Source.Line == 0 {
 		t.Errorf("skew finding should point at stage 18's slowest task: %+v", got["stage-skew"])
 	}
 	if !strings.Contains(got["job-failed"].Explanation, "ValueError: bad row 13") {
@@ -276,7 +276,7 @@ func TestRuleSkewNeedsData(t *testing.T) {
 		text string
 	}{
 		{"even rows, slow first task", stage(0, 1_250_000, 1_250_000, 0, 0), false, ""},
-		{"hot key", stage(27, 24_003_657, 639_470, 1_500<<20, 44<<20), true, "24,003,657 rows against a median of 639,470"},
+		{"hot key", stage(27, 24_003_657, 639_470, 1_500<<20, 44<<20), true, "24,003,657 rows, compared with a median of 639,470"},
 		{"bytes only", stage(5, 0, 0, 900<<20, 10<<20), true, "900 MiB of shuffle data"},
 	} {
 		l := synthetic(nil)

@@ -132,21 +132,21 @@ func skewFindings(c *ctx) {
 			break
 		}
 		st, d := f.st, f.st.TaskDuration
-		expl := fmt.Sprintf("In stage %d (%s), the slowest of %s tasks took %s, %.0f× the median task (%s).",
+		expl := fmt.Sprintf("In stage %d (%s), the slowest of %s tasks took %s. This is %.0f× the time of the median task (%s).",
 			st.ID, st.Name, model.Num(d.Count), model.Duration(d.Max), float64(d.Max)/float64(d.P50), model.Duration(d.P50))
 		var read []string
 		if sl := st.Slowest; sl.RecordsRead > 0 {
-			read = append(read, fmt.Sprintf("%s rows against a median of %s", model.Num(sl.RecordsRead), model.Num(st.TaskRecords.P50)))
+			read = append(read, fmt.Sprintf("%s rows, compared with a median of %s", model.Num(sl.RecordsRead), model.Num(st.TaskRecords.P50)))
 		}
 		if sl := st.Slowest; sl.ShuffleReadBytes > 0 {
-			read = append(read, fmt.Sprintf("%s of shuffle data against %s", model.Bytes(sl.ShuffleReadBytes), model.Bytes(st.TaskShuffle.P50)))
+			read = append(read, fmt.Sprintf("%s of shuffle data, compared with %s", model.Bytes(sl.ShuffleReadBytes), model.Bytes(st.TaskShuffle.P50)))
 		} else if sl.InputBytes > 0 {
-			read = append(read, fmt.Sprintf("%s of input against %s", model.Bytes(sl.InputBytes), model.Bytes(st.TaskInput.P50)))
+			read = append(read, fmt.Sprintf("%s of input, compared with %s", model.Bytes(sl.InputBytes), model.Bytes(st.TaskInput.P50)))
 		}
-		expl += " It read " + strings.Join(read, ", and ") + ", so one key or partition held far more data than the rest. The stage could not finish until that one task did."
-		fix := "Find the hot key (for example, count rows per join key) and salt it, filter out null or default keys before the join, or broadcast the smaller side."
+		expl += "\nThat task read " + strings.Join(read, ", and ") + ". One key or partition had much more data than the others. The stage could not finish before that task finished."
+		fix := "Find the key that has too many rows. For example, count the rows for each join key. Then do one of these:\n- Add a random salt to that key.\n- Remove null or default keys before the join.\n- Broadcast the smaller side of the join."
 		if c.conf["spark.sql.adaptive.skewJoin.enabled"] == "false" || c.conf["spark.sql.adaptive.enabled"] == "false" {
-			fix = "Adaptive skew handling is switched off in this run; set spark.sql.adaptive.enabled=true and spark.sql.adaptive.skewJoin.enabled=true so Spark splits oversized join partitions. " + fix
+			fix = "The adaptive skew join of Spark is off for this run. Set spark.sql.adaptive.enabled=true and spark.sql.adaptive.skewJoin.enabled=true. Then Spark divides join partitions that are too large.\n" + fix
 		}
 		sev := model.Warning
 		if st.DurationMs() > 0 && d.Max*2 < st.DurationMs() {
@@ -154,7 +154,7 @@ func skewFindings(c *ctx) {
 		}
 		c.add(model.Finding{
 			Rule: "stage-skew", Severity: sev, Section: "stages",
-			Title:       fmt.Sprintf("Stage %d is skewed: one task ran %.0f× longer than the median", st.ID, float64(d.Max)/float64(d.P50)),
+			Title:       fmt.Sprintf("One task in stage %d ran %.0f× longer than the median task", st.ID, float64(d.Max)/float64(d.P50)),
 			Explanation: expl,
 			Evidence: []model.Evidence{{Source: st.Slowest.Source, Ref: model.StageRef(st.ID, st.Attempt), Text: fmt.Sprintf("task %d (partition %d) on executor %s, %s",
 				st.Slowest.TaskID, st.Slowest.Index, st.Slowest.ExecutorID, model.Duration(st.Slowest.DurationMs))}},
@@ -194,11 +194,11 @@ func failureFindings(c *ctx) {
 		if fatal {
 			sev, title = model.Critical, fmt.Sprintf("Job %d (%s) failed and the application ended", j.ID, jobLabel(j))
 		}
-		expl := "Spark stops a job when one of its tasks fails " + maxFailures + " times (spark.task.maxFailures). "
+		expl := "Spark stops a job when one of its tasks fails " + maxFailures + " times (spark.task.maxFailures)."
 		if !fatal {
-			expl += "The application carried on afterwards, so the code probably caught the error; check that its output is still complete. "
+			expl += " The application continued after the failure, so the code probably caught the error. Make sure that the output of the application is complete."
 		}
-		expl += "Error: " + shortError(j.Failure)
+		expl += "\nError: " + shortError(j.Failure)
 		ev := []model.Evidence{{Source: j.EndSource, Ref: model.JobRef(j.ID), Text: truncateText(firstLineOf(j.Failure), 300)}}
 		if st := failedStageOf(c, j); st != nil {
 			for _, f := range st.Failures {
@@ -206,11 +206,11 @@ func failureFindings(c *ctx) {
 			}
 		}
 		c.add(model.Finding{Rule: "job-failed", Severity: sev, Section: "stages", Title: title, Explanation: expl, Evidence: ev,
-			Fix: "Read the error above: it comes from the task that failed last. If it is a data error, fix or filter the bad rows; if it is memory or a lost executor, see the memory findings."})
+			Fix: "Read the error above. It is from the last task that failed.\n- If the error is in the data, correct the bad rows or remove them.\n- If the error is about memory or a lost executor, refer to the memory findings."})
 	}
 	if len(failed) > 5 {
 		c.add(model.Finding{Rule: "job-failed", Severity: model.Warning, Section: "stages",
-			Title: fmt.Sprintf("%d more jobs failed", len(failed)-5), Explanation: "Only the first five failed jobs are listed in detail. The Jobs table shows all of them.",
+			Title: fmt.Sprintf("%d more jobs failed", len(failed)-5), Explanation: "The report shows only the first five failed jobs in detail. The Jobs table shows all of them.",
 			Evidence: []model.Evidence{{Source: failed[5].EndSource, Ref: model.JobRef(failed[5].ID), Text: fmt.Sprintf("job %d", failed[5].ID)}}})
 	}
 	// Stage retries.
@@ -218,17 +218,17 @@ func failureFindings(c *ctx) {
 		if st.Attempt == 0 {
 			continue
 		}
-		reason := "an earlier attempt failed"
+		reason := ""
 		for _, prev := range c.log.Stages {
 			if prev.ID == st.ID && prev.Attempt == st.Attempt-1 && prev.FailureReason != "" {
-				reason = "the previous attempt failed: " + shortError(prev.FailureReason)
+				reason = "\nThe error of the attempt before it: " + shortError(prev.FailureReason)
 			}
 		}
 		c.add(model.Finding{Rule: "stage-retried", Severity: model.Warning, Section: "stages",
 			Title:       fmt.Sprintf("Stage %d ran again (attempt %d)", st.ID, st.Attempt+1),
-			Explanation: fmt.Sprintf("Spark re-ran stage %d because %s. This usually follows a lost executor or failed shuffle fetch, and it repeats all the stage's work.", st.ID, reason),
+			Explanation: fmt.Sprintf("Spark ran stage %d again because the attempt before it failed. This usually occurs when Spark loses an executor or cannot fetch shuffle data. The new attempt does all the work of the stage again.%s", st.ID, reason),
 			Evidence:    []model.Evidence{{Source: st.Source, Ref: model.StageRef(st.ID, st.Attempt), Text: fmt.Sprintf("Stage Attempt ID %d", st.Attempt)}},
-			Fix:         "Look for lost executors at the same time. Enabling the external shuffle service keeps shuffle files when executors die."})
+			Fix:         "Look for executors that Spark lost at the same time.\nUse the external shuffle service (spark.shuffle.service.enabled=true). It keeps the shuffle files when an executor stops."})
 	}
 	// Tasks that failed in stages that still succeeded.
 	var n int64
@@ -261,10 +261,10 @@ func failureFindings(c *ctx) {
 			ev = append(ev, model.Evidence{Source: f.Source, Text: fmt.Sprintf("%s × %s", model.Num(f.Count), f.Message)})
 		}
 		c.add(model.Finding{Rule: "task-retries", Severity: model.Info, Section: "stages",
-			Title:       fmt.Sprintf("%s and %s retried successfully", model.Plural(int(n), "task attempt failed", "task attempts failed"), map[bool]string{true: "was", false: "were"}[n == 1]),
-			Explanation: "These failures did not stop their stages, because a retry succeeded, but each one repeated work.",
+			Title:       fmt.Sprintf("%s, and %s", model.Plural(int(n), "task attempt failed", "task attempts failed"), map[bool]string{true: "its retry succeeded", false: "their retries succeeded"}[n == 1]),
+			Explanation: "These failures did not stop their stages, because a retry succeeded. But Spark did the work of each failed attempt again.",
 			Evidence:    ev,
-			Fix:         "If the reason is a lost executor, see the executor findings; if it is an exception, it may point at bad data that a retry happened to get past."})
+			Fix:         "- If the reason is a lost executor, refer to the executor findings.\n- If the reason is an exception, look for bad data in the input. A retry does not always show the same error."})
 	}
 }
 

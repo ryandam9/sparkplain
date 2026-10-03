@@ -117,9 +117,9 @@ func driverGapFinding(c *ctx, s *model.JobsSection) {
 		ev = append(ev, e)
 	}
 	c.add(model.Finding{Rule: "driver-gaps", Severity: model.Warning, Section: "timeline",
-		Title: fmt.Sprintf("No Spark job ran for %s (%s) of the run: the cluster waited on the driver",
+		Title: fmt.Sprintf("No Spark job ran for %s (%s) of the run, and the cluster waited for the driver",
 			model.Duration(s.DriverGapMs), model.Percent(share(s.DriverGapMs, run))),
-		Explanation: "Between jobs the executors sit idle while the driver works on its own: planning queries, listing files, running Python or Scala code outside Spark, or handling results it collected. Executors YARN still holds cost the same whether they work or wait.",
+		Explanation: "Between jobs, the executors do no work while the driver works alone. The driver makes query plans, lists files, runs Python or Scala code outside Spark, or uses the results that it collected. The executors that YARN holds cost the same when they work and when they wait.",
 		Evidence:    ev,
-		Fix:         "Look at the code just before the job each gap ends at (its call site is on the job). Common causes: listing many files in S3 (use a table format, or fewer, larger files), collect() or toPandas() followed by work on the driver, many small actions run one after another (combine them), and sleeps or calls to outside services. If the gap cannot go, dynamic allocation lets idle executors be released."})
+		Fix:         "Look at the code just before the job at the end of each gap. The job shows its call site. Frequent causes are:\n- Lists of many files in S3. Use a table format, or fewer and larger files.\n- collect() or toPandas(), and then work on the driver.\n- Many small actions, one after the other. Put them together.\n- Sleeps, or calls to services outside Spark.\nIf you cannot remove the gap, use dynamic allocation. It releases executors that do no work."})
 }

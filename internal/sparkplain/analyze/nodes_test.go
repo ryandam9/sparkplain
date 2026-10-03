@@ -55,8 +55,8 @@ func TestNodesJoinInstances(t *testing.T) {
 		t.Errorf("idle = %+v", idle)
 	}
 	spot := got["spot-interrupted"]
-	if spot.Title != "Spot node i-4 went away while the application ran" || len(spot.Evidence) != 2 || spot.Evidence[1].Ref != "executor:2" ||
-		!strings.Contains(spot.Explanation, "It took 1 executor and the shuffle data on it") || !strings.Contains(spot.Explanation, "a spot reclaim is inferred") {
+	if spot.Title != "Spot node i-4 stopped while the application ran" || len(spot.Evidence) != 2 || spot.Evidence[1].Ref != "executor:2" ||
+		!strings.Contains(spot.Explanation, "The application lost 1 executor and the shuffle data on the node") || !strings.Contains(spot.Explanation, "sparkplain finds the spot interruption from the market and the time") {
 		t.Errorf("spot = %+v", spot)
 	}
 	facts := map[string]string{}
@@ -103,7 +103,7 @@ func TestExecutorFit(t *testing.T) {
 	l.Driver = &model.Executor{ID: "driver", Host: "ip-10-0-0-3.ec2.internal"}
 	r := runWithLogs(l, nil, rm, drv)
 	f := rules(r)["executor-fit"]
-	if f.Title != "Spark wanted 42 executors; the cluster had room for 1" || !strings.Contains(f.Explanation, "ip-10-0-0-3.ec2.internal had room for none") ||
+	if f.Title != "Spark wanted 42 executors, but the cluster had room for 1" || !strings.Contains(f.Explanation, "ip-10-0-0-3.ec2.internal had room for no executor") ||
 		!strings.Contains(f.Fix, "spark.executor.memory=4096m and spark.executor.cores=2") {
 		t.Errorf("fit = %+v", f)
 	}
@@ -222,7 +222,7 @@ func TestIdleNodesUpForMostOfTheRun(t *testing.T) {
 		t.Error("a node may have been busy with another application")
 	}
 	sh := got["shared-cluster"]
-	if !strings.Contains(sh.Explanation, "1 worker node ran nothing for this application; the other application may have been using it.") ||
+	if !strings.Contains(sh.Explanation, "1 worker node ran nothing for this application. It is possible that the other application used it.") ||
 		len(sh.Evidence) != 2 || !strings.Contains(sh.Evidence[1].Text, "i-3") {
 		t.Errorf("shared = %+v", sh)
 	}

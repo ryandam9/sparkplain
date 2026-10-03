@@ -221,10 +221,10 @@ func slowRegions(c *ctx, h *model.HBaseSection) {
 	}
 	sort.SliceStable(hits, func(i, j int) bool { return hits[i].t.DurationMs > hits[j].t.DurationMs })
 	what := func(e model.HBaseRegionEvent) string {
-		s := map[string]string{"compaction": "compacting", "offline": "offline", "closed": "closed", "move": "being moved", "split": "being split",
-			"busy": "refusing writes", "slow-call": "answering slowly", "flush": "flushing"}[e.Event]
+		s := map[string]string{"compaction": "a compaction", "offline": "an offline period", "closed": "a close", "move": "a move", "split": "a split",
+			"busy": "write refusals", "slow-call": "slow calls", "flush": "a flush"}[e.Event]
 		if e.DurationMs > 0 && e.Event != "slow-call" {
-			s += " for " + model.Duration(e.DurationMs)
+			s += " (" + model.Duration(e.DurationMs) + ")"
 		}
 		return s
 	}
@@ -232,14 +232,14 @@ func slowRegions(c *ctx, h *model.HBaseSection) {
 	var ev []model.Evidence
 	for i, x := range hits {
 		if i == maxSlowRegions {
-			lines = append(lines, fmt.Sprintf("and %d more in the HBase section", len(hits)-maxSlowRegions))
+			lines = append(lines, fmt.Sprintf("The HBase section shows %d more.", len(hits)-maxSlowRegions))
 			break
 		}
 		var ws []string
 		for _, e := range x.evs {
 			ws = append(ws, what(e))
 		}
-		lines = append(lines, fmt.Sprintf("task %s took %s reading region %s of %s on %s, which was %s", taskName(x.t), model.Duration(x.t.DurationMs), x.t.Region, x.t.Table, shortServer(x.t.Server), strings.Join(dedupe(ws), ", ")))
+		lines = append(lines, fmt.Sprintf("Task %s took %s to read region %s of %s on %s. The region had %s at that time.", taskName(x.t), model.Duration(x.t.DurationMs), x.t.Region, x.t.Table, shortServer(x.t.Server), listAnd(dedupe(ws))))
 		if len(ev) < 8 {
 			ev = append(ev, model.Evidence{Source: x.t.Source, Text: fmt.Sprintf("the split of task %s: region %s of %s on %s", taskName(x.t), x.t.Region, x.t.Table, x.t.Server)})
 			for _, e := range x.evs[:min(len(x.evs), 2)] {
@@ -256,32 +256,32 @@ func slowRegions(c *ctx, h *model.HBaseSection) {
 	for _, e := range top.evs {
 		ws = append(ws, what(e))
 	}
-	title := fmt.Sprintf("Task %s took %s while its region on %s was %s", taskName(top.t), model.Duration(top.t.DurationMs), shortServer(top.t.Server), strings.Join(dedupe(ws), ", "))
+	title := fmt.Sprintf("Task %s took %s, and its region on %s had %s at that time", taskName(top.t), model.Duration(top.t.DurationMs), shortServer(top.t.Server), listAnd(dedupe(ws)))
 	if len(hits) > 1 {
-		title = fmt.Sprintf("%d slow HBase reads overlapped work their region's server logged on that region", len(hits))
+		title = fmt.Sprintf("%d slow HBase reads occurred while the region server did work on the same region", len(hits))
 	}
 	var fixes []string
 	if kinds["compaction"] || kinds["flush"] {
-		fixes = append(fixes, "run major compactions outside the job's hours (set hbase.hregion.majorcompaction to 0 and schedule major_compact off-peak)")
+		fixes = append(fixes, "Run major compactions outside the hours of the job. Set hbase.hregion.majorcompaction to 0, and schedule major_compact for a quiet time.")
 	}
 	if kinds["offline"] || kinds["closed"] || kinds["move"] {
-		fixes = append(fixes, "keep the balancer from moving regions while the job reads (HBase shell: balance_switch false for the job's window, then true)")
+		fixes = append(fixes, "Stop the balancer while the job reads. In the HBase shell, use balance_switch false before the job and balance_switch true after it.")
 	}
 	if kinds["split"] {
-		fixes = append(fixes, "pre-split the table so its regions do not split under the job")
+		fixes = append(fixes, "Pre-split the table, so that its regions do not split during the job.")
 	}
 	if kinds["busy"] {
-		fixes = append(fixes, "move writes into the same regions away from the job's reads: the region was refusing writes, so its memstore was full and flushing")
+		fixes = append(fixes, "Do not write to the same regions while the job reads them. The region refused writes because its memstore was full.")
 	}
 	if kinds["slow-call"] {
-		fixes = append(fixes, "check that region server's own log and GC pauses for the slow calls' time")
+		fixes = append(fixes, "Examine the log and the garbage collection pauses of that region server at the time of the slow calls.")
 	}
 	c.add(model.Finding{Rule: "hbase-region-events", Severity: model.Warning, Section: "stages",
 		Title: title,
-		Explanation: "Each TableInputFormat task reads one region, and its region server logged work on that same region while the task read it: " + strings.Join(lines, "; ") +
-			". A slow task is one that took at least twice its stage's median. Work like this competes with the scan for the region's disk and memory, or makes the client wait and retry.",
+		Explanation: "Each TableInputFormat task reads one region. While these tasks read, the region server logged work on the same region.\n- " + strings.Join(lines, "\n- ") +
+			"\nA slow task took at least two times the median time of its stage. This work uses the disk and the memory of the region at the same time as the scan. Or it makes the client wait and try again.",
 		Evidence: ev,
-		Fix:      strings.ToUpper(strings.Join(fixes, "; ")[:1]) + strings.Join(fixes, "; ")[1:] + "."})
+		Fix:      "- " + strings.Join(fixes, "\n- ")})
 }
 
 func dedupe(xs []string) []string {

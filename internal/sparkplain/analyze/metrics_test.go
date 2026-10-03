@@ -42,7 +42,7 @@ func TestMetricFindings(t *testing.T) {
 	// Waiting 6 of 10 minutes with most memory free: containers too big.
 	r := metricsRun(t, []float64{9, 9, 9, 9, 9, 9, 0, 0, 0, 0}, []float64{40, 40, 40, 40, 40, 40, 100, 100, 100, 100}, []float64{2, 2, 1}, 90, 97)
 	got := rules(r)
-	if f := got["waited-for-capacity"]; f.Title != "Containers waited 6 min 0 s while 40% of YARN memory was free" || !strings.Contains(f.Explanation, "2 applications were running at once") {
+	if f := got["waited-for-capacity"]; f.Title != "Containers waited 6 min 0 s while 40% of YARN memory was free" || !strings.Contains(f.Explanation, "2 applications ran at the same time") {
 		t.Errorf("waited = %+v", f)
 	}
 	if f := got["shared-cluster"]; f.Title != "2 applications shared the cluster" || f.Severity != model.Info {
