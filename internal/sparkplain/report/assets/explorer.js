@@ -2043,10 +2043,14 @@
     // a series with nothing in it only clutters the legend
     series = series.filter(function (sr) { return rows.some(function (r) { return sr.value(r) > 0; }); });
     var plot = frame(c, g);
-    if (series.length > 1) plot.parentNode.insertBefore(legendNode(series), plot);
+    // a series with legend: false shares the entry of the one before it
+    var keyed = series.filter(function (sr) { return sr.legend !== false; });
+    if (keyed.length > 1) plot.parentNode.insertBefore(legendNode(keyed), plot);
     var rowH = 26, top = 4, bandH = rows.length * rowH;
     var P = plotSvg(plot, top + bandH + 26, g.t);
-    var labelW = Math.min(170, Math.round(P.w * 0.36)), noteW = 76;
+    // room on the right for the longest note, such as "5.9 GiB of 6.0 GiB · 5 of 8 vCPU"
+    var noteText = function (r) { return g.rowNote ? g.rowNote(r) : format(sum(r)); };
+    var labelW = Math.min(170, Math.round(P.w * 0.36)), noteW = Math.min(Math.max(76, 12 + 6.4 * d3.max(rows, function (r) { return noteText(r).length; })), Math.round(P.w * 0.3));
     var val = function (sr, r) { return Math.max(sr.value(r), 0) || 0; };
     var sum = function (r, all) { return series.reduce(function (s, sr) { return s + (all || !sr.rest ? val(sr, r) : 0); }, 0); };
     var U = unitAxis(kind, d3.max(rows, function (r) { return sum(r, true); }), [labelW, P.w - noteW], Math.max(2, Math.floor((P.w - labelW - noteW) / 80))), x = U.x;
@@ -2063,13 +2067,17 @@
       series.forEach(function (sr) {
         var v = val(sr, r);
         if (!v) return;
-        gr.append("rect").datum({ tip: r.label + "\n" + sr.label + ": " + format(v) + (sr.detail ? " (" + sr.detail(r) + ")" : "") })
-          .attr("x", x(at)).attr("y", rowH * 0.14).attr("width", Math.max(x(at + v) - x(at), 1)).attr("height", rowH * 0.72).style("fill", sr.color);
+        var tip = r.label + "\n" + (sr.tip ? sr.tip(r) : sr.label + ": " + format(v)) + (sr.detail ? " (" + sr.detail(r) + ")" : "");
+        var w = Math.max(x(at + v) - x(at), 1), sc = sr.fill ? sr.fill(r) : sr.color;
+        gr.append("rect").datum({ tip: tip }).attr("x", x(at)).attr("y", rowH * 0.14).attr("width", w).attr("height", rowH * 0.72).style("fill", sc);
+        // text inside the piece: the first of its labels that fits
+        var fit = (sr.text ? sr.text(r) : []).filter(function (t) { return t.length * 6.2 <= w - 8; })[0];
+        if (fit) gr.append("text").datum({ tip: tip }).attr("class", "inbar").attr("x", x(at) + w / 2).attr("y", rowH / 2).attr("dy", "0.35em").attr("text-anchor", "middle").text(fit);
         at += v;
       });
-      gr.append("text").attr("class", "note").attr("x", x(at) + 6).attr("y", rowH / 2).attr("dy", "0.35em").text(format(sum(r)));
+      gr.append("text").attr("class", "note").attr("x", x(at) + 6).attr("y", rowH / 2).attr("dy", "0.35em").text(noteText(r));
     });
-    hover(row.selectAll("rect:not(.hit)"), function (d) { return d.tip; });
+    hover(row.selectAll("rect:not(.hit), text.inbar"), function (d) { return d.tip; });
     var summary = function (r) { return r.label + ": " + series.map(function (sr) { return sr.label + " " + format(val(sr, r)); }).join(", "); };
     hover(row.select(".rl"), summary);
     if (link) linkify(row, link, summary);
@@ -2244,6 +2252,23 @@
     return { x: x, ticks: ticks, label: function (v) { return (kind === "ms" ? dur(v) : bytes(v)).replace(".0 ", " "); } };
   }
   function stageMoved(st) { return st.input + st.shRead + st.shWrite + st.output; }
+  // A node's executor containers at its busiest, for the node chart: each
+  // named when the executors that ran there are the ones held at once (when
+  // some replaced others, which were together is not known), with its vCPUs.
+  var EXEC_COLORS = [V.viz[0], V.viz[2], V.viz[3], V.viz[4]]; // never the driver's orange
+  var EXEC_SWATCH = "linear-gradient(90deg," + EXEC_COLORS.map(function (c2, i) { return c2 + " " + (25 * i) + "% " + (25 * (i + 1)) + "%"; }).join(",") + ")";
+  function nodeExecs(n) {
+    var k = n.peakExecs || n.executors.length, ids = n.executors.slice().sort(function (p, q) { return (+p) - (+q) || String(p).localeCompare(String(q)); });
+    var coresOf = function (id) { return (execByID[id] || {}).cores || 0; }, out = [];
+    for (var i = 0; i < k; i++) out.push(ids.length === k ? { id: ids[i], cores: coresOf(ids[i]) } : { id: "", cores: ids.length ? coresOf(ids[0]) : 0 });
+    return out;
+  }
+  function execPieceText(p) {
+    var cpu = p.cores ? p.cores + " vCPU" : "";
+    if (p.id && cpu) return ["Executor " + p.id + " · " + cpu, "E" + p.id + " · " + cpu, cpu, String(p.cores)];
+    if (p.id) return ["Executor " + p.id, "E" + p.id];
+    return cpu ? ["Executor · " + cpu, cpu, String(p.cores)] : [];
+  }
   // ---------- stages worth a look ----------
   // A ranked list, read like text: failed stages first, then those on the
   // chain that held up the run's end, then those with stragglers, disk
@@ -2869,16 +2894,27 @@
           note: "Heap is sampled, so short spikes can be missed." }, "bytes", function (r) { return "#executor/" + encodeURIComponent(r.x.id); });
     },
     nodeMemory: function (c) {
-      var rows = D.aws.nodes.filter(function (n) { return n.yarnMem; }).map(function (n) { return { label: n.host.split(".")[0], n: n }; });
+      var rows = D.aws.nodes.filter(function (n) { return n.yarnMem; }).map(function (n) { return { label: n.host.split(".")[0], n: n, ex: nodeExecs(n) }; });
       if (!rows.length) { waitText(c, D.aws.nodeMemNote); return; }
-      var execBytes = function (n) { return (n.execMem || 0) * (n.peakExecs || n.executors.length); };
-      hbarChart(c, rows, [
-        { label: "Driver container", color: V.viz[1], value: function (r) { return r.n.driverMem || 0; } },
-        { label: "Executor containers (at once)", color: V.viz[0], value: function (r) { return execBytes(r.n); } },
-        { label: "Free", color: V.line, rest: true, value: function (r) { return r.n.yarnMem - (r.n.driverMem || 0) - execBytes(r.n); } }
-      ], { t: "What YARN placed on each node", run: RUN("nodeMemory"),
-          axes: [["Rows", "One worker node each."], ["Bar length", "The memory the node offered YARN, split into the driver's container, this application's executor containers at its busiest, and what was left free."]],
-          read: ["A full bar: the node was used well.", "Free space helps only if it is at least one executor container wide; smaller gaps are memory paid for but unusable.", "A mostly free node did little work for this run."],
+      var most = d3.max(rows, function (r) { return r.ex.length; }) || 0;
+      var execBytes = function (r) { return (r.n.execMem || 0) * r.ex.length; };
+      var series = [{ label: "Driver container", color: V.viz[1], value: function (r) { return r.n.driverMem || 0; }, text: function () { return ["Driver", "D"]; } }];
+      // one series per executor container a node held at once, each its own colour
+      for (var i = 0; i < most; i++) (function (i) {
+        series.push({ label: "Executor containers (one colour each)", legend: i === 0, color: EXEC_SWATCH,
+          fill: function () { return EXEC_COLORS[i % EXEC_COLORS.length]; },
+          value: function (r) { return i < r.ex.length ? r.n.execMem || 0 : 0; },
+          tip: function (r) { var p = r.ex[i]; return (p.id ? "Executor " + p.id + "'s container" : "An executor container") + ": " + bytes(r.n.execMem || 0) + (p.cores ? ", " + p.cores + " vCPU" : ""); },
+          text: function (r) { return execPieceText(r.ex[i]); } });
+      })(i);
+      series.push({ label: "Free", color: V.line, rest: true, value: function (r) { return r.n.yarnMem - (r.n.driverMem || 0) - execBytes(r); } });
+      hbarChart(c, rows, series, { t: "CPU and memory the executors took on each node", run: RUN("nodeMemory"),
+          axes: [["Rows", "One worker node each."], ["Bar length", "The memory the node offered YARN. Coloured pieces are what this application took at its busiest: the driver's container, then one piece per executor container, each in its own colour. The rest is free."], ["Inside a piece", "Which executor it is and the vCPUs it had, such as \"Executor 3 · 4 vCPU\" (shortened when the piece is narrow)."], ["Right", "Memory taken of what the node offered, and vCPUs taken of what it offered."]],
+          read: ["Count the coloured pieces to see how many executors ran on the node at once.", "A full bar: the node was used well.", "Free space helps only if it is at least one executor container wide. Smaller gaps are memory paid for but unusable.", "A mostly free node did little work for this run."],
+          rowNote: function (r) {
+            var used = (r.n.driverMem || 0) + execBytes(r), cpu = r.ex.reduce(function (s, p) { return s + (p.cores || 0); }, 0);
+            return bytes(used) + " of " + bytes(r.n.yarnMem) + (cpu && r.n.yarnCores ? " · " + cpu + " of " + r.n.yarnCores + " vCPU" : "");
+          },
           note: D.aws.nodeMemNote }, "bytes");
     },
     clusterContainers: function (c) {

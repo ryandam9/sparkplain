@@ -3,7 +3,9 @@ package report
 import (
 	"fmt"
 	"html/template"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -40,6 +42,9 @@ type hbar struct {
 	lo    float64 // a whisker from lo to hi, drawn over the bar (task time spread)
 	hi    float64
 	mid   float64 // a tick at mid (the median)
+	// texts[i] is written inside segs[i], the first that fits (longest
+	// first), such as "Executor 3 · 4 vCPU", "E3 · 4 vCPU", "4".
+	texts [][]string
 }
 
 // legendItem names a colour under a chart.
@@ -184,6 +189,9 @@ func hbars(rows []hbar, format func(float64) string) string {
 	// a laptop), so text shows near its set size; phones scroll it sideways.
 	const W = 1000.0
 	ml, mr, rowH := 270.0, 170.0, 22.0 // 36 characters of 11 px mono fit in ml
+	for _, r := range rows {
+		mr = max(mr, min(textW(r.note, 11, false)+16, 320)) // room for the longest note
+	}
 	iw := W - ml - mr
 	H := float64(len(rows))*rowH + 8
 	var b strings.Builder
@@ -201,13 +209,23 @@ func hbars(rows []hbar, format func(float64) string) string {
 			fmt.Fprintf(&b, `<rect x="%.1f" y="%.1f" width="%.1f" height="14" rx="3" fill="var(--surface-2)" stroke="var(--line)"/>`, ml, y+2, x(r.max)-ml)
 		}
 		at := 0.0
-		for _, s := range r.segs {
+		for si, s := range r.segs {
 			if s.v <= 0 {
 				continue
 			}
 			w := s.v / scale * iw
 			// A 1 px surface gap between stacked pieces keeps them apart.
 			fmt.Fprintf(&b, `<rect x="%.1f" y="%.1f" width="%.1f" height="14" rx="2" fill="%s"><title>%s</title></rect>`, x(at)+0.5, y+2, max(w-1, 1), s.color, esc(s.title))
+			var texts []string
+			if si < len(r.texts) {
+				texts = r.texts[si]
+			}
+			for _, t := range texts {
+				if textW(t, 10, true) <= w-8 {
+					fmt.Fprintf(&b, `<text class="inbar" x="%.1f" y="%.1f" text-anchor="middle">%s<title>%s</title></text>`, x(at)+w/2, y+12.5, esc(t), esc(s.title))
+					break
+				}
+			}
 			at += s.v
 		}
 		if r.hi > 0 {
@@ -630,27 +648,108 @@ func unknownNote(nodes []string) string {
 	return "Not drawn, because the logs read do not say how much memory their NodeManager offered YARN (its registration and container placement lines may have rotated out of the ResourceManager's log): " + strings.Join(nodes, "; ") + "."
 }
 
-// nodeMemoryChart shows what YARN placed on each node against what the
-// node offered: the executor-fit problem in one picture.
+// execColors tell a node's executor containers apart, one colour each in
+// turn; never the driver's orange.
+var execColors = []string{cInput, cShWrite, cOutput, cSpill}
+
+// nodeTitle is the node chart's heading.
+const nodeTitle = "CPU and memory the executors took on each node"
+
+// execPiece is one executor container drawn on a node: its executor, when
+// the node's executors at once are the ones that ran there, and its vCPUs.
+type execPiece struct {
+	id    string
+	cores int
+}
+
+// nodeExecPieces lists the executor containers a node held at its busiest.
+// When more executors ran there over the run than at once (some replaced
+// others), which ones were together is not known, so none is named.
+func nodeExecPieces(h model.Host, cores map[string]int) []execPiece {
+	n := h.PeakExecutors
+	if n == 0 {
+		n = len(h.Executors)
+	}
+	ids := slices.Clone(h.Executors)
+	slices.SortFunc(ids, func(a, b string) int {
+		if idLess(a, b) {
+			return -1
+		}
+		if idLess(b, a) {
+			return 1
+		}
+		return 0
+	})
+	out := make([]execPiece, n)
+	for i := range out {
+		if len(ids) == n {
+			out[i] = execPiece{id: ids[i], cores: cores[ids[i]]}
+		} else if len(ids) > 0 {
+			out[i].cores = cores[ids[0]]
+		}
+	}
+	return out
+}
+
+// pieceText is what an executor container says inside its bar, longest
+// first: "Executor 3 · 4 vCPU", "E3 · 4 vCPU", "4 vCPU", "4".
+func pieceText(p execPiece) []string {
+	var t []string
+	cpu := ""
+	if p.cores > 0 {
+		cpu = fmt.Sprintf("%d vCPU", p.cores)
+	}
+	switch {
+	case p.id != "" && cpu != "":
+		t = append(t, "Executor "+p.id+" · "+cpu, "E"+p.id+" · "+cpu, cpu, strconv.Itoa(p.cores))
+	case p.id != "":
+		t = append(t, "Executor "+p.id, "E"+p.id)
+	case cpu != "":
+		t = append(t, "Executor · "+cpu, cpu, strconv.Itoa(p.cores))
+	}
+	return t
+}
+
+// nodeMemoryChart shows, for each node, the memory and vCPUs this
+// application's containers took of what the node offered YARN: each
+// executor container in its own colour with its vCPUs, so the executors
+// can be counted, and the executor-fit problem shows in one picture.
 func nodeMemoryChart(r *model.Report) template.HTML {
+	cores := map[string]int{}
+	for _, x := range r.Executors.Executors {
+		cores[x.ID] = x.Cores
+	}
 	var rows []hbar
 	for _, h := range r.Nodes.Hosts {
 		if h.YARNMemoryBytes <= 0 {
 			continue // named in the note (unknownCapacity)
 		}
-		n := h.PeakExecutors
-		if n == 0 {
-			n = len(h.Executors)
-		}
-		execs := h.ExecutorContainerBytes * int64(n)
+		pieces := nodeExecPieces(h, cores)
+		execs := h.ExecutorContainerBytes * int64(len(pieces))
 		free := max(h.YARNMemoryBytes-h.DriverContainerBytes-execs, 0)
-		note := model.Bytes(free) + " free"
 		short, _, _ := strings.Cut(h.Name, ".")
-		rows = append(rows, hbar{label: short, max: float64(h.YARNMemoryBytes), segs: []seg{
-			{float64(h.DriverContainerBytes), cShRead, "the driver's container: " + model.Bytes(h.DriverContainerBytes)},
-			{float64(execs), cInput, fmt.Sprintf("%d executor containers at once: %s", n, model.Bytes(execs))},
-			{float64(free), "transparent", fmt.Sprintf("free: %s of the %s YARN offered on %s", model.Bytes(free), model.Bytes(h.YARNMemoryBytes), h.Name)},
-		}, note: note})
+		segs := []seg{{float64(h.DriverContainerBytes), cShRead, "the driver's container: " + model.Bytes(h.DriverContainerBytes)}}
+		texts := [][]string{{"Driver", "D"}}
+		vcpu := 0
+		for i, p := range pieces {
+			who := "an executor container"
+			if p.id != "" {
+				who = "executor " + p.id + "'s container"
+			}
+			title := fmt.Sprintf("%s: %s", who, model.Bytes(h.ExecutorContainerBytes))
+			if p.cores > 0 {
+				title += fmt.Sprintf(", %d vCPU", p.cores)
+			}
+			segs = append(segs, seg{float64(h.ExecutorContainerBytes), execColors[i%len(execColors)], title})
+			texts = append(texts, pieceText(p))
+			vcpu += p.cores
+		}
+		segs = append(segs, seg{float64(free), "transparent", fmt.Sprintf("free: %s of the %s YARN offered on %s", model.Bytes(free), model.Bytes(h.YARNMemoryBytes), h.Name)})
+		note := model.Bytes(h.YARNMemoryBytes-free) + " of " + model.Bytes(h.YARNMemoryBytes)
+		if vcpu > 0 && h.YARNVCores > 0 {
+			note += fmt.Sprintf(" · %d of %d vCPU", vcpu, h.YARNVCores)
+		}
+		rows = append(rows, hbar{label: short, max: float64(h.YARNMemoryBytes), segs: segs, texts: texts, note: note})
 	}
 	unknown := unknownCapacity(r)
 	if len(rows) == 0 {
@@ -659,22 +758,25 @@ func nodeMemoryChart(r *model.Report) template.HTML {
 		}
 		// Nothing to draw, but nodes ran the application: say so, rather
 		// than leave the chart out as if there were nothing to see.
-		return template.HTML(`<div class="chart"><h4>What YARN placed on each node</h4><p class="cap">` + esc(unknownNote(unknown)) + `</p></div>`)
+		return template.HTML(`<div class="chart"><h4>` + nodeTitle + `</h4><p class="cap">` + esc(unknownNote(unknown)) + `</p></div>`)
 	}
-	return chartBox("What YARN placed on each node", chartGuide{
+	return chartBox(nodeTitle, chartGuide{
 		Run: runNotes(r)["nodeMemory"],
 		Axes: [][2]string{
 			{"Rows", "One worker node each."},
-			{"Bar length", "The memory the node offered YARN, split into the driver's container, this application's executor containers at its busiest, and what was left free."},
+			{"Bar length", "The memory the node offered YARN. Coloured pieces are what this application took at its busiest: the driver's container, then one piece per executor container, each in its own colour. The rest is free."},
+			{"Inside a piece", "Which executor it is and the vCPUs it had, such as \"Executor 3 · 4 vCPU\" (shortened when the piece is narrow)."},
+			{"Right", "Memory taken of what the node offered, and vCPUs taken of what it offered."},
 		},
 		Read: []string{
+			"Count the coloured pieces to see how many executors ran on the node at once.",
 			"A full bar: the node was used well.",
-			"Free space helps only if it is at least one executor container wide; smaller gaps are memory paid for but unusable.",
+			"Free space helps only if it is at least one executor container wide. Smaller gaps are memory paid for but unusable.",
 			"A mostly free node did little work for this run.",
 		},
 		Note: unknownNote(unknown),
 	}, hbars(rows, bytesF),
-		[]legendItem{{cShRead, "Driver container"}, {cInput, "Executor containers"}, {"var(--surface-2)", "Free"}})
+		[]legendItem{{cShRead, "Driver container"}, {cInput, "Executor containers (one colour each)"}, {"var(--surface-2)", "Free"}})
 }
 
 // nodeCPUChart shows each node's CPU from CloudWatch over the run.

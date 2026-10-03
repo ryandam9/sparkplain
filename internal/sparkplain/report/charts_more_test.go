@@ -29,7 +29,7 @@ func TestReportCharts(t *testing.T) {
 			t.Errorf("chart %q missing", title)
 		}
 	}
-	for _, title := range []string{"What YARN placed on each node", "Node CPU"} {
+	for _, title := range []string{nodeTitle, "Node CPU"} {
 		if strings.Contains(page, "<h4>"+title+"</h4>") {
 			t.Errorf("chart %q drawn without the cluster's data", title)
 		}
@@ -45,7 +45,7 @@ func TestReportCharts(t *testing.T) {
 	r.Metrics = &model.MetricsSection{From: at, To: at.Add(time.Hour), Hosts: []model.Series{{Name: "CPUUtilization", Stat: "Average", Scope: "i-9",
 		Points: []model.Point{{T: at, V: 20}, {T: at.Add(5 * time.Minute), V: 80}}}}}
 	page = html(t, r, Options{})
-	for _, title := range []string{"What YARN placed on each node", "Node CPU"} {
+	for _, title := range []string{nodeTitle, "Node CPU"} {
 		if !strings.Contains(page, "<h4>"+title+"</h4>") {
 			t.Errorf("chart %q missing", title)
 		}
@@ -185,12 +185,40 @@ func TestNodeChartNamesNodesItCannotDraw(t *testing.T) {
 		t.Errorf("chart note = %s", out)
 	}
 	r.Nodes.Hosts[0].YARNMemoryBytes = 0
-	if out := string(nodeMemoryChart(r)); !strings.Contains(out, "<h4>What YARN placed on each node</h4>") || !strings.Contains(out, "ip-10-0-2-10 (1 executor); ip-10-0-2-13") {
+	if out := string(nodeMemoryChart(r)); !strings.Contains(out, "<h4>"+nodeTitle+"</h4>") || !strings.Contains(out, "ip-10-0-2-10 (1 executor); ip-10-0-2-13") {
 		t.Errorf("with no node drawable, chart = %s", out)
 	}
 	// Without the cluster's logs, nothing is said: no node has a capacity.
 	r.Logs = nil
 	if out := string(nodeMemoryChart(r)); out != "" {
 		t.Errorf("without logs, chart = %s", out)
+	}
+}
+
+// Each executor container on a node is its own piece, in its own colour,
+// saying which executor it is and its vCPUs (shortened when narrow), and
+// the row ends with the memory and vCPUs taken of what the node offered.
+// When more executors ran on a node than at once, none is named.
+func TestNodeChartNamesEachExecutor(t *testing.T) {
+	t.Parallel()
+	r := &model.Report{Logs: &model.LogsSection{}}
+	r.Executors.Executors = []*model.Executor{{ID: "1", Cores: 4}, {ID: "2", Cores: 4}, {ID: "10", Cores: 4}, {ID: "3", Cores: 4}, {ID: "4", Cores: 4}, {ID: "5", Cores: 4}}
+	r.Nodes.Hosts = []model.Host{
+		{Name: "ip-10-0-2-10.ec2.internal", Executors: []string{"10", "2", "1"}, PeakExecutors: 3, YARNMemoryBytes: 48 << 30, YARNVCores: 16,
+			DriverContainerBytes: 2 << 30, ExecutorContainerBytes: 12 << 30},
+		{Name: "ip-10-0-2-11.ec2.internal", Executors: []string{"3", "4", "5"}, PeakExecutors: 2, YARNMemoryBytes: 48 << 30, YARNVCores: 16,
+			ExecutorContainerBytes: 12 << 30},
+	}
+	out := string(nodeMemoryChart(r))
+	// narrow pieces say the short form: "E1 · 4 vCPU", and "D" for the driver
+	for _, want := range []string{">E1 · 4 vCPU<", ">E2 · 4 vCPU<", ">E10 · 4 vCPU<", "executor 10&#39;s container: 12.0 GiB, 4 vCPU",
+		"38.0 GiB of 48.0 GiB · 12 of 16 vCPU", ">Executor · 4 vCPU<", "24.0 GiB of 48.0 GiB · 8 of 16 vCPU", ">D<",
+		`fill="var(--viz-1)"`, `fill="var(--viz-3)"`, `fill="var(--viz-4)"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("chart lacks %q", want)
+		}
+	}
+	if strings.Contains(out, ">E3 ·") || strings.Contains(out, ">Executor 3 ·") {
+		t.Error("a node where executors replaced others named which ran together")
 	}
 }
