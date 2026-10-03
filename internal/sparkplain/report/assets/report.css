@@ -240,9 +240,10 @@ div.run b{display:block;margin-bottom:2px} .run ul{margin:0 0 0 1.25em;padding:0
 .axes dt{font-weight:600;color:var(--ink)} .axes dd{margin:0;color:var(--muted)}
 @media (max-width:560px){.axes div{grid-template-columns:1fr;gap:0}}
 /* categorical series, validated for colour-blind separation (dataviz reference palette, slots 1-5) */
-:root{--viz-1:#2a78d6;--viz-2:#eb6834;--viz-3:#1baf7a;--viz-4:#eda100;--viz-5:#e87ba4}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--viz-1:#3987e5;--viz-2:#d95926;--viz-3:#199e70;--viz-4:#c98500;--viz-5:#d55181}}
-:root[data-theme="dark"]{--viz-1:#3987e5;--viz-2:#d95926;--viz-3:#199e70;--viz-4:#c98500;--viz-5:#d55181}
+/* --exec-soft is a pale --viz-1: the fill of an executor's card, so cards read as the executor colour */
+:root{--viz-1:#2a78d6;--viz-2:#eb6834;--viz-3:#1baf7a;--viz-4:#eda100;--viz-5:#e87ba4;--exec-soft:#E4EEFB}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--viz-1:#3987e5;--viz-2:#d95926;--viz-3:#199e70;--viz-4:#c98500;--viz-5:#d55181;--exec-soft:#15263B}}
+:root[data-theme="dark"]{--viz-1:#3987e5;--viz-2:#d95926;--viz-3:#199e70;--viz-4:#c98500;--viz-5:#d55181;--exec-soft:#15263B}
 
 /* "What happened" as full-width bullets, the headline figures below */
 #summary{display:grid;gap:14px}
@@ -271,10 +272,10 @@ div.run b{display:block;margin-bottom:2px} .run ul{margin:0 0 0 1.25em;padding:0
 .anat .freeh{fill:url(#anat-free)} .anat .freebg{fill:var(--surface-2)} .anat .hatch{stroke:var(--faint);stroke-width:1.5}
 .anat .free{fill:var(--surface-2);stroke:var(--line)} .anat .held{fill:var(--viz-1)}
 .anat .spark{fill:none;stroke:var(--ink);stroke-width:1.5} .anat .spark0{stroke:var(--line)}
-.anat .chip .cbox{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.25} .anat .chip.bad .cbox{stroke:var(--crit);stroke-width:2;fill:var(--crit-soft)}
+.anat .chip .cbox{fill:var(--exec-soft);stroke:var(--viz-1);stroke-width:1.25} .anat .chip.bad .cbox{stroke:var(--crit);stroke-width:2;fill:var(--crit-soft)}
 .anat .chip.gone .cbox{stroke-dasharray:4 3} .anat .chip.bad .st{fill:var(--crit);font-weight:600}
 .anat .heap{fill:var(--surface-2);stroke:var(--line)} .anat .hpeak{fill:var(--viz-1)} .anat .hpeak.hot{fill:var(--crit)}
-.anat .core{fill:var(--viz-3)}
+.anat .core{fill:var(--ink)} /* grey to black by how busy: never a hue the diagram uses for memory or containers */
 .anat .key{font-size:11px;fill:var(--ink)} .anat .bad-key{fill:var(--surface);stroke:var(--crit);stroke-width:2}
 .anat .sq .sqbox{fill:var(--surface-2);stroke:var(--line)} .anat .sq .sqfill{fill:var(--viz-1);opacity:.8}
 .anat .sq.bad .sqbox{stroke:var(--crit);stroke-width:2} .anat .sq.bad .sqfill{fill:var(--crit)} .anat .sq.gone .sqbox{stroke-dasharray:3 2}

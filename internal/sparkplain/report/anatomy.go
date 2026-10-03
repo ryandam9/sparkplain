@@ -1145,7 +1145,7 @@ func drawKey(b *svgw, a *anatomy, y float64) float64 {
 		}, "Executor heap: fill is its peak"})
 		items = append(items, item{func(x, y float64) {
 			b.f(`<rect class="core" x="%.1f" y="%.1f" width="7" height="7" rx="1.5" style="opacity:.4"/><rect class="core" x="%.1f" y="%.1f" width="7" height="7" rx="1.5"/>`, x, y-8, x+9, y-8)
-		}, "One core each; darker is busier"})
+		}, "One core each; the more solid, the busier"})
 	}
 	if squares {
 		items = append(items, item{func(x, y float64) {

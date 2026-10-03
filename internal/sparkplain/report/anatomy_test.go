@@ -288,7 +288,7 @@ func TestAnatomyShowsExecutorSizeAndKey(t *testing.T) {
 		Execs: []anatExec{{ID: "1", Cores: 2, Heap: 2 * gib, PeakHeap: gib}, {ID: "2", Cores: 2, Heap: 2 * gib, PeakHeap: gib}}}
 	svg := anatomySVG(&anatomy{Cluster: "c", Nodes: []*anatNode{n}}, noLinks)
 	for _, want := range []string{"2 cores · 3.0 GiB container", ">Executor 3.0 GiB<", "Driver&#39;s container", "Executor container", "Free YARN memory",
-		"Executor heap: fill is its peak", "One core each; darker is busier"} {
+		"Executor heap: fill is its peak", "One core each; the more solid, the busier"} {
 		if !strings.Contains(svg, want) {
 			t.Errorf("diagram lacks %q", want)
 		}
