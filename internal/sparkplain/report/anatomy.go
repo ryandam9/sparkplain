@@ -791,6 +791,18 @@ const (
 
 type svgw struct{ strings.Builder }
 
+// anatIcons are the node card's icons, drawn as plain grey strokes so
+// they label a row without adding a colour: a chip with pins for CPU, a
+// memory stick with its chips and contacts for memory.
+const anatIcons = `<symbol id="anat-cpu" viewBox="0 0 12 12"><rect x="3" y="3" width="6" height="6" rx="1"/><path d="M5 1v2M7 1v2M5 9v2M7 9v2M1 5h2M1 7h2M9 5h2M9 7h2"/></symbol>` +
+	`<symbol id="anat-mem" viewBox="0 0 12 12"><rect x="0.6" y="2.5" width="10.8" height="6" rx="1"/><path d="M3 4.5v2M6 4.5v2M9 4.5v2M2 8.5v2M4 8.5v2M8 8.5v2M10 8.5v2"/></symbol>`
+
+// icon draws one of anatIcons ("cpu" or "mem") with its baseline at y,
+// in line with text drawn at the same y.
+func (b *svgw) icon(name string, x, y float64) {
+	b.f(`<use class="ico" href="#anat-%s" x="%.1f" y="%.1f" width="12" height="12"/>`, name, x, y-10)
+}
+
 func (b *svgw) f(format string, args ...any) { fmt.Fprintf(&b.Builder, format, args...) }
 
 func (b *svgw) text(x, y float64, cls, anchor, s string) {
@@ -984,7 +996,7 @@ func anatomySVG(a *anatomy, l anatLinks) string {
 	y += anPad
 
 	b.f(`<svg class="anat" viewBox="0 0 %.0f %.0f" role="img" aria-label="The cluster, its nodes, the containers YARN placed on them and the memory inside an executor">`, anW, y)
-	b.WriteString(`<defs><pattern id="anat-free" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" class="freebg"/><line x1="0" y1="0" x2="0" y2="7" class="hatch"/></pattern></defs>`)
+	b.WriteString(`<defs><pattern id="anat-free" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" class="freebg"/><line x1="0" y1="0" x2="0" y2="7" class="hatch"/></pattern>` + anatIcons + `</defs>`)
 	b.f(`<rect class="cluster" x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="12"/>`, anPad, anPad, anW-2*anPad, y-2*anPad)
 	b.WriteString(body.String())
 	b.WriteString(`</svg>`)
@@ -1097,7 +1109,7 @@ func drawUnused(b *svgw, a *anatomy, u *anatUnused, y float64, l anatLinks) floa
 // drawKey says what each colour and mark in the node boxes means, for the
 // ones this diagram uses, in a row (or two) under the cluster's name.
 func drawKey(b *svgw, a *anatomy, y float64) float64 {
-	var drv, exe, free, chips, squares, spark, bad bool
+	var drv, exe, free, chips, squares, spark, cpu, bad bool
 	for _, n := range a.Nodes {
 		for _, e := range n.Execs {
 			bad = bad || e.bad()
@@ -1115,6 +1127,7 @@ func drawKey(b *svgw, a *anatomy, y float64) float64 {
 			}
 		}
 		spark = spark || n.HasCPU && len(n.CPU) > 1
+		cpu = cpu || n.HasCPU
 	}
 	type item struct {
 		draw  func(x, y float64)
@@ -1151,6 +1164,11 @@ func drawKey(b *svgw, a *anatomy, y float64) float64 {
 		items = append(items, item{func(x, y float64) {
 			b.f(`<g class="sq"><rect class="sqbox" x="%.1f" y="%.1f" width="12" height="12" rx="2"/><rect class="sqfill" x="%.1f" y="%.1f" width="12" height="7" rx="1.5"/></g>`, x, y-10, x, y-5)
 		}, "Executor, when many: fill is peak heap"})
+	}
+	if cpu {
+		items = append(items, item{func(x, y float64) {
+			b.f(`<rect class="gauge" x="%.1f" y="%.1f" width="22" height="7" rx="2"/><rect class="gfill" x="%.1f" y="%.1f" width="8" height="7" rx="2"/><line class="gpeak" x1="%.1f" x2="%.1f" y1="%.1f" y2="%.1f"/>`, x, y-8, x, y-8, x+17, x+17, y-10, y+1)
+		}, "Node CPU: bar to the average, tick at the peak"})
 	}
 	if spark {
 		items = append(items, item{func(x, y float64) {
@@ -1220,10 +1238,16 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 	b.text(x+12, y+37, "m", "", instanceLine(n))
 	b.badges(a, n.Badges, x+w-18, y+18, l)
 
-	// CPU, as a sparkline beside its average and peak.
+	// CPU: its icon, a bar filled to the average with a tick at the peak,
+	// the two in words, and a sparkline of the run.
 	cy := y + 58
+	b.icon("cpu", x+12, cy)
 	if n.HasCPU {
-		b.text(x+12, cy, "", "", fmt.Sprintf("CPU %.0f%% avg · %.0f%% peak", n.CPUAvg, n.CPUPeak))
+		gx, gw := x+56, 64.0
+		b.text(x+28, cy, "", "", "CPU")
+		b.f(`<rect class="gauge" x="%.1f" y="%.1f" width="%.1f" height="7" rx="2"/><rect class="gfill" x="%.1f" y="%.1f" width="%.1f" height="7" rx="2"/>`, gx, cy-7, gw, gx, cy-7, gw*math.Min(n.CPUAvg, 100)/100)
+		b.f(`<line class="gpeak" x1="%.1f" x2="%.1f" y1="%.1f" y2="%.1f"><title>Peak %.0f%%</title></line>`, gx+gw*math.Min(n.CPUPeak, 100)/100, gx+gw*math.Min(n.CPUPeak, 100)/100, cy-9, cy+2, n.CPUPeak)
+		b.text(gx+gw+8, cy, "", "", fmt.Sprintf("%.0f%% avg · %.0f%% peak", n.CPUAvg, n.CPUPeak))
 		if len(n.CPU) > 1 {
 			sx, sw := x+w-132, 118.0
 			var pts []string
@@ -1233,14 +1257,17 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 			b.f(`<line class="spark0" x1="%.1f" x2="%.1f" y1="%.1f" y2="%.1f"/><polyline class="spark" points="%s"><title>CloudWatch CPU while it ran: %.0f%% average</title></polyline>`, sx, sx+sw, cy, cy, strings.Join(pts, " "), n.CPUAvg)
 		}
 	} else {
-		b.text(x+12, cy, "m", "", a.NoCPU)
+		b.text(x+28, cy, "m", "", a.NoCPU)
 	}
 
-	// What the NodeManager offered YARN, and what this application placed.
+	// Memory: its icon and what this application held of what the
+	// NodeManager offered YARN; the bar below draws the same to scale.
 	by := y + 70
 	bw := w - 24
+	b.icon("mem", x+12, by+2)
 	if n.YARNBytes > 0 {
-		b.text(x+12, by+2, "", "", fmt.Sprintf("NodeManager offered YARN %s · %d vcores", model.Bytes(n.YARNBytes), n.YARNCores))
+		held := n.DriverBytes + int64(n.AtOnce)*n.ExecBytes
+		b.text(x+28, by+2, "", "", fitText(fmt.Sprintf("Memory %s of %s held by this application · YARN offered %d vcores", model.Bytes(held), model.Bytes(n.YARNBytes), n.YARNCores), w-40, 11))
 		by += 8
 		scale := bw / float64(max(maxYARN, 1))
 		cx := x + 12

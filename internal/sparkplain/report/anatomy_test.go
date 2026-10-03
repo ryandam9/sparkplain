@@ -400,3 +400,24 @@ func TestAnatomyNodesInExecutorOrder(t *testing.T) {
 		t.Errorf("node order %v, want %s", got, want)
 	}
 }
+
+// A node's CPU and memory rows start with an icon, drawn grey from shapes
+// in the page itself: the CPU row with a bar to the average and a tick at
+// the peak (named in the key), the memory row with what this application
+// held of what YARN was offered.
+func TestAnatomyNodeIcons(t *testing.T) {
+	t.Parallel()
+	r := anatReport()
+	r.Nodes.Hosts[2].HostCPU = &model.HostCPU{Average: 64, Peak: 97}
+	svg := anatomySVG(buildAnatomy(r), anatLinks{Finding: func(int) string { return "" }, Ref: func(string) string { return "" }})
+	for _, want := range []string{`<symbol id="anat-cpu"`, `<symbol id="anat-mem"`, `href="#anat-cpu"`, `href="#anat-mem"`,
+		"64% avg · 97% peak", "<title>Peak 97%</title>", "Node CPU: bar to the average, tick at the peak",
+		"Memory 11.0 GiB of 12.0 GiB held by this application · YARN offered 4 vcores", "CPU not known (needs CloudWatch)"} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("diagram lacks %q", want)
+		}
+	}
+	if strings.Contains(svg, "http") && strings.Contains(svg, "<image") {
+		t.Error("icons must be drawn in the page, not fetched")
+	}
+}
