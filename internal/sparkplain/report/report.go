@@ -11,8 +11,6 @@ import (
 	"html/template"
 	"io"
 	"net/url"
-	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -61,9 +59,6 @@ type page struct {
 	Info     int
 	Tasks    int64
 	Explorer string
-	// Mine is each stage's line of the application's code, by
-	// "id.attempt".
-	Mine map[string]*YourCode
 }
 
 // WriteHTML renders the report page.
@@ -80,7 +75,7 @@ func WriteHTML(w io.Writer, r *model.Report, opt Options) error {
 	if err != nil {
 		return err
 	}
-	p := page{R: r, CSS: template.CSS(css), JS: template.JS(js), Zone: zoneLabel(loc, r.Application.Start), Explorer: opt.ExplorerHref, Mine: yourCode(r, opt.Sources)}
+	p := page{R: r, CSS: template.CSS(css), JS: template.JS(js), Zone: zoneLabel(loc, r.Application.Start), Explorer: opt.ExplorerHref}
 	for _, c := range r.Coverage {
 		switch c.Coverage {
 		case model.Complete:
@@ -145,20 +140,10 @@ func funcs(loc *time.Location) template.FuncMap {
 	}
 	return template.FuncMap{
 		"bytes": model.Bytes,
-		"dur":   model.Duration,
-		"pct":   model.Percent,
 		"num":   model.Num,
-		"numi":  func(n int) string { return model.Num(int64(n)) },
 		"time":  timeTag,
-		"span": func(a, b time.Time) string {
-			if a.IsZero() || b.IsZero() {
-				return "—"
-			}
-			return model.Duration(b.Sub(a).Milliseconds())
-		},
-		"cpuDur": func(ns int64) string { return model.Duration(ns / 1e6) },
-		"src":    func(s model.Source) string { return s.String() },
-		"cov":    covClass,
+		"src":   func(s model.Source) string { return s.String() },
+		"cov":   covClass,
 		"covLabel": func(c model.Coverage) string {
 			return map[model.Coverage]string{model.Complete: "Complete", model.Partial: "Partial", model.NeedsEventLog: "Needs event log", model.NoData: "No data"}[c]
 		},
@@ -190,10 +175,6 @@ func funcs(loc *time.Location) template.FuncMap {
 			return map[string]string{"read": "Read", "partial": "Partly read", "error": "Could not read", "not-supplied": "Not supplied", "not-yet": "Not in this version",
 				"none": "Nothing for this app", "not-requested": "Not requested"}[s]
 		},
-		"clusterChart": func(r *model.Report) template.HTML { return clusterChart(r, loc) },
-		"market": func(m string) string {
-			return map[string]string{"SPOT": "spot", "ON_DEMAND": "on-demand"}[m]
-		},
 		"fileCounts": func(fs []model.SourceFile) map[string]int {
 			out := map[string]int{"read": 0, "skipped": 0, "error": 0}
 			for _, f := range fs {
@@ -207,92 +188,11 @@ func funcs(loc *time.Location) template.FuncMap {
 			}
 			return fs
 		},
-		"share":  shareBar,
-		"sharev": func(f float64) string { return fmt.Sprintf("%.4f", f) },
-		"ratio": func(a, b int64) float64 {
-			if b <= 0 {
-				return 0
-			}
-			return float64(a) / float64(b)
-		},
-		"gcBad":        func(f float64) bool { return f > 0.10 },
-		"join":         strings.Join,
-		"hbaseRetries": model.HBaseRetriesText,
-		"hbaseServer":  model.HBaseServerEventsText,
-		"hbaseEvent":   model.HBaseServerEventName,
-		"hbaseCPUMs":   func(ns int64) int64 { return ns / 1e6 },
-		"hbaseRegions": func(a, b int) int { return a + b },
-		"hbaseSrcs":    hbaseSrcs,
-		"headRegions":  headRegions,
-		"tasksWithRows": func(ts []model.HBaseTaskRead) int {
-			n := 0
-			for _, t := range ts {
-				if t.RowsKnown {
-					n++
-				}
-			}
-			return n
-		},
-		"headEvents": func(es []model.HBaseRegionEvent) []model.HBaseRegionEvent {
-			if len(es) > maxReportEvents {
-				return es[:maxReportEvents]
-			}
-			return es
-		},
-		"headTasks": func(ts []model.HBaseTaskRead) []model.HBaseTaskRead {
-			if len(ts) > maxReportTasks {
-				return ts[:maxReportTasks]
-			}
-			return ts
-		},
-		"shortHost":    shortHost,
-		"notableTasks": notableTasks,
-		"maxNotable":   func() int { return maxNotable },
-		"scanFacts": func(sc *model.HBaseScan) [][2]string { // all but the key range, which the card shows
-			var out [][2]string
-			for _, f := range sc.Facts() {
-				if f[0] != "Rows" {
-					out = append(out, f)
-				}
-			}
-			return out
-		},
-		"removal": func(k string) string {
-			return map[string]string{"": "running at end", model.RemovalMemoryKill: "killed (137)", model.RemovalLost: "lost", model.RemovalDecommissioned: "decommissioned", model.RemovalKilledByDriver: "removed by Spark", model.RemovalIdle: "idle", model.RemovalOther: "other"}[k]
-		},
-		"removalBad": func(k string) bool {
-			return k == model.RemovalMemoryKill || k == model.RemovalLost || k == model.RemovalDecommissioned
-		},
-		"skewx": func(d model.Dist) string {
-			if d.P50 <= 0 || d.Count < 2 {
-				return "—"
-			}
-			return fmt.Sprintf("%.1f×", float64(d.Max)/float64(d.P50))
-		},
-		"skewv": func(d model.Dist) float64 {
-			if d.P50 <= 0 {
-				return 0
-			}
-			return float64(d.Max) / float64(d.P50)
-		},
-		"stageDur": func(s *model.Stage) int64 { return s.DurationMs() },
-		"stageKey": func(s *model.Stage) string { return strconv.Itoa(s.ID) + "." + strconv.Itoa(s.Attempt) },
-		"jobDur":   func(j *model.Job) int64 { return j.DurationMs() },
-		"planCap":  func(s string) string { return capText(s, 20000) },
-		"first":    func(n int, v []*model.SQLQuery) []*model.SQLQuery { return v[:min(n, len(v))] },
-		"ints": func(v []int) string {
-			s := make([]string, len(v))
-			for i, x := range v {
-				s[i] = fmt.Sprint(x)
-			}
-			return strings.Join(s, ", ")
-		},
-		"execChart": func(r *model.Report) template.HTML { return execChart(r, loc) },
-		"gantt":     func(r *model.Report) template.HTML { return gantt(r, loc) },
-		"memChart":  memChart,
-		"hasPrefix": strings.HasPrefix,
+		"join":  strings.Join,
+		"first": func(n int, v []*model.SQLQuery) []*model.SQLQuery { return v[:min(n, len(v))] },
 		// explorerURL links an Evidence.Ref ("stage:27.0") to its view in
 		// the explorer ("explorer.html#stage/27.0").
+		"xTab": explorerTab,
 		"explorerURL": func(href, ref string) template.URL {
 			kind, id, _ := strings.Cut(ref, ":")
 			if kind == "node" {
@@ -300,26 +200,9 @@ func funcs(loc *time.Location) template.FuncMap {
 			}
 			return template.URL(href + "#" + url.PathEscape(kind) + "/" + url.PathEscape(id))
 		},
-		"add":         func(a, b int) int { return a + b },
-		"short":       func(s string, n int) string { return capText(s, n) },
-		"dataLabel":   dataLabel,
-		"dataMore":    func(ds []model.StageData) int { return len(ds) - maxDataCell },
-		"maxDataCell": func() int { return maxDataCell },
-		"lower":       strings.ToLower,
-		"rt":          runtimeValue,
-		"int64":       func(n int) int64 { return int64(n) },
-		"cpuShare": func(t model.TaskTotals) float64 {
-			if t.RunTimeMs <= 0 {
-				return 0
-			}
-			return float64(t.CPUTimeNs) / 1e6 / float64(t.RunTimeMs)
-		},
-		"divBytes": func(b int64, n int) int64 {
-			if n <= 0 {
-				return 0
-			}
-			return b / int64(n)
-		},
+		"add":   func(a, b int) int { return a + b },
+		"rt":    runtimeValue,
+		"int64": func(n int) int64 { return int64(n) },
 	}
 }
 
@@ -343,11 +226,6 @@ func capText(s string, n int) string {
 	return s[:cut] + "\n… (cut here; the JSON export has the full text)"
 }
 
-func shareBar(f float64) template.HTML {
-	w := min(100, max(0, f*100))
-	return template.HTML(fmt.Sprintf(`<span class="mini"><span class="bar"><i style="width:%.1f%%"></i></span>%s</span>`, w, template.HTMLEscapeString(model.Percent(f))))
-}
-
 // runtimeValue returns a recorded value from the runtime table, or "".
 func runtimeValue(r *model.Report, label string) string {
 	for _, row := range r.Config.Runtime {
@@ -359,91 +237,23 @@ func runtimeValue(r *model.Report, label string) string {
 	return ""
 }
 
-// hbaseSrcs names a line behind each count in an HBase stage's cell, so
-// a reader can check it: "scanner: file:line; busy: file:line".
-func hbaseSrcs(maps ...map[string]model.Source) string {
-	var parts []string
-	for _, m := range maps {
-		keys := make([]string, 0, len(m))
-		for k := range m {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			parts = append(parts, k+": "+m[k].String())
-		}
-	}
-	return strings.Join(parts, "; ")
+// explorerTabs maps the report's sections (as the coverage table names
+// them) to the explorer tab that has their detail; the report itself keeps
+// only the summary.
+var explorerTabs = map[string]string{
+	"summary": "overview", "findings": "overview", "anatomy": "anatomy", "nodes": "anatomy",
+	"timeline": "timeline", "executors": "executors", "memory": "executors", "cpu": "executors",
+	"io": "stages", "stages": "stages", "tasklogs": "tasks", "sql": "sql",
+	"config": "environment", "runtime": "environment", "access": "environment",
+	"sources": "log", "hbase": "overview",
 }
 
-// maxReportTasks caps the HBase tasks table in the report; the explorer
-// and the JSON report list them all.
-const maxReportTasks = 500
-
-// maxReportEvents caps the HBase region events table in the report.
-const maxReportEvents = 200
-
-// scanRegion is a region of a scan with its place in key order.
-type scanRegion struct {
-	Index  int
-	Region model.HBaseRegionRead
-}
-
-// headRegions keeps a scan's table short: the n regions that returned the
-// most rows (then the longest) when they are tied to tasks, else the first
-// n in key order; shown in key order.
-func headRegions(rs []model.HBaseRegionRead, n int) []scanRegion {
-	out := make([]scanRegion, len(rs))
-	for i, g := range rs {
-		out[i] = scanRegion{i, g}
+// explorerTab is the explorer link for a report section, or "" when there
+// is no explorer page or no tab for it.
+func explorerTab(href, id string) template.URL {
+	tab, ok := explorerTabs[id]
+	if href == "" || !ok {
+		return ""
 	}
-	if len(out) <= n {
-		return out
-	}
-	// The most rows first, then (as when rows are not known) the longest.
-	key := func(g model.HBaseRegionRead) [2]int64 {
-		if g.Task == nil {
-			return [2]int64{-1, -1}
-		}
-		return [2]int64{g.Task.Rows, g.Task.DurationMs}
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		a, b := key(out[i].Region), key(out[j].Region)
-		return a[0] > b[0] || a[0] == b[0] && a[1] > b[1]
-	})
-	out = out[:n]
-	sort.Slice(out, func(i, j int) bool { return out[i].Index < out[j].Index })
-	return out
-}
-
-// maxNotable caps the report's table of tasks worth a look.
-const maxNotable = 50
-
-// notableTasks are the task stories worth a look: failed and killed
-// tasks, then those that read the most shuffle data over the network or
-// spilled the most, at most maxNotable.
-func notableTasks(ts []model.TaskLog) []model.TaskLog {
-	var out []model.TaskLog
-	for _, t := range ts {
-		if t.Outcome == "failed" || t.Outcome == "killed" || t.ShuffleRemoteBytes > 0 || t.SpillBytes > 0 || t.NotCached > 0 {
-			out = append(out, t)
-		}
-	}
-	rank := func(t model.TaskLog) int {
-		if t.Outcome == "failed" || t.Outcome == "killed" {
-			return 0
-		}
-		return 1
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		a, b := out[i], out[j]
-		if rank(a) != rank(b) {
-			return rank(a) < rank(b)
-		}
-		return a.ShuffleRemoteBytes+a.SpillBytes > b.ShuffleRemoteBytes+b.SpillBytes
-	})
-	if len(out) > maxNotable {
-		out = out[:maxNotable]
-	}
-	return out
+	return template.URL(href + "#" + tab)
 }

@@ -1,7 +1,6 @@
 package report
 
 import (
-	"regexp"
 	"strings"
 	"testing"
 )
@@ -50,18 +49,10 @@ func TestRunNotes(t *testing.T) {
 	has("split", "Stage 0 lost the most time to anything but computing")
 }
 
-// Both pages show the lines: the report under each chart, the explorer
-// from its embedded data.
+// The explorer's charts show the lines, from its embedded data.
 func TestRunNotesShown(t *testing.T) {
 	t.Parallel()
 	r, x := buildWithExplorer(t, "application_1790380000000_0042")
-	page := html(t, r, Options{ExplorerHref: "x.html"})
-	if n := strings.Count(page, `class="run"><b>In this run</b>`); n < 10 {
-		t.Errorf("report shows %d \"In this run\" blocks, want one per chart", n)
-	}
-	if !regexp.MustCompile(`<a href="#finding-\d+">See finding \d+: `).MatchString(page) {
-		t.Error("report's \"In this run\" does not link to its findings")
-	}
 	if d := embedded(t, renderExplorer(t, r, x)); d["runNotes"] == nil {
 		t.Error("explorer has no runNotes")
 	}

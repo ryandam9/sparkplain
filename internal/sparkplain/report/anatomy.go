@@ -1791,15 +1791,16 @@ func anatomyHTML(r *model.Report, explorer string) template.HTML {
 	a := buildAnatomy(r)
 	svg := anatomySVG(a, anatLinks{
 		Finding: func(n int) string { return fmt.Sprintf("#finding-%d", n) },
+		// The report has no executor or node sections: they open the
+		// explorer when it was written, and link nowhere otherwise.
 		Ref: func(ref string) string {
 			kind, id, _ := strings.Cut(ref, ":")
 			switch {
-			case kind == "executor" && explorer != "":
-				return explorer + "#executor/" + id
+			case explorer == "":
 			case kind == "executor":
-				return "#executors"
+				return explorer + "#executor/" + id
 			case kind == "node":
-				return "#nodes"
+				return explorer + "#anatomy"
 			}
 			return ""
 		},

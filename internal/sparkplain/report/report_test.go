@@ -53,14 +53,22 @@ func TestHTMLIsSelfContained(t *testing.T) {
 func TestHTMLHasEverySection(t *testing.T) {
 	t.Parallel()
 	html := render(t, build(t, "application_1790380000000_0042"), nil)
-	for _, id := range []string{"summary", "coverage", "findings", "timeline", "nodes", "executors", "memory", "cpu", "io", "stages", "sql", "config", "access", "sources"} {
+	for _, id := range []string{"summary", "coverage", "findings", "sources"} {
 		if !strings.Contains(html, `<section id="`+id+`"`) {
 			t.Errorf("missing section %s", id)
 		}
 	}
-	for _, want := range []string{"claims_enrich_fixture", "Stage 18 is skewed", "<svg", "ip-10-0-1-23.ec2.internal", "spark_catalog.claims.region_totals", "Set · value hidden"} {
+	for _, want := range []string{"claims_enrich_fixture", "Stage 18 is skewed", "<svg"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("report lacks %q", want)
+		}
+	}
+	// The detail lives in the explorer.
+	r, x := buildWithExplorer(t, "application_1790380000000_0042")
+	page := renderExplorer(t, r, x)
+	for _, want := range []string{"ip-10-0-1-23.ec2.internal", "spark_catalog.claims.region_totals"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("explorer lacks %q", want)
 		}
 	}
 }
@@ -135,28 +143,25 @@ func TestHostileTextIsEscaped(t *testing.T) {
 	}
 }
 
+// The report's header names the versions; the explorer's Environment tab
+// has the full runtime table.
 func TestRuntimeEnvironmentTable(t *testing.T) {
 	t.Parallel()
 	html := render(t, build(t, "application_1790380000000_0042"), nil)
-	for _, want := range []string{`id="runtime"`, `href="#runtime"`, "Runtime environment", "Spark 3.5.1</b> · Java 21.0.10 · Hadoop 3.3.4",
-		"/usr/lib/jvm/java-21-openjdk-amd64", `<tr class="grp"><th colspan="4">Locations</th></tr>`, `class="missingrow"`} {
-		if !strings.Contains(html, want) {
-			t.Errorf("report lacks %q", want)
-		}
+	if !strings.Contains(html, "Spark 3.5.1</b> · Java 21.0.10 · Hadoop 3.3.4") {
+		t.Error("report header lacks the versions")
+	}
+	r, x := buildWithExplorer(t, "application_1790380000000_0042")
+	if page := renderExplorer(t, r, x); !strings.Contains(page, "/usr/lib/jvm/java-21-openjdk-amd64") {
+		t.Error("explorer lacks the runtime table")
 	}
 }
 
-// A scan built from the executors' logs, with no event log, says rows
-// need the event log and how its times were found, and shows no rows.
+// A scan built from the executors' logs, with no event log, reaches the
+// explorer marked as such.
 func TestScanFromLogsRenders(t *testing.T) {
 	t.Parallel()
 	r := scanFromLogsReport()
-	html := render(t, r, nil)
-	for _, want := range []string{"Stage 172: TableInputFormat scan of", "needs the event log", "Built without the event log", "4 min 10 s", "task 6429"} {
-		if !strings.Contains(html, want) {
-			t.Errorf("report lacks %q", want)
-		}
-	}
 	if x := renderExplorer(t, r, nil); !strings.Contains(x, `"fromLogs":true`) {
 		t.Error("explorer lacks the logs-only scan")
 	}
@@ -174,8 +179,7 @@ func scanFromLogsReport() *model.Report {
 	return r
 }
 
-// The HBase tasks table lists every task attempt; the report keeps the
-// first 500 in stage order and the explorer all of them.
+// The explorer's HBase tasks table lists every task attempt.
 func TestHBaseTasksTable(t *testing.T) {
 	t.Parallel()
 	r := scanFromLogsReport()
@@ -191,16 +195,6 @@ func TestHBaseTasksTable(t *testing.T) {
 	}
 	r.HBase.TaskStages = []model.HBaseTaskStage{{Stage: 172, Tables: []string{"ns:orders"}, Tasks: 300, Failed: 1, Regions: 300, Servers: 1, Start: t0, End: t0.Add(time.Minute)},
 		{Stage: 173, Tables: []string{"ns:orders"}, Tasks: 300, Regions: 300, Servers: 1, Start: t0, End: t0.Add(time.Minute)}}
-	html := render(t, r, nil)
-	for _, want := range []string{"Every HBase task, all stages", "The first 500 of 600 task attempts", "k499", "e1:9001", "failed", "executor log",
-		"Rows are shown only for tasks the event log records"} {
-		if !strings.Contains(html, want) {
-			t.Errorf("report lacks %q", want)
-		}
-	}
-	if strings.Contains(html, ">r500<") || !strings.Contains(html, ">r499<") {
-		t.Error("report goes past 500 tasks")
-	}
 	d := embedded(t, renderExplorer(t, r, nil))
 	if ts, _ := d["hbaseTasks"].([]any); len(ts) != 600 {
 		t.Errorf("explorer has %d tasks, want 600", len(ts))
@@ -232,28 +226,13 @@ func loadReport() *model.Report {
 		LogSources: []model.SourceStatus{{Name: "Container logs", Status: "read"}}})
 }
 
-// Region server load over time: a chart that explains itself and links
-// the finding, a table per server with its hot stretch, and the explorer's
-// copy.
+// Region server load over time: its "In this run" note names the busiest
+// server, and the explorer carries the load.
 func TestHBaseLoadRenders(t *testing.T) {
 	t.Parallel()
 	r := loadReport()
-	page := render(t, r, time.UTC)
-	i := strings.Index(page, "<h4>Region server load over time</h4>")
-	if i < 0 {
-		t.Fatal("no load chart")
-	}
-	chart := page[i:]
-	chart = chart[:strings.Index(chart, `<div class="tbl">`)]
-	for _, want := range []string{`<dl class="axes">`, "How to read it", "rs-hot did the most scan work: 24 min 0 s of task time, up to 8 tasks at once", "See finding", "<svg"} {
-		if !strings.Contains(chart, want) {
-			t.Errorf("load chart lacks %q", want)
-		}
-	}
-	for _, want := range []string{">rs-hot<", "up to 8 of 10", "On average while busy"} {
-		if !strings.Contains(page, want) {
-			t.Errorf("load table lacks %q", want)
-		}
+	if notes := runNotes(r)["hbaseLoad"]; len(notes) == 0 || !strings.Contains(notes[0].Text, "rs-hot did the most scan work: 24 min 0 s of task time, up to 8 tasks at once") {
+		t.Errorf("load chart's notes: %+v", notes)
 	}
 	d := embedded(t, renderExplorer(t, r, nil))
 	if l, _ := d["hbaseLoad"].([]any); len(l) != 3 {
@@ -285,19 +264,11 @@ func regionReport() *model.Report {
 		LogSources: []model.SourceStatus{{Name: "Container logs", Status: "read"}}})
 }
 
-// What the region servers logged about the regions read: a table of
-// events with the tasks reading them, the slow one marked, and the task's
-// row naming what its server logged.
+// What the region servers logged about the regions read reaches the
+// explorer.
 func TestHBaseRegionEventsRender(t *testing.T) {
 	t.Parallel()
 	r := regionReport()
-	page := render(t, r, time.UTC)
-	for _, want := range []string{"What the region servers logged about the regions read", "rewrote 6 store files into one of 1.2 G", "<b>slow:</b> 3.0 in stage 7.0 (TID 203)",
-		"rs.log:77", "<b>slow</b> · executor log", `<span class="sub">compaction 42 s</span>`} {
-		if !strings.Contains(page, want) {
-			t.Errorf("report lacks %q", want)
-		}
-	}
 	d := embedded(t, renderExplorer(t, r, nil))
 	if e, _ := d["hbaseRegionEvents"].([]any); len(e) != 1 {
 		t.Errorf("explorer region events: %d", len(e))

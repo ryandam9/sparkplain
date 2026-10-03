@@ -9,8 +9,8 @@ import (
 
 // Each task's story comes from its executor's log, with or without the
 // event log: on 0049 every task the event log records has one, and the
-// shuffle blocks read add up to the event log's count. The report and the
-// explorer show them.
+// shuffle blocks read add up to the event log's count. The explorer shows
+// them.
 func TestTaskStories(t *testing.T) {
 	for _, withLog := range []bool{false, true} {
 		dir := t.TempDir()
@@ -47,10 +47,8 @@ func TestTaskStories(t *testing.T) {
 				t.Errorf("every task has a story, but: %s", m)
 			}
 		}
-		html, _ := os.ReadFile(filepath.Join(dir, app+"-report.html"))
-		x, _ := os.ReadFile(filepath.Join(dir, app+"-explorer.html"))
-		if !strings.Contains(string(html), `id="tasklogs"`) || !strings.Contains(string(x), `"taskStories"`) {
-			t.Error("the report or the explorer has no task stories")
+		if x, _ := os.ReadFile(filepath.Join(dir, app+"-explorer.html")); !strings.Contains(string(x), `"taskStories"`) {
+			t.Error("the explorer has no task stories")
 		}
 	}
 }
@@ -81,9 +79,8 @@ func TestFlows(t *testing.T) {
 	if _, ok := got["broadcast-large"]; ok {
 		t.Error("broadcast-large fired under broadcast-large: 1GiB")
 	}
-	html, _ := os.ReadFile(filepath.Join(dir, app+"-report.html"))
-	if !strings.Contains(string(html), "Data moved over time") {
-		t.Error("the report has no flows chart")
+	if x, _ := os.ReadFile(filepath.Join(dir, app+"-explorer.html")); !strings.Contains(string(x), `"flows":{`) {
+		t.Error("the explorer has no flows")
 	}
 	if err := os.WriteFile(cfg, []byte("thresholds:\n  network-min: lots\n"), 0o600); err != nil {
 		t.Fatal(err)
