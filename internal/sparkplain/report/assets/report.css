@@ -286,8 +286,7 @@ div.run b{display:block;margin-bottom:2px} .run ul{margin:0 0 0 1.25em;padding:0
 .anat .heap{fill:var(--surface-2);stroke:var(--line)} .anat .hpeak{fill:var(--viz-1)} .anat .hpeak.hot{fill:var(--crit)}
 .anat .core{fill:var(--core);stroke:var(--core);stroke-width:1} /* dark pink, the only pink in the diagram: always outlined, filled faint to solid by how busy */
 .anat .key{font-size:11px;fill:var(--ink)} .anat .bad-key{fill:var(--surface);stroke:var(--crit);stroke-width:2}
-.anat .sq .sqbox{fill:var(--surface-2);stroke:var(--line)} .anat .sq .sqfill{fill:var(--viz-1);opacity:.8}
-.anat .sq.bad .sqbox{stroke:var(--crit);stroke-width:2} .anat .sq.bad .sqfill{fill:var(--crit)} .anat .sq.gone .sqbox{stroke-dasharray:3 2}
+.anat .tile .b{font-size:11px}
 .anat .r-res{fill:var(--na-soft);stroke:var(--line)} .anat .r-user{fill:var(--surface-2);stroke:var(--line)} .anat .r-uni{fill:var(--accent-soft);stroke:var(--line)}
 .anat .r-ovh{fill:var(--viz-4);opacity:.55} .anat .r-off{fill:var(--viz-4);opacity:.3} .anat .r-py{fill:var(--viz-4);opacity:.8} /* all outside the heap: one amber family, each labelled */
 .anat .rl{font-size:10.5px}
