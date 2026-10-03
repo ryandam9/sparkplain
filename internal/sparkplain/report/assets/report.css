@@ -275,12 +275,12 @@ div.run b{display:block;margin-bottom:2px} .run ul{margin:0 0 0 1.25em;padding:0
 .anat .chip .cbox{fill:var(--exec-soft);stroke:var(--viz-1);stroke-width:1.25} .anat .chip.bad .cbox{stroke:var(--crit);stroke-width:2;fill:var(--crit-soft)}
 .anat .chip.gone .cbox{stroke-dasharray:4 3} .anat .chip.bad .st{fill:var(--crit);font-weight:600}
 .anat .heap{fill:var(--surface-2);stroke:var(--line)} .anat .hpeak{fill:var(--viz-1)} .anat .hpeak.hot{fill:var(--crit)}
-.anat .core{fill:var(--ink)} /* grey to black by how busy: never a hue the diagram uses for memory or containers */
+.anat .core{fill:var(--viz-5)} /* pink, faint to solid by how busy: the only pink in the diagram */
 .anat .key{font-size:11px;fill:var(--ink)} .anat .bad-key{fill:var(--surface);stroke:var(--crit);stroke-width:2}
 .anat .sq .sqbox{fill:var(--surface-2);stroke:var(--line)} .anat .sq .sqfill{fill:var(--viz-1);opacity:.8}
 .anat .sq.bad .sqbox{stroke:var(--crit);stroke-width:2} .anat .sq.bad .sqfill{fill:var(--crit)} .anat .sq.gone .sqbox{stroke-dasharray:3 2}
 .anat .r-res{fill:var(--na-soft);stroke:var(--line)} .anat .r-user{fill:var(--surface-2);stroke:var(--line)} .anat .r-uni{fill:var(--accent-soft);stroke:var(--line)}
-.anat .r-ovh{fill:var(--viz-4);opacity:.55} .anat .r-off{fill:var(--viz-5);opacity:.45} .anat .r-py{fill:var(--viz-5);opacity:.7}
+.anat .r-ovh{fill:var(--viz-4);opacity:.55} .anat .r-off{fill:var(--viz-4);opacity:.3} .anat .r-py{fill:var(--viz-4);opacity:.8} /* all outside the heap: one amber family, each labelled */
 .anat .rl{font-size:10.5px}
 .anat .p-exec{fill:var(--viz-1)} .anat .p-stor{fill:var(--viz-3)} .anat .sfrac{stroke:var(--muted);stroke-dasharray:3 2}
 .anat .brk{fill:none;stroke:var(--muted)}
