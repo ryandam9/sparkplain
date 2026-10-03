@@ -341,10 +341,18 @@ func buildAnatomy(r *model.Report) *anatomy {
 		}
 		a.Nodes, a.Unused = kept, unusedNodes(unused)
 	}
+	// In executor order, as a reader counts them: the node that ran
+	// executor 1 first, then the node of the next executor not yet shown,
+	// and so on; a node that ran only the driver before them, and nodes
+	// that ran nothing after.
 	sort.SliceStable(a.Nodes, func(i, j int) bool {
-		ri, rj := nodeRank(a.Nodes[i]), nodeRank(a.Nodes[j])
-		if ri != rj {
-			return ri < rj
+		gi, fi := nodeOrder(a.Nodes[i])
+		gj, fj := nodeOrder(a.Nodes[j])
+		switch {
+		case gi != gj:
+			return gi < gj
+		case fi != fj:
+			return idLess(fi, fj)
 		}
 		return a.Nodes[i].Name < a.Nodes[j].Name
 	})
@@ -677,6 +685,25 @@ func mentions(f model.Finding, n *anatNode) bool {
 		}
 	}
 	return false
+}
+
+// nodeOrder is where a node goes in the diagram: its group (0 ran only
+// the driver, 1 ran executors, 2 ran nothing of this application) and,
+// for group 1, its lowest executor ID.
+func nodeOrder(n *anatNode) (int, string) {
+	if len(n.Execs) == 0 {
+		if n.DriverBytes > 0 || n.ClientDriver {
+			return 0, ""
+		}
+		return 2, ""
+	}
+	first := n.Execs[0].ID
+	for _, x := range n.Execs[1:] {
+		if idLess(x.ID, first) {
+			first = x.ID
+		}
+	}
+	return 1, first
 }
 
 func nodeRank(n *anatNode) int {

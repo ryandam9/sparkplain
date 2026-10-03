@@ -370,3 +370,33 @@ func TestAnatomyPanelPerExecutor(t *testing.T) {
 		t.Errorf("no executor size, but %d panels", len(ps))
 	}
 }
+
+// Nodes are laid out in executor order: the node that ran only the
+// driver, then the node of executor 1, then of the lowest executor not
+// yet shown (by number: 3 before 10), whatever their names or findings.
+func TestAnatomyNodesInExecutorOrder(t *testing.T) {
+	t.Parallel()
+	r := anatReport()
+	host := func(n string, execs ...string) model.Host {
+		return model.Host{Name: "ip-10-0-0-" + n + ".internal", Instance: &model.Instance{ID: "i-" + n, Role: "CORE", Type: "m5.xlarge"},
+			YARNMemoryBytes: 12 * gib, YARNVCores: 4, ExecutorContainerBytes: int64(len(execs)) * 3 * gib, PeakExecutors: len(execs), Executors: execs}
+	}
+	r.Nodes.Hosts = append(r.Nodes.Hosts[:2], host("3", "10", "3"), host("4", "2"), host("5", "1"))
+	r.Executors.Executors = nil
+	r.Memory.Executors = nil
+	for _, h := range r.Nodes.Hosts[2:] {
+		for _, id := range h.Executors {
+			r.Executors.Executors = append(r.Executors.Executors, &model.Executor{ID: id, Host: h.Name, Cores: 1})
+			r.Memory.Executors = append(r.Memory.Executors, model.ExecMemory{ID: id, Host: h.Name, HeapBytes: 2 * gib, PeakHeap: gib})
+		}
+	}
+	r.Findings = []model.Finding{{Rule: "idle-cores", Severity: model.Warning, Title: "x", Evidence: []model.Evidence{{Text: "ip-10-0-0-3.internal was slow"}}}}
+	var got []string
+	for _, n := range buildAnatomy(r).Nodes {
+		got = append(got, n.Name)
+	}
+	want := "ip-10-0-0-2.internal ip-10-0-0-5.internal ip-10-0-0-4.internal ip-10-0-0-3.internal"
+	if strings.Join(got, " ") != want {
+		t.Errorf("node order %v, want %s", got, want)
+	}
+}
