@@ -161,29 +161,29 @@ func executorFindings(c *ctx) {
 		c.add(model.Finding{
 			Rule: "executor-memory-kill", Severity: model.Critical, Section: "executors",
 			Title: fmt.Sprintf("%s killed with exit code 137", model.Plural(len(killed), "executor was", "executors were")),
-			Explanation: fmt.Sprintf("Exit code 137 means the executor process received SIGKILL. On YARN that almost always means the container used more memory than it was given, "+
-				"either the Java heap plus overhead, or Python workers on top. Tasks running on %s had to start again elsewhere (%s failed on these executors).",
+			Explanation: fmt.Sprintf("Exit code 137 means that the executor process got SIGKILL. On YARN, this almost always means that the container used more memory than YARN gave it. "+
+				"The memory includes the Java heap, the overhead and the Python workers. The tasks on %s started again on other executors (%s failed on these executors).",
 				pronoun(len(killed)), model.Plural(int(failedTasks(killed)), "task", "tasks")),
 			Evidence: evidence(killed),
-			Fix:      "Check the container's stderr for “exceeding physical memory limits”. If so, raise spark.executor.memoryOverhead (PySpark jobs often need 20–40% of the heap) or run fewer cores per executor so fewer tasks share the memory.",
+			Fix:      "Look for “exceeding physical memory limits” in the stderr of the container. If you find it, do one of these:\n- Increase spark.executor.memoryOverhead. PySpark jobs often use 20–40% of the heap for it.\n- Use fewer cores for each executor, so that fewer tasks share the memory.",
 		})
 	}
 	if len(lost) > 0 {
 		c.add(model.Finding{
 			Rule: "executor-lost", Severity: model.Warning, Section: "executors",
-			Title:       fmt.Sprintf("%s lost during the run", model.Plural(len(lost), "executor was", "executors were")),
-			Explanation: "Spark lost contact with these executors (the process crashed, stopped sending heartbeats, or its node went away). Their running tasks and any shuffle data they held had to be recomputed.",
+			Title:       fmt.Sprintf("Spark lost %s during the run", model.Plural(len(lost), "executor", "executors")),
+			Explanation: "Spark lost contact with these executors. The process stopped, it stopped its heartbeats, or its node stopped. Spark calculated their tasks and their shuffle data again.",
 			Evidence:    evidence(lost),
-			Fix:         "Look at the executors' container logs around the removal time for the cause: run sparkplain with -cluster-id (or -from with a copy of the cluster's logs) and it adds each executor's last error here.",
+			Fix:         "Find the cause in the container logs of the executors, near the time that Spark removed them.\nRun sparkplain with -cluster-id, or with -from and a copy of the cluster logs. Then this finding shows the last error of each executor.",
 		})
 	}
 	if len(decom) > 0 {
 		c.add(model.Finding{
 			Rule: "executor-decommissioned", Severity: model.Warning, Section: "executors",
-			Title:       fmt.Sprintf("%s decommissioned", model.Plural(len(decom), "executor was", "executors were")),
-			Explanation: "Their nodes were taken away during the run. On EMR this is usually a spot interruption or the cluster scaling in.",
+			Title:       fmt.Sprintf("Spark decommissioned %s", model.Plural(len(decom), "executor", "executors")),
+			Explanation: "Their nodes stopped during the run. On EMR, the cause is usually a spot interruption, or the cluster removed nodes when it scaled in.",
 			Evidence:    evidence(decom),
-			Fix:         "If this happens often, run core work on on-demand instances, or enable spark.decommission.enabled so Spark moves data off leaving nodes.",
+			Fix:         "If this occurs frequently, do one of these:\n- Run the core work on on-demand instances.\n- Set spark.decommission.enabled=true. Then Spark moves the data off a node before the node stops.",
 		})
 	}
 }
@@ -436,13 +436,13 @@ func nodeFindings(c *ctx, r *model.Report, idle []*model.Host) {
 			}
 			ev = append(ev, model.Evidence{Text: fmt.Sprintf("%s (%s, %s %s, %s): %s", in.ID, h.Name, strings.ToLower(in.Role), in.Type, strings.ToLower(strings.ReplaceAll(in.Market, "_", "-")), what)})
 		}
-		expl := fmt.Sprintf("%s of the %s the cluster had up for most of the run ran no executors, so the application used less of the cluster than was paid for.", model.Plural(len(idle), "worker node", "worker nodes"), model.Plural(workers, "worker node", "worker nodes"))
+		expl := fmt.Sprintf("The cluster had %s for most of the run. %s ran no executors. As a result, the application used less of the cluster than you paid for.", model.Plural(workers, "worker node", "worker nodes"), model.Plural(len(idle), "worker node", "worker nodes"))
 		if driverOnly > 0 {
-			expl += " A node that ran only the driver had room left that no executor fitted into: executors are sized for a whole node, and the driver's container already took part of it."
+			expl += "\nA node that ran only the driver had memory left, but no executor fitted into it. The executors have the size of a full node, and the driver container used a part of the node."
 		}
 		c.add(model.Finding{Rule: "idle-nodes", Severity: model.Warning, Section: "nodes",
 			Title: fmt.Sprintf("%s of %s ran no executors", model.Plural(len(idle), "worker node", "worker nodes"), fmt.Sprint(workers)), Explanation: expl, Evidence: ev,
-			Fix: "Size executors so more than one fits on a node beside the driver (smaller spark.executor.memory and cores), let dynamic allocation ask for more, or run fewer nodes. If other applications shared the cluster, they may have used these nodes."})
+			Fix: "Do one of these:\n- Make the executors smaller (spark.executor.memory and spark.executor.cores), so that two or more fit on a node next to the driver.\n- Let dynamic allocation ask for more executors.\n- Use fewer nodes.\nIt is possible that other applications on the cluster used these nodes."})
 	}
 }
 
@@ -493,29 +493,29 @@ func spotFindings(c *ctx, r *model.Report) {
 		var took []string
 		sev := model.Warning
 		if n := len(h.Executors); n > 0 {
-			took = append(took, fmt.Sprintf("%s and the shuffle data on it, so Spark had to redo that work", model.Plural(n, "executor", "executors")))
+			took = append(took, fmt.Sprintf("%s and the shuffle data on the node, and Spark did that work again", model.Plural(n, "executor", "executors")))
 		}
 		var lost []string
 		for _, d := range drivers[k] {
 			took = append(took, fmt.Sprintf("the driver of attempt %d", d.f.EarlierAttempt))
-			lost = append(lost, fmt.Sprintf(" Attempt %d failed without its driver, and YARN restarted the application.", d.f.EarlierAttempt))
+			lost = append(lost, fmt.Sprintf(" Attempt %d failed without its driver, and YARN started the application again.", d.f.EarlierAttempt))
 			ev = append(ev, d.evidence(fmt.Sprintf("%s: the driver ran on %s", d.who(), h.Name)))
 		}
-		what := "It ran none of this application's executors, so the application lost no work on it."
+		what := "It ran no executors of this application, so the application lost no work."
 		if len(took) == 0 {
 			sev = model.Info
 		} else {
-			what = "It took " + joinAnd(took) + " with it." + strings.Join(lost, "")
+			what = "The application lost " + joinAnd(took) + "." + strings.Join(lost, "")
 		}
-		why := "EMR reports every ended instance the same way, so a spot reclaim is inferred from the market and the timing."
+		why := "EMR reports all instances that stop in the same way. As a result, sparkplain finds the spot interruption from the market and the time."
 		if strings.Contains(strings.ToLower(in.StateReason), "spot") {
-			why = "EMR says why: " + strings.TrimSuffix(in.StateReason, ".") + "."
+			why = "The reason from EMR: " + strings.TrimSuffix(in.StateReason, ".") + "."
 		}
 		c.add(model.Finding{Rule: "spot-interrupted", Severity: sev, Section: "nodes",
-			Title:       fmt.Sprintf("Spot node %s went away while the application ran", in.ID),
-			Explanation: fmt.Sprintf("The node was a spot instance and ended at %s, before the application did. %s %s", c.clock(in.Ended), what, why),
+			Title:       fmt.Sprintf("Spot node %s stopped while the application ran", in.ID),
+			Explanation: fmt.Sprintf("The node was a spot instance. It stopped at %s, before the application ended. %s\n%s", c.clock(in.Ended), what, why),
 			Evidence:    ev,
-			Fix:         "Run core work and shuffle-heavy stages on on-demand nodes, keep spot for task nodes, or enable spark.decommission.enabled so Spark moves shuffle data off a node given notice."})
+			Fix:         "Do one of these:\n- Run the core work and the stages with much shuffle data on on-demand nodes. Use spot only for task nodes.\n- Set spark.decommission.enabled=true. Then Spark moves the shuffle data off a node when the node gets a notice."})
 	}
 }
 

@@ -125,13 +125,13 @@ func TestRecordedDeadlock(t *testing.T) {
 	for app, want := range map[string]map[string]string{
 		"application_1790380000000_0056": {
 			"waited-for-capacity": "Containers waited 12 min 0 s while 34% of YARN memory was free",
-			"executor-fit":        "Spark wanted 16 executors; the cluster had room for 1",
+			"executor-fit":        "Spark wanted 16 executors, but the cluster had room for 1",
 			"shared-cluster":      "2 applications shared the cluster",
 		},
 		"application_1790380000000_0055": { // the access job, which reached its STS call first
-			"access-denied":       "AWS refused access 1 time: sts:AssumeRole on arn:aws:iam::000000000000:role/fixture-no-such-role",
+			"access-denied":       "AWS refused access 1 time (sts:AssumeRole on arn:aws:iam::000000000000:role/fixture-no-such-role)",
 			"waited-for-capacity": "Containers waited 12 min 0 s while 34% of YARN memory was free",
-			"executor-fit":        "Spark wanted 2 executors; the cluster had room for 1",
+			"executor-fit":        "Spark wanted 2 executors, but the cluster had room for 1",
 		},
 	} {
 		dir := t.TempDir()
@@ -172,7 +172,7 @@ func TestRecordedPhase3(t *testing.T) {
 	for n, w := range map[string]want{
 		"0061": {exitPartial, "failed", map[string]string{ // the access job: refused by STS; CloudTrail never recorded it
 			"log-first-failure": "First error: AWSSecurityTokenServiceException: User: arn:aws:sts::000000000000:assumed-role/EMR_EC2_DefaultRole/",
-			"access-denied":     "AWS refused access 2 times: sts:AssumeRole on arn:aws:iam::000000000000:role/fixture-no-such-role",
+			"access-denied":     "AWS refused access 2 times (sts:AssumeRole on arn:aws:iam::000000000000:role/fixture-no-such-role",
 		}, nil},
 		// The spot node that was not busy became ready after the run ended.
 		"0062": {exitOK, "succeeded", map[string]string{"shared-cluster": "2 applications shared the cluster"}, []string{"log-first-failure", "idle-nodes"}},
@@ -231,29 +231,29 @@ func TestRecordedPhase4(t *testing.T) {
 	}
 	for n, w := range map[string]want{
 		"0071": {map[string]string{
-			"spot-interrupted": "Spot node i-0fee0000000000003 went away while the application ran",
+			"spot-interrupted": "Spot node i-0fee0000000000003 stopped while the application ran",
 			"app-retried":      "YARN restarted the application after 1 failed attempt",
 			"memory-spill":     "3 stages spilled 2.2 GiB to disk",
 			"driver-gaps":      "No Spark job ran for 2 min 20 s (54%) of the run",
-			"task-retries":     "1 task attempt failed and was retried successfully",
+			"task-retries":     "1 task attempt failed, and its retry succeeded",
 		}, []string{"idle-nodes", "log-first-failure", "stage-skew"}, map[string][]string{
 			"app-retried": {"Its driver ran on ip-10-0-2-12.us-east-1.compute.internal.", "YARN reported that node DECOMMISSIONING",
 				"EMR reports instance i-0fee0000000000003 ended", "INTERNAL_ERROR_BROADCAST", "and attempt 2 finished"},
-			"spot-interrupted": {"It took the driver of attempt 1 with it.", "EMR says why: Spot Instance was terminated due to not enough capacity"},
+			"spot-interrupted": {"The application lost the driver of attempt 1.", "The reason from EMR: Spot Instance was terminated due to not enough capacity"},
 		}},
 		"0072": {map[string]string{
 			"waited-for-capacity": "Containers waited 2 min 53 s for room on the cluster",
-			"executor-fit":        "Spark wanted 39 executors; the cluster had room for 2",
+			"executor-fit":        "Spark wanted 39 executors, but the cluster had room for 2",
 			"shared-cluster":      "2 applications shared the cluster",
 		}, []string{"idle-nodes", "app-retried", "spot-interrupted"}, map[string][]string{
-			"shared-cluster": {"1 worker node ran nothing for this application; the other application may have been using it."},
+			"shared-cluster": {"1 worker node ran nothing for this application. It is possible that the other application used it."},
 		}},
 		"0073": {map[string]string{
 			"waited-for-capacity": "Containers waited 3 min 24 s for room on the cluster",
 			"memory-spill":        "3 stages spilled 2.3 GiB to disk",
 			"shared-cluster":      "2 applications shared the cluster",
 		}, []string{"idle-nodes", "app-retried", "spot-interrupted"}, map[string][]string{
-			"shared-cluster": {"the other application may have been using it."},
+			"shared-cluster": {"It is possible that the other application used it."},
 		}},
 	} {
 		dir := t.TempDir()

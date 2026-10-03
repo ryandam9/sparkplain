@@ -126,9 +126,9 @@ It checks what it can read, reads it, prints a summary like this and writes the 
 ▸ Findings  3 warnings · 1 note
   ! YARN restarted the application after 1 failed attempt
   ! 3 stages spilled 2.2 GiB to disk
-  ! No Spark job ran for 2 min 20 s (54%) of the run: the cluster waited on the
-    driver
-  - 1 task attempt failed and was retried successfully
+  ! No Spark job ran for 2 min 20 s (54%) of the run, and the cluster waited
+    for the driver
+  - 1 task attempt failed, and its retry succeeded
 
 ▸ Written  out/demo/
   application_1790380000000_0071-report.html ·

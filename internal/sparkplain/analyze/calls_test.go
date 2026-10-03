@@ -26,7 +26,7 @@ func TestCallsMakeAccessFinding(t *testing.T) {
 	r := Run(Input{Tool: "t", EventLog: synthetic(nil), EventSource: model.SourceStatus{Name: "Spark event log", Status: "read"},
 		Cluster: &model.Cluster{ID: "j-1", InstanceProfile: "EMR_EC2_DefaultRole"}, AWSCalls: callsSection()})
 	f := rules(r)["access-denied"]
-	if f.Title != "AWS refused 2 calls: sts.amazonaws.com AssumeRole on arn:aws:iam::000000000000:role/nope" || f.Severity != model.Critical ||
+	if f.Title != "AWS refused 2 calls (sts.amazonaws.com AssumeRole on arn:aws:iam::000000000000:role/nope)" || f.Severity != model.Critical ||
 		!strings.Contains(f.Evidence[0].Text, "refused (AccessDenied), 2 times, as arn:aws:iam::000000000000:role/EMR_EC2_DefaultRole") ||
 		!strings.Contains(f.Fix, "EMR_EC2_DefaultRole") {
 		t.Errorf("finding = %+v", f)
@@ -58,7 +58,7 @@ com.amazonaws.services.securitytoken.model.AWSSecurityTokenServiceException: Use
 	for _, f := range r.Findings {
 		if f.Rule == "access-denied" {
 			n++
-			if !strings.HasPrefix(f.Title, "AWS refused access 1 time: sts:AssumeRole") || len(f.Evidence) != 2 || !strings.HasPrefix(f.Evidence[1].Text, "CloudTrail:") {
+			if !strings.HasPrefix(f.Title, "AWS refused access 1 time (sts:AssumeRole") || len(f.Evidence) != 2 || !strings.HasPrefix(f.Evidence[1].Text, "CloudTrail:") {
 				t.Errorf("finding = %+v", f)
 			}
 		}

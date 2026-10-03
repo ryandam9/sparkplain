@@ -169,18 +169,18 @@ func memoryFindings(c *ctx, s *model.MemorySection) {
 			c.add(model.Finding{
 				Rule: "memory-over-provisioned", Severity: model.Info, Section: "memory",
 				Title: fmt.Sprintf("Executors used at most %s of their %s heap", model.Percent(sh), model.Bytes(m.HeapBytes)),
-				Explanation: fmt.Sprintf("The highest heap use seen on any executor was %s. Spark samples memory on heartbeats and at task end, so short peaks can be missed, but a gap this large usually means the executors could be smaller.",
+				Explanation: fmt.Sprintf("The highest heap use on an executor was %s. Spark measures memory only at heartbeats and when a task ends, so it can miss short peaks. But a difference this large usually shows that smaller executors are sufficient.",
 					model.Bytes(maxHeap)),
 				Evidence: []model.Evidence{{Source: maxSrc, Ref: maxRef, Text: "highest JVMHeapMemory sample: " + model.Bytes(maxHeap)}},
-				Fix:      fmt.Sprintf("Try spark.executor.memory around %s and compare run time and spill.", model.Bytes(roundUpGiB(int64(float64(maxHeap)*1.5)))),
+				Fix:      fmt.Sprintf("Set spark.executor.memory to about %s. Then compare the run time and the spill with this run.", model.Bytes(roundUpGiB(int64(float64(maxHeap)*1.5)))),
 			})
 		} else if sh > 0.9 {
 			c.add(model.Finding{
 				Rule: "memory-heap-near-limit", Severity: model.Warning, Section: "memory",
 				Title:       fmt.Sprintf("An executor's heap reached %s of its limit", model.Percent(sh)),
-				Explanation: "Heap use this close to the limit leads to long garbage collection pauses and, if it grows further, OutOfMemoryError.",
+				Explanation: "When the heap use is this near to the limit, garbage collection pauses become long. If the heap use increases more, the executor stops with an OutOfMemoryError.",
 				Evidence:    []model.Evidence{{Source: maxSrc, Ref: maxRef, Text: "highest JVMHeapMemory sample: " + model.Bytes(maxHeap) + " of " + model.Bytes(m.HeapBytes)}},
-				Fix:         "Raise spark.executor.memory, or reduce what each task holds (more shuffle partitions, fewer cores per executor).",
+				Fix:         "Do one of these:\n- Increase spark.executor.memory.\n- Increase spark.sql.shuffle.partitions, so that each task holds less data.\n- Use fewer cores for each executor.",
 			})
 		}
 	}
@@ -203,9 +203,9 @@ func memoryFindings(c *ctx, s *model.MemorySection) {
 		c.add(model.Finding{
 			Rule: "memory-gc-pressure", Severity: model.Warning, Section: "memory",
 			Title:       fmt.Sprintf("%s spent over %s of task time in garbage collection", model.Plural(len(gcBad), "executor", "executors"), model.Percent(t.GCShare)),
-			Explanation: "Garbage collection is the JVM cleaning up memory. When it takes this much time, tasks are mostly waiting for memory rather than working, usually because the heap is too small for the data each task holds.",
+			Explanation: "In garbage collection, the JVM makes unused memory free again. When it uses this much time, tasks wait for memory and do not do work. Usually the heap is too small for the data that each task holds.",
 			Evidence:    ev,
-			Fix:         "Give executors more heap, run fewer cores per executor, or raise spark.sql.shuffle.partitions so each task holds less. Caching serialized (MEMORY_AND_DISK_SER) also helps.",
+			Fix:         "Do one of these:\n- Give the executors more heap.\n- Use fewer cores for each executor.\n- Increase spark.sql.shuffle.partitions, so that each task holds less data.\n- Cache data in serialized form (MEMORY_AND_DISK_SER).",
 		})
 	}
 	// Spill: disk spill over the threshold share of shuffle write (SPEC §5).
@@ -235,14 +235,14 @@ func memoryFindings(c *ctx, s *model.MemorySection) {
 	if len(spilled) > 1 {
 		title = fmt.Sprintf("%d stages spilled %s to disk", len(spilled), model.Bytes(total))
 	}
-	fix := "Raise spark.sql.shuffle.partitions so each task sorts less data, or give executors more memory."
+	fix := "Do one of these:\n- Increase spark.sql.shuffle.partitions, so that each task sorts less data.\n- Give the executors more memory."
 	if m.MemoryFraction < 0.6 {
-		fix = fmt.Sprintf("spark.memory.fraction is %.2f, below Spark's 0.6 default, which leaves less room before spilling. Restore it, raise spark.sql.shuffle.partitions, or give executors more memory.", m.MemoryFraction)
+		fix = fmt.Sprintf("spark.memory.fraction is %.2f, which is less than the Spark default of 0.6. As a result, Spark has less memory before it spills. Do one of these:\n- Set spark.memory.fraction back to 0.6.\n- Increase spark.sql.shuffle.partitions.\n- Give the executors more memory.", m.MemoryFraction)
 	}
 	c.add(model.Finding{
 		Rule: "memory-spill", Severity: model.Warning, Section: "memory",
 		Title:       title,
-		Explanation: "Spill means data did not fit in Spark's memory while sorting, joining or aggregating, so Spark wrote it to local disk and read it back. It slows tasks down and can fill the node's disks.",
+		Explanation: "Spill occurs when data does not fit in the memory of Spark during a sort, a join or an aggregation. Spark then writes the data to local disk and reads it back. Spill makes tasks slower and can fill the disks of the node.",
 		Evidence:    ev,
 		Fix:         fix,
 	})

@@ -191,15 +191,15 @@ func analyzeMetrics(c *ctx, r *model.Report) {
 			}
 			if avgFree >= freeMemoryShare {
 				f.Title = fmt.Sprintf("Containers waited %s while %.0f%% of YARN memory was free", model.Duration(int64(waitMin*60000)), avgFree)
-				f.Explanation = "YARN had memory to spare, but not in pieces big enough for the containers asked for: each container must fit on one node, so free memory spread across nodes cannot hold a large executor."
-				f.Fix = "Use smaller executors (see the executor size finding, when there is one), so they fit in the memory each node has left."
+				f.Explanation = "YARN had free memory, but not in pieces large enough for the containers. Each container must fit on one node. As a result, free memory on many nodes cannot hold a large executor."
+				f.Fix = "Use smaller executors, so that they fit in the memory that remains on each node. Refer to the executor size finding, if there is one."
 			} else {
 				f.Title = fmt.Sprintf("Containers waited %s for room on the cluster", model.Duration(int64(waitMin*60000)))
-				f.Explanation = "YARN's memory was in use, so requested containers queued until something finished. The application ran with fewer executors than it asked for."
-				f.Fix = "Add nodes (or let EMR managed scaling add them), or run fewer applications at the same time."
+				f.Explanation = "The YARN memory was in use, so the containers waited until other containers finished. The application ran with fewer executors than it asked for."
+				f.Fix = "Do one of these:\n- Add nodes, or let EMR managed scaling add them.\n- Run fewer applications at the same time."
 			}
 			if maxApps > 1 {
-				f.Explanation += fmt.Sprintf(" %.0f applications were running at once, so some of the waiting containers may have been theirs.", maxApps)
+				f.Explanation += fmt.Sprintf("\n%.0f applications ran at the same time. It is possible that some of the containers that waited were theirs.", maxApps)
 			}
 			f.Evidence = ev
 			c.add(f)
@@ -221,9 +221,9 @@ func analyzeMetrics(c *ctx, r *model.Report) {
 		if maxApps > 1 {
 			f := model.Finding{Rule: "shared-cluster", Severity: model.Info, Section: "nodes",
 				Title:       fmt.Sprintf("%.0f applications shared the cluster", maxApps),
-				Explanation: "Other applications ran on the cluster at the same time, so node metrics (CPU, network, containers waiting) include their work too, and they competed with this one for executors.",
+				Explanation: "Other applications ran on the cluster at the same time. As a result, the node metrics (CPU, network, containers that wait) include their work too. The other applications also wanted the same executors as this one.",
 				Evidence:    []model.Evidence{{Source: src(apps), Text: fmt.Sprintf("CloudWatch AppsRunning reached %.0f during the run", maxApps)}},
-				Fix:         "If this run's timing matters, give it its own cluster or a YARN queue with guaranteed capacity."}
+				Fix:         "If the time of this run is important, do one of these:\n- Give it its own cluster.\n- Give it a YARN queue with guaranteed capacity."}
 			// A node this application left alone may have been busy with
 			// the others, so it is not called idle.
 			if idle := c.drop("idle-nodes"); idle != nil {
@@ -231,7 +231,7 @@ func analyzeMetrics(c *ctx, r *model.Report) {
 				if maxApps == 2 {
 					others = "the other application"
 				}
-				f.Explanation += fmt.Sprintf(" %s ran nothing for this application; %s may have been using %s.",
+				f.Explanation += fmt.Sprintf("\n%s ran nothing for this application. It is possible that %s used %s.",
 					model.Plural(len(idle.Evidence), "worker node", "worker nodes"), others, map[bool]string{true: "it", false: "them"}[len(idle.Evidence) == 1])
 				f.Evidence = append(f.Evidence, idle.Evidence...)
 			}
@@ -259,16 +259,16 @@ func analyzeMetrics(c *ctx, r *model.Report) {
 	if len(hot) > 0 {
 		c.add(model.Finding{Rule: "host-cpu-saturated", Severity: model.Warning, Section: "cpu",
 			Title:       fmt.Sprintf("%s ran near full CPU", model.Plural(len(hot), "node", "nodes")),
-			Explanation: fmt.Sprintf("These nodes averaged over %.0f%% CPU while the application ran, so tasks queued for processor time; more cores per executor would not have helped.", hotCPU),
+			Explanation: fmt.Sprintf("These nodes used more than %.0f%% CPU on average while the application ran. As a result, tasks waited for processor time. More cores for each executor do not help.", hotCPU),
 			Evidence:    hotEv,
-			Fix:         "Use instance types with more vCPUs, or more nodes. Check that each executor's spark.executor.cores does not exceed the vCPUs it gets."})
+			Fix:         "Do one of these:\n- Use instance types with more vCPUs.\n- Use more nodes.\nMake sure that spark.executor.cores is not more than the vCPUs that each executor gets."})
 	}
 	if len(memEv) > 0 {
 		c.add(model.Finding{Rule: "host-memory-pressure", Severity: model.Warning, Section: "memory",
 			Title:       fmt.Sprintf("%s ran out of free memory", model.Plural(len(memEv), "node", "nodes")),
-			Explanation: "The CloudWatch agent saw these nodes' memory almost full. The operating system then kills processes or swaps, which can take executors down with no Java error.",
+			Explanation: "The CloudWatch agent found that the memory of these nodes was almost full. Then the operating system stops processes or uses swap. This can stop executors without a Java error.",
 			Evidence:    memEv,
-			Fix:         "Leave memory for the operating system and daemons: lower yarn.nodemanager.resource.memory-mb, or use instances with more memory."})
+			Fix:         "Keep memory free for the operating system and the daemons. Do one of these:\n- Decrease yarn.nodemanager.resource.memory-mb.\n- Use instances with more memory."})
 	}
 	if len(m.Summary) > 0 && !strings.Contains(r.Nodes.Lede, "CloudWatch") {
 		r.Nodes.Lede += " CloudWatch shows how busy the cluster was while it ran."

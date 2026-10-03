@@ -123,11 +123,11 @@ func repeatedScans(c *ctx, h *model.HBaseSection) {
 		sev = model.Warning
 	}
 	c.add(model.Finding{Rule: "hbase-repeated-scan", Severity: sev, Section: "stages",
-		Title: fmt.Sprintf("Stages %s each read the same regions of %s: the table was scanned %d times", listAnd(stages), worst.table, len(worst.reads)),
-		Explanation: fmt.Sprintf("Each of these stages read the same key range of %s from HBase again, which cost %s of task time after the first read. Spark does not keep data between actions unless told to: an RDD read from HBase and used by two actions (a count, then a save) is read from HBase once per action.",
+		Title: fmt.Sprintf("Stages %s each read the same regions of %s, and the job scanned the table %d times", listAnd(stages), worst.table, len(worst.reads)),
+		Explanation: fmt.Sprintf("Each of these stages read the same key range of %s from HBase again. This used %s of task time after the first read. Spark keeps no data between actions, if the code does not tell it to. When two actions use an RDD from HBase (for example a count and then a save), Spark reads HBase one time for each action.",
 			worst.table, model.Duration(again)),
 		Evidence: ev,
-		Fix:      "Cache the RDD right after reading it when the code uses it more than once (rdd.persist(StorageLevel.MEMORY_AND_DISK), and unpersist when done), or restructure the job to read the table once and derive everything from that read."})
+		Fix:      "Do one of these:\n- Cache the RDD immediately after the read, if the code uses it two or more times. Use rdd.persist(StorageLevel.MEMORY_AND_DISK), and unpersist it at the end.\n- Change the job so that it reads the table one time and gets all results from that read."})
 }
 
 // fullScans finds a scan with no start or stop row over many regions or
@@ -145,17 +145,17 @@ func fullScans(c *ctx, h *model.HBaseSection) {
 		if sc.SizedRegions > 0 {
 			size = fmt.Sprintf(" (about %s, HBase's estimate)", model.Bytes(sc.SizeBytes))
 		}
-		filter := "If the job needs only part of the table, the region servers still read every row."
+		filter := "If the job uses only a part of the table, the region servers still read all rows."
 		if sc.Scan != nil && sc.Scan.Filter != nil {
-			filter = "The scan has a filter (" + sc.Scan.Filter.String() + "), but a filter does not narrow which regions are read: the region servers read every row and drop those that do not match."
+			filter = "The scan has a filter (" + sc.Scan.Filter.String() + "). But a filter does not decrease the number of regions that HBase reads. The region servers read all rows and drop the rows that do not match."
 		}
 		c.add(model.Finding{Rule: "hbase-full-scan", Severity: model.Info, Section: "stages",
-			Title: fmt.Sprintf("Stage %d scanned all of %s: %s from the first row to the last", sc.StageID, sc.Table, model.Plural(n, "region", "regions")),
-			Explanation: fmt.Sprintf("The scan's split lines cover %s from its first row to its last%s, so the scan set no start or stop row. %s",
+			Title: fmt.Sprintf("Stage %d scanned all of %s, %s from the first row to the last", sc.StageID, sc.Table, model.Plural(n, "region", "regions")),
+			Explanation: fmt.Sprintf("The split lines of the scan cover %s from its first row to its last row%s. As a result, the scan set no start row and no stop row. %s",
 				sc.Table, size, filter),
 			Evidence: []model.Evidence{{Source: sc.Regions[0].Source, Text: fmt.Sprintf("the first region's split: %s from the first row", sc.Table)},
 				{Source: sc.Regions[n-1].Source, Text: fmt.Sprintf("the last region's split: %s to the last row", sc.Table)}},
-			Fix: "When the rows needed share a key prefix or range, set the scan's start and stop rows (Scan.withStartRow and withStopRow, or hbase.mapreduce.scan.row.start and hbase.mapreduce.scan.row.stop) so only the regions holding them are read. Row keys that start with what the job selects on (a date, a customer) make that possible."})
+			Fix: "Set a start row and a stop row on the scan. Do this if the necessary rows share a key prefix or a key range. Then HBase reads only the regions that hold them. Use one of these:\n- Scan.withStartRow and Scan.withStopRow.\n- hbase.mapreduce.scan.row.start and hbase.mapreduce.scan.row.stop.\nThis is possible when the row keys start with the value that the job selects, for example a date."})
 		return
 	}
 }
@@ -201,14 +201,14 @@ func tinyRegions(c *ctx, h *model.HBaseSection) {
 		took := ""
 		if len(ms) > 0 {
 			slices.Sort(ms)
-			took = fmt.Sprintf(" The median region took %s to read.", model.Duration(ms[len(ms)/2]))
+			took = fmt.Sprintf(" The read of the median region took %s.", model.Duration(ms[len(ms)/2]))
 		}
 		c.add(model.Finding{Rule: "hbase-tiny-regions", Severity: model.Info, Section: "stages",
-			Title: fmt.Sprintf("Stage %d read %d small regions of %s: the median region holds %s", sc.StageID, len(sizes), sc.Table, model.Bytes(median)),
-			Explanation: fmt.Sprintf("%d of the %d regions with a known size are under %d MiB, as TableInputFormat estimated them. TableInputFormat makes one task per region, so the stage starts a task, and opens a scanner on a region server, for each small piece of data.%s",
+			Title: fmt.Sprintf("Stage %d read %d small regions of %s, and the median region holds %s", sc.StageID, len(sizes), sc.Table, model.Bytes(median)),
+			Explanation: fmt.Sprintf("%d of the %d regions with a known size are less than %d MiB, as TableInputFormat estimated them. TableInputFormat makes one task for each region. As a result, for each small piece of data, the stage starts a task and opens a scanner on a region server.%s",
 				small, len(sizes), tinyBytes>>20, took),
 			Evidence: ev,
-			Fix:      "Merge small regions (HBase shell: merge_region, or turn on the region normalizer for the table: normalizer_switch true and alter '" + sc.Table + "', NORMALIZATION_ENABLED => 'true'). Small regions often come from a table pre-split for more data than it holds, or from splits that no longer match how the data grew."})
+			Fix:      "Merge the small regions. Do one of these in the HBase shell:\n- Use merge_region.\n- Start the region normalizer for the table: normalizer_switch true, and alter '" + sc.Table + "', NORMALIZATION_ENABLED => 'true'.\nSmall regions often come from a pre-split for more data than the table holds. They also come from splits that do not agree with the growth of the data."})
 		return
 	}
 }
@@ -257,9 +257,9 @@ func retriedRegions(c *ctx, h *model.HBaseSection) {
 		if n < maxSlowRegions {
 			why := ""
 			if len(seen) > 0 {
-				why = "; its server logged " + strings.Join(seen, ", ") + " on it meanwhile"
+				why = ". At the same time, its server logged " + strings.Join(seen, ", ") + " on it"
 			}
-			lines = append(lines, fmt.Sprintf("partition %d of stage %d read region %s of %s on %s %d times%s", k.part, k.stage, t.Region, t.Table, shortServer(t.Server), len(xs), why))
+			lines = append(lines, fmt.Sprintf("Partition %d of stage %d read region %s of %s on %s %d times%s.", k.part, k.stage, t.Region, t.Table, shortServer(t.Server), len(xs), why))
 		}
 		for _, i := range xs {
 			if h.Tasks[i].Outcome == "failed" && len(ev) < 6 {
@@ -268,13 +268,13 @@ func retriedRegions(c *ctx, h *model.HBaseSection) {
 		}
 	}
 	if len(keys) > maxSlowRegions {
-		lines = append(lines, fmt.Sprintf("and %d more in the HBase tasks table", len(keys)-maxSlowRegions))
+		lines = append(lines, fmt.Sprintf("The HBase tasks table shows %d more regions.", len(keys)-maxSlowRegions))
 	}
 	c.add(model.Finding{Rule: "hbase-retried-regions", Severity: model.Warning, Section: "stages",
-		Title:       fmt.Sprintf("%s read from HBase more than once because %s failed", model.Plural(len(keys), "region was", "regions were"), map[bool]string{true: "its task", false: "their tasks"}[len(keys) == 1]),
-		Explanation: "A failed task's region is read again from the start by the next attempt: " + strings.Join(lines, "; ") + ".",
+		Title:       fmt.Sprintf("Spark read %s from HBase two or more times because %s failed", model.Plural(len(keys), "region", "regions"), map[bool]string{true: "its task", false: "their tasks"}[len(keys) == 1]),
+		Explanation: "When a task fails, the next attempt reads its region again from the start.\n- " + strings.Join(lines, "\n- "),
 		Evidence:    ev,
-		Fix:         "Read the failed attempt's error (linked). HBase reads usually fail on a scanner lease expiring (the task took longer than hbase.client.scanner.timeout.period between calls: lower the scan's caching, or raise the timeout), on a region moving or splitting under the scan, or on its region server being down."})
+		Fix:         "Read the error of the failed attempt (linked). HBase reads usually fail for one of these causes:\n- The scanner lease expired. Decrease the scan caching, or increase hbase.client.scanner.timeout.period.\n- The region moved or split during the scan.\n- The region server stopped."})
 }
 
 // listAnd joins short items as "1, 2 and 3".

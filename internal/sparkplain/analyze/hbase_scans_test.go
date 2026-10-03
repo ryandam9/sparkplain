@@ -73,8 +73,8 @@ func TestHBaseScanTiesAndSkew(t *testing.T) {
 		t.Errorf("tasks: %s", got)
 	}
 	f, ok := rules(r)["hbase-scan-skew"]
-	if !ok || f.Title != "Stage 3's scan of orders waited on one region: rs-1 took 4 min 10 s, the median region 55 s" ||
-		!strings.Contains(f.Explanation, "returned 6,800,000 of the scan's 9,500,000 rows (72%)") || !strings.Contains(f.Fix, "split 'orders'") ||
+	if !ok || f.Title != "The scan of orders in stage 3 waited for one region on rs-1, which took 4 min 10 s (the median region took 55 s)" ||
+		!strings.Contains(f.Explanation, "returned 6,800,000 of the 9,500,000 rows of the scan (72%)") || !strings.Contains(f.Fix, "split 'orders'") ||
 		len(f.Evidence) != 2 || f.Evidence[0].Source.Line != 70 || f.Evidence[1].Source.Line != 33 {
 		t.Errorf("finding = %+v", f)
 	}
@@ -196,7 +196,7 @@ func TestHBaseScanFromLogs(t *testing.T) {
 		t.Errorf("scan = %+v\nregions: %s", sc, strings.Join(got, ", "))
 	}
 	f, ok := rules(r)["hbase-scan-skew"]
-	if !ok || !strings.Contains(f.Title, "rs-1 took 4 min 10 s, the median region 55 s") || !strings.Contains(f.Explanation, "holds 6.0 GiB of the scan's 9.0 GiB (67%") ||
+	if !ok || !strings.Contains(f.Title, "rs-1, which took 4 min 10 s (the median region took 55 s)") || !strings.Contains(f.Explanation, "holds 6.0 GiB of the 9.0 GiB of the scan (67%") ||
 		strings.Contains(f.Explanation, "returned") || f.Evidence[1].Ref != "" || f.Evidence[1].Source.Line != 120 {
 		t.Errorf("finding = %+v", f)
 	}

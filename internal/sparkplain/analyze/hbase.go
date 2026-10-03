@@ -90,21 +90,21 @@ func hbaseFindings(c *ctx) {
 	if g := groups["table-missing"]; g != nil {
 		c.add(model.Finding{Rule: "hbase-table-missing", Severity: model.Critical, Section: "access",
 			Title:       fmt.Sprintf("HBase table %s does not exist (%s in the logs)", strings.Join(g.tables, ", "), errs(g)),
-			Explanation: "The job read or wrote an HBase table that HBase does not have, so every call to it failed. HBase finds a table by its full name, namespace included (ns:table, or the default namespace when none is given).",
+			Explanation: "The job read or wrote an HBase table that HBase does not have. As a result, all calls to it failed. HBase finds a table by its full name, with the namespace (ns:table). If the name has no namespace, HBase uses the default namespace.",
 			Evidence:    g.evidence(),
-			Fix:         "Create the table, with its column families, before the job runs (in the hbase shell: create '<table>', '<family>'), or correct the table name the job uses."})
+			Fix:         "Do one of these:\n- Create the table and its column families before the job runs. In the hbase shell, use create '<table>', '<family>'.\n- Correct the table name that the job uses."})
 	}
 	if g := groups["zookeeper"]; g != nil {
-		title, expl := "HBase's ZooKeeper could not be reached", "An HBase client first asks ZooKeeper where HBase is. It could not connect, so it never reached HBase and its calls failed."
+		title, expl := "The HBase client could not reach ZooKeeper", "An HBase client first asks ZooKeeper for the location of HBase. This client could not connect. As a result, it did not reach HBase, and its calls failed."
 		if len(g.zk) > 0 {
 			title += " at " + strings.Join(g.zk, ", ")
 			if _, port, ok := strings.Cut(g.zk[0], ":"); ok && port != "2181" {
-				expl += " ZooKeeper listens on port 2181 unless the cluster changed it; this client dialled port " + port + "."
+				expl += " ZooKeeper listens on port 2181, if the cluster did not change it. This client used port " + port + "."
 			}
 		}
 		c.add(model.Finding{Rule: "hbase-zookeeper", Severity: model.Critical, Section: "access",
 			Title: fmt.Sprintf("%s (%s in the logs)", title, errs(g)), Explanation: expl, Evidence: g.evidence(),
-			Fix: "Check hbase.zookeeper.quorum and hbase.zookeeper.property.clientPort in the hbase-site.xml the job uses (often shipped with --files) against the cluster's own /etc/hbase/conf/hbase-site.xml, and that ZooKeeper is running and reachable from every node."})
+			Fix: "Compare hbase.zookeeper.quorum and hbase.zookeeper.property.clientPort in two files:\n- The hbase-site.xml that the job uses. The job often sends it with --files.\n- /etc/hbase/conf/hbase-site.xml on the cluster.\nMake sure that ZooKeeper runs and that all nodes can reach it."})
 	}
 	if g := groups["server"]; g != nil {
 		title := "HBase region servers did not answer"
@@ -113,9 +113,9 @@ func hbaseFindings(c *ctx) {
 		}
 		c.add(model.Finding{Rule: "hbase-server", Severity: model.Critical, Section: "stages",
 			Title:       fmt.Sprintf("%s (%s in the logs)", title, errs(g)),
-			Explanation: "Calls to a region server timed out, or it closed the connection or was stopping, so reads and writes to the regions it serves stalled or failed until HBase moved them.",
+			Explanation: "Calls to a region server timed out, or the server closed the connection or was stopping. As a result, reads and writes to its regions stopped or failed until HBase moved the regions.",
 			Evidence:    append(g.evidence(), serverRefs(g.servers)...),
-			Fix:         "Read that region server's own log, and check its node's memory, garbage-collection pauses and disks at that time. hbase.rpc.timeout and hbase.client.operation.timeout set how long the client waits."})
+			Fix:         "Read the log of that region server. Examine the memory, the garbage collection pauses and the disks of its node at that time.\nhbase.rpc.timeout and hbase.client.operation.timeout set how long the client waits."})
 	}
 	if g := groups["retries"]; g != nil {
 		title := "HBase calls gave up after all their retries"
@@ -124,56 +124,57 @@ func hbaseFindings(c *ctx) {
 		}
 		c.add(model.Finding{Rule: "hbase-retries", Severity: model.Critical, Section: "stages",
 			Title:       fmt.Sprintf("%s (%s in the logs)", title, errs(g)),
-			Explanation: "The HBase client retried a call until hbase.client.retries.number ran out, so that read or write failed. The HBase lines before it in the same log usually say why it kept failing.",
+			Explanation: "The HBase client tried a call again until it used all its retries (hbase.client.retries.number). As a result, that read or write failed. The HBase lines before it in the same log usually show why it failed again and again.",
 			Evidence:    g.evidence(),
-			Fix:         "Find the first HBase error before it (a region server down, a busy region, a region moving) and fix that; HBase's own logs for that time show the server's side."})
+			Fix:         "Find the first HBase error before it. For example, a region server stopped, a region was busy or a region moved. Correct that error.\nThe logs of HBase for that time show the problem on the server."})
 	}
 	if g := groups["busy"]; g != nil {
 		on := ""
 		if len(g.tables) > 0 {
 			on = " to " + strings.Join(g.tables, ", ")
 		}
-		why := "the region's memstore, the memory that holds writes until they are flushed to disk, was over its limit"
+		why := "the memstore of the region was more than its limit"
 		if g.limit != "" {
 			why += " (" + g.limit + ")"
 		}
+		why += ". The memstore is the memory that holds writes until HBase flushes them to disk"
 		if g.callQueue {
-			why = "its queue of waiting requests was full"
+			why = "its queue of requests was full"
 		}
 		where := "The region server"
 		if len(g.servers) > 0 {
 			where = "The region server on " + strings.Join(g.servers, ", ")
 		}
-		retried := "The client waited and retried, which slowed the tasks writing."
+		retried := "The client waited and tried again. This made the tasks that wrote slower."
 		if g.attempt > 0 && g.attempts > 0 {
-			retried = fmt.Sprintf("The client waited and retried, up to attempt %d of %d, which slowed the tasks writing.", g.attempt, g.attempts)
+			retried = fmt.Sprintf("The client waited and tried again, up to attempt %d of %d. This made the tasks that wrote slower.", g.attempt, g.attempts)
 		}
 		c.add(model.Finding{Rule: "hbase-busy", Severity: model.Warning, Section: "stages",
-			Title:       fmt.Sprintf("HBase pushed back on writes%s (%s in the logs)", on, model.Plural(g.n, "time", "times")),
-			Explanation: fmt.Sprintf("%s refused writes because %s. %s Writes pile onto one region when row keys share a prefix or arrive in order, or when the table has few regions.", where, why, retried),
+			Title:       fmt.Sprintf("HBase refused writes%s for a short time (%s in the logs)", on, model.Plural(g.n, "time", "times")),
+			Explanation: fmt.Sprintf("%s refused writes because %s. %s\nWrites go to one region when row keys share a prefix or come in order, or when the table has few regions.", where, why, retried),
 			Evidence:    append(g.evidence(), serverRefs(g.servers)...),
-			Fix:         "Spread the writes: pre-split the table into more regions, and avoid row keys that share a prefix or keep increasing (salt or hash a prefix). Fewer tasks writing at once also helps. The region server's own log shows whether flushes or compactions held it up."})
+			Fix:         "Spread the writes:\n- Pre-split the table into more regions.\n- Do not use row keys that share a prefix or always increase. Add a salt or a hash as a prefix.\n- Use fewer tasks that write at the same time.\nThe log of the region server shows if flushes or compactions stopped it."})
 	}
 	if g := groups["scanner"]; g != nil {
 		c.add(model.Finding{Rule: "hbase-scanner-expired", Severity: model.Warning, Section: "stages",
 			Title:       fmt.Sprintf("HBase scanner leases expired (%s in the logs)", model.Plural(g.n, "time", "times")),
-			Explanation: "A task took longer than the scanner lease (hbase.client.scanner.timeout.period, 60 s unless changed) between two fetches of rows, so the region server dropped its scan. The client opened the scan again and carried on, but the task lost the time it had waited and ran longer.",
+			Explanation: "Between two fetches of rows, a task used more time than the scanner lease (hbase.client.scanner.timeout.period, 60 s by default). As a result, the region server stopped its scan. The client opened the scan again and continued. But the task lost the time that it waited, and it ran longer.",
 			Evidence:    g.evidence(),
-			Fix:         "Fetch fewer rows per call, so each batch is processed within the lease: lower hbase.client.scanner.caching, Scan.setCaching, or for TableInputFormat hbase.mapreduce.scan.cachedrows. Or make the work done per row faster. A longer hbase.client.scanner.timeout.period only helps if the region servers get it too."})
+			Fix:         "Fetch fewer rows in each call, so that the task completes each batch within the lease. Decrease one of these:\n- hbase.client.scanner.caching\n- Scan.setCaching\n- hbase.mapreduce.scan.cachedrows, for TableInputFormat\nOr make the work on each row faster.\nA longer hbase.client.scanner.timeout.period helps only if the region servers also get it."})
 	}
 	if g := groups["moved"]; g != nil {
 		c.add(model.Finding{Rule: "hbase-region-moved", Severity: model.Warning, Section: "stages",
 			Title:       fmt.Sprintf("HBase regions were moving or opening during the run (%s in the logs)", errs(g)),
-			Explanation: "The client reached a region server that no longer, or not yet, served a region, because HBase was moving, splitting or reopening it. The client found the new place and retried, which slows the tasks involved.",
+			Explanation: "The client reached a region server that did not serve the region at that time. HBase moved, split or opened the region again. The client found the new location and tried again. This makes the tasks slower.",
 			Evidence:    g.evidence(),
-			Fix:         "Check the HBase Master's log for region moves and splits at that time. Avoid running the balancer or major compactions during heavy jobs, and pre-split tables that split while being written."})
+			Fix:         "Look for region moves and splits at that time in the log of the HBase Master.\nDo not run the balancer or major compactions during large jobs.\nPre-split the tables that split during writes."})
 	}
 	if g := groups["other"]; g != nil {
 		c.add(model.Finding{Rule: "hbase-error", Severity: model.Critical, Section: "stages",
 			Title:       fmt.Sprintf("HBase calls failed (%s in the logs)", errs(g)),
-			Explanation: "The HBase client logged errors of a kind the report does not recognise; the evidence shows them.",
+			Explanation: "The HBase client logged errors of a type that sparkplain does not know. The evidence shows them.",
 			Evidence:    g.evidence(),
-			Fix:         "Read the first error for its cause, and HBase's own logs for that time."})
+			Fix:         "Find the cause in the first error.\nRead the logs of HBase for that time."})
 	}
 	hbaseAccessFinding(c)
 }
@@ -206,9 +207,9 @@ func hbaseAccessFinding(c *ctx) {
 	}
 	c.add(model.Finding{Rule: "hbase-access-denied", Severity: model.Critical, Section: "access",
 		Title:       fmt.Sprintf("HBase refused access%s (%s)", on, model.Plural(g.n, "time", "times")),
-		Explanation: "HBase's own access control refused the user the job ran as, so the read or write failed. This is HBase's permission, not an AWS one.",
+		Explanation: "The access control of HBase refused the user of the job. As a result, the read or write failed. This is a permission in HBase, not in AWS.",
 		Evidence:    g.evidence(),
-		Fix:         "Grant that user what it needs on the table (in the hbase shell: grant '<user>', 'RW', '<table>'), or run the job as a user that has it."})
+		Fix:         "Do one of these:\n- Give that user the necessary permission on the table. In the hbase shell, use grant '<user>', 'RW', '<table>'.\n- Run the job as a user that has the permission."})
 }
 
 // classpathFinding reports classes missing, or of another version, at run
@@ -252,9 +253,9 @@ func classpathFinding(c *ctx) {
 		}
 		switch m.err {
 		case "NoSuchMethodError", "NoSuchFieldError", "AbstractMethodError", "IncompatibleClassChangeError":
-			expl = append(expl, fmt.Sprintf("%s found a different version of %s than it was built against (%s; %s in the logs).", who, cls, m.err, model.Plural(m.n, "line", "lines")))
+			expl = append(expl, fmt.Sprintf("%s found a version of %s that is different from the version it was built with (%s, %s in the logs).", who, cls, m.err, model.Plural(m.n, "line", "lines")))
 		default:
-			expl = append(expl, fmt.Sprintf("%s needed %s, but no jar on the classpath provided it (%s; %s in the logs).", who, cls, m.err, model.Plural(m.n, "line", "lines")))
+			expl = append(expl, fmt.Sprintf("%s needed %s, but no jar on the classpath had it (%s, %s in the logs).", who, cls, m.err, model.Plural(m.n, "line", "lines")))
 		}
 		if hint := classHint(cls); hint != "" && !slices.Contains(hints, hint) {
 			hints = append(hints, hint)
@@ -268,14 +269,14 @@ func classpathFinding(c *ctx) {
 	}
 	title := "Class " + order[0] + " was missing at run time"
 	if len(order) > 1 {
-		title = fmt.Sprintf("%d classes were missing at run time: %s", len(order), clip(strings.Join(order, ", "), 160))
+		title = fmt.Sprintf("%d classes were missing at run time (%s)", len(order), clip(strings.Join(order, ", "), 160))
 	}
-	fix := "Ship the jar that provides it with --jars (or spark.jars) so the driver and every executor load it, or, for a version clash, keep one version of the library on the classpath."
+	fix := "Do one of these:\n- Add the jar that has the class with --jars or spark.jars. Then the driver and all executors load it.\n- If two versions conflict, keep only one version of the library on the classpath."
 	if len(hints) > 0 {
-		fix += " " + strings.Join(hints, " ")
+		fix += "\n" + strings.Join(hints, "\n")
 	}
 	c.add(model.Finding{Rule: "classpath-clash", Severity: model.Critical, Section: "config", Title: title,
-		Explanation: strings.Join(expl, " ") + " Whatever used it failed there.", Evidence: ev, Fix: fix})
+		Explanation: strings.Join(expl, "\n") + "\nThe code that used the class failed at that point.", Evidence: ev, Fix: fix})
 }
 
 // classHint says which jar usually provides a class the HBase client or
@@ -284,17 +285,17 @@ func classpathFinding(c *ctx) {
 func classHint(cls string) string {
 	switch {
 	case strings.HasPrefix(cls, "com.google.protobuf."):
-		return "HBase 2's client still loads protobuf-java 2.5, which Spark 3.5 no longer ships; on EMR it is /usr/lib/hadoop/lib/protobuf-java-2.5.0.jar."
+		return "The HBase 2 client loads protobuf-java 2.5, but Spark 3.5 does not include it. On EMR, it is /usr/lib/hadoop/lib/protobuf-java-2.5.0.jar."
 	case cls == "org.slf4j.impl.StaticLoggerBinder":
-		return "The jar that needed it calls SLF4J 1's API, and Spark 3.5 ships SLF4J 2, which has no StaticLoggerBinder; add an SLF4J 1.7 binding such as /usr/lib/hadoop/lib/slf4j-reload4j-1.7.36.jar on EMR."
+		return "The jar that needed it uses the SLF4J 1 API. Spark 3.5 includes SLF4J 2, which has no StaticLoggerBinder. Add an SLF4J 1.7 binding, for example /usr/lib/hadoop/lib/slf4j-reload4j-1.7.36.jar on EMR."
 	case strings.HasPrefix(cls, "org.apache.hadoop.hbase.spark."):
-		return "It is the hbase-spark connector, which EMR 7 does not ship: add hbase-spark and hbase-spark-protocol-shaded (Maven group org.apache.hbase.connectors.spark)."
+		return "It is in the hbase-spark connector, which EMR 7 does not include. Add hbase-spark and hbase-spark-protocol-shaded (Maven group org.apache.hbase.connectors.spark)."
 	case strings.HasPrefix(cls, "org.apache.hbase.thirdparty."):
-		return "It is in HBase's shaded third-party jars (hbase-shaded-miscellaneous, hbase-shaded-netty, hbase-shaded-protobuf), in /usr/lib/hbase/lib on EMR."
+		return "It is in the shaded third-party jars of HBase (hbase-shaded-miscellaneous, hbase-shaded-netty, hbase-shaded-protobuf). On EMR, they are in /usr/lib/hbase/lib."
 	case strings.HasPrefix(cls, "org.apache.hadoop.hbase."):
-		return "It is part of HBase's client: add HBase's jars from /usr/lib/hbase/lib on EMR (hbase-client, hbase-common, hbase-mapreduce and the ones they need)."
+		return "It is in the HBase client. On EMR, add the HBase jars from /usr/lib/hbase/lib: hbase-client, hbase-common, hbase-mapreduce and the jars that they use."
 	case strings.HasPrefix(cls, "org.apache.htrace."):
-		return "It is htrace-core4, in /usr/lib/hbase/lib/client-facing-thirdparty on EMR."
+		return "It is in htrace-core4. On EMR, it is in /usr/lib/hbase/lib/client-facing-thirdparty."
 	}
 	return ""
 }

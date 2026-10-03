@@ -89,9 +89,9 @@
         {{if $r.Findings}}<div class="findings">
           {{range $i, $f := $r.Findings}}<article class="finding {{sev .Severity}}" id="finding-{{add $i 1}}"><div class="stripe"></div><div class="body">
             <div class="t"><span class="fnum {{sev .Severity}}">{{add $i 1}}</span><span class="pill {{sevPill .Severity}}">{{sevLabel .Severity}}</span><h3>{{.Title}}</h3></div>
-            <div class="fpart what"><span class="k">{{if eq (sev .Severity) "crit"}}Error{{else if eq (sev .Severity) "warn"}}Problem{{else}}Note{{end}}</span><div><p>{{.Explanation}}</p></div></div>
+            <div class="fpart what"><span class="k">{{if eq (sev .Severity) "crit"}}Error{{else if eq (sev .Severity) "warn"}}Problem{{else}}Note{{end}}</span><div>{{prose .Explanation "expl"}}</div></div>
             {{if .Evidence}}<div class="fpart evid"><span class="k">Evidence</span><div>{{range .Evidence}}<p class="ev">{{if .Source.File}}{{src .Source}} {{end}}{{if and $.Explorer .Ref}}<a href="{{explorerURL $.Explorer .Ref}}">{{.Text}}</a>{{else}}{{.Text}}{{end}}</p>{{end}}</div></div>{{end}}
-            {{if .Fix}}<div class="fpart try"><span class="k">Try</span><div><p class="fix">{{.Fix}}</p></div></div>{{end}}
+            {{if .Fix}}<div class="fpart try"><span class="k">Try</span><div>{{prose .Fix "fix"}}</div></div>{{end}}
           </div></article>
           {{end}}
         </div>{{else}}<p class="note">No rule found anything to report.</p>{{end}}

@@ -49,8 +49,8 @@ func TestHBaseRepeatedScan(t *testing.T) {
 	}
 	ts = append(ts, scanTask{stage: 12, table: "customers", start: "a", end: "b", mib: 100, at: 20 * time.Minute, d: 30 * time.Second})
 	f, ok := rules(runWithLogs(nil, nil, scanLogs(ts...)...))["hbase-repeated-scan"]
-	if !ok || f.Title != "Stages 3 and 9 each read the same regions of orders: the table was scanned 2 times" || f.Severity != model.Warning ||
-		!strings.Contains(f.Explanation, "cost 2 min 0 s of task time after the first read") || len(f.Evidence) != 2 || f.Evidence[1].Source.Line != 14 ||
+	if !ok || f.Title != "Stages 3 and 9 each read the same regions of orders, and the job scanned the table 2 times" || f.Severity != model.Warning ||
+		!strings.Contains(f.Explanation, "used 2 min 0 s of task time after the first read") || len(f.Evidence) != 2 || f.Evidence[1].Source.Line != 14 ||
 		!strings.Contains(f.Fix, "persist") {
 		t.Errorf("finding = %+v", f)
 	}
@@ -104,7 +104,7 @@ func TestHBaseFullScan(t *testing.T) {
 	}
 	r := runWithLogs(nil, nil, scanLogs(ts...)...)
 	f, ok := rules(r)["hbase-full-scan"]
-	if !ok || f.Title != "Stage 4 scanned all of orders: 12 regions from the first row to the last" || !strings.Contains(f.Explanation, "(about 2.3 GiB, HBase's estimate)") ||
+	if !ok || f.Title != "Stage 4 scanned all of orders, 12 regions from the first row to the last" || !strings.Contains(f.Explanation, "(about 2.3 GiB, HBase's estimate)") ||
 		len(f.Evidence) != 2 || f.Evidence[0].Source.Line != 10 || f.Evidence[1].Source.Line != 21 || !strings.Contains(f.Fix, "withStartRow") {
 		t.Errorf("finding = %+v", f)
 	}
@@ -125,8 +125,8 @@ func TestHBaseTinyRegions(t *testing.T) {
 		ts = append(ts, scanTask{stage: 6, part: p, table: "events", start: fmt.Sprintf("e%02d", p), end: fmt.Sprintf("e%02d", p+1), mib: 4, d: 800 * time.Millisecond})
 	}
 	f, ok := rules(runWithLogs(nil, nil, scanLogs(ts...)...))["hbase-tiny-regions"]
-	if !ok || f.Title != "Stage 6 read 25 small regions of events: the median region holds 4.0 MiB" || !strings.Contains(f.Explanation, "25 of the 25 regions with a known size are under 32 MiB") ||
-		!strings.Contains(f.Explanation, "The median region took 800 ms to read.") || !strings.Contains(f.Fix, "merge_region") ||
+	if !ok || f.Title != "Stage 6 read 25 small regions of events, and the median region holds 4.0 MiB" || !strings.Contains(f.Explanation, "25 of the 25 regions with a known size are less than 32 MiB") ||
+		!strings.Contains(f.Explanation, "The read of the median region took 800 ms.") || !strings.Contains(f.Fix, "merge_region") ||
 		len(f.Evidence) != 3 || f.Evidence[0].Source.Line != 10 || f.Evidence[0].Text != "region 00000000000000000000000000000001 of events: 4.0 MiB" {
 		t.Errorf("finding = %+v", f)
 	}
@@ -141,8 +141,8 @@ func TestHBaseRetriedRegions(t *testing.T) {
 		{stage: 3, part: 2, attempt: 1, table: "orders", start: "c", end: "d", mib: 10, at: 6 * time.Second, d: 10 * time.Second},
 	}
 	f, ok := rules(runWithLogs(nil, nil, scanLogs(ts...)...))["hbase-retried-regions"]
-	if !ok || f.Title != "1 region was read from HBase more than once because its task failed" ||
-		!strings.Contains(f.Explanation, "partition 2 of stage 3 read region 00000000000000000000000000000002 of orders on rs-1 2 times") ||
+	if !ok || f.Title != "Spark read 1 region from HBase two or more times because its task failed" ||
+		!strings.Contains(f.Explanation, "Partition 2 of stage 3 read region 00000000000000000000000000000002 of orders on rs-1 2 times") ||
 		len(f.Evidence) != 1 || f.Evidence[0].Source.Line != 5001 || !strings.Contains(f.Fix, "scanner lease") {
 		t.Errorf("finding = %+v", f)
 	}

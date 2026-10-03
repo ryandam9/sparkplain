@@ -70,9 +70,9 @@ func exclusionFindings(c *ctx) {
 		sev, title = model.Warning, fmt.Sprintf("Spark excluded %s from the application after task failures", model.Plural(len(app), "executor", "executors"))
 	}
 	c.add(model.Finding{Rule: "executors-excluded", Severity: sev, Section: "executors", Title: title,
-		Explanation: "With spark.excludeOnFailure.enabled, Spark stops scheduling tasks on an executor, or a whole node, where tasks keep failing. It protects the job from a bad machine, but it also takes capacity away, and if every executor is excluded the job cannot run at all.",
+		Explanation: "With spark.excludeOnFailure.enabled, Spark stops sending tasks to an executor or a node where tasks fail again and again. This keeps a bad machine away from the job. But it also removes capacity. If Spark excludes all executors, the job cannot run.",
 		Evidence:    ev,
-		Fix:         "Look at why the tasks failed on those executors (see the task failures). If one host keeps failing, replace it; if the failures are in the data or the code, excluding executors only delays the job failing."})
+		Fix:         "Find why the tasks failed on those executors. Refer to the task failures.\n- If one host fails again and again, replace it.\n- If the failures come from the data or the code, correct them. Excluded executors only make the job fail later."})
 }
 
 func schedulerDelayFinding(c *ctx) {
@@ -102,10 +102,10 @@ func schedulerDelayFinding(c *ctx) {
 			Text: fmt.Sprintf("stage %d: %s scheduler delay over %s tasks (%s of their time)", w.s.ID, model.Duration(w.delay), model.Num(w.s.Totals.Tasks), model.Percent(share(w.delay, w.s.Totals.DurationMs)))})
 	}
 	c.add(model.Finding{Rule: "scheduler-delay", Severity: model.Warning, Section: "stages",
-		Title:       fmt.Sprintf("Tasks spent %s of their time waiting to start or to report back", model.Percent(share(delay, dur))),
-		Explanation: "Scheduler delay is task time not spent running, unpacking the task or returning its result: launching it, shipping its code and data, and waiting on the driver. A large share usually means very many short tasks, a busy driver, or large task closures.",
+		Title:       fmt.Sprintf("Tasks used %s of their time to start or to send back their results", model.Percent(share(delay, dur))),
+		Explanation: "Scheduler delay is the task time when the task does not run, unpack or send its result. In that time, Spark starts the task, sends its code and data, and waits for the driver. A large part usually comes from very many short tasks, a busy driver or large task closures.",
 		Evidence:    ev,
-		Fix:         "Use fewer, larger tasks (fewer partitions), avoid capturing large objects in closures (broadcast them), and give the driver more cores if it is busy."})
+		Fix:         "Use fewer partitions, so that the tasks are fewer and larger.\nDo not put large objects in closures. Broadcast them.\nIf the driver is busy, give it more cores."})
 }
 
 func localityFinding(c *ctx) {
@@ -141,10 +141,10 @@ func localityFinding(c *ctx) {
 			Text: fmt.Sprintf("stage %d: %s of %s input tasks ran away from their data (%s rack-local, %s any)", b.s.ID, model.Num(b.far), model.Num(t.Tasks), model.Num(t.LocalityRack), model.Num(t.LocalityAny))})
 	}
 	c.add(model.Finding{Rule: "poor-locality", Severity: model.Info, Section: "stages",
-		Title:       fmt.Sprintf("%s of tasks that read input ran on a different host from their data", model.Percent(share(far, known))),
-		Explanation: "Spark tries to run each input task where its data is. When it cannot within spark.locality.wait, the task runs elsewhere and reads its data over the network. On S3 every read is remote anyway, so this matters for HDFS and cached data.",
+		Title:       fmt.Sprintf("%s of the tasks that read input ran on a host other than the host of their data", model.Percent(share(far, known))),
+		Explanation: "Spark tries to run each input task on the host of its data. If it cannot do this within spark.locality.wait, the task runs on a different host and reads its data over the network. All reads from S3 use the network, so this is important only for HDFS and cached data.",
 		Evidence:    ev,
-		Fix:         "If the data is on HDFS, check that executors run on the nodes holding it; raising spark.locality.wait trades waiting for locality against starting sooner."})
+		Fix:         "If the data is on HDFS, make sure that executors run on the nodes that hold it.\nA larger spark.locality.wait gives more tasks a local host, but tasks start later."})
 }
 
 func resultSizeFinding(c *ctx) {
@@ -179,9 +179,9 @@ func resultSizeFinding(c *ctx) {
 	}
 	c.add(model.Finding{Rule: "large-results", Severity: model.Warning, Section: "stages",
 		Title:       fmt.Sprintf("A stage sent %s of results to the driver, near spark.driver.maxResultSize (%s)", model.Bytes(big[0].bytes), model.Bytes(limit)),
-		Explanation: "Results of actions such as collect() and toPandas() all land in the driver's memory. Close to spark.driver.maxResultSize, the job fails; before that, the driver can run out of memory.",
+		Explanation: "All results of actions such as collect() and toPandas() go into the memory of the driver. At spark.driver.maxResultSize, the job fails. Before that limit, the driver can run out of memory.",
 		Evidence:    ev,
-		Fix:         "Write large results to storage instead of collecting them, or collect an aggregate or a sample. Raise spark.driver.maxResultSize and the driver's memory only if the result really must come back."})
+		Fix:         "Do one of these:\n- Write large results to storage. Do not collect them.\n- Collect an aggregate or a sample.\nIncrease spark.driver.maxResultSize and the driver memory only if the driver must have all of the result."})
 }
 
 func startupFinding(c *ctx) {
@@ -203,10 +203,10 @@ func startupFinding(c *ctx) {
 		ev = append(ev, model.Evidence{Source: x.AddedSource, Ref: model.ExecutorRef(x.ID), Text: fmt.Sprintf("executor %s on %s took %s to start", x.ID, x.Host, model.Duration(x.StartupMs))})
 	}
 	c.add(model.Finding{Rule: "slow-executor-startup", Severity: model.Info, Section: "executors",
-		Title:       fmt.Sprintf("%s took over %s to start", model.Plural(len(slow), "executor", "executors"), model.Duration(c.t.SlowStartup.Milliseconds())),
-		Explanation: "Startup is the time from Spark asking the cluster manager for an executor to it registering with the driver: waiting for capacity, launching the container and starting the JVM. Tasks wait while it happens.",
+		Title:       fmt.Sprintf("%s used more than %s to start", model.Plural(len(slow), "executor", "executors"), model.Duration(c.t.SlowStartup.Milliseconds())),
+		Explanation: "Startup is the time from the request of Spark for an executor to the registration of that executor with the driver. In this time, the cluster finds capacity, starts the container and starts the JVM. Tasks wait during this time.",
 		Evidence:    ev,
-		Fix:         "On EMR, slow starts usually mean the cluster is waiting to scale out or containers are queued in YARN; keep a minimum number of executors warm (spark.dynamicAllocation.minExecutors) or size the cluster for the peak."})
+		Fix:         "On EMR, a slow start usually means that the cluster waits to scale out. Or containers wait in a YARN queue. Do one of these:\n- Keep a minimum number of executors ready (spark.dynamicAllocation.minExecutors).\n- Make the cluster large enough for the peak."})
 }
 
 func speculationFinding(c *ctx) {
@@ -227,11 +227,11 @@ func speculationFinding(c *ctx) {
 		return
 	}
 	c.add(model.Finding{Rule: "speculation", Severity: model.Info, Section: "stages",
-		Title: fmt.Sprintf("Spark ran %s of slow tasks in %s; %s finished first", model.Plural(int(spec), "speculative copy", "speculative copies"),
+		Title: fmt.Sprintf("Spark ran %s of slow tasks in %s, and %s finished first", model.Plural(int(spec), "speculative copy", "speculative copies"),
 			model.Plural(int(stages), "stage", "stages"), model.Num(won)),
-		Explanation: "With spark.speculation on, Spark starts a second copy of a task that runs much slower than its siblings, on another host, and keeps whichever finishes first. It hides slow machines but costs extra work, and it does not help when the task is slow because of its data (skew).",
+		Explanation: "When spark.speculation is on, Spark starts a second copy of a slow task on a different host. It keeps the result of the copy that finishes first. This hides slow machines, but it adds work. It does not help when the data makes the task slow (skew).",
 		Evidence:    []model.Evidence{{Source: first.TaskSource, Ref: model.StageRef(first.ID, first.Attempt), Text: fmt.Sprintf("stage %d: %s speculative attempts", first.ID, model.Num(first.Totals.Speculative))}},
-		Fix:         "If the same hosts keep being slow, look at them; if the slow tasks read more data than others, fix the skew instead."})
+		Fix:         "- If the same hosts are slow again and again, examine those hosts.\n- If the slow tasks read more data than the other tasks, correct the skew."})
 }
 
 func runningAtEndFinding(c *ctx) {
@@ -249,14 +249,14 @@ func runningAtEndFinding(c *ctx) {
 		more = " (at least)"
 	}
 	title := fmt.Sprintf("%s%s still running in %s when the log ended", model.Plural(n, "task was", "tasks were"), more, model.Plural(len(stages), "stage", "stages"))
-	expl := "The log has a start but no end for these tasks. Either the application was still running when the log was copied, or it stopped without closing the log (a crash, a kill, or the driver running out of memory), so what these tasks did is unknown."
+	expl := "The log has a start but no end for these tasks. The application was still running when someone copied the log. Or the application stopped before it closed the log, for example after a crash, a kill, or because the driver ran out of memory. As a result, the work of these tasks is not known."
 	if !c.log.Application.End.IsZero() {
-		title = fmt.Sprintf("%s%s in %s never logged an end", model.Plural(n, "task", "tasks"), more, model.Plural(len(stages), "stage", "stages"))
-		expl = "The application ended while these tasks were running, and Spark logged no end for them. This happens when a job is aborted (for example after too many failures) or the application shuts down with work in flight; their results were thrown away."
+		title = fmt.Sprintf("%s%s in %s logged no end", model.Plural(n, "task", "tasks"), more, model.Plural(len(stages), "stage", "stages"))
+		expl = "The application ended while these tasks ran, and Spark logged no end for them. This occurs when Spark stops a job, for example after too many failures. It also occurs when the application stops while work continues. Spark did not keep their results."
 	}
 	c.add(model.Finding{Rule: "tasks-running-at-end", Severity: model.Warning, Section: "stages",
 		Title:       title,
 		Explanation: expl,
 		Evidence:    []model.Evidence{{Source: t.Source, Ref: model.StageRef(t.StageID, t.StageAttempt), Text: fmt.Sprintf("task %d of stage %d on executor %s, launched %s", t.TaskID, t.StageID, t.ExecutorID, t.Launched.UTC().Format(time.RFC3339))}},
-		Fix:         "If the application should have finished, check the driver's log for why it stopped; phase 2 reads it automatically."})
+		Fix:         "If the application did not finish correctly, find the cause in the driver log.\nRun sparkplain with the cluster logs (-cluster-id or -from), and it reads the driver log for you."})
 }

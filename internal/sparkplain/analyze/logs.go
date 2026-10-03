@@ -425,9 +425,9 @@ func firstFailure(c *ctx, r *model.Report) {
 	if !failed {
 		what = "its step failed"
 	}
-	expl := fmt.Sprintf("This is the earliest error in the logs, in %s%s, before %s. Later errors usually follow from it.", first.who(), when, what)
+	expl := fmt.Sprintf("This is the first error in the logs. It is in %s%s, before %s. The errors after it are usually its results.", first.who(), when, what)
 	if attempts > 1 {
-		expl += fmt.Sprintf(" YARN started the application %d times and each attempt failed the same way.", attempts)
+		expl += fmt.Sprintf(" YARN started the application %d times, and each attempt failed in the same way.", attempts)
 	}
 	title := first.says()
 	if root := l.Fields["root"]; root != "" {
@@ -443,25 +443,25 @@ func firstFailureFix(c *ctx, r *model.Report, h hit) string {
 	msg := l.Fields["rootMessage"]
 	switch {
 	case l.Kind == model.LogOutOfMemory || l.Kind == model.LogMemoryKill:
-		return "See the memory finding below for what to change."
+		return "Refer to the memory finding below for the change to make."
 	case l.Kind == model.LogAccess:
-		return "See the access finding below for the permission to grant."
+		return "Refer to the access finding below for the permission to give."
 	case l.Kind == model.LogClasspath || l.Fields["cause"] == "missing class":
-		return "See the missing-class finding below for the jar to add."
+		return "Refer to the missing-class finding below for the jar to add."
 	case l.Kind == model.LogHBase || l.Fields["cause"] == "HBase":
-		return "See the HBase finding below for what failed and how to fix it."
+		return "Refer to the HBase finding below for the failure and its correction."
 	case strings.Contains(root, "FileNotFoundException") && eventLogDirIn(c, r, msg):
-		return "Spark could not open its event log folder, so SparkContext never started. On S3 the folder must already hold an object: create one (for example an empty spark-events/ marker) or point spark.eventLog.dir at a prefix that exists."
+		return "Spark could not open its event log folder, so SparkContext did not start. On S3, the folder must have an object before Spark starts. Do one of these:\n- Make an object in the folder, for example an empty spark-events/ marker.\n- Set spark.eventLog.dir to a prefix that exists."
 	case strings.Contains(root, "FileNotFoundException"):
-		return "Check that the path exists and that the job reads the one it should; an input written by an earlier step that failed is a common cause."
+		return "Make sure that the path exists. Make sure that the job reads the correct path.\nA frequent cause is an input from an earlier step that failed."
 	case strings.Contains(root, "ClassNotFoundException") || strings.Contains(root, "NoClassDefFoundError"):
-		return "A class was missing at run time: ship its jar with --jars or --packages, or check the versions of the jars on the cluster."
+		return "A class was missing at run time. Do one of these:\n- Add its jar with --jars or --packages.\n- Make sure that the versions of the jars on the cluster are correct."
 	case strings.Contains(root, "ModuleNotFoundError") || strings.Contains(root, "ImportError"):
-		return "A Python module was missing on the node that needed it: ship it with --py-files or install it on every node with a bootstrap action."
+		return "A Python module was missing on a node. Do one of these:\n- Send it with --py-files.\n- Install it on all nodes with a bootstrap action."
 	case strings.Contains(root, "AnalysisException"):
-		return "Spark SQL rejected the query: a table, column or function name is wrong or missing."
+		return "Spark SQL did not accept the query. A table, column or function name is incorrect or missing. Correct the name in the query."
 	}
-	return "Fix this error first; the evidence shows where it happened. The lines after it in the same log say what it led to."
+	return "Correct this error first. The evidence shows where it occurred.\nThe lines after it in the same log show its results."
 }
 
 // eventLogDirIn reports whether msg names the application's event log
@@ -542,21 +542,21 @@ func memoryKillFindings(c *ctx, r *model.Report) {
 		if f := c.finding("executor-memory-kill"); f != nil {
 			f.Evidence = append(f.Evidence, ev...)
 			if usage != "" {
-				f.Explanation += " YARN's own message: “" + usage + "”."
+				f.Explanation += "\nThe message from YARN: “" + usage + "”."
 			}
 		} else {
 			n := len(containers)
 			if n == 0 {
 				n = len(kills)
 			}
-			expl := "YARN stops a container that uses more memory than it was given: the Java heap plus the overhead, which also has to hold Python workers and off-heap buffers. Exit code 137 means it was killed with SIGKILL."
+			expl := "YARN stops a container that uses more memory than YARN gave it. That memory is the Java heap and the overhead. The overhead also holds the Python workers and the off-heap buffers. Exit code 137 means that SIGKILL stopped the container."
 			if usage != "" {
-				expl += " YARN's own message: “" + usage + "”."
+				expl += "\nThe message from YARN: “" + usage + "”."
 			}
 			c.add(model.Finding{Rule: "executor-memory-kill", Severity: model.Critical, Section: "executors",
-				Title:       fmt.Sprintf("YARN killed %s for using too much memory", model.Plural(n, "container", "containers")),
+				Title:       fmt.Sprintf("YARN killed %s because they used too much memory", model.Plural(n, "container", "containers")),
 				Explanation: expl, Evidence: ev,
-				Fix: "Raise spark.executor.memoryOverhead (PySpark jobs often need 20–40% of the heap), or run fewer cores per executor so fewer tasks share the memory."})
+				Fix: "Do one of these:\n- Increase spark.executor.memoryOverhead. PySpark jobs often use 20–40% of the heap for it.\n- Use fewer cores for each executor, so that fewer tasks share the memory."})
 		}
 	}
 
@@ -592,23 +592,23 @@ func memoryKillFindings(c *ctx, r *model.Report) {
 		driver = driver || who == "driver"
 	}
 	title := fmt.Sprintf("%s ran out of memory", model.Plural(len(order), "executor", "executors"))
-	fix := "Give each task more memory: raise spark.executor.memory, run fewer cores per executor, or split the work into more partitions (spark.sql.shuffle.partitions) so each task holds less."
+	fix := "Give each task more memory. Do one of these:\n- Increase spark.executor.memory.\n- Use fewer cores for each executor.\n- Divide the work into more partitions (spark.sql.shuffle.partitions), so that each task holds less data."
 	switch {
 	case driver && len(order) == 1:
 		title = "The driver ran out of memory"
-		fix = "Avoid bringing large results to the driver (collect, toPandas, large broadcasts), or raise spark.driver.memory."
+		fix = "Do one of these:\n- Do not bring large results to the driver (collect, toPandas, large broadcasts).\n- Increase spark.driver.memory."
 	case order[0] == "am" && len(order) == 1:
 		title = "The application master ran out of memory"
-		fix = "In cluster mode the application master is the driver: avoid bringing large results to it (collect, toPandas, large broadcasts), or raise spark.driver.memory. In client mode raise spark.yarn.am.memory."
+		fix = "In cluster mode, the application master is the driver. Do one of these:\n- Do not bring large results to it (collect, toPandas, large broadcasts).\n- Increase spark.driver.memory.\nIn client mode, increase spark.yarn.am.memory."
 	}
 	if kind != "" {
 		title += " (" + kind + ")"
 	}
 	if strings.Contains(kind, "Metaspace") {
-		fix = "Metaspace holds loaded classes: raise -XX:MaxMetaspaceSize in spark.executor.extraJavaOptions, or load fewer jars."
+		fix = "Metaspace holds the classes that the JVM loaded. Do one of these:\n- Increase -XX:MaxMetaspaceSize in spark.executor.extraJavaOptions.\n- Load fewer jars."
 	}
 	c.add(model.Finding{Rule: "out-of-memory", Severity: model.Critical, Section: "memory", Title: title,
-		Explanation: "The Java process asked for more memory than it had and threw OutOfMemoryError; the task, and often the executor, failed with it. The container logs say so even when the event log only shows a lost executor or a failed task.",
+		Explanation: "The Java process asked for more memory than it had, and it stopped with an OutOfMemoryError. The task failed, and often the executor failed too. The container logs show this, also when the event log shows only a lost executor or a failed task.",
 		Evidence:    ev, Fix: fix})
 }
 
@@ -640,13 +640,13 @@ func lostExecutorCauses(c *ctx, r *model.Report) {
 			}
 			f.Evidence = append(f.Evidence, h.evidence(fmt.Sprintf("executor %s's own log: %s", x, h.says())))
 			delete(last, x)
-			if rule == "executor-memory-kill" && h.l.Kind == model.LogOutOfMemory && !strings.Contains(f.Explanation, "killed itself") {
-				f.Explanation += " The executors' own logs show the Java heap ran out and the JVM killed itself (Spark starts executors with -XX:OnOutOfMemoryError=\"kill -9 %p\"), which also exits 137: this was the heap, not YARN's limit on the container."
-				f.Fix = "Give each task more heap: raise spark.executor.memory, run fewer cores per executor, or use more partitions so each task holds less. Raising spark.executor.memoryOverhead would not help here."
+			if rule == "executor-memory-kill" && h.l.Kind == model.LogOutOfMemory && !strings.Contains(f.Explanation, "the JVM stopped itself") {
+				f.Explanation += "\nThe logs of the executors show that the Java heap became full and the JVM stopped itself. Spark starts executors with -XX:OnOutOfMemoryError=\"kill -9 %p\", which also gives exit code 137. As a result, the cause was the heap, not the YARN limit on the container."
+				f.Fix = "Give each task more heap. Do one of these:\n- Increase spark.executor.memory.\n- Use fewer cores for each executor.\n- Use more partitions, so that each task holds less data.\nAn increase of spark.executor.memoryOverhead does not help here."
 			}
 		}
 		if rule == "executor-lost" {
-			f.Fix = "The evidence includes the last error in each lost executor's own log, when it wrote one. A lost executor with no error of its own usually lost its node (spot reclaim, a node failure) or stopped sending heartbeats under long garbage collection."
+			f.Fix = "Read the evidence. It includes the last error in the log of each lost executor, if the executor wrote one.\nA lost executor with no error of its own usually lost its node (a spot interruption or a node failure). Or a long garbage collection stopped its heartbeats."
 		}
 	}
 	if c.has() {
@@ -674,10 +674,10 @@ func lostExecutorCauses(c *ctx, r *model.Report) {
 		ev = append(ev, h.evidence(h.who()+": "+h.says()))
 	}
 	c.add(model.Finding{Rule: "executor-lost", Severity: model.Warning, Section: "executors",
-		Title:       fmt.Sprintf("%s lost during the run", model.Plural(len(seen), "executor was", "executors were")),
-		Explanation: "The driver lost contact with these executors (the process crashed, stopped sending heartbeats, or its node went away). Their running tasks and shuffle data had to be recomputed.",
+		Title:       fmt.Sprintf("Spark lost %s during the run", model.Plural(len(seen), "executor", "executors")),
+		Explanation: "The driver lost contact with these executors. The process stopped, it stopped its heartbeats, or its node stopped. Spark calculated their tasks and their shuffle data again.",
 		Evidence:    ev,
-		Fix:         "Read each executor's own log around that time for the cause; the event log, when supplied, adds which tasks were affected."})
+		Fix:         "Find the cause in the log of each executor, near that time.\nIf you give the event log, this finding also shows the tasks that the loss affected."})
 }
 
 // accessFindings reports every refusal by S3, IAM, Glue, Lake Formation or
@@ -729,10 +729,10 @@ func accessFindings(c *ctx, r *model.Report) {
 		role = "the instance profile " + r.Cluster.InstanceProfile
 	}
 	c.add(model.Finding{Rule: "access-denied", Severity: model.Critical, Section: "access",
-		Title:       fmt.Sprintf("AWS refused access %s: %s", model.Plural(total, "time", "times"), clip(strings.Join(order, "; "), 200)),
-		Explanation: "A request to S3, Glue, Lake Formation or KMS was denied, so the task or query that needed it failed. On EMR, jobs use " + role + " unless they carry other credentials or a runtime role.",
+		Title:       fmt.Sprintf("AWS refused access %s (%s)", model.Plural(total, "time", "times"), clip(strings.Join(order, "; "), 200)),
+		Explanation: "AWS refused a request to S3, Glue, Lake Formation or KMS, so the task or query that sent it failed. On EMR, jobs use " + role + ". Other credentials or a runtime role can replace it.",
 		Evidence:    ev,
-		Fix:         "Grant " + role + " the refused action on that resource (or add the Lake Formation permission), then rerun. Check the bucket policy and any KMS key policy too."})
+		Fix:         "Give " + role + " the refused action on that resource, or add the Lake Formation permission. Then run the job again.\nAlso examine the bucket policy and the KMS key policy, if there is one."})
 }
 
 // connectionFindings reports Kerberos and metastore failures; HBase's are
@@ -743,10 +743,10 @@ func connectionFindings(c *ctx) {
 		rule, title, expl string
 		fix               string
 	}{
-		{model.LogKerberos, "kerberos-failure", "Kerberos authentication failed", "A process could not get or use a Kerberos ticket, so the Hadoop service it called refused it.",
-			"Check that the principal and keytab are right and not expired (kinit -kt), that clocks agree, and that the KDC is reachable from every node."},
-		{model.LogMetastore, "metastore-failure", "The table catalog could not be reached", "Spark could not talk to the Hive metastore or the Glue Data Catalog, so queries that name tables failed.",
-			"Check that the metastore is up and reachable from every node (security groups, hive.metastore.uris), or, for Glue, the role's glue: permissions."},
+		{model.LogKerberos, "kerberos-failure", "Kerberos authentication failed", "A process could not get or use a Kerberos ticket, so the Hadoop service refused the process.",
+			"Make sure of these:\n- The principal and the keytab are correct and not expired (kinit -kt).\n- The clocks of the nodes agree.\n- All nodes can reach the KDC."},
+		{model.LogMetastore, "metastore-failure", "Spark could not reach the table catalog", "Spark could not connect to the Hive metastore or the Glue Data Catalog. As a result, the queries that name tables failed.",
+			"Make sure of these:\n- The metastore runs, and all nodes can reach it (security groups, hive.metastore.uris).\n- For Glue, the role has the glue: permissions."},
 	} {
 		var ev []model.Evidence
 		n := 0
@@ -773,9 +773,9 @@ func stepAndAttemptFindings(c *ctx, r *model.Report) {
 			if h.l.Kind == model.LogStepStatus && h.l.Fields["status"] != "succeeded" {
 				c.add(model.Finding{Rule: "step-failed", Severity: model.Critical, Section: "summary",
 					Title:       "The step failed although Spark finished",
-					Explanation: fmt.Sprintf("Spark reported success, but step %s ended with exit code %s, so EMR marked the step failed (and may have acted on it, such as cancelling later steps or terminating the cluster).", h.f.Step, h.l.Fields["exitCode"]),
+					Explanation: fmt.Sprintf("Spark reported success, but step %s ended with exit code %s. As a result, EMR set the step to failed. EMR can then do the action that the step sets on failure, for example cancel the steps after it or stop the cluster.", h.f.Step, h.l.Fields["exitCode"]),
 					Evidence:    []model.Evidence{h.evidence(h.who() + ": " + h.l.Text)},
-					Fix:         "Look at the step's stderr after the application finished: code that runs after the Spark session ends, or the script's own exit code, failed the step."})
+					Fix:         "Read the stderr of the step after the point where the application finished.\nThe cause is code that runs after the Spark session ends, or the exit code of the script."})
 			}
 		}
 	}
@@ -880,11 +880,11 @@ func retriedFinding(c *ctx, r *model.Report) {
 	if !succeeded || (len(failed) == 0 && last < 2) {
 		return
 	}
-	fix := "Find the first attempt's error in its driver log (container …_01_000001). Work the application repeats on retry can double writes that are not idempotent."
+	fix := "Find the error of the first attempt in its driver log (container …_01_000001).\nMake sure that the writes of the application are idempotent. The new attempt does the work again, and it can write the same data two times."
 	if len(failed) == 0 {
 		c.add(model.Finding{Rule: "app-retried", Severity: model.Warning, Section: "summary",
-			Title:       fmt.Sprintf("YARN restarted the application: the event log is from attempt %d", last),
-			Explanation: "An earlier attempt failed and YARN started the application again (spark.yarn.maxAppAttempts). The earlier attempts' logs were not found, so why they failed is not known. The event log describes the last attempt only.",
+			Title:       fmt.Sprintf("YARN started the application again, and the event log is from attempt %d", last),
+			Explanation: "An earlier attempt failed, and YARN started the application again (spark.yarn.maxAppAttempts). sparkplain did not find the logs of the earlier attempts, so the cause of their failure is not known. The event log shows only the last attempt.",
 			Evidence:    []model.Evidence{{Source: r.Application.Source, Text: fmt.Sprintf("Spark event log: application attempt %d", last)}},
 			Fix:         fix})
 		return
@@ -901,7 +901,7 @@ func retriedFinding(c *ctx, r *model.Report) {
 	if n0 > 1 {
 		which = fmt.Sprintf("Attempt %d", n0)
 	}
-	expl := fmt.Sprintf("%s's application master exited with code %s (%s).", which, h.l.Fields["exitCode"], h.l.Fields["meaning"])
+	expl := fmt.Sprintf("The application master of %s exited with code %s (%s).", strings.ToLower(which[:1])+which[1:], h.l.Fields["exitCode"], h.l.Fields["meaning"])
 	// Where its driver ran, and whether that node went away.
 	var host string
 	for _, x := range c.logs.hits {
@@ -937,19 +937,19 @@ func retriedFinding(c *ctx, r *model.Report) {
 		}
 	}
 	if cause := attemptCause(c, n0); cause != nil {
-		expl += fmt.Sprintf(" Its first error, in %s: %s.", cause.who(), strings.TrimSuffix(cause.says(), "."))
+		expl += fmt.Sprintf("\nThe first error of that attempt, in %s: %s.", cause.who(), strings.TrimSuffix(cause.says(), "."))
 		ev = append(ev, cause.evidence(cause.who()+": "+cause.says()))
 	}
 	later := "a later attempt"
 	if last > n0 {
 		later = fmt.Sprintf("attempt %d", last)
 	}
-	expl += fmt.Sprintf(" YARN started the application again (spark.yarn.maxAppAttempts), and %s finished. The event log describes the last attempt only.", later)
+	expl += fmt.Sprintf("\nYARN started the application again (spark.yarn.maxAppAttempts), and %s finished. The event log shows only the last attempt.", later)
 	switch {
 	case spot:
-		fix = "The driver ran on a spot node that was taken back. Keep the driver off spot capacity: run it in client mode on the primary node, or use YARN node labels so application masters go only to on-demand nodes. " + fix
+		fix = "The driver ran on a spot node, and AWS took the node back. Do not run the driver on spot capacity. Do one of these:\n- Run the driver in client mode on the primary node.\n- Use YARN node labels, so that application masters go only to on-demand nodes.\n" + fix
 	case lostNode:
-		fix = "The driver's node left the cluster while it ran. Keep the driver on nodes that stay for the whole run, such as core nodes. " + fix
+		fix = "The node of the driver stopped while the driver ran. Run the driver on nodes that stay for all of the run, such as core nodes.\n" + fix
 	}
 	c.add(model.Finding{Rule: "app-retried", Severity: model.Warning, Section: "summary",
 		Title:       fmt.Sprintf("YARN restarted the application after %s", model.Plural(len(failed), "failed attempt", "failed attempts")),
@@ -1002,8 +1002,8 @@ func bootstrapFinding(c *ctx, r *model.Report) {
 		}
 	}
 	c.add(model.Finding{Rule: "bootstrap-failed", Severity: model.Critical, Section: "nodes", Title: "A bootstrap action failed, so the cluster could not start",
-		Explanation: "EMR runs bootstrap actions on every node before it starts Hadoop and Spark. One exited with an error, so EMR terminated the cluster.",
-		Evidence:    ev, Fix: "Read the action's stderr under node/<instance>/bootstrap-actions/<n>/ in the log bucket, and test the script on a single node."})
+		Explanation: "EMR runs the bootstrap actions on all nodes before it starts Hadoop and Spark. One action exited with an error, so EMR stopped the cluster.",
+		Evidence:    ev, Fix: "Read the stderr of the action in the log bucket, under node/<instance>/bootstrap-actions/<n>/.\nTest the script on one node."})
 }
 
 // clock shows a time of day in the report's time zone, labelled.

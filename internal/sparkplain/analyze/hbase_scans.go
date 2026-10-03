@@ -331,40 +331,40 @@ func scanSkew(c *ctx, sc model.HBaseScanRead, s *model.Stage) {
 		return
 	}
 	keys := model.HBaseScan{StartRow: slow.StartRow, StopRow: slow.EndRow, IncludeStart: true}.Rows()
-	why := fmt.Sprintf(" It returned %s of the scan's %s rows (%s), so it had the most to read.", model.Num(t.Rows), model.Num(rows), model.Percent(share(t.Rows, rows)))
+	why := fmt.Sprintf(" It returned %s of the %s rows of the scan (%s), so it had the most to read.", model.Num(t.Rows), model.Num(rows), model.Percent(share(t.Rows, rows)))
 	if rows > 0 && float64(t.Rows) < 1.5*float64(rows)/float64(len(tied)) {
-		why = fmt.Sprintf(" It returned %s of the scan's %s rows (%s), no more than its share, so its time is not explained by the rows it returned: the region server's own log for that time, or rows its filters read and skipped, may say why.", model.Num(t.Rows), model.Num(rows), model.Percent(share(t.Rows, rows)))
+		why = fmt.Sprintf(" It returned %s of the %s rows of the scan (%s). This is not more than its share, so the rows do not explain its time. The log of the region server for that time can show the cause. Or its filters read rows and did not return them.", model.Num(t.Rows), model.Num(rows), model.Percent(share(t.Rows, rows)))
 	}
 	took := fmt.Sprintf("%s, %s rows", model.Duration(t.DurationMs), model.Num(t.Rows))
 	ref := fmt.Sprintf("stage:%d.%d", s.ID, s.Attempt)
 	if sc.Rebuilt {
 		// Rebuilt from the driver's log: no rows.
-		why = " Rows per region need the event log."
+		why = " The rows for each region are only in the event log."
 		if slow.SizeBytes > 0 && sc.SizedRegions == len(sc.Regions) {
-			why = fmt.Sprintf(" Its region holds %s of the scan's %s (%s, HBase's estimate), so it had the most to read if that share is large; rows per region need the event log.",
+			why = fmt.Sprintf(" Its region holds %s of the %s of the scan (%s, as HBase estimated it). If that part is large, the region had the most to read. The rows for each region are only in the event log.",
 				model.Bytes(slow.SizeBytes), model.Bytes(sc.SizeBytes), model.Percent(share(slow.SizeBytes, sc.SizeBytes)))
 		}
 		took = model.Duration(t.DurationMs) + ", as the driver logged it"
 	}
 	if sc.FromLogs {
 		// No event log: no rows, and no stage page to link to.
-		why = " Rows per region need the event log."
+		why = " The rows for each region are only in the event log."
 		if slow.SizeBytes > 0 && sc.SizedRegions == len(sc.Regions) {
-			why = fmt.Sprintf(" Its region holds %s of the scan's %s (%s, HBase's estimate), so it had the most to read if that share is large; rows per region need the event log.",
+			why = fmt.Sprintf(" Its region holds %s of the %s of the scan (%s, as HBase estimated it). If that part is large, the region had the most to read. The rows for each region are only in the event log.",
 				model.Bytes(slow.SizeBytes), model.Bytes(sc.SizeBytes), model.Percent(share(slow.SizeBytes, sc.SizeBytes)))
 		}
 		took = model.Duration(t.DurationMs) + ", from its Running to its Finished line"
 		ref = ""
 	}
 	c.add(model.Finding{Rule: "hbase-scan-skew", Severity: model.Warning, Section: "stages",
-		Title: fmt.Sprintf("Stage %d's scan of %s waited on one region: %s took %s, the median region %s", s.ID, sc.Table, slow.Server, model.Duration(t.DurationMs), model.Duration(median)),
-		Explanation: fmt.Sprintf("A TableInputFormat scan reads one region per task, so the stage lasts as long as its slowest region. Region %s (rows %s), on region server %s, was read by task %d (partition %d) on executor %s.%s",
-			slow.Region, keys, slow.Server, t.TaskID, t.Index, t.ExecutorID, why),
+		Title: fmt.Sprintf("The scan of %s in stage %d waited for one region on %s, which took %s (the median region took %s)", sc.Table, s.ID, slow.Server, model.Duration(t.DurationMs), model.Duration(median)),
+		Explanation: fmt.Sprintf("A TableInputFormat scan reads one region in each task. As a result, the stage takes as long as its slowest region. Task %d (partition %d) on executor %s read region %s (rows %s) on region server %s.%s",
+			t.TaskID, t.Index, t.ExecutorID, slow.Region, keys, slow.Server, why),
 		Evidence: []model.Evidence{
 			{Source: slow.Source, Text: fmt.Sprintf("the split: region %s of %s, rows %s, on %s", slow.Region, sc.Table, keys, slow.Server)},
 			{Source: t.Source, Ref: ref, Text: fmt.Sprintf("task %d: %s", t.TaskID, took)},
 		},
-		Fix: fmt.Sprintf("Split the region so its rows become several tasks (HBase shell: split '%s', '<a row key inside %s>'), or pre-split the table along its key range. Row keys that start with a date or a counter put the newest rows in one region: salting or hashing a prefix spreads them. If the table cannot change, scan narrower key ranges.", sc.Table, keys)})
+		Fix: fmt.Sprintf("Do one of these:\n- Split the region, so that its rows go to more tasks. In the HBase shell, use split '%s', '<a row key in %s>'.\n- Pre-split the table along its key range.\nRow keys that start with a date or a counter put the newest rows in one region. A salt or a hash as a prefix spreads them.\nIf you cannot change the table, scan smaller key ranges.", sc.Table, keys)})
 }
 
 // tieByTask gives each region the task its split's thread names (the

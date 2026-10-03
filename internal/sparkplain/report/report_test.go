@@ -58,7 +58,7 @@ func TestHTMLHasEverySection(t *testing.T) {
 			t.Errorf("missing section %s", id)
 		}
 	}
-	for _, want := range []string{"claims_enrich_fixture", "Stage 18 is skewed", "<svg"} {
+	for _, want := range []string{"claims_enrich_fixture", "One task in stage 18 ran 17× longer", "<svg"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("report lacks %q", want)
 		}
