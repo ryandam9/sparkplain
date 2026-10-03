@@ -548,3 +548,24 @@ func TestExplorerAnatomyOpensExecutors(t *testing.T) {
 		t.Error("the whole executor card should open it")
 	}
 }
+
+// The Stages tab and the Overview lead with the stages worth a look: a
+// ranked list with its reasons in words, ranked failed, critical path,
+// flagged, then by duration, and the critical-path reason dropped when
+// most stages are on the path. The time-against-data scatter is offered
+// only when at least two stages handled data.
+func TestExplorerStagesWorthALook(t *testing.T) {
+	t.Parallel()
+	for _, want := range []string{
+		`var STAGE_VIEW = "stageAttention";`,
+		`chartSlot("", "stageAttention:compact")`,
+		`return st.status === "failed" ? 0 : crit[st.key] ? 1 : stageSkewed(st) || st.diskSpill > 0 || st.attempt > 0 ? 2 : 3;`,
+		`pathAll = onPath > all.length / 2`,
+		`"Slowest task " + (st.max / st.p50).toFixed(1) + "× the median"`,
+		`return stages.filter(function (st) { return stageMoved(st) > 0; }).length >= 2;`,
+	} {
+		if !strings.Contains(explorerJS, want) {
+			t.Errorf("explorer.js has no %q", want)
+		}
+	}
+}

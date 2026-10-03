@@ -329,8 +329,8 @@
       out.push(rs);
     }
     if (stages.some(function (st) { return st.submitted && st.completed; })) {
-      var hs = section("Stages worth a look", "The longest stages, placed by how long they ran and how much data they handled. The Stages tab has every stage and other views.");
-      hs.appendChild(chartSlot("", "stageHealth:compact"));
+      var hs = section("Stages worth a look", "The stages to look at first, ranked, each with its reason. The Stages tab has every stage and other views.");
+      hs.appendChild(chartSlot("", "stageAttention:compact"));
       out.push(hs);
     }
     if (D.runPath) out.push(runPathSection());
@@ -552,14 +552,16 @@
   }
   // The Stages page's charts, one at a time; the choice stays while the page is open.
   var STAGE_VIEWS = [
-    { id: "stageHealth", label: "Health", title: "Which stages deserve attention: time against data, sized by tasks" },
+    { id: "stageAttention", label: "Worth a look", title: "The stages worth a look, ranked, with the reason for each" },
     { id: "stageTimes", label: "Duration", title: "The longest stages" },
     { id: "stageData", label: "Data", title: "Data each stage moved" },
     { id: "stageSplit", label: "Time", title: "Where stage time went" },
     { id: "stageSkew", label: "Skew", title: "Which stages have straggler tasks" },
-    { id: "stageSpill", label: "Spill", title: "Spill by stage", when: function () { return stages.some(function (st) { return st.diskSpill > 0 || st.memSpill > 0; }); } }
+    { id: "stageSpill", label: "Spill", title: "Spill by stage", when: function () { return stages.some(function (st) { return st.diskSpill > 0 || st.memSpill > 0; }); } },
+    // a scatter needs data on both axes: hidden when no stage handled any
+    { id: "stageHealth", label: "Time vs data", title: "Stages placed by how long they ran against the data they handled, sized by tasks", when: function () { return stages.filter(function (st) { return stageMoved(st) > 0; }).length >= 2; } }
   ];
-  var STAGE_VIEW = "stageHealth";
+  var STAGE_VIEW = "stageAttention";
   views.stages = function () {
     var s = section("Stages", "A stage is a set of tasks that run the same code on different partitions of the data. Retried stages show each attempt.");
     // one chart at a time, chosen here; the table below stays
@@ -2220,6 +2222,71 @@
     return { x: x, ticks: ticks, label: function (v) { return (kind === "ms" ? dur(v) : bytes(v)).replace(".0 ", " "); } };
   }
   function stageMoved(st) { return st.input + st.shRead + st.shWrite + st.output; }
+  // ---------- stages worth a look ----------
+  // A ranked list, read like text: failed stages first, then those on the
+  // chain that held up the run's end, then those with stragglers, disk
+  // spill or a retry, then the rest; longest first within each. Each row
+  // has one bar (how long it ran, all on one scale) and its reasons in
+  // words, so nothing needs a key.
+  var ATTN_ROWS = 15, ATTN_COMPACT = 8, ATTN_ALL = 300, attnAll = false;
+  function stageCrit() {
+    var crit = {};
+    ((D.runPath || {}).steps || []).forEach(function (x) { if (x[0] === "stage") crit[x[1]] = 1; });
+    return crit;
+  }
+  // attnName is a stage's action and the line of the application's code
+  // that ran it ("count · etl.py:42"), or its name when Spark recorded none.
+  function attnName(st) {
+    var act = (st.name || "").split(" at ")[0];
+    return st.mine ? act + " · " + st.mine[0] + ":" + st.mine[1] : clip(st.name || "", 70);
+  }
+  function stageAttention(c, compact) {
+    var crit = stageCrit(), wall = function (st) { return st.completed - st.submitted; };
+    var all = stages.filter(function (st) { return st.submitted && st.completed > st.submitted; });
+    if (!all.length) { waitText(c, "No stage has a start and an end to rank."); return; }
+    // When most stages ran one after another, nearly all are on the
+    // critical path and saying so tells the reader nothing: rank by
+    // duration and say why instead.
+    var onPath = all.filter(function (st) { return crit[st.key]; }).length, pathAll = onPath > all.length / 2;
+    if (pathAll) crit = {};
+    function reasons(st) {
+      var r = [];
+      if (st.status === "failed") r.push(["bad", "Failed"]);
+      if (crit[st.key]) r.push(["crit", "On the critical path"]);
+      if (stageSkewed(st)) r.push(["warn", "Slowest task " + (st.max / st.p50).toFixed(1) + "× the median"]);
+      if (st.diskSpill > 0) r.push(["warn", "Spilled " + bytes(st.diskSpill) + " to disk"]);
+      if (st.attempt > 0) r.push(["warn", "Retry (attempt " + (st.attempt + 1) + ")"]);
+      return r;
+    }
+    function group(st) { return st.status === "failed" ? 0 : crit[st.key] ? 1 : stageSkewed(st) || st.diskSpill > 0 || st.attempt > 0 ? 2 : 3; }
+    var ranked = all.slice().sort(function (p, q) { return group(p) - group(q) || wall(q) - wall(p); });
+    var limit = compact ? ATTN_COMPACT : attnAll ? ATTN_ALL : ATTN_ROWS, shown = ranked.slice(0, limit);
+    var longest = d3.max(all, wall), runMs = (a.end && a.start) ? a.end - a.start : 0;
+    var plot = frame(c, { t: "Which stages are worth a look?", run: RUN("attention"),
+      axes: [["Rows", "One stage each, ranked: failed first, then on the critical path (the chain of work that held up the run's end), then with straggler tasks, disk spill or a retry, then the rest; longest first within each."], ["Bar", "How long the stage ran, all rows on one scale, so the longest stands out."], ["Reasons", "Why it is worth a look, in words. A row with none is simply one of the longest."]],
+      read: ["Start at the top: a failed or critical-path stage decides how long the run took.", "A long bar with \"Slowest task … × the median\": one partition held more data than the rest; open the stage and compare its slowest tasks.", "\"Spilled … to disk\": the stage ran short of memory for a sort, join or aggregation; more partitions or more executor memory help.", "A long bar with no reason: big work, or few tasks each doing a lot. Open the stage to see where its time went."],
+      note: (pathAll ? num(onPath) + " of the " + num(all.length) + " stages are on the critical path (the run's stages mostly ran one after another), so they are ranked by how long they ran. " : "") +
+        "Showing " + num(shown.length) + " of " + num(all.length) + " stages. Click a row to open the stage." });
+    var ol = el("ol", { cls: "attn" });
+    shown.forEach(function (st, i) {
+      var w = wall(st), rs = reasons(st), moved = stageMoved(st);
+      var nt = st.tasks || st.numTasks || 0, facts = [num(nt) + (nt === 1 ? " task" : " tasks")];
+      if (moved > 0) facts.push(bytes(moved) + " handled");
+      if (runMs > 0) facts.push(pct(w / runMs) + " of the run");
+      ol.appendChild(el("li", { cls: "attn-row" + (st.status === "failed" ? " failed" : "") },
+        el("span", { cls: "attn-n", text: num(i + 1) }),
+        el("span", { cls: "attn-name" }, link("#stage/" + st.key, "Stage " + st.id + (st.attempt ? "." + st.attempt : "")), el("span", { cls: "sub", title: st.name, text: attnName(st) })),
+        el("span", { cls: "attn-bar", title: dur(w) }, el("span", { style: "width:" + Math.max(1, 100 * w / longest) + "%" })),
+        el("span", { cls: "attn-dur" }, dur(w), el("span", { cls: "sub", text: facts.join(" · ") })),
+        el("span", { cls: "attn-why" }, rs.length ? rs.map(function (x) { return el("span", { cls: "attn-chip " + x[0], text: x[1] }); }) : el("span", { cls: "sub", text: "One of the longest" }))));
+    });
+    plot.appendChild(ol);
+    if (!compact && ranked.length > ATTN_ROWS) {
+      var btn = el("button", { type: "button", cls: "more", text: attnAll ? "Show the top " + ATTN_ROWS : "Show all " + num(Math.min(ranked.length, ATTN_ALL)) + " stages" });
+      btn.addEventListener("click", function () { attnAll = !attnAll; drawSlot(c); });
+      plot.appendChild(el("div", { cls: "bar-tools" }, btn));
+    }
+  }
   function stageSkewed(st) { return st.p50 > 0 && st.max >= 5 * st.p50 && st.max >= 1000; }
   function stageHealth(c, compact) {
     var crit = {}; // stages on the chain that held up completion
@@ -2234,19 +2301,26 @@
       all.slice().sort(function (p, q) { return wall(q) - wall(p); }).slice(0, limit).forEach(function (st) { keep[st.key] = 1; });
       list = all.filter(function (st) { return keep[st.key] || st.status === "failed" || crit[st.id]; });
     }
-    var plot = frame(c, { t: "Which stages deserve attention?", run: RUN("health"),
+    if (list.filter(function (st) { return stageMoved(st) > 0; }).length < 2) {
+      waitText(c, "Hardly any stage recorded data handled, so placing stages by time against data would put them all on one line. \"Worth a look\" ranks them instead.");
+      return;
+    }
+    var plot = frame(c, { t: "Time against data handled", run: RUN("health"),
       axes: [["Across", "How long the stage ran (logarithmic: each step multiplies)."], ["Up", "The data it handled: read, shuffled in and out, and written (logarithmic)."], ["Bubbles", "One per stage; bigger bubbles ran more tasks. Outlines and marks flag failed, skewed, spilled and critical-path stages."]],
       read: ["Far right and low: a long stage that handled little data. Look at where its time went (scheduler delay, garbage collection, Python), or whether it had too few tasks.", "Far right and high: big work that took its time.", "A small bubble far right: a few tasks each doing a lot; more partitions may help.", "Handling a lot of data is not a problem in itself."],
       note: (list.length < all.length ? "Showing the " + num(list.length) + " longest of " + num(all.length) + " stages, and every failed or critical-path one. " : "") + "Click a bubble to open the stage." });
     var mark = function (sym, color, text) { return el("span", null, el("b", { cls: "hmk", style: "color:" + color, text: sym }), text); };
     plot.parentNode.insertBefore(el("div", { cls: "legend" }, mark("●", V.series, "Stage (size: tasks)"), mark("○", V.fail, "Red outline: failed"),
       mark("◎", "var(--accent)", "Thick outline: on the critical path"), mark("▲", "var(--warn)", "Skewed: slowest task over 5× the median"), mark("■", V.viz[4], "Spilled to disk")), plot);
-    var H = compact ? 240 : 320, m = { l: 70, r: 20, t: 14, b: 44 }, noneH = 18;
-    var P = plotSvg(plot, H, "Which stages deserve attention?");
+    // bubbles small enough not to pile up; the "none" row lifted clear of
+    // the time labels, with room above it for bubbles nudged apart
+    var rMax = compact ? 9 : 11;
+    var H = compact ? 260 : 340, m = { l: 70, r: 20, t: 14, b: 44 };
+    var P = plotSvg(plot, H, "Time against data handled");
     var moved = list.map(stageMoved).filter(function (v) { return v > 0; });
-    var X = logAxis("ms", d3.min(list, wall), d3.max(list, wall), [m.l, P.w - m.r]);
-    var Y = moved.length ? logAxis("bytes", d3.min(moved), d3.max(moved), [H - m.b - noneH, m.t]) : null;
-    var yNone = H - m.b - 6;
+    var X = logAxis("ms", d3.min(list, wall), d3.max(list, wall), [m.l + rMax, P.w - m.r - rMax]);
+    var yNone = H - m.b - rMax - 4;
+    var Y = moved.length ? logAxis("bytes", d3.min(moved), d3.max(moved), [yNone - 3 * rMax - 6, m.t + rMax]) : null;
     P.svg.append("g").attr("class", "ax").attr("transform", "translate(0," + (H - m.b) + ")")
       .call(d3.axisBottom(X.x).tickValues(X.ticks).tickFormat(X.label).tickSize(-(H - m.t - m.b)).tickPadding(6)).call(leanEnds, X.x, m.l, P.w - m.r).select(".domain").remove();
     if (Y) P.svg.append("g").attr("class", "ax").attr("transform", "translate(" + m.l + ",0)")
@@ -2254,8 +2328,23 @@
     if (list.some(function (st) { return !stageMoved(st); })) P.svg.append("text").attr("class", "axt").attr("x", m.l - 8).attr("y", yNone).attr("dy", "0.35em").attr("text-anchor", "end").text("none");
     P.svg.append("text").attr("class", "axt").attr("x", (m.l + P.w - m.r) / 2).attr("y", H - 6).attr("text-anchor", "middle").text("How long the stage ran");
     P.svg.append("text").attr("class", "axt").attr("transform", "translate(12," + ((m.t + H - m.b) / 2) + ") rotate(-90)").attr("text-anchor", "middle").text("Data handled");
-    var r = d3.scaleSqrt().domain([0, d3.max(list, function (st) { return st.tasks || st.numTasks || 1; })]).range([3, compact ? 12 : 16]);
-    var pos = function (st) { var v = stageMoved(st); return [X.x(wall(st)), v > 0 && Y ? Y.x(v) : yNone]; };
+    var r = d3.scaleSqrt().domain([0, d3.max(list, function (st) { return st.tasks || st.numTasks || 1; })]).range([3, rMax]);
+    // place each bubble where it belongs, then nudge it the least distance
+    // that clears the ones placed before it (stages with no data only
+    // upward, within their row's band), so none hides another
+    var placed = [], at = {};
+    list.slice().sort(function (p, q) { return wall(p) - wall(q); }).forEach(function (st) {
+      var v = stageMoved(st), x = X.x(wall(st)), y0 = v > 0 && Y ? Y.x(v) : yNone, rr = r(st.tasks || st.numTasks || 1), y = y0;
+      var clear = function (yy) { return placed.every(function (b) { var dx = b[0] - x, dy = b[1] - yy; return dx * dx + dy * dy >= (b[2] + rr + 1) * (b[2] + rr + 1); }); };
+      for (var k = 1; !clear(y) && k <= 12; k++) {
+        var d = Math.ceil(k / 2) * (rr + 1);
+        y = v > 0 ? y0 + (k % 2 ? -d : d) : y0 - k * (rr + 1) / 2;
+        if (v <= 0 && y < yNone - 3 * rMax) { y = y0; break; }
+      }
+      placed.push([x, y, rr]);
+      at[st.key] = [x, y];
+    });
+    var pos = function (st) { return at[st.key]; };
     // big bubbles first, so small ones stay on top and clickable
     var order = list.slice().sort(function (p, q) { return (q.tasks || 0) - (p.tasks || 0); });
     var g = P.svg.append("g").selectAll("g").data(order).join("g").attr("class", "hb")
@@ -2695,6 +2784,7 @@
     },
     heatmap: function (c) { heatmap(c); },
     stageHealth: function (c, arg) { stageHealth(c, arg === "compact"); },
+    stageAttention: function (c, arg) { stageAttention(c, arg === "compact"); },
     stageSkew: function (c) { stageSkewChart(c); },
     runTimeline: function (c) { runTimeline(c); },
     flows: function (c) {
