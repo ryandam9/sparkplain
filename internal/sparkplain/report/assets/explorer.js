@@ -998,7 +998,7 @@
     stage.appendChild(el("div", { cls: "rp-col" }, el("h3", { text: "Executors" }), legend, grid,
       bulletNote("How to read an executor box", [
         "Each small box is one task slot. Empty means nothing is running there.",
-        "\"s3 p12\" means stage 3, piece 12 of the data.",
+        "\"s3 p12\" means stage 3, partition 12 (a partition is one slice of the data; each task works on one).",
         "The colour shows the stage. There are only " + V.viz.length + " colours, so two stages can share one. Read the label to be sure.",
         "Network in: data this executor pulled from other machines in the last " + dur((D.flows || {}).stepMs || 0) + ".",
         "Storage free: memory this executor still had for saved (cached) data.",
