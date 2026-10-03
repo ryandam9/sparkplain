@@ -26,9 +26,12 @@ type YourCode struct {
 }
 
 // sparkFiles are the files of Spark's own that PySpark stages and jobs are
-// named after; their call sites are not the application's.
+// named after, and the JVM's thread pool that runs Spark's background work
+// (a broadcast exchange's stage is named "… at FutureTask.java:264"); their
+// call sites are not the application's.
 var sparkFiles = map[string]bool{"PythonRDD.scala": true, "SerDeUtil.scala": true, "PythonSQLUtils.scala": true, "PythonUtils.scala": true,
-	"NativeMethodAccessorImpl.java": true, "DelegatingMethodAccessorImpl.java": true, "DirectMethodHandleAccessor.java": true, "Method.java": true}
+	"NativeMethodAccessorImpl.java": true, "DelegatingMethodAccessorImpl.java": true, "DirectMethodHandleAccessor.java": true, "Method.java": true,
+	"FutureTask.java": true, "ThreadPoolExecutor.java": true, "Thread.java": true}
 
 // mine says which code locations are the application's: with its source
 // files at hand, those they match; without, any that is not Spark's own.
