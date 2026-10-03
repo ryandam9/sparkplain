@@ -81,6 +81,7 @@ Run small jobs that exercise shuffle, caching, a skewed join and a deliberate fa
 
 ## Report writing style
 
+- Write the report and explorer text in ASD-STE100 Simplified Technical English, as `docs/STYLE.md` applies it. `TestPlainLanguage` checks sentence length, contractions and words that STE does not approve.
 - Open with a "What happened" summary of 2–4 plain sentences.
 - Give every metric a one-line explanation, and show "used of available" side by side.
 - Each section shows its coverage status (complete, partial, needs event log) and what's missing.
