@@ -160,3 +160,12 @@ func TestNodeChartNamesNodesItCannotDraw(t *testing.T) {
 		t.Errorf("without logs, note = %s", note)
 	}
 }
+
+// Text inside a bar is dark or white by its contrast with the bar's
+// colour, so it reads on the palette's light amber, green and pink too.
+func TestInBarTextContrasts(t *testing.T) {
+	t.Parallel()
+	if !strings.Contains(explorerJS, `"inbar " + inkOn(piece.node())`) || !strings.Contains(css, "svg text.inbar.dark{fill:") {
+		t.Error("in-bar text does not pick its colour by contrast")
+	}
+}
