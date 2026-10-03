@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"html/template"
 	"math"
+	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -68,9 +70,69 @@ type anatRM struct {
 	OfferedBytes int64
 	OfferedCores int
 	HeldBytes    int64 // this application's containers at its busiest
-	Waiting      string
-	Apps         string
-	Badges       []int
+	HeldCores    int   // its executors' vCPUs then (the driver's are not known)
+	// Sizes are the worker nodes behind the totals, grouped by what each
+	// offered YARN: "2 worker nodes × 6.0 GiB and 4 vCPUs each".
+	Sizes   []string
+	Waiting string
+	Apps    string
+	Badges  []int
+}
+
+// rmWaitRE and rmAppsRE read the CloudWatch summary's facts: "5 at most,
+// for 1 min 0 s" (containers waiting) and "2 at most" (applications).
+var (
+	rmWaitRE = regexp.MustCompile(`^(\d+) at most, for (.+)$`)
+	rmAppsRE = regexp.MustCompile(`^(\d+) at most$`)
+)
+
+// rmLines says in plain words what the cluster had and what this
+// application took of it, one fact per line.
+func rmLines(rm anatRM) []string {
+	var out []string
+	if rm.Known {
+		have := fmt.Sprintf("The cluster had %s of memory and %d vCPUs", model.Bytes(rm.OfferedBytes), rm.OfferedCores)
+		if len(rm.Sizes) > 0 {
+			have += ": " + strings.Join(rm.Sizes, ", and ") + "."
+		} else {
+			have += "."
+		}
+		out = append(out, have,
+			"What each node gives YARN is set by yarn.nodemanager.resource.memory-mb and yarn.nodemanager.resource.cpu-vcores.")
+		used := fmt.Sprintf("At its busiest, this application used %s (%.0f%%)", model.Bytes(rm.HeldBytes), 100*float64(rm.HeldBytes)/float64(rm.OfferedBytes))
+		if rm.HeldCores > 0 && rm.OfferedCores > 0 {
+			used += fmt.Sprintf(" and %d of the %d vCPUs", rm.HeldCores, rm.OfferedCores)
+		}
+		if left := rm.OfferedBytes - rm.HeldBytes; left > 0 {
+			used += "; " + model.Bytes(left) + " was left."
+		} else {
+			used += "; no memory was left."
+		}
+		out = append(out, used)
+	}
+	shared := false
+	if m := rmAppsRE.FindStringSubmatch(rm.Apps); m != nil {
+		n, _ := strconv.Atoi(m[1])
+		shared = n > 1
+	}
+	if m := rmWaitRE.FindStringSubmatch(rm.Waiting); m != nil {
+		switch n, _ := strconv.Atoi(m[1]); {
+		case n == 0:
+			out = append(out, "Nothing had to wait for room.")
+		case shared:
+			out = append(out, fmt.Sprintf("Up to %s had to wait for room, for %s in all; some may have been other applications'.", model.Plural(n, "container", "containers"), m[2]))
+		default:
+			out = append(out, fmt.Sprintf("Up to %s had to wait for room, for %s in all.", model.Plural(n, "container", "containers"), m[2]))
+		}
+	}
+	if m := rmAppsRE.FindStringSubmatch(rm.Apps); m != nil {
+		if n, _ := strconv.Atoi(m[1]); n > 1 {
+			out = append(out, fmt.Sprintf("Up to %s ran at the same time, so this one shared the cluster.", model.Plural(n-1, "other application", "other applications")))
+		} else {
+			out = append(out, "No other application ran at the same time, so this one had the cluster to itself.")
+		}
+	}
+	return out
 }
 
 type anatNode struct {
@@ -299,6 +361,11 @@ func buildAnatomy(r *model.Report) *anatomy {
 
 	// The ResourceManager: YARN's capacity across the workers, and what
 	// this application held at its busiest.
+	type size struct {
+		b int64
+		c int
+	}
+	sizes, order := map[size]int{}, []size{}
 	for _, n := range append([]*anatNode{a.Primary}, a.Nodes...) {
 		if n == nil {
 			continue
@@ -306,10 +373,31 @@ func buildAnatomy(r *model.Report) *anatomy {
 		if n.Away == "" {
 			a.RM.OfferedBytes += n.YARNBytes
 			a.RM.OfferedCores += n.YARNCores
+			if n.YARNBytes > 0 {
+				k := size{n.YARNBytes, n.YARNCores}
+				if sizes[k] == 0 {
+					order = append(order, k)
+				}
+				sizes[k]++
+			}
 		}
 		a.RM.HeldBytes += n.DriverBytes + int64(n.AtOnce)*n.ExecBytes
+		if len(n.Execs) > 0 {
+			a.RM.HeldCores += n.AtOnce * n.Execs[0].Cores
+		}
 	}
 	a.RM.Known = a.RM.OfferedBytes > 0
+	for i, k := range order {
+		what := model.Plural(sizes[k], "node", "nodes")
+		if i == 0 {
+			what = model.Plural(sizes[k], "worker node", "worker nodes")
+		}
+		each := ""
+		if sizes[k] > 1 {
+			each = " each"
+		}
+		a.RM.Sizes = append(a.RM.Sizes, fmt.Sprintf("%s × %s and %d vCPUs%s", what, model.Bytes(k.b), k.c, each))
+	}
 	if m := r.Metrics; m != nil {
 		for _, f := range m.Summary {
 			switch f.Label {
@@ -825,6 +913,27 @@ func textW(s string, size float64, bold bool) float64 {
 }
 
 // fitText cuts s to roughly fit w units at the given font size.
+// wrapText breaks s into lines that fit w at the given size, at spaces.
+func wrapText(s string, w, size float64) []string {
+	var out []string
+	line := ""
+	for _, word := range strings.Fields(s) {
+		next := word
+		if line != "" {
+			next = line + " " + word
+		}
+		if line != "" && textW(next, size, false) > w {
+			out = append(out, line)
+			next = word
+		}
+		line = next
+	}
+	if line != "" {
+		out = append(out, line)
+	}
+	return out
+}
+
 func fitText(s string, w, size float64) string {
 	n := int(w / (size * 0.56))
 	return clipLabel(s, max(n, 4))
@@ -892,8 +1001,23 @@ func anatomySVG(a *anatomy, l anatLinks) string {
 	y = drawKey(body, a, y)
 
 	// Top row: the primary node with the ResourceManager, and YARN's totals.
-	topH := 118.0
+	// tall enough for the capacity card's lines of facts
 	px, pw := anPad+14, 330.0
+	rx := px + pw + anGap
+	rw := anW - anPad - 14 - rx
+	// the capacity card's facts, each wrapped to the card's width
+	var facts [][]string
+	for _, line := range rmLines(a.RM) {
+		facts = append(facts, wrapText(line, rw-44, 11))
+	}
+	lines := 0
+	for _, f := range facts {
+		lines += len(f)
+	}
+	if !a.RM.Known {
+		lines += len(a.NoCapacity)
+	}
+	topH := max(118.0, 62+16*float64(lines-1)+12)
 	if a.Primary != nil {
 		n := a.Primary
 		body.link(l.Ref("node:"+n.Name), func() {
@@ -917,31 +1041,27 @@ func anatomySVG(a *anatomy, l anatLinks) string {
 		body.text(px+12, y+56, "m", "", "places every container on the workers.")
 		body.text(px+12, y+80, "m", "", "Not known for this run.")
 	}
-	rx := px + pw + anGap
-	rw := anW - anPad - 14 - rx
 	body.f(`<g class="rmpanel"><rect class="panel" x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="8"/>`, rx, y, rw, topH)
-	body.text(rx+14, y+22, "h", "", "What YARN had to give")
+	body.text(rx+14, y+22, "h", "", "Cluster capacity used")
+	ly := y + 62.0 // the first line of facts
 	if a.RM.Known {
-		body.text(rx+14, y+42, "", "", fmt.Sprintf("The NodeManagers offered %s and %d vcores. This application held %s of it at its busiest.", model.Bytes(a.RM.OfferedBytes), a.RM.OfferedCores, model.Bytes(a.RM.HeldBytes)))
 		bw := rw - 28
 		held := bw * math.Min(1, float64(a.RM.HeldBytes)/float64(a.RM.OfferedBytes))
-		body.f(`<rect class="free" x="%.1f" y="%.1f" width="%.1f" height="14" rx="3"/><rect class="held" x="%.1f" y="%.1f" width="%.1f" height="14" rx="3"><title>Held: %s of %s</title></rect>`,
-			rx+14, y+52, bw, rx+14, y+52, held, model.Bytes(a.RM.HeldBytes), model.Bytes(a.RM.OfferedBytes))
-		body.text(rx+14, y+82, "m", "", fmt.Sprintf("%s held (%.0f%%) · %s left for anything else", model.Bytes(a.RM.HeldBytes), 100*float64(a.RM.HeldBytes)/float64(a.RM.OfferedBytes), model.Bytes(max(a.RM.OfferedBytes-a.RM.HeldBytes, 0))))
+		body.f(`<rect class="free" x="%.1f" y="%.1f" width="%.1f" height="14" rx="3"/><rect class="held" x="%.1f" y="%.1f" width="%.1f" height="14" rx="3"><title>Used: %s of %s</title></rect>`,
+			rx+14, y+32, bw, rx+14, y+32, held, model.Bytes(a.RM.HeldBytes), model.Bytes(a.RM.OfferedBytes))
 	} else {
-		for i, line := range a.NoCapacity {
-			body.text(rx+14, y+44+float64(i)*16, "m", "", line)
+		for _, line := range a.NoCapacity {
+			body.text(rx+14, ly-14, "m", "", line)
+			ly += 16
 		}
 	}
-	var extra []string
-	if a.RM.Waiting != "" {
-		extra = append(extra, "Containers waiting: "+a.RM.Waiting)
-	}
-	if a.RM.Apps != "" {
-		extra = append(extra, "Applications at once: "+a.RM.Apps)
-	}
-	if len(extra) > 0 {
-		body.text(rx+14, y+104, "", "", strings.Join(extra, " · "))
+	// One fact per line, as bullets.
+	for _, f := range facts {
+		body.text(rx+14, ly, "m", "", "•")
+		for _, part := range f {
+			body.text(rx+26, ly, "", "", part)
+			ly += 16
+		}
 	}
 	body.badges(a, a.RM.Badges, rx+rw-16, y+18, l)
 	body.WriteString(`</g>`)
