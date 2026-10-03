@@ -336,6 +336,8 @@ Decided: keep each event with its time and source line, not only per-stage sums,
 
 **Real-cluster findings, 12: text inside the node chart's pieces (2026-10-03).** The user could not read the labels inside the node chart's executor pieces. They were 10px white text, which stands out from the blue and orange but not from the palette's amber (about 2:1), green and pink (under 3:1). Bar text in the explorer is now 11.5px, dark or white by whichever has the higher WCAG contrast with the piece's colour as drawn (so it follows the light and dark themes), on slightly taller bars.
 
+**Real-cluster findings, 13: many executors on one node (2026-10-03).** On a node that ran five executors, At a glance showed "5 executors ran here" over five small grey squares that were hard to see. With two node cards side by side, two executor cards fit per row, and past two rows the executors were drawn as 20px squares in the page's grey, with only their peak heap filled in blue. Now full cards are drawn for up to three rows (six executors on such a node), and past that each executor is a 58×36 tile in the executor cards' colours, with its ID ("E7"), its peak heap as a bar, a red outline when it was killed or lost, and the full details in its tooltip; the key names the tile and the heap bar.
+
 ## Appendix: the spec before it was simplified (2026-09-29)
 
 On 2026-09-29 the spec was rewritten to describe sparkplain as it is, and this history moved out of it. Its other sections as they stood then are kept here word for word, since they spell out details the rewrite summarises (for example exactly when each findings rule fires). Where they differ from the spec, the spec wins.

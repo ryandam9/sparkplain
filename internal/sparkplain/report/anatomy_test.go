@@ -2,6 +2,7 @@ package report
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -446,6 +447,50 @@ func TestAnatomyCapacityCard(t *testing.T) {
 	for _, w := range []string{"Nothing had to wait for room.", "Up to 2 other applications ran at the same time, so this one shared the cluster."} {
 		if !strings.Contains(got, w) {
 			t.Errorf("shared, nothing waiting: %s", got)
+		}
+	}
+}
+
+// manyExecs is anatReport with five executors on one worker node and
+// nine on the other; executor 12 was killed for memory.
+func manyExecs() *model.Report {
+	r := anatReport()
+	r.Nodes.Hosts[1].ExecutorContainerBytes, r.Nodes.Hosts[2].ExecutorContainerBytes = 1536<<20, 1536<<20
+	r.Executors.Executors, r.Memory.Executors = nil, nil
+	for i := 1; i <= 14; i++ {
+		h := &r.Nodes.Hosts[1]
+		if i > 5 {
+			h = &r.Nodes.Hosts[2]
+		}
+		id := strconv.Itoa(i)
+		h.Executors = append(h.Executors, id)
+		h.PeakExecutors = len(h.Executors)
+		e := &model.Executor{ID: id, Host: h.Name, Cores: 1}
+		if i == 12 {
+			e.RemovalKind = model.RemovalMemoryKill
+		}
+		r.Executors.Executors = append(r.Executors.Executors, e)
+		r.Memory.Executors = append(r.Memory.Executors, model.ExecMemory{ID: id, Host: h.Name, HeapBytes: gib, PeakHeap: int64(i) * gib / 15})
+	}
+	r.Executors.Peak, r.Executors.Started = 14, 14
+	return r
+}
+
+// A node draws its executors as full cards while three rows hold them,
+// and past that as tiles: each in the executor colour, named, with its
+// peak heap as a bar, and the key says so.
+func TestAnatomyTilesWhenMany(t *testing.T) {
+	t.Parallel()
+	svg := string(anatomyHTML(manyExecs(), ""))
+	if n := strings.Count(svg, `<g class="chip tile`); n != 9 {
+		t.Errorf("%d tiles, want the 9 on the busier node", n)
+	}
+	if n := strings.Count(svg, `<g class="chip"`) + strings.Count(svg, `<g class="chip bad"`); n < 5 {
+		t.Errorf("%d full cards, want the 5 on the other node", n)
+	}
+	for _, want := range []string{`<g class="chip tile bad" data-exec="12">`, `>E9</text>`, "Executor, when many: its ID and heap", "9 executors ran here, "} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("anatomy lacks %q", want)
 		}
 	}
 }

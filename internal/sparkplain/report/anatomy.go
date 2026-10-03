@@ -873,7 +873,8 @@ const (
 	anGap     = 14.0
 	anChipW   = 168.0
 	anChipH   = 76.0
-	anSquare  = 20.0
+	anTileW   = 58.0 // an executor drawn small, when a node ran too many for cards
+	anTileH   = 36.0
 	anMinWide = 900 // phones scroll the diagram rather than shrink its text
 )
 
@@ -1272,18 +1273,20 @@ func drawKey(b *svgw, a *anatomy, y float64) float64 {
 		}
 		items = append(items, item{swatch("freeh"), unused})
 	}
-	if chips {
+	if chips || squares {
 		items = append(items, item{func(x, y float64) {
 			b.f(`<rect class="heap" x="%.1f" y="%.1f" width="22" height="8" rx="2"/><rect class="hpeak" x="%.1f" y="%.1f" width="15" height="8" rx="2"/>`, x, y-8, x, y-8)
 		}, "Executor heap: fill is its peak"})
+	}
+	if chips {
 		items = append(items, item{func(x, y float64) {
 			b.f(`<rect class="core" x="%.1f" y="%.1f" width="7" height="7" rx="1.5" style="fill-opacity:.35"/><rect class="core" x="%.1f" y="%.1f" width="7" height="7" rx="1.5"/>`, x, y-8, x+9, y-8)
 		}, "One core each; the more solid, the busier"})
 	}
 	if squares {
 		items = append(items, item{func(x, y float64) {
-			b.f(`<g class="sq"><rect class="sqbox" x="%.1f" y="%.1f" width="12" height="12" rx="2"/><rect class="sqfill" x="%.1f" y="%.1f" width="12" height="7" rx="1.5"/></g>`, x, y-10, x, y-5)
-		}, "Executor, when many: fill is peak heap"})
+			b.f(`<g class="chip"><rect class="cbox" x="%.1f" y="%.1f" width="20" height="13" rx="3"/></g>`, x, y-10)
+		}, "Executor, when many: its ID and heap; hover for more"})
 	}
 	if cpu {
 		items = append(items, item{func(x, y float64) {
@@ -1319,7 +1322,11 @@ func drawKey(b *svgw, a *anatomy, y float64) float64 {
 
 func chipsPerRow(nw float64) int { return max(1, int((nw-24+8)/(anChipW+8))) }
 
-func compact(n *anatNode, nw float64) bool { return len(n.Execs) > 2*chipsPerRow(nw) }
+// compact says a node ran more executors than three rows of cards hold,
+// so they are drawn as tiles.
+func compact(n *anatNode, nw float64) bool { return len(n.Execs) > 3*chipsPerRow(nw) }
+
+func tilesPerRow(nw float64) int { return max(1, int((nw-24+6)/(anTileW+6))) }
 
 func nodeHeight(n *anatNode, nw float64) float64 {
 	h := 128.0 // header, CPU, YARN bar and its note
@@ -1327,8 +1334,8 @@ func nodeHeight(n *anatNode, nw float64) float64 {
 	case len(n.Execs) == 0:
 		h += 26
 	case compact(n, nw):
-		per := max(1, int((nw-24)/(anSquare+4)))
-		h += 24 + float64((len(n.Execs)+per-1)/per)*(anSquare+4)
+		per := tilesPerRow(nw)
+		h += 24 + float64((len(n.Execs)+per-1)/per)*(anTileH+6)
 	default:
 		per := chipsPerRow(nw)
 		h += 22 + float64((len(n.Execs)+per-1)/per)*(anChipH+8)
@@ -1461,26 +1468,10 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 		if s := execSize(sameCores(n.Execs), n.ExecBytes); s != "" {
 			size = ", each " + s
 		}
-		b.text(x+12, ey+12, "m", "", fitText(fmt.Sprintf("%s ran here%s, %d at once%s; fill is peak heap", model.Plural(len(n.Execs), "executor", "executors"), each, n.AtOnce, size), w-24, 12))
-		per := max(1, int((w-24)/(anSquare+4)))
+		b.text(x+12, ey+12, "m", "", fitText(fmt.Sprintf("%s ran here%s, %d at once%s", model.Plural(len(n.Execs), "executor", "executors"), each, n.AtOnce, size), w-24, 12))
+		per := tilesPerRow(w)
 		for i, e := range n.Execs {
-			sx := x + 12 + float64(i%per)*(anSquare+4)
-			sy := ey + 20 + float64(i/per)*(anSquare+4)
-			e := e
-			b.link(l.Ref("executor:"+e.ID), func() {
-				cls := "sq"
-				if e.bad() {
-					cls += " bad"
-				} else if e.Kind != "" {
-					cls += " gone"
-				}
-				b.f(`<g class="%s" data-exec="%s"><title>%s</title><rect x="%.1f" y="%.1f" width="%.0f" height="%.0f" rx="3" class="sqbox"/>`, cls, esc(e.ID), esc(execTip(e)), sx, sy, anSquare, anSquare)
-				if e.Heap > 0 && e.PeakHeap > 0 {
-					fh := anSquare * math.Min(1, float64(e.PeakHeap)/float64(e.Heap))
-					b.f(`<rect x="%.1f" y="%.1f" width="%.0f" height="%.1f" rx="2" class="sqfill"/>`, sx, sy+anSquare-fh, anSquare, fh)
-				}
-				b.WriteString(`</g>`)
-			})
+			drawTile(b, e, x+12+float64(i%per)*(anTileW+6), ey+20+float64(i/per)*(anTileH+6), l)
 		}
 	default:
 		b.text(x+12, ey+12, "m", "", fmt.Sprintf("%s ran here", model.Plural(len(n.Execs), "executor", "executors")))
@@ -1525,6 +1516,34 @@ func execTip(e anatExec) string {
 		s += ". Removed: " + e.Reason
 	}
 	return s
+}
+
+// drawTile draws one executor small, as a card in the executor colour
+// with its ID and its peak heap as a bar, for nodes that ran too many to
+// draw as full cards. The tooltip has the rest.
+func drawTile(b *svgw, e anatExec, x, y float64, l anatLinks) {
+	cls := "chip tile"
+	if e.bad() {
+		cls += " bad"
+	} else if e.Kind != "" {
+		cls += " gone"
+	}
+	b.f(`<g class="%s" data-exec="%s"><title>%s</title>`, cls, esc(e.ID), esc(execTip(e)))
+	b.link(l.Ref("executor:"+e.ID), func() {
+		b.f(`<rect class="cbox" x="%.1f" y="%.1f" width="%.0f" height="%.0f" rx="5"/>`, x, y, anTileW, anTileH)
+		b.text(x+anTileW/2, y+15, "b", "middle", "E"+clipLabel(e.ID, 6))
+	})
+	hw := anTileW - 12
+	b.f(`<rect class="heap" x="%.1f" y="%.1f" width="%.1f" height="7" rx="2"/>`, x+6, y+anTileH-13, hw)
+	if e.Heap > 0 && e.PeakHeap > 0 {
+		f := math.Min(1, float64(e.PeakHeap)/float64(e.Heap))
+		hc := "hpeak"
+		if f >= 0.9 {
+			hc += " hot"
+		}
+		b.f(`<rect class="%s" x="%.1f" y="%.1f" width="%.1f" height="7" rx="2"/>`, hc, x+6, y+anTileH-13, hw*f)
+	}
+	b.WriteString(`</g>`)
 }
 
 // drawChip draws one executor: its heap's peak against its size, a square
