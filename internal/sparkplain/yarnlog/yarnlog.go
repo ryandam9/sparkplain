@@ -1397,6 +1397,8 @@ func (c *classifier) split(table, server, msg string, h header) {
 			sp.Task.Start = t
 			delete(c.started, sp.Task.TaskID)
 		}
+	} else {
+		sp.Task = c.onlyRunning(h)
 	}
 	c.res.Splits = append(c.res.Splits, sp)
 	if sp.Task != nil {
@@ -1441,6 +1443,28 @@ func (c *classifier) taskLine(tid int64, h header) {
 	}
 }
 
+// onlyRunning is the task a line that names no thread belongs to when its
+// executor was running just one: the only task between its "Running task"
+// and its end (EMR's default layout prints no thread, and an executor with
+// one core runs one task at a time). Its start is its Running line's time.
+func (c *classifier) onlyRunning(h header) *model.SplitTask {
+	if h.thread != "" || len(c.running) != 1 {
+		return nil
+	}
+	for id := range c.running {
+		i, ok := c.tasks[id]
+		if !ok {
+			return nil
+		}
+		t := c.res.TaskLogs[i]
+		if t.Stage < 0 || t.Partition < 0 {
+			return nil
+		}
+		return &model.SplitTask{TaskID: id, Partition: t.Partition, Attempt: t.Attempt, Stage: t.Stage, StageAttempt: t.StageAttempt, Start: t.Start}
+	}
+	return nil
+}
+
 // threadTask reads the task a Spark executor thread runs from its name.
 func threadTask(thread string) *model.SplitTask {
 	m := taskThreadRE.FindStringSubmatch(thread)
@@ -1467,12 +1491,21 @@ func (c *classifier) splitSize(m []string, h header) {
 	}
 	mult := map[string]float64{"": 1, "K": 1 << 10, "M": 1 << 20, "G": 1 << 30, "T": 1 << 40, "P": 1 << 50, "E": 1 << 60}[m[2]]
 	size := splitSize{int64(v * mult), model.Source{File: c.res.Name, Line: c.n}}
-	// The thread names the task: its split is known exactly.
+	// The thread names the task, or it is the only one running: its split
+	// is known exactly.
 	if t := threadTask(h.thread); t != nil {
 		if k, ok := c.splitOf[t.TaskID]; ok && c.res.Splits[k].SizeBytes == 0 {
 			c.res.Splits[k].SizeBytes, c.res.Splits[k].SizeSource = size.bytes, size.src
 		}
 		return
+	}
+	if t := c.onlyRunning(h); t != nil {
+		if k, ok := c.splitOf[t.TaskID]; ok {
+			if c.res.Splits[k].SizeBytes == 0 {
+				c.res.Splits[k].SizeBytes, c.res.Splits[k].SizeSource = size.bytes, size.src
+			}
+			return
+		}
 	}
 	if c.splitOpen == 0 {
 		return

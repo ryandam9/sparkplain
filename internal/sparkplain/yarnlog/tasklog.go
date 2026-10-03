@@ -272,6 +272,11 @@ func (c *classifier) taskStory(h header) {
 		if t.TaskID >= 0 {
 			t.End, t.EndSource = h.time, model.Source{File: c.res.Name, Line: c.n}
 			delete(c.running, t.TaskID)
+			if h.thread == "" {
+				// A split tied to its task as the only one running ends
+				// here; one tied by its thread was ended by its own line.
+				c.taskLine(t.TaskID, h)
+			}
 		}
 	}
 }

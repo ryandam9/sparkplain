@@ -332,6 +332,58 @@ func TestThreadLayoutTiesSplitsToTasks(t *testing.T) {
 	}
 }
 
+// In EMR's default layout no line names its thread, but an executor
+// running one task at a time (one core) logs each split between that
+// task's Running and Finished lines, so the split, its size and its time
+// belong to that task. Once two tasks run at once, a split is not tied.
+// Lines as the HBase lab cluster's one-core executors logged them.
+func TestOnlyRunningTaskTiesSplits(t *testing.T) {
+	t.Parallel()
+	split := func(start, end, region string) string {
+		return "INFO NewHadoopRDD: Input split: Split(tablename=lab_orders, startrow=" + start + ", endrow=" + end +
+			", regionLocation=ip-10-0-2-72.example.internal, regionname=" + region + ")"
+	}
+	log := strings.Join([]string{
+		"26/10/03 02:50:30 INFO Executor: Running task 0.0 in stage 1.0 (TID 16)",
+		"26/10/03 02:50:30 " + split("", "1", "b04b801a27"),
+		"26/10/03 02:50:30 INFO TableInputFormatBase: Input split length: 21 M bytes.",
+		"26/10/03 02:50:30 INFO Executor: Finished task 0.0 in stage 1.0 (TID 16). 2000 bytes result sent to driver",
+		"26/10/03 02:50:31 INFO Executor: Running task 3.0 in stage 2.0 (TID 20)",
+		"26/10/03 02:50:31 " + split("3", "4", "8a6e9690f2"),
+		"26/10/03 02:50:31 INFO TableInputFormatBase: Input split length: 22 M bytes.",
+		"26/10/03 02:50:39 INFO Executor: Finished task 3.0 in stage 2.0 (TID 20). 3310 bytes result sent to driver",
+		// two at once: neither split can be told apart
+		"26/10/03 02:50:40 INFO Executor: Running task 5.0 in stage 2.0 (TID 22)",
+		"26/10/03 02:50:40 INFO Executor: Running task 6.0 in stage 2.0 (TID 24)",
+		"26/10/03 02:50:40 " + split("5", "6", "4ce45ffe28"),
+		"26/10/03 02:50:40 " + split("6", "7", "c4864ec916"),
+		"26/10/03 02:50:45 INFO Executor: Finished task 5.0 in stage 2.0 (TID 22). 3312 bytes result sent to driver",
+		"26/10/03 02:50:46 INFO Executor: Finished task 6.0 in stage 2.0 (TID 24). 3269 bytes result sent to driver",
+	}, "\n") + "\n"
+	res, err := Classify(strings.NewReader(log), "stderr", File{Kind: ContainerStderr, Container: "container_1_0001_01_000002"}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, s := range res.Splits {
+		line := fmt.Sprintf("[%s,%s) %dM", s.StartRow, s.EndRow, s.SizeBytes>>20)
+		if k := s.Task; k != nil {
+			line += fmt.Sprintf(" task %d.%d stage %d.%d TID %d %s-%s", k.Partition, k.Attempt, k.Stage, k.StageAttempt, k.TaskID,
+				k.Start.Format("15:04:05"), k.End.Format("15:04:05"))
+		}
+		got = append(got, line)
+	}
+	want := []string{
+		"[,1) 21M task 0.0 stage 1.0 TID 16 02:50:30-02:50:30",
+		"[3,4) 22M task 3.0 stage 2.0 TID 20 02:50:31-02:50:39",
+		"[5,6) 0M",
+		"[6,7) 0M",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("splits:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
 // A container log dates itself from any line that starts with a time,
 // whatever log4j pattern follows it, so a run with no event log and no
 // recognised line still has a time for HBase's logs.
