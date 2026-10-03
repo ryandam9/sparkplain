@@ -228,7 +228,7 @@ svg.dag .edge.branch{stroke-dasharray:4 3}
 .rp-slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:4px}
 .rp-slot{height:24px;border-radius:4px;border:1px dashed var(--line);font-size:11px;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:background .15s}
 .rp-slot.on{border-style:solid;border-color:transparent}
-.rp-slot.on a{color:#fff;text-decoration:none;white-space:nowrap;font-weight:600;text-shadow:0 0 2px rgba(0,0,0,.45)}
+.rp-slot.on a{color:#fff;text-decoration:none;white-space:nowrap;font-weight:600;text-shadow:0 0 2px rgba(0,0,0,.45);display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;padding:0 3px;text-align:center}
 .rp-gauge{display:grid;grid-template-columns:78px 1fr auto;gap:8px;align-items:center;font-size:12px;color:var(--muted)}
 .rp-val{font-variant-numeric:tabular-nums;white-space:nowrap}
 .rp-bar{height:8px;border-radius:4px;background:var(--surface-2);overflow:hidden}

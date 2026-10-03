@@ -998,8 +998,8 @@
     stage.appendChild(el("div", { cls: "rp-col" }, el("h3", { text: "Executors" }), legend, grid,
       bulletNote("How to read an executor box", [
         "Each small box is one task slot. Empty means nothing is running there.",
-        "\"s3 p12\" means stage 3, partition 12 (a partition is one slice of the data; each task works on one).",
-        "The colour shows the stage. There are only " + V.viz.length + " colours, so two stages can share one. Read the label to be sure.",
+        "\"p12\" means partition 12 (a partition is one slice of the data; each task works on one).",
+        "The colour shows the stage; the legend above names it. There are only " + V.viz.length + " colours, so two stages can share one. Hover over a box to see its stage and task.",
         "Network in: data this executor pulled from other machines in the last " + dur((D.flows || {}).stepMs || 0) + ".",
         "Storage free: memory this executor still had for saved (cached) data.",
         "The grey bars are amounts, not stages."
@@ -1071,8 +1071,10 @@
           sl.textContent = "";
           sl.className = "rp-slot" + (x ? " on" : "");
           sl.style.background = x ? stageColor(x.task.stage) : "";
-          sl.title = x ? "TID " + x.task.taskId + ", stage " + x.task.stage + ", partition " + x.task.partition : "idle";
-          if (x) sl.appendChild(link("#task/" + x.task.taskId, (x.task.stage >= 0 ? "s" + x.task.stage + " " : "") + "p" + x.task.partition));
+          sl.title = x ? (x.task.stage >= 0 ? "Stage " + x.task.stage + ", " : "") + "partition " + x.task.partition + " (task " + x.task.taskId + ")" : "Idle";
+          // the partition only: the colour and the legend tell the stage,
+          // and the box's tooltip gives both, so a long label never spills
+          if (x) sl.appendChild(link("#task/" + x.task.taskId, "p" + x.task.partition));
         });
         var f = flowEx[id];
         if (f && f.maxRemote) {
