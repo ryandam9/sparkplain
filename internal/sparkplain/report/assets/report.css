@@ -29,6 +29,7 @@ h2{font-size:21px;line-height:1.25}
 h3{font-size:15px}
 p{margin:0}
 code,.mono{font-family:var(--mono);font-size:.86em}
+code.prop{padding:0 .3em;border:1px solid var(--line);border-radius:4px;background:var(--surface-2);white-space:nowrap}
 .num{font-variant-numeric:tabular-nums}
 a{color:var(--accent)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}

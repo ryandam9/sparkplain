@@ -159,7 +159,7 @@ Rules that judge CPU, GC and memory size skip runs with less than `min-run-time`
 
 ## 6. Outputs and CLI
 
-**Outputs.** `<app-id>-report.html`, `<app-id>-report.json` and `<app-id>-explorer.html` in `~/sparkplain/<yyyy-mm-dd>/<app-id>/` unless `-out` is given. Files are 0600 and new folders 0700, because reports carry user names, hosts and log lines. Both pages are single self-contained files that make no network requests, in light and dark themes; `report.html` uses system fonts and inline SVG. Linux and macOS only (outputs are replaced with a POSIX rename).
+**Outputs.** `<app-id>-report.html`, `<app-id>-report.json` and `<app-id>-explorer.html` in `~/sparkplain/<yyyy-mm-dd>/<app-id>/` unless `-out` is given. Files are 0600 and new folders 0700, because reports carry user names, hosts and log lines. Both pages are single self-contained files that make no network requests, in light and dark themes; `report.html` uses system fonts and inline SVG. On both pages a small embedded script (`props.js`) shows configuration keys in running text (`spark.executor.memory`, or `key=value`) as code with a border; text that is already code is left as it is. Linux and macOS only (outputs are replaced with a POSIX rename).
 
 **Flags**
 
