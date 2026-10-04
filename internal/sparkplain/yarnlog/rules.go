@@ -19,8 +19,6 @@ type header struct {
 }
 
 var (
-	// Spark on EMR: "26/09/26 10:15:53 ERROR SparkContext: Error initializing SparkContext."
-	sparkHeadRE = regexp.MustCompile(`^(\d{2}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) (TRACE|DEBUG|INFO|WARN|ERROR|FATAL) ([^\s:]+): ?(.*)$`)
 	// Hadoop daemons and EMR's instance controller:
 	// "2026-09-26 10:15:43,675 WARN org.apache…DefaultContainerExecutor (ContainersLauncher #0): Exit code …"
 	// HBase's daemons: "2026-09-29 06:00:00,369 INFO  [PEWorker-6] procedure.MasterProcedureScheduler: …".
@@ -71,13 +69,44 @@ var (
 // parseHeader reads a log4j line prefix. Times carry no zone in these logs;
 // they are read as UTC here, and the classifier moves them into the
 // cluster's zone (Options.Loc).
+// sparkHead reads Spark's default log4j header, "26/09/26 07:43:14 INFO
+// Executor: message", by hand. It matches what the regular expression
+// ^(\d{2}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) (TRACE|DEBUG|INFO|WARN|ERROR|FATAL) ([^\s:]+): ?(.*)$
+// matches (a test holds the two to the same lines), which was the costliest
+// part of reading a large run's executor logs: Go ran it, with
+// backtracking, on every line.
+func sparkHead(line string) (header, bool) {
+	if len(line) < 19 || line[2] != '/' || line[5] != '/' || line[8] != ' ' || line[11] != ':' || line[14] != ':' || line[17] != ' ' {
+		return header{}, false
+	}
+	for _, i := range [...]int{0, 1, 3, 4, 6, 7, 9, 10, 12, 13, 15, 16} {
+		if line[i] < '0' || line[i] > '9' {
+			return header{}, false
+		}
+	}
+	level, rest, ok := strings.Cut(line[18:], " ")
+	if !ok {
+		return header{}, false
+	}
+	switch level {
+	case "TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL":
+	default:
+		return header{}, false
+	}
+	i := strings.IndexAny(rest, ":\t\n\f\r ")
+	if i <= 0 || rest[i] != ':' || strings.ContainsRune(rest[i:], '\n') {
+		return header{}, false
+	}
+	t, _ := time.Parse("06/01/02 15:04:05", line[:17])
+	return header{time: t, level: level, logger: rest[:i], msg: strings.TrimPrefix(rest[i+1:], " ")}, true
+}
+
 func parseHeader(kind FileKind, line string) (header, bool) {
 	if len(line) < 6 {
 		return header{}, false
 	}
-	if m := sparkHeadRE.FindStringSubmatch(line); m != nil {
-		t, _ := time.Parse("06/01/02 15:04:05", m[1])
-		return header{time: t, level: m[2], logger: m[3], msg: m[4]}, true
+	if h, ok := sparkHead(line); ok {
+		return h, true
 	}
 	if m := hbaseHeadRE.FindStringSubmatch(line); m != nil {
 		t, _ := time.Parse("2006-01-02 15:04:05", m[1])
