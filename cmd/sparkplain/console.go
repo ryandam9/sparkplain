@@ -1,18 +1,22 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
+	"github.com/ryandam9/sparkplain/internal/sparkplain/source"
 )
 
 // console prints what sparkplain read and, at the end, what it found: a
@@ -45,7 +49,21 @@ type console struct {
 	animate  bool          // spin, settle and pace (see the type)
 	spinStop chan struct{} // stops the status line's spinner
 	spinDone chan struct{} // closed once the spinner has stopped writing
+
+	prog   atomic.Pointer[source.Progress] // how far the current step is, when it counts
+	steps  []stepTime                      // how long each step took, for the closing line
+	stepAt time.Time                       // when the current step started
 }
+
+// stepTime is one step of the run and how long it took.
+type stepTime struct {
+	label string
+	took  time.Duration
+}
+
+// heartbeat is how often a long step says it is still working when the
+// console is not a terminal; tests shorten it.
+var heartbeat = 30 * time.Second
 
 // animPace scales every pause and frame of the animation; tests set it to
 // 0, which turns the animation off.
@@ -189,13 +207,13 @@ func paint(on bool, code, s string) string {
 // printed on the terminal, stopping its spinner first so nothing else
 // writes to the terminal meanwhile.
 func (c *console) clear() {
-	if !c.working {
-		return
-	}
 	if c.spinStop != nil {
 		close(c.spinStop)
 		<-c.spinDone
 		c.spinStop, c.spinDone = nil, nil
+	}
+	if !c.working {
+		return
 	}
 	fmt.Fprint(c.err, "\r\x1b[2K")
 	c.working = false
@@ -272,27 +290,79 @@ func (c *console) note(format string, a ...any) {
 	c.wrap(c.err, "  ", "  ", msg, func(s string) string { return paint(c.colErr, dim, numbers(c.colErr, s)) })
 }
 
+// step starts a step of the run: it ends the one before, for the closing
+// "Took" line, and shows what sparkplain is doing.
+func (c *console) step(label, doing string) {
+	c.endStep()
+	c.steps = append(c.steps, stepTime{label: label})
+	c.stepAt = time.Now()
+	c.status(doing)
+}
+
+// endStep records how long the current step took.
+func (c *console) endStep() {
+	if n := len(c.steps); n > 0 && c.steps[n-1].took == 0 {
+		c.steps[n-1].took = max(time.Since(c.stepAt), time.Nanosecond)
+	}
+}
+
+// track shows p's counts beside the current step until the next one.
+func (c *console) track(p *source.Progress) { c.prog.Store(p) }
+
 // status shows what sparkplain is doing until the next line replaces it;
-// animated, a spinner turns beside it and the seconds count up.
+// animated, a spinner turns beside it and the seconds count up, with how
+// far the step is when it counts (track). When the console is not a
+// terminal, a step that takes long says every heartbeat that it is still
+// working, so a log shows the run is alive.
 func (c *console) status(doing string) {
-	if !c.live {
-		return
-	}
 	c.clear()
-	c.working = true
-	if !c.animate {
-		fmt.Fprint(c.err, paint(c.colErr, dim, "  "+doing+"…"))
+	c.prog.Store(nil)
+	stop, done := make(chan struct{}), make(chan struct{})
+	start := time.Now()
+	switch {
+	case !c.live:
+		c.spinStop, c.spinDone = stop, done
+		go func() {
+			defer close(done)
+			tick := time.NewTicker(heartbeat)
+			defer tick.Stop()
+			for {
+				select {
+				case <-stop:
+					return
+				case <-tick.C:
+					fmt.Fprintf(c.err, "sparkplain: still %s (%s%s)\n", doing, elapsed(time.Since(start)), progressText(c.prog.Load(), time.Since(start), ", "))
+				}
+			}
+		}()
+		return
+	case !c.animate:
+		// A terminal without the animation: the line redraws each second.
+		c.working = true
+		c.spinStop, c.spinDone = stop, done
+		go func() {
+			defer close(done)
+			tick := time.NewTicker(time.Second)
+			defer tick.Stop()
+			for {
+				fmt.Fprint(c.err, "\r\x1b[2K"+paint(c.colErr, dim, "  "+doing+"…"+progressText(c.prog.Load(), time.Since(start), "  ")))
+				select {
+				case <-stop:
+					return
+				case <-tick.C:
+				}
+			}
+		}()
 		return
 	}
-	stop, done := make(chan struct{}), make(chan struct{})
+	c.working = true
 	c.spinStop, c.spinDone = stop, done
-	start := time.Now()
 	go func() {
 		defer close(done)
 		tick := time.NewTicker(time.Duration(float64(spinTick) * animPace))
 		defer tick.Stop()
 		for i := 0; ; i++ {
-			fmt.Fprint(c.err, "\r\x1b[2K  "+paint(true, blue, spinFrames[i%len(spinFrames)])+" "+paint(true, dim, doing+"…  ")+numbers(true, elapsed(time.Since(start))))
+			fmt.Fprint(c.err, "\r\x1b[2K  "+paint(true, blue, spinFrames[i%len(spinFrames)])+" "+paint(true, dim, doing+"…"+progressText(c.prog.Load(), time.Since(start), "  ")+"  ")+numbers(true, elapsed(time.Since(start))))
 			select {
 			case <-stop:
 				return
@@ -300,6 +370,32 @@ func (c *console) status(doing string) {
 			}
 		}
 	}()
+}
+
+// progressText says how far a step is: the share of its bytes read with
+// the time left, or the files read, after lead; "" when it does not count.
+func progressText(p *source.Progress, took time.Duration, lead string) string {
+	if p == nil {
+		return ""
+	}
+	files, filesTotal := p.Files.Load(), p.FilesTotal.Load()
+	done, total := p.Bytes.Load(), p.BytesTotal.Load()
+	var parts []string
+	if total > 0 {
+		share := min(float64(done)/float64(total), 1)
+		parts = append(parts, fmt.Sprintf("%.0f%% · %s of %s", 100*share, model.Bytes(done), model.Bytes(total)))
+		if share > 0.02 && share < 1 && took > 5*time.Second {
+			left := time.Duration(float64(took) * (1 - share) / share)
+			parts = append(parts, "about "+elapsed(left)+" left")
+		}
+	}
+	if filesTotal > 1 {
+		parts = append(parts, fmt.Sprintf("%s of %s", model.Num(files), model.Plural(int(filesTotal), "file", "files")))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return lead + strings.Join(parts, " · ")
 }
 
 // sources lists sources as they finish, on a terminal.
@@ -484,6 +580,10 @@ func (c *console) summary(r *model.Report, written map[string]string, order []st
 	if p := written["Report"]; p != "" {
 		fmt.Fprintf(w, "  %s %s %s\n", paint(col, dim, "Open it"), c.opener, shellQuote(p))
 	}
+	c.endStep()
+	if took := c.tookLine(col); took != "" {
+		c.wrap(w, "  "+paint(col, dim, "Took")+"     ", "           ", took, nil)
+	}
 	done := fmt.Sprintf("Done in %s · ", numbers(col, elapsed(time.Since(c.started))))
 	m := -1
 	switch exit {
@@ -520,6 +620,30 @@ func (c *console) summary(r *model.Report, written map[string]string, order []st
 	if exit == exitPartial && !c.live {
 		fmt.Fprintln(c.err, "sparkplain: partial report (exit 3): see the Sources panel for what is missing")
 	}
+}
+
+// tookLine says where the run's time went: each step that took a second
+// or more, slowest first, so a long run shows what to look at.
+func (c *console) tookLine(col bool) string {
+	var steps []stepTime // one per label, adding up its steps
+	for _, s := range c.steps {
+		if i := slices.IndexFunc(steps, func(t stepTime) bool { return t.label == s.label }); i >= 0 {
+			steps[i].took += s.took
+		} else {
+			steps = append(steps, s)
+		}
+	}
+	slices.SortStableFunc(steps, func(a, b stepTime) int { return cmp.Compare(b.took, a.took) })
+	var parts []string
+	for _, s := range steps {
+		if s.took >= time.Second {
+			parts = append(parts, s.label+" "+numbers(col, elapsed(s.took)))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, " · ")
 }
 
 // tilde shortens a path under the home folder for display.

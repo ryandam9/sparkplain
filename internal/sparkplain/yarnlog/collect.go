@@ -664,9 +664,14 @@ func (g *group) read(ctx context.Context) {
 	index := map[string]int{}
 	for i, o := range g.picked {
 		index[o.Key] = i
+		g.plan.Limits.Progress.Add(o.Size)
 	}
 	reads := source.Fetch(ctx, g.st, g.picked, g.plan.Limits, func(o source.Object, name string, r io.Reader) error {
 		i := index[o.Key]
+		if len(results[i]) == 0 { // the object's first file: count it once
+			defer g.plan.Limits.Progress.Done()
+			defer g.plan.Limits.Progress.Read(o.Size)
+		}
 		cr := &countReader{r: r}
 		// name is the key, or key!entry inside a zip: lines cite the entry.
 		res, err := Classify(cr, g.st.Location(name), g.pickedFiles[i], Options{AppID: g.plan.AppID, From: g.plan.Since, To: g.plan.Until, Loc: g.plan.Loc})

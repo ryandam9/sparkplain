@@ -2,6 +2,7 @@ package eventlog
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -518,4 +519,21 @@ func mustResolve(t *testing.T, p, app string) *Input {
 		t.Fatal(err)
 	}
 	return in
+}
+
+// Parse counts what it reads for the progress line: every part and every
+// byte as stored, compressed or not.
+func TestParseCountsProgress(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{mainApp, mainApp + ".zstd"} {
+		in := mustResolve(t, filepath.Join(fixtures, name), mainApp)
+		in.Progress = &source.Progress{}
+		if _, err := Parse(context.Background(), in, Options{}); err != nil {
+			t.Fatal(err)
+		}
+		p := in.Progress
+		if p.Files.Load() != 1 || p.FilesTotal.Load() != 1 || p.Bytes.Load() == 0 || p.Bytes.Load() != p.BytesTotal.Load() {
+			t.Errorf("%s: %d of %d parts, %d of %d bytes", name, p.Files.Load(), p.FilesTotal.Load(), p.Bytes.Load(), p.BytesTotal.Load())
+		}
+	}
 }
