@@ -210,6 +210,7 @@ type anatJVM struct {
 	CPUShare, GCShare float64
 	Badges            []int
 	Href              string
+	Driver            bool
 }
 
 type anatBadge struct {
@@ -484,7 +485,7 @@ func buildAnatomy(r *model.Report) *anatomy {
 
 	a.Detail = detailJVM(r, a)
 	if c := r.Memory.Config; c.DriverHeapBytes > 0 {
-		d := &anatJVM{Title: "The driver", Heap: c.DriverHeapBytes, MemoryFraction: c.MemoryFraction, StorageFraction: c.StorageFraction}
+		d := &anatJVM{Title: "The driver", Driver: true, Heap: c.DriverHeapBytes, MemoryFraction: c.MemoryFraction, StorageFraction: c.StorageFraction}
 		for _, n := range append([]*anatNode{a.Primary}, a.Nodes...) {
 			if n != nil && n.DriverBytes > 0 {
 				d.Container = n.DriverBytes
@@ -980,9 +981,32 @@ func sevClass(s model.Severity) string {
 }
 
 // anatomySVG draws the diagram; it returns "" when there is nothing to draw.
+// anatPanel is the inside of one process, drawn on its own: the explorer
+// shows the executor and the driver as sections under the diagram, each
+// with its title and note outside the drawing.
+type anatPanel struct {
+	Title string `json:"title"`
+	Exec  string `json:"exec,omitempty"` // the executor's ID, for a link to its page
+	Note  string `json:"note,omitempty"`
+	SVG   string `json:"svg"`
+}
+
+// anatomySVG is the whole diagram, with the executor and the driver drawn
+// at its foot (the report's).
 func anatomySVG(a *anatomy, l anatLinks) string {
+	svg, _ := anatomyDraw(a, l, false)
+	return svg
+}
+
+// anatomyParts is the diagram without the executor and the driver, and
+// those two drawn on their own (the explorer's).
+func anatomyParts(a *anatomy, l anatLinks) (string, []anatPanel) {
+	return anatomyDraw(a, l, true)
+}
+
+func anatomyDraw(a *anatomy, l anatLinks, apart bool) (string, []anatPanel) {
 	if a == nil {
-		return ""
+		return "", nil
 	}
 	a.pinDetail()
 	var b svgw
@@ -1099,11 +1123,28 @@ func anatomySVG(a *anatomy, l anatLinks) string {
 	}
 
 	// The executor and the driver, region by region.
+	var panels []anatPanel
 	for _, j := range []*anatJVM{a.Detail, a.Driver} {
 		if j == nil || j.Heap == 0 {
 			continue
 		}
-		y = drawJVM(body, a, j, y, l) + anGap
+		if !apart {
+			y = drawJVM(body, a, j, y, l) + anGap
+			continue
+		}
+		p := anatPanel{Title: j.Title}
+		if j.Why != "" && !j.Driver { // the driver's drawing says what it does
+			p.Note = "Of the executors, this is " + j.Why + "."
+		}
+		if id, ok := strings.CutPrefix(j.Href, "executor:"); ok {
+			p.Exec = id
+		}
+		bare := *j
+		bare.Title, bare.Why = "", ""
+		pb := &svgw{}
+		h := drawJVM(pb, a, &bare, anPad, l) + anPad
+		p.SVG = fmt.Sprintf(`<svg class="anat" viewBox="0 0 %.0f %.0f" role="img" aria-label="%s: the container and the Java heap, region by region">`, anW, h, esc(j.Title)) + pb.String() + `</svg>`
+		panels = append(panels, p)
 	}
 
 	// Pinned findings, and those about something else.
@@ -1121,7 +1162,7 @@ func anatomySVG(a *anatomy, l anatLinks) string {
 	b.f(`<rect class="cluster" x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="12"/>`, anPad, anPad, anW-2*anPad, y-2*anPad)
 	b.WriteString(body.String())
 	b.WriteString(`</svg>`)
-	return b.String()
+	return b.String(), panels
 }
 
 func instanceLine(n *anatNode) string {
@@ -1623,8 +1664,10 @@ func drawJVM(b *svgw, a *anatomy, j *anatJVM, y float64, l anatLinks) float64 {
 	}
 	b.f(`<g class="jvm"><rect class="panel" x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="8"/>`, x, y, w, h)
 	title := j.Title
-	b.link(l.Ref(j.Href), func() { b.text(x+14, y+22, "h", "", title) })
-	if j.Why != "" {
+	if title != "" { // a panel drawn on its own has its title outside
+		b.link(l.Ref(j.Href), func() { b.text(x+14, y+22, "h", "", title) })
+	}
+	if j.Why != "" && title != "" {
 		b.text(x+14+float64(len(title))*7.6+10, y+22, "m", "", "("+j.Why+")")
 	}
 	b.badges(a, j.Badges, x+w-18, y+18, l)
@@ -1747,7 +1790,7 @@ func drawJVM(b *svgw, a *anatomy, j *anatJVM, y float64, l anatLinks) float64 {
 		if len(st) > 0 {
 			b.text(bx+float64(min(j.Cores, 32))*16+10, cy+18, "m", "", strings.Join(st, " · "))
 		}
-	} else if j.Why != "" || j.Title == "The driver" {
+	} else if j.Driver {
 		b.text(bx, cy, "m", "", "It plans the work and collects the results. The tasks run on the executors.")
 	}
 	b.WriteString(`</g>`)
@@ -1805,6 +1848,37 @@ var anatGuide = chartGuide{
 		"A short execution bar, with spill in other places, means that each task had too little memory.",
 	},
 	Note: "Hover over a part to see the exact values. Click a badge to read its finding.",
+}
+
+// anatClusterGuide explains the explorer's diagram, which leaves the
+// executor and the driver to sections of their own (anatPanelGuide).
+var anatClusterGuide = chartGuide{
+	Axes: [][2]string{
+		{"Boxes", "The nodes of the cluster. The primary node runs the YARN ResourceManager. Each worker node that ran the driver or executors of this application shows its work. The worker nodes that the application did not use are in one box, counted by role and instance type."},
+		{"Bar in each node", "The memory that the node offered YARN, to scale. It shows the driver and executor containers of this application at its busiest time."},
+		{"Cards", "One card for each executor on the node. It shows the peak heap and the heap size, the cores, the container size and how busy the cores were."},
+		{"Badges", "Numbered findings, on the part that they are about."},
+	},
+	Read: []string{
+		"Read it from top to bottom: the cluster, then each node.",
+		"Hatched space on a node is memory that no container used. If it is narrower than an executor, no executor could use it.",
+		"Red outlines are executors that Spark lost or that YARN killed.",
+	},
+	Note: "Hover over a part to see the exact values. Click an executor to see inside it. Click a badge to read its finding.",
+}
+
+// anatPanelGuide explains the explorer's drawing of one executor or the
+// driver, region by region.
+var anatPanelGuide = chartGuide{
+	Axes: [][2]string{
+		{"Bar", "The container, to scale. The Java heap has three regions: reserved memory, user memory and the working memory of Spark. The overhead is outside the heap."},
+		{"Peaks", "The highest use that Spark measured: a line for the heap, and a bar each for execution and storage memory."},
+	},
+	Read: []string{
+		"A peak line near the end of the heap means that the heap was almost full.",
+		"A short execution bar, with spill in other places, means that each task had too little memory.",
+	},
+	Note: "Hover over a part to see the exact values.",
 }
 
 func anatomyHTML(r *model.Report, explorer string) template.HTML {

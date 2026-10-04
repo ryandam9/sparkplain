@@ -587,3 +587,39 @@ func TestExplorerNodeChartWholeTicks(t *testing.T) {
 		}
 	}
 }
+
+// At a glance shows the inside of an executor and the driver as sections
+// of their own, under the diagram; the report keeps them in its diagram.
+func TestExplorerAnatomyPanelsApart(t *testing.T) {
+	t.Parallel()
+	r, x := buildWithExplorer(t, "application_1790380000000_0046")
+	d := embedded(t, renderExplorer(t, r, x))
+	anat, _ := d["anatomy"].(string)
+	if anat == "" || strings.Contains(anat, ">The driver<") || strings.Contains(anat, ">Inside executor ") {
+		t.Errorf("the diagram still draws the executor or the driver inside it")
+	}
+	panels, _ := d["anatomyPanels"].([]any)
+	var titles []string
+	for _, p := range panels {
+		m, _ := p.(map[string]any)
+		titles = append(titles, fmt.Sprint(m["title"]))
+		if svg, _ := m["svg"].(string); !strings.HasPrefix(svg, `<svg class="anat"`) || strings.Contains(svg, ">"+fmt.Sprint(m["title"])+"<") {
+			t.Errorf("panel %q: its drawing is missing or repeats its title", m["title"])
+		}
+	}
+	if len(titles) != 2 || !strings.HasPrefix(titles[0], "Inside executor ") || titles[1] != "The driver" {
+		t.Errorf("panels = %q", titles)
+	}
+	if d["anatomyPanelGuide"] == nil {
+		t.Error("the panels have no guide")
+	}
+	page := html(t, r, Options{})
+	if !strings.Contains(page, ">The driver<") {
+		t.Error("the report's diagram lost the driver")
+	}
+	for _, want := range []string{`(D.anatomyPanels || []).forEach(`, `guideNodes(D.anatomyPanelGuide || {})`} {
+		if !strings.Contains(explorerJS, want) {
+			t.Errorf("explorer.js has no %q", want)
+		}
+	}
+}

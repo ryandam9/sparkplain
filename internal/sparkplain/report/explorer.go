@@ -109,36 +109,39 @@ var (
 )
 
 type xData struct {
-	V          int                   `json:"v"`
-	Tool       string                `json:"tool"`
-	Generated  int64                 `json:"generated"`
-	ReportHref string                `json:"reportHref,omitempty"`
-	T0         int64                 `json:"t0"` // Unix ms that task launch offsets count from
-	App        xApp                  `json:"app"`
-	Summary    []string              `json:"summary"`
-	KPIs       []model.KPI           `json:"kpis"`
-	Findings   []xFinding            `json:"findings"`
-	Anatomy    string                `json:"anatomy,omitempty"` // the diagram's SVG, drawn in Go
-	AnatGuide  *chartGuide           `json:"anatomyGuide,omitempty"`
-	AnatExecs  map[string]string     `json:"anatomyExecutors,omitempty"` // each executor drawn in full, by ID
-	RunNotes   map[string][]runPoint `json:"runNotes,omitempty"`         // each chart's "In this run"
-	Files      []string              `json:"files"`
-	Execs      []string              `json:"execs"` // executor IDs; task and cell rows use their index
-	Executors  table                 `json:"executors"`
-	HeapBytes  int64                 `json:"heapBytes"`
-	Jobs       table                 `json:"jobs"`
-	Stages     table                 `json:"stages"`
-	Detail     map[string]xDetail    `json:"detail"` // by "id.attempt"
-	TaskCols   []string              `json:"taskCols"`
-	CellCols   []string              `json:"cellCols"`
-	Running    *xRunning             `json:"running,omitempty"`
-	SQL        table                 `json:"sql"`
-	Graphs     map[string][]xNode    `json:"graphs"`      // by query ID
-	PlanLays   map[string]xLayout    `json:"planLayouts"` // by query ID, for graphs small enough to draw
-	JobDags    map[string]xJobDag    `json:"jobDags"`     // by job ID, for jobs with 2 to maxGraphNodes stages
-	RunPath    *xRunPath             `json:"runPath,omitempty"`
-	Resources  []xUse                `json:"resources"` // the Overview's utilisation panel
-	StageOps   map[string]xStageOps  `json:"stageOps"`  // by "id.attempt": the RDDs each stage computes, laid out as a graph
+	V          int               `json:"v"`
+	Tool       string            `json:"tool"`
+	Generated  int64             `json:"generated"`
+	ReportHref string            `json:"reportHref,omitempty"`
+	T0         int64             `json:"t0"` // Unix ms that task launch offsets count from
+	App        xApp              `json:"app"`
+	Summary    []string          `json:"summary"`
+	KPIs       []model.KPI       `json:"kpis"`
+	Findings   []xFinding        `json:"findings"`
+	Anatomy    string            `json:"anatomy,omitempty"` // the diagram's SVG, drawn in Go
+	AnatGuide  *chartGuide       `json:"anatomyGuide,omitempty"`
+	AnatExecs  map[string]string `json:"anatomyExecutors,omitempty"` // each executor drawn in full, by ID
+	// the executor and the driver, each drawn as a section of its own
+	AnatPanels     []anatPanel           `json:"anatomyPanels,omitempty"`
+	AnatPanelGuide *chartGuide           `json:"anatomyPanelGuide,omitempty"`
+	RunNotes       map[string][]runPoint `json:"runNotes,omitempty"` // each chart's "In this run"
+	Files          []string              `json:"files"`
+	Execs          []string              `json:"execs"` // executor IDs; task and cell rows use their index
+	Executors      table                 `json:"executors"`
+	HeapBytes      int64                 `json:"heapBytes"`
+	Jobs           table                 `json:"jobs"`
+	Stages         table                 `json:"stages"`
+	Detail         map[string]xDetail    `json:"detail"` // by "id.attempt"
+	TaskCols       []string              `json:"taskCols"`
+	CellCols       []string              `json:"cellCols"`
+	Running        *xRunning             `json:"running,omitempty"`
+	SQL            table                 `json:"sql"`
+	Graphs         map[string][]xNode    `json:"graphs"`      // by query ID
+	PlanLays       map[string]xLayout    `json:"planLayouts"` // by query ID, for graphs small enough to draw
+	JobDags        map[string]xJobDag    `json:"jobDags"`     // by job ID, for jobs with 2 to maxGraphNodes stages
+	RunPath        *xRunPath             `json:"runPath,omitempty"`
+	Resources      []xUse                `json:"resources"` // the Overview's utilisation panel
+	StageOps       map[string]xStageOps  `json:"stageOps"`  // by "id.attempt": the RDDs each stage computes, laid out as a graph
 	// HBaseScans are the TableInputFormat scan stages, region by region, by
 	// "id.attempt"; RegionsCut counts regions left out past the cap.
 	HBaseScans map[string]xHBaseScan `json:"hbaseScans,omitempty"`
@@ -286,7 +289,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		PlanLays: map[string]xLayout{}, JobDags: map[string]xJobDag{}, StageOps: map[string]xStageOps{}, Adaptive: map[string][][]any{},
 	}
 	d.Resources = resourceUse(r, buildAnatomy(r))
-	d.AnatGuide = &anatGuide
+	d.AnatGuide, d.AnatPanelGuide = &anatClusterGuide, &anatPanelGuide
 	d.RunNotes = runNotes(r)
 	// An executor's chip opens At a glance with that executor drawn in
 	// full (AnatExecs), which links on to its own page.
@@ -307,7 +310,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		},
 	}
 	d.AnatExecs = execPanels(r, anat, anatL)
-	d.Anatomy = anatomySVG(anat, anatL)
+	d.Anatomy, d.AnatPanels = anatomyParts(anat, anatL)
 	files := map[string]int{}
 	fileIdx := func(s model.Source) int64 {
 		if s.File == "" {
