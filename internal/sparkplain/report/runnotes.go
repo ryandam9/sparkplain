@@ -214,7 +214,7 @@ func runNotes(r *model.Report) map[string][]runPoint {
 	if len(idle) > 0 {
 		text := fmt.Sprintf("%s ran nothing for this application, though YARN offered %s memory.", strings.Join(idle, ", "), map[bool]string{true: "it", false: "them"}[len(idle) == 1])
 		if shared {
-			text += " Other applications ran on the cluster at the same time and may have used it."
+			text += " Other applications ran on the cluster at the same time, and it is possible that they used it."
 		}
 		add("nodeMemory", "%s", text)
 	}
@@ -296,7 +296,7 @@ func runNotes(r *model.Report) map[string][]runPoint {
 	// HBase region server load: the busiest server.
 	if h := r.HBase; h != nil && len(h.Load) > 0 {
 		l, all := h.Load[0], span(h.LoadFrom, h.LoadTo)
-		add("hbaseLoad", "%s did the most scan work: %s of task time, up to %d tasks at once, busy for %s of the %s the scans ran, across %s.",
+		add("hbaseLoad", "%s did the most scan work: %s of task time, and up to %d tasks at once. It was busy for %s of the %s that the scans ran, across %s.",
 			shortHost(l.Server), model.Duration(l.TaskMs), l.Peak, model.Duration(l.BusyMs), model.Duration(all), model.Plural(len(h.Load), "region server", "region servers"))
 	}
 

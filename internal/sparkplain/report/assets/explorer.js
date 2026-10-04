@@ -359,7 +359,7 @@
     fs.appendChild(list);
     out.push(fs);
     if (runningTasks.length) {
-      var rs = section("Still running when the log ended", "These tasks started but the log has no end for them: the application was still running when the log was copied, or it stopped without closing the log." + (D.runningCapped ? " More tasks were running than are listed." : ""));
+      var rs = section("Still running when the log ended", "These tasks started, but the log has no end for them. The application was still running when the log was copied, or it stopped without closing the log." + (D.runningCapped ? " More tasks were running than are listed." : ""));
       rs.appendChild(runningTable(runningTasks));
       out.push(rs);
     }
@@ -443,7 +443,7 @@
       ]
     });
   }
-  var EXCL_EXPLAIN = "With spark.excludeOnFailure.enabled, Spark stops scheduling on an executor (or a whole node) after tasks fail there, for one stage or the rest of the application, until spark.excludeOnFailure.timeout passes.";
+  var EXCL_EXPLAIN = "When spark.excludeOnFailure.enabled is true and tasks fail on an executor (or a whole node), Spark stops scheduling tasks there. This applies for one stage or for the rest of the application, until spark.excludeOnFailure.timeout passes.";
   var lastEvent = Math.max(a.end || 0, (function () { var m = 0; runningTasks.forEach(function (t) { m = Math.max(m, t.launched); }); stages.forEach(function (s) { m = Math.max(m, s.completed || s.submitted || 0); }); return m; })());
   function jobTable(rows, o) {
     o = o || {};
@@ -512,7 +512,7 @@
   // sources, line, files the SQL plan names.
   var DATA_CELL = 4;
   var DATA_EXPLAIN = "The folders and tables this stage's tasks read and wrote. A folder stands for the files in it and in its partition folders (such as year=2024). " +
-    "A file split is a file, or a piece of a large file, that a task's log names as read; the size adds up each piece's length, which for a columnar file such as Parquet is more than was read, since only the columns needed are. " +
+    "A file split is a file, or a piece of a large file, that a task's log names as read. The size adds the length of each piece. For a columnar file such as Parquet, this is more than the task read, because it reads only the columns that it needs. " +
     "Files written are the files the tasks closed (EMRFS logs each one), and the size is the bytes they uploaded. \"At least\" means some files' sizes were not logged. " +
     "Known from says which sources name it: the executors' logs, the SQL plan, or the HBase section's scans and writes. A plan names what was read and written, but not how much.";
   function dataWhat(d) { return d[1] === "hbase" ? "HBase table " + d[2] : d[1] === "table" ? "table " + d[2] : d[2]; }
@@ -530,7 +530,7 @@
     var box = el("div");
     box.appendChild(el("h3", { text: "What it read and wrote" }));
     if (!st.data || !st.data.length) {
-      box.appendChild(explain("No log or plan names a folder or table this stage read or wrote. It may have read only shuffle data, cached data or data made in the code, or its executors' logs were not read."));
+      box.appendChild(explain("No log or plan names a folder or table that this stage read or wrote. It is possible that it read only shuffle data, cached data or data that the code made. Or sparkplain did not read the logs of its executors."));
       return box;
     }
     box.appendChild(explain(DATA_EXPLAIN));
@@ -633,7 +633,7 @@
   views.hbaseTasks = function () {
     var tasks = D.hbaseTasks || [], sums = D.hbaseTaskStages || [], evs = D.hbaseRegionEvents || [];
     var s = section("HBase tasks", "Every task attempt that read an HBase region with TableInputFormat, across all stages, in stage, partition and attempt order. A retried task has a row per attempt.");
-    s.appendChild(explain("The region comes from the split line its executor logged; the stage and task from the executor thread named on that line, or, with the event log, from the scan's tie. Times run from the task's Running line to its Finished line, or come from the event log, which also has its rows. — means not known."));
+    s.appendChild(explain("The region comes from the split line that its executor logged. The stage and task come from the executor thread named on that line, or with the event log, from the scan's tie. Times run from the task's Running line to its Finished line, or come from the event log, which also has its rows. — means not known."));
     function msrc(o) { return o && o.file ? o.file + ":" + (o.line || "") : ""; }
     function host(h) { return h ? el("span", { cls: "mono", title: h, text: String(h).split(".")[0] }) : "—"; }
     function key(st, att) { return st + "." + (att || 0); }
@@ -660,7 +660,7 @@
             f: function (l) { return l.hot ? el("span", null, when(Date.parse(l.hot.from)), " to ", when(Date.parse(l.hot.to)), " (" + dur(Date.parse(l.hot.to) - Date.parse(l.hot.from)) + "): up to " + num(l.hot.tasks) + " of " + num(l.hot.all)) : "—"; } }
         ]
       }));
-      s.appendChild(explain("Busy for is the time at least one scan task was reading from the server; on average while busy is its task time over that. A stretch counts as serving most of the scans when it served at least hbase-hotspot-share (75% unless the config file sets it) of those running, and at least 4."));
+      s.appendChild(explain("Busy for is the time when at least one scan task read from the server. On average while busy is its task time divided by that time. A stretch counts as serving most of the scans when it served at least hbase-hotspot-share of the running scans, and at least 4. That share is 75%, unless the config file sets it."));
     }
     s.appendChild(el("h3", { text: "By stage" }));
     s.appendChild(table({
@@ -707,7 +707,7 @@
     if (D.hbaseTasksCut) s.appendChild(explain(num(D.hbaseTasksCut) + " more task attempts are left out to keep the page small; the JSON report lists them all."));
     if (evs.length) {
       s.appendChild(el("h3", { text: "What the region servers logged about the regions read" }));
-      s.appendChild(explain("What HBase's servers logged about a region the run read, while one of its tasks was reading it: flushes and compactions, the region going offline (closed on one server, opened on another), moves and splits the Master ran, refused writes, and slow calls. Events on a slow task's region (at least twice its stage's median) come first."));
+      s.appendChild(explain("What HBase's servers logged about a region that the run read, while one of its tasks read it. This includes flushes, compactions, the region going offline (closed on one server, opened on another), and moves and splits that the Master ran. It also includes refused writes and slow calls. Events on the region of a slow task (at least twice its stage's median) come first."));
       s.appendChild(table({
         rows: evs.map(function (e, i) { return { i: i, e: e }; }), sort: 0, dir: "asc", page: 50, filter: "Filter by event, region, server or task",
         cols: [
@@ -772,14 +772,14 @@
       has(t.warnings || t.errors) && fact("Warnings and errors", num(t.warnings || 0) + " · " + num(t.errors || 0), "Lines logged at WARN and ERROR as a task's, besides its end."));
   }
   views.tasks = function () {
-    var s = section("Task stories", "What each task did, as its executor logged it: the broadcast variables it read, the shuffle blocks it fetched from its own node or over the network, the files or HBase regions it read, the blocks it cached, the data it spilled to disk, the files it wrote, the output it committed and the result it sent back.");
+    var s = section("Task stories", "What each task did, as its executor logged it. This includes the broadcast variables it read and the shuffle blocks it fetched, from its own node or over the network. It also includes the files or HBase regions it read, the blocks it cached and the data it spilled to disk. Last are the files it wrote, the output it committed and the result it sent back.");
     s.appendChild(explain(TS.byThread && !TS.byTid ? "Every line is told apart by the executor thread that logged it, which names its task." :
       "Lines are told apart by the task they name (TID) and, otherwise, by being the only task their executor was running" + (TS.byThread ? "; " + num(TS.byThread) + " tasks by the thread that logged them" : "") + ". Lines no task could be found for are counted per executor."));
     s.appendChild(storyFacts(TS.totals, "the task's"));
     var F = D.flows;
     if (F) {
       s.appendChild(el("h3", { text: "Data moved and memory over time" }));
-      s.appendChild(explain("The shuffle data each task asked for, from its own node and over the network, what tasks spilled and cached, and each executor's storage memory left after every block it cached or dropped. Shuffle sizes are Spark's estimates from the map outputs; the event log has the exact bytes."));
+      s.appendChild(explain("The shuffle data that each task asked for, from its own node and over the network. It also shows what tasks spilled and cached, and how much storage memory each executor had left after each block that it cached or dropped. Shuffle sizes are Spark's estimates from the map outputs. The event log has the exact bytes."));
       if ((F.local || []).length) s.appendChild(chartSlot("", "flows"));
       if (F.executors.some(function (e) { return (e.free || []).length; })) s.appendChild(chartSlot("", "storage"));
       if ((F.broadcasts || []).length) {
@@ -882,7 +882,7 @@
       ]
     }));
     if (t.cutSteps) s.appendChild(explain(num(t.cutSteps) + " more steps are not kept; its totals above count them."));
-    if (t.tiedBy === "tid") s.appendChild(explain("This executor's log prints no thread, so lines that do not name the task are its only when it was the only task the executor was running then. Its totals may miss lines logged while other tasks ran."));
+    if (t.tiedBy === "tid") s.appendChild(explain("This executor's log prints no thread. A line that does not name its task belongs to a task only when that task was the only one running on the executor. As a result, the totals can miss lines that the executor logged while other tasks ran."));
     return s;
   };
 
@@ -996,7 +996,7 @@
     s.appendChild(bulletNote("What you see", [
       "Executors (right): each box is one slot where a task can run. A coloured box means a task is running there.",
       "Driver (left): the jobs and stages running at that moment.",
-      "What happened (left): the latest events, as a numbered list.",
+      "Events (left): the latest events, as a numbered list.",
       "Press Play, or drag the slider, to move through the run."
     ]));
     s.appendChild(bulletNote("Good to know", [
@@ -1390,7 +1390,7 @@
     var regions = x.regions || [], servers = x.servers || [];
     var norows = x.fromLogs || x.rebuilt; // rows are only in the event log
     s.appendChild(el("h3", { text: "HBase regions read: " + x.table }));
-    s.appendChild(explain("TableInputFormat makes one split per region the scan overlaps, in key order, and Spark's partition n reads split n. " + (x.fromLogs ? "Each split line names its task by the executor thread that logged it, and each region's time runs from that task's Running line to its Finished line. A region whose task logged no end, or only failed, shows no time." : x.rebuilt ? "The run was rebuilt from the driver's log: each region's time is its task's duration as the driver logged it, and rows per region need the event log. " + (x.tiedBy === "task" ? "Each region's task is the one named by the executor thread on its split line." : "Each region's task is checked against the executor that logged its split.") : x.tiedBy === "task" ? "Each region's rows and time come from the task named by the executor thread on its split line, so the tie is exact." : "Each region's rows and time come from its task, checked against the executor that logged its split.")));
+    s.appendChild(explain("TableInputFormat makes one split per region the scan overlaps, in key order, and Spark's partition n reads split n. " + (x.fromLogs ? "Each split line names its task by the executor thread that logged it. Each region's time runs from that task's Running line to its Finished line. A region whose task logged no end, or only failed, shows no time." : x.rebuilt ? "sparkplain rebuilt the run from the driver's log. Each region's time is the duration of its task, as the driver logged it. The rows for each region are only in the event log. " + (x.tiedBy === "task" ? "Each region's task is the one named by the executor thread on its split line." : "Each region's task is checked against the executor that logged its split.") : x.tiedBy === "task" ? "Each region's rows and time come from the task named by the executor thread on its split line, so the tie is exact." : "Each region's rows and time come from its task, checked against the executor that logged its split.")));
     s.appendChild(el("div", { cls: "facts" },
       fact("Key range read", el("span", { cls: "mono", text: x.rows }), "From the executors' split lines: each region's range cut to the scan's start and stop rows."),
       fact("Regions read", num(regions.length + (x.regionsCut || 0)) + " on " + num(servers.length) + " region server" + (servers.length === 1 ? "" : "s"), "One task per region, so the stage cannot run more tasks at once than this."),
@@ -1667,7 +1667,7 @@
     var g = D.graphs[String(q.id)];
     if (g && g.length) {
       s.appendChild(el("h3", { text: "Plan" }));
-      s.appendChild(explain("The final physical plan, after adaptive re-planning. In the graph, data flows down from the scans to the result; the table lists the same operators from the result back to the scans, indented by depth, with every metric. Metrics are totals across all tasks."));
+      s.appendChild(explain("The final physical plan, after adaptive re-planning. In the graph, data flows down from the scans to the result. The table lists the same operators from the result back to the scans, indented by depth, with every metric. Metrics are totals across all tasks."));
       var pw = el("div", { cls: "dagwrap", hidden: true });
       s.appendChild(pw);
       planGraph(pw, q.id);
@@ -1874,7 +1874,7 @@
         href: "#stage/" + st.key, cls: (x ? "onpath" : "ctx") + (st.status === "failed" ? " failed" : ""), tip: "Stage " + st.id + ": " + st.name + (x ? "" : "\nAnother parent of a stage on the chain; it finished first, so it did not hold anything up.") };
     };
     var g = { t: "The chain", run: RUN("chain"),
-      axes: [["Boxes", "Read down. Each box is a stage, or a pause, that waited for the box above it: its slowest parent stage or, at a job's start, the job before."],
+      axes: [["Boxes", "Read down. Each box is a stage, or a pause, that waited for the box above it. That box is its slowest parent stage, or at the start of a job, the job before."],
         ["Shaded boxes", "Pauses: time with no stage on the chain running (the driver working alone, or Spark between stages)."]].concat(P.extra.length ? [["Muted boxes", "Other parents of stages on the chain. They finished first, so they held nothing up."]] : []),
       read: ["The boxes add up to the whole run, so shortening the longest ones shortens the run.", "A long driver pause is time the cluster waited on the driver; the driver gaps finding says more.", "A long stage box: open the stage to see where its time went."],
       note: (hidden ? num(hidden) + " pauses shorter than " + dur(Math.max(1000, run / 100)) + " are left out of the drawing but counted above. " : "") + "Click a stage to open it.",
@@ -2363,8 +2363,8 @@
     var limit = compact ? ATTN_COMPACT : attnAll ? ATTN_ALL : ATTN_ROWS, shown = ranked.slice(0, limit);
     var longest = d3.max(all, wall), runMs = (a.end && a.start) ? a.end - a.start : 0;
     var plot = frame(c, { t: "Which stages are worth a look?", run: RUN("attention"),
-      axes: [["Rows", "One stage each, ranked: failed first, then on the critical path (the chain of work that held up the run's end), then with straggler tasks, disk spill or a retry, then the rest; longest first within each."], ["Bar", "How long the stage ran, all rows on one scale, so the longest stands out."], ["Reasons", "Why it is worth a look, in words. A row with none is simply one of the longest."]],
-      read: ["Start at the top: a failed or critical-path stage decides how long the run took.", "A long bar with \"Slowest task … × the median\": one partition held more data than the rest; open the stage and compare its slowest tasks.", "\"Spilled … to disk\": the stage ran short of memory for a sort, join or aggregation; more partitions or more executor memory help.", "A long bar with no reason: big work, or few tasks each doing a lot. Open the stage to see where its time went."],
+      axes: [["Rows", "One stage each, ranked. Failed stages come first, then those on the critical path (the chain of work that held up the end of the run). Next come stages with straggler tasks, disk spill or a retry, then the rest. In each group, the longest come first."], ["Bar", "How long the stage ran, all rows on one scale, so the longest stands out."], ["Reasons", "Why it is worth a look, in words. A row with none is simply one of the longest."]],
+      read: ["Start at the top: a failed or critical-path stage decides how long the run took.", "A long bar with \"Slowest task … × the median\": one partition held more data than the rest; open the stage and compare its slowest tasks.", "\"Spilled … to disk\": the stage ran short of memory for a sort, join or aggregation; more partitions or more executor memory help.", "A long bar with no reason: much work, or few tasks that each did much work. Open the stage to see where its time went."],
       note: (pathAll ? num(onPath) + " of the " + num(all.length) + " stages are on the critical path (the run's stages mostly ran one after another), so they are ranked by how long they ran. " : "") +
         "Showing " + num(shown.length) + " of " + num(all.length) + " stages. Click a row to open the stage." });
     var ol = el("ol", { cls: "attn" });
@@ -2407,7 +2407,7 @@
     }
     var plot = frame(c, { t: "Time against data handled", run: RUN("health"),
       axes: [["Across", "How long the stage ran (logarithmic: each step multiplies)."], ["Up", "The data it handled: read, shuffled in and out, and written (logarithmic)."], ["Bubbles", "One per stage; bigger bubbles ran more tasks. Outlines and marks flag failed, skewed, spilled and critical-path stages."]],
-      read: ["Far right and low: a long stage that handled little data. Look at where its time went (scheduler delay, garbage collection, Python), or whether it had too few tasks.", "Far right and high: big work that took its time.", "A small bubble far right: a few tasks each doing a lot; more partitions may help.", "Handling a lot of data is not a problem in itself."],
+      read: ["Far right and low: a long stage that handled little data. Look at where its time went (scheduler delay, garbage collection, Python), or if it had too few tasks.", "Far right and high: big work that took its time.", "A small bubble far right: a few tasks that each did much work. More partitions can help.", "Much data is not a problem by itself."],
       note: (list.length < all.length ? "Showing the " + num(list.length) + " longest of " + num(all.length) + " stages, and every failed or critical-path one. " : "") + "Click a bubble to open the stage." });
     var mark = function (sym, color, text) { return el("span", null, el("b", { cls: "hmk", style: "color:" + color, text: sym }), text); };
     plot.parentNode.insertBefore(el("div", { cls: "legend" }, mark("●", V.series, "Stage (size: tasks)"), mark("○", V.fail, "Red outline: failed"),
@@ -2488,8 +2488,8 @@
     if (!rows.length) { waitText(c, "No stage had three or more successful tasks, so there is no spread to compare."); return; }
     var shown = skewAll ? rows.slice(0, 300) : rows.slice(0, SKEW_ROWS);
     var plot = frame(c, { t: "Which stages have straggler tasks?", run: RUN("skew"),
-      axes: [["Rows", "One stage each, the most skewed at the top (by 95th percentile over median)."], ["Across", "Task time as a multiple of the stage's median task; the line at 1× is the median."], ["Marks", "The line runs from the fastest task to the slowest, the box from the quarter to the three-quarter mark, and the dot is the 95th percentile (the time 19 tasks in 20 beat)."]],
-      read: ["Short rows around 1×: the stage's tasks took similar times.", "A dot far right: one task in twenty took several times the median. 2× is mild, 3× strong, 5× severe (a guide, not a rule).", "A line reaching far past the dot: one or two stragglers. Open the stage and compare the slowest tasks' rows read to see whether the data was skewed."],
+      axes: [["Rows", "One stage each, the most skewed at the top (by 95th percentile over median)."], ["Across", "Task time as a multiple of the stage's median task; the line at 1× is the median."], ["Marks", "The line runs from the fastest task to the slowest. The box runs from the quarter mark to the three-quarter mark. The dot is the 95th percentile (the time that 19 tasks in 20 beat)."]],
+      read: ["Short rows around 1×: the stage's tasks took similar times.", "A dot far right: one task in twenty took several times the median. 2× is mild, 3× strong, 5× severe (a guide, not a rule).", "A line reaching far past the dot: one or two stragglers. Open the stage and compare the rows that the slowest tasks read, to see if the data was skewed."],
       note: (shown.length < rows.length ? "Showing the " + num(shown.length) + " most skewed of " + num(rows.length) + ". " : "") + (dropped ? num(dropped) + " stages with fewer than three successful tasks are left out. " : "") + "Every successful task counts, not a sample. Click a row to open the stage." });
     if (rows.length > SKEW_ROWS) {
       var btn = el("button", { type: "button", cls: "more", text: skewAll ? "Show the " + SKEW_ROWS + " most skewed" : "Show all " + num(Math.min(rows.length, 300)) + " stages" });
@@ -2838,7 +2838,7 @@
     { label: "Sending the result", color: V.viz[3], value: function (r) { return r.st.split[6]; } },
     { label: "Other", color: V.neutral, value: function (r) { return r.st.split[7]; } }
   ];
-  var SPLIT_READ = ["More computing is better.", "A large starting share: tasks were too small, or the driver was busy.", "A large shuffle share: a lot of data moved between executors.",
+  var SPLIT_READ = ["More computing is better.", "A large starting share: tasks were too small, or the driver was busy.", "A large shuffle share: much data moved between executors.",
     "Garbage collection above about 10%: memory pressure.", "A large other share: waiting on files, S3 or Python."];
   function splitTotal(st) { return st.split ? st.split.reduce(function (x, y) { return x + y; }, 0) : 0; }
   function topBy(list, n, key) { return list.filter(function (x) { return key(x) > 0; }).sort(function (a2, b2) { return key(b2) - key(a2); }).slice(0, n); }
@@ -2863,7 +2863,7 @@
         { label: "Spilled to disk", color: V.viz[4], value: field("diskSpill") }
       ], { t: "Data each stage moved", run: RUN("data"),
           axes: [["Rows", "The stages that moved the most data."], ["Bar length", "Bytes, split into what the stage read, shuffled in, shuffled out, wrote and spilled to disk."]],
-          read: ["Longer bars moved more data; moving a lot of data is not a problem in itself.", "Shuffle is the costly part: it goes through local disk and across the network between executors.", "Spill should be absent: it means the data did not fit in memory."] }, "bytes", function (r) { return "#stage/" + r.st.key; });
+          read: ["Longer bars moved more data. Much data is not a problem by itself.", "Shuffle is the costly part: it goes through local disk and across the network between executors.", "Spill should be absent: it means the data did not fit in memory."] }, "bytes", function (r) { return "#stage/" + r.st.key; });
     },
     stageSpill: function (c) {
       var rows = topBy(stages, 20, function (st) { return st.memSpill + st.diskSpill; }).map(function (st) { return { label: stageName(st), st: st }; });
@@ -2878,7 +2878,7 @@
       var list = key ? stages.filter(function (st) { return st.key === key; }) : topBy(stages, 20, splitTotal);
       var rows = list.filter(function (st) { return splitTotal(st) > 0; }).map(function (st) { return { label: stageName(st), st: st }; });
       hbarChart(c, rows, SPLIT, { t: "Where stage time went", read: SPLIT_READ, run: key ? [] : RUN("split"),
-          axes: [["Rows", key ? "This stage." : "The stages with the most task time."], ["Bar length", "Every task's time added up, split by what it was spent on: starting (scheduler delay and unpacking the task), computing, garbage collection, shuffle (waiting for data from other executors and writing it out), sending the result, and other (reading files, waiting on Python)."]],
+          axes: [["Rows", key ? "This stage." : "The stages with the most task time."], ["Bar length", "The total time of all tasks, split by what it was spent on. The parts are starting (scheduler delay and unpacking the task), computing, garbage collection and shuffle (waiting for data from other executors, and writing it). The rest is sending the result, and other (reading files, waiting on Python)."]],
           note: "Spark measures these separately and they can overlap a little, so the split is approximate." + (key ? "" : " Click a bar to open the stage.") },
         "ms", key ? null : function (r) { return "#stage/" + r.st.key; });
     },
@@ -2894,7 +2894,7 @@
       if (F.spillBytes) series.push({ label: "Spilled to disk", color: V.viz[4], points: pts(F.spill), step: true });
       if (F.cachedBytes) series.push({ label: "Cached in memory", color: V.viz[0], dash: "5 3", points: pts(F.cached), step: true });
       timeChart(c, series, { t: "Data moved over time", run: RUN("flows"),
-          axes: [["Across", "Time of day, while the tasks ran."], ["Up", "Bytes in each " + dur(F.stepMs) + " step, as the executors logged them: shuffle data asked for when each task began reading it (Spark's estimate from the map outputs), and data spilled or cached when it was."]],
+          axes: [["Across", "Time of day, while the tasks ran."], ["Up", "Bytes in each " + dur(F.stepMs) + " step, as the executors logged them. Shuffle data shows when each task started to read it (Spark's estimate from the map outputs). Spilled or cached data shows when Spark spilled or cached it."]],
           read: ["The network line high next to the own-node line: most shuffle data came from other nodes, which costs network time and their disks' reads.", "Spikes of spill: tasks ran out of execution memory at those times; the stage running then needed more memory or more partitions.", "Caching that stops while the job still runs, with drops in the storage memory chart: storage memory was full."] }, "bytes");
     },
     storage: function (c) {
@@ -2910,7 +2910,7 @@
       if (load.length > 1) series.push({ label: "All region servers", color: V.neutral, dash: "2 3", points: pts(D.hbaseLoadTotal), step: true });
       timeChart(c, series, { t: "Region server load over time", run: RUN("hbaseLoad"),
           axes: [["Across", "Time of day, while the run's HBase scans ran."], ["Up", "HBase scan tasks reading from the region server at once: the most in each " + dur(D.hbaseLoadStepMs) + " step. One line per region server (the 8 busiest), the dotted line all of them together."]],
-          read: ["Lines of similar height: the reads were spread across the region servers.", "One line close to the dotted line while the others sit low: that server served almost all the reads, and its regions' reads queued on it.", "A server's line that stays up after the others drop: its regions took longest, and the stage waited on them."] }, "count");
+          read: ["Lines of similar height: the reads were spread across the region servers.", "One line close to the dotted line, with the others low: that server served almost all the reads. The reads of its regions waited in a queue on it.", "A server's line that stays up after the others drop: its regions took longest, and the stage waited on them."] }, "count");
     },
     dataOverTime: function (c) {
       var done = stages.filter(function (st) { return st.completed; }).sort(function (a2, b2) { return a2.completed - b2.completed; });
@@ -2923,7 +2923,7 @@
         { label: "Written", color: V.viz[3], points: out, step: true, area: 0.08 }
       ], { t: "Data over time", run: RUN("dataOverTime"),
           axes: [["Across", "Time of day, while the application ran."], ["Up", "Bytes so far: a running total of data read, shuffled and written, added as each stage finished."]],
-          read: ["Steep rises are when the work happened.", "Long flat stretches are time spent not moving data: driver code, planning, or waiting for executors."] }, "bytes");
+          read: ["Steep rises show when the work occurred.", "Long flat stretches are time spent not moving data: driver code, planning, or waiting for executors."] }, "bytes");
     },
     execTime: function (c) {
       var rows = topBy(execs.filter(function (x) { return x.id !== "driver"; }), 30, function (x) { return x.run; }).map(function (x) { return { label: "Executor " + x.id, x: x }; });
@@ -2932,7 +2932,7 @@
         { label: "Garbage collection", color: V.viz[1], value: function (r) { return r.x.gc; } },
         { label: "Other or waiting", color: V.neutral, value: function (r) { return r.x.run - r.x.cpuNs / 1e6 - r.x.gc; } }
       ], { t: "Where executor time went", run: RUN("execTime"),
-          axes: [["Rows", "One executor each."], ["Bar length", "The run time of all its tasks added up, split into computing on the JVM, garbage collection, and other or waiting (for shuffle data, storage or Python workers)."]],
+          axes: [["Rows", "One executor each."], ["Bar length", "The total run time of its tasks. It is split into computing on the JVM, garbage collection, and other or waiting (for shuffle data, storage or Python workers)."]],
           read: ["More computing is better.", "Garbage collection above about 10% of a bar means memory pressure.", "A large other-or-waiting part means tasks waited instead of computing. In PySpark, time spent in Python counts there."] }, "ms", function (r) { return "#executor/" + encodeURIComponent(r.x.id); });
     },
     execHeapAll: function (c) {
@@ -3091,7 +3091,7 @@
             (isDefault ? "\n" + num(r[T.rows]) + " rows read" : "\n" + xa.label + ": " + fmtOf(xa.kind, xv) + "\n" + ya.label + ": " + fmtOf(ya.kind, yv)) };
       }), { t: isDefault ? "When tasks started and how long they took" : SCATTER.x === "start" ? ya.label + ", by when each task started" : ya.label + " against " + xa.label.toLowerCase(),
         axes: [["Across", SCATTER.x === "start" ? "When the task started, counted from the start of the stage." : xa.label + "."], ["Up", ya.label + "."], ["Marks", "One per task. Triangles failed; the colour picker above chooses what colour shows."]],
-        read: isDefault ? ["Dots should form a low, even band.", "Dots far above the rest are stragglers; check whether they read more rows.", "Vertical stripes are waves: one per round of task slots."]
+        read: isDefault ? ["Dots should form a low, even band.", "Dots far above the rest are stragglers. Compare the rows that they read with the rows that the others read.", "Vertical stripes are waves: one per round of task slots."]
           : SCATTER.x === "start" ? [ya.read, "Vertical stripes are waves, one per round of task slots."]
           : ["Marks that climb from left to right: " + xa.label.toLowerCase() + " explains the " + ya.label.toLowerCase() + ", and a few far to the right are skew in the data.", "Marks high up at the left are slow for another reason, such as a busy node, garbage collection or waiting.", ya.read],
         note: det.sample.length < det.from ? "From a sample of " + num(det.sample.length) + " of " + num(det.from) + " tasks, plus the slowest " + num(det.slow.length) + "." : "Every task of this stage." },
@@ -3452,7 +3452,7 @@
       else s.appendChild(logLinesTable(f.rows, false, parts[1] ? +parts[1] : null));
       return s;
     }
-    var s2 = section("Logs", "The container, step and node logs read for this application, and what sparkplain recognised in each: errors with their causes, exits, memory kills, and who the application ran as.");
+    var s2 = section("Logs", "The container, step and node logs that sparkplain read for this application. For each log, it shows what sparkplain recognised: errors with their causes, exits, memory kills, and the user that the application ran as.");
     if (D.cluster) {
       var c = D.cluster;
       s2.appendChild(el("div", { cls: "facts" },
@@ -3518,7 +3518,7 @@
     return s2;
   };
 
-  function notFound(what) { return section(what + " is not in this log", "It may have been cut off, or the link is from another run."); }
+  function notFound(what) { return section(what + " is not in this log", "It is possible that the log was cut off, or that the link is from another run."); }
 
   // ---------- routing ----------
   // ---------- at a glance ----------
@@ -3526,7 +3526,7 @@
   // D3 adds zoom and pan, double-click to zoom to a part, and hover that
   // lights up every badge of the same finding.
   views.anatomy = function (arg) {
-    var s = section("The run at a glance", "The whole run in one picture: the cluster, what each node offered YARN, the containers placed there (to scale), and inside an executor the heap's regions with how far each peaked. Click an executor to see inside it.");
+    var s = section("The run at a glance", "The whole run in one picture. It shows the cluster, what each node offered YARN and the containers on each node, to scale. Inside an executor, it shows the regions of the heap and the peak of each. Click an executor to see inside it.");
     // #anatomy/<id>: that executor drawn in full, above the diagram
     if (arg != null) {
       var panel = (D.anatomyExecutors || {})[arg];

@@ -232,7 +232,7 @@ func loadReport() *model.Report {
 func TestHBaseLoadRenders(t *testing.T) {
 	t.Parallel()
 	r := loadReport()
-	if notes := runNotes(r)["hbaseLoad"]; len(notes) == 0 || !strings.Contains(notes[0].Text, "rs-hot did the most scan work: 24 min 0 s of task time, up to 8 tasks at once") {
+	if notes := runNotes(r)["hbaseLoad"]; len(notes) == 0 || !strings.Contains(notes[0].Text, "rs-hot did the most scan work: 24 min 0 s of task time, and up to 8 tasks at once") {
 		t.Errorf("load chart's notes: %+v", notes)
 	}
 	d := embedded(t, renderExplorer(t, r, nil))

@@ -72,7 +72,7 @@ func analyzeIdentity(c *ctx, r *model.Report) {
 	case strings.EqualFold(auth, "kerberos") && principal != "":
 		add("Kerberos", "on, principal "+principal, "Hadoop services checked this Kerberos identity.", src)
 	case strings.EqualFold(auth, "kerberos"):
-		add("Kerberos", "on", "Hadoop services require Kerberos. The principal was not in the Spark settings, so it came from a ticket cache or keytab on the node.", src)
+		add("Kerberos", "on", "Kerberos is necessary for the Hadoop services. The principal was not in the Spark settings, so it came from a ticket cache or keytab on the node.", src)
 	default:
 		add("Kerberos", "off (simple authentication)", "Hadoop services trust the user name they are given, without a Kerberos ticket.", src)
 	}
@@ -160,17 +160,17 @@ func identityFromLogs(c *ctx, r *model.Report, add func(label, value, explain st
 					rest += ": " + strings.Join(parts, ", ")
 				}
 			}
-			add("Encryption at rest", rest, "Whether EMRFS data on S3 and the nodes' disks are encrypted by the security configuration.", sec)
-			add("Encryption in transit", onOff(p.InTransitEncryption), "Whether traffic between the cluster's services is encrypted with TLS.", sec)
+			add("Encryption at rest", rest, "On: the security configuration encrypts EMRFS data on S3 and the disks of the nodes.", sec)
+			add("Encryption in transit", onOff(p.InTransitEncryption), "On: TLS encrypts the traffic between the services of the cluster.", sec)
 			if p.Kerberos != "" {
 				v := p.Kerberos
 				if cl.KerberosRealm != "" {
 					v += ", realm " + cl.KerberosRealm
 				}
-				add("EMR Kerberos", v, "Hadoop services on the cluster require Kerberos tickets.", sec)
+				add("EMR Kerberos", v, "Kerberos tickets are necessary for the Hadoop services on the cluster.", sec)
 			}
-			add("Lake Formation", onOff(p.LakeFormation), "Whether Lake Formation grants control access to tables, on top of IAM.", sec)
-			add("Runtime roles", onOff(p.RuntimeRoles), "Whether steps can run as their own IAM role instead of the instance profile.", sec)
+			add("Lake Formation", onOff(p.LakeFormation), "On: Lake Formation grants control access to tables, in addition to IAM.", sec)
+			add("Runtime roles", onOff(p.RuntimeRoles), "On: steps can run as their own IAM role instead of the instance profile.", sec)
 		}
 	}
 	for _, st := range r.Steps {
