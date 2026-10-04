@@ -105,7 +105,7 @@
   // bulletNote is an explanation as short bullet points, with an optional
   // heading: easier to scan than a paragraph.
   function bulletNote(title, items) {
-    return el("div", { cls: "explain bullets" }, title ? el("b", { text: title }) : null, el("ul", null, items.map(function (t) { return el("li", { text: t }); })));
+    return el("div", { cls: "explain bullets" }, title ? el("h4", { cls: "bnh", text: title }) : null, el("ul", null, items.map(function (t) { return el("li", { text: t }); })));
   }
 
   // ---------- data ----------
@@ -335,12 +335,12 @@
       var sev = { critical: "crit", warning: "warn", info: "info" }[f.sev] || "info";
       list.appendChild(el("article", { cls: "finding " + sev, id: "finding-" + (i + 1) }, el("div", { cls: "stripe" }), el("div", { cls: "body" },
         el("div", { cls: "t" }, el("span", { cls: "fnum " + sev, text: String(i + 1) }), el("span", { cls: "pill " + ({ crit: "crit", warn: "part", info: "info" }[sev]), text: { crit: "Critical", warn: "Warning", info: "Info" }[sev] }), el("h3", { text: f.title })),
-        el("div", { cls: "fpart what" }, el("span", { cls: "k", text: { crit: "Error", warn: "Problem", info: "Note" }[sev] }), el("div", null, proseNodes(f.expl, "expl"))),
-        (f.ev || []).length ? el("div", { cls: "fpart evid" }, el("span", { cls: "k", text: "Evidence" }), el("div", null, f.ev.map(function (e) {
+        el("div", { cls: "fpart what" }, el("h4", { cls: "k", text: { crit: "Error", warn: "Problem", info: "Note" }[sev] }), el("div", null, proseNodes(f.expl, "expl"))),
+        (f.ev || []).length ? el("div", { cls: "fpart evid" }, el("h4", { cls: "k", text: "Evidence" }), el("div", null, f.ev.map(function (e) {
           var h = refHref(e[1]), lh = logHref(e[2]);
           return el("div", { cls: "ev" }, h ? link(h, e[0]) : e[0], e[2] ? [" · ", lh ? link(lh, e[2]) : e[2]] : "");
         }))) : null,
-        f.fix ? el("div", { cls: "fpart try" }, el("span", { cls: "k", text: "Try" }), el("div", null, proseNodes(f.fix, "fix"))) : null)));
+        f.fix ? el("div", { cls: "fpart try" }, el("h4", { cls: "k", text: "Try" }), el("div", null, proseNodes(f.fix, "fix"))) : null)));
     });
     fs.appendChild(list);
     out.push(fs);
@@ -1829,7 +1829,7 @@
       if (inf.href) { var a = sv("a", { href: inf.href }); a.appendChild(g); svg.appendChild(a); } else svg.appendChild(g);
     });
     wrap.textContent = "";
-    if (g.t) wrap.appendChild(el("h4", { text: g.t }));
+    if (g.t) wrap.appendChild(el("h4", { cls: "ctitle", text: g.t }));
     wrap.appendChild(svg);
     add(wrap, guideNodes(g));
     wrap.hidden = false;
@@ -1868,7 +1868,7 @@
     var wrap = el("div", { cls: "dagwrap" });
     if (P.graph) drawGraph(wrap, P.graph, info, g);
     else {
-      wrap.appendChild(el("h4", { text: "The chain (" + num(drawn.length) + " steps, too many to draw)" }));
+      wrap.appendChild(el("h4", { cls: "ctitle", text: "The chain (" + num(drawn.length) + " steps, too many to draw)" }));
       wrap.appendChild(el("ol", null, drawn.map(function (x, i) { var inf = info(i); return el("li", null, inf.href ? link(inf.href, inf.title) : inf.title, " · " + inf.sub); })));
     }
     s.appendChild(wrap);
@@ -1924,19 +1924,20 @@
   }
   // RUN is a chart's "In this run", worked out in Go (runNotes).
   function RUN(chart) { return (D.runNotes || {})[chart] || []; }
-  // pointNodes is a titled paragraph for one point, or a titled bullet list
-  // for several.
+  // pointNodes is a headed paragraph for one point, or a headed bullet
+  // list for several.
   function pointNodes(cls, title, pts) {
     pts = pts == null ? [] : [].concat(pts).filter(Boolean);
     if (!pts.length) return null;
-    if (pts.length === 1) return el("p", { cls: cls }, el("b", { text: title + " " }), pts[0]);
-    return el("div", { cls: cls }, el("b", { text: title }), el("ul", null, pts.map(function (p) { return el("li", null, p); })));
+    var head = el("h5", { cls: "glabel", text: title });
+    if (pts.length === 1) return el("div", { cls: cls }, head, el("p", null, pts[0]));
+    return el("div", { cls: cls }, head, el("ul", null, pts.map(function (p) { return el("li", null, p); })));
   }
   // frame replaces the slot's placeholder with a titled plot area and its
   // guide: g has t (the title), axes, read and note.
   function frame(c, g) {
     c.el.textContent = "";
-    if (g.t) c.el.appendChild(el("h4", { text: g.t }));
+    if (g.t) c.el.appendChild(el("h4", { cls: "ctitle", text: g.t }));
     var plot = el("div", { cls: "plot" });
     c.el.appendChild(plot);
     add(c.el, guideNodes(g));
@@ -3592,11 +3593,82 @@
     charts.length = 0;
     tipHide();
     main.textContent = "";
-    add(main, views[name](arg));
+    var body = el("div", { cls: "tabbody" });
+    add(body, views[name](arg));
+    main.appendChild(body);
+    headingLevels(body);
+    // The contents box goes in before the charts draw, so they measure the
+    // column they are drawn in; its list fills after, with their titles.
+    var toc = tocHeads(body).length + charts.length >= 2 ? pageToc() : null;
+    main.classList.toggle("withtoc", !!toc);
+    if (toc) main.insertBefore(toc, body);
     drawCharts();
+    if (toc && toc.querySelectorAll("li").length < 2) {
+      main.removeChild(toc);
+      main.classList.remove("withtoc");
+      drawCharts(); // the full width
+    }
     window.scrollTo(0, 0);
   }
-  function drawCharts() { charts.forEach(drawSlot); }
+  // headingLevels closes any jump in a tab's heading levels (an h4
+  // straight under an h2 becomes an h3), so the page's outline has no
+  // gaps for screen readers; classes, not tags, give each its look.
+  function headingLevels(root) {
+    var last = 1;
+    [].slice.call(root.querySelectorAll("h2, h3, h4, h5, h6")).forEach(function (h) {
+      var lv = +h.tagName.charAt(1);
+      if (lv > last + 1) {
+        lv = last + 1;
+        var n = document.createElement("h" + lv);
+        for (var i = 0; i < h.attributes.length; i++) n.setAttribute(h.attributes[i].name, h.attributes[i].value);
+        while (h.firstChild) n.appendChild(h.firstChild);
+        h.parentNode.replaceChild(n, h);
+      }
+      last = lv;
+    });
+  }
+  // The contents ("On this page") list a tab's sections and parts: its h2
+  // and h3 headings and its charts' titles, not the small labels in guides
+  // and findings. A click scrolls to one without changing the address,
+  // which names the tab. Beside the page on wide screens, folded above it
+  // on narrow ones; none for a tab with fewer than two parts.
+  function tocHeads(root) {
+    return [].slice.call(root.querySelectorAll("h2, h3, h4, h5, h6")).filter(function (h) {
+      if (h.closest(".finding, .fpart, .explain") || /\b(glabel|bnh|k)\b/.test(h.className)) return false;
+      if (/\bctitle\b/.test(h.className)) return true;
+      return /^H[23]$/.test(h.tagName) && !h.closest(".chart, .xchart, .dagwrap");
+    }).filter(function (h) { return tocText(h); });
+  }
+  // tocText is a heading's own words, without its status pill or note.
+  function tocText(h) {
+    var c = h.cloneNode(true);
+    c.querySelectorAll(".pill, .sub, .n, .note").forEach(function (x) { x.remove(); });
+    return c.textContent.replace(/\s+/g, " ").trim();
+  }
+  function pageToc() {
+    var box = el("details", { cls: "ontoc" }, el("summary", { text: "On this page" }), el("ol"));
+    box.open = !window.matchMedia || matchMedia("(min-width: 1100px)").matches;
+    return el("nav", { cls: "pagetoc", "aria-label": "On this page" }, box);
+  }
+  // fillToc lists the headings again after each draw, because a redraw
+  // makes new chart titles.
+  function fillToc() {
+    var list = main.querySelector(".pagetoc ol"), body = main.querySelector(".tabbody");
+    if (!list || !body) return;
+    list.textContent = "";
+    tocHeads(body).forEach(function (h) {
+      list.appendChild(el("li", { cls: h.tagName === "H2" ? null : "sub" }, el("a", { href: "#", text: tocText(h), onclick: function (ev) {
+        ev.preventDefault();
+        h.scrollIntoView({ behavior: "smooth", block: "start" });
+      } })));
+    });
+  }
+  function drawCharts() {
+    charts.forEach(drawSlot);
+    var body = main.querySelector(".tabbody");
+    if (body) headingLevels(body); // the charts' titles and guides
+    fillToc();
+  }
   function redrawCharts() { drawCharts(); }
   window.addEventListener("hashchange", route);
   route();

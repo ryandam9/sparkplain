@@ -135,7 +135,7 @@ tr.lost td{color:var(--muted)}
    (tinted by severity), the evidence (neutral) and what to try (green). */
 .fpart{display:grid;grid-template-columns:84px minmax(0,1fr);gap:2px 12px;padding:9px 12px;border-radius:6px;background:var(--na-soft)}
 .fpart>div{display:grid;gap:4px;min-width:0}
-.fpart .k{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding-top:3px}
+.fpart .k{margin:0;font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding-top:3px}
 .finding.crit .fpart.what{background:var(--crit-soft)} .finding.crit .fpart.what .k{color:var(--crit)}
 .finding.warn .fpart.what{background:var(--warn-soft)} .finding.warn .fpart.what .k{color:var(--warn)}
 .finding.info .fpart.what{background:var(--accent-soft)} .finding.info .fpart.what .k{color:var(--accent)}
@@ -152,11 +152,12 @@ tr.lost td{color:var(--muted)}
 .fact .x{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
 
 .missing{border:1px dashed var(--na);border-radius:8px;padding:14px 16px;display:grid;gap:8px;background:transparent}
-.missing h3{color:var(--na);font-size:13px;letter-spacing:.05em;text-transform:uppercase;font-family:var(--sans);font-weight:500}
+.missing h2,.missing h3{color:var(--na);font-size:13px;letter-spacing:.05em;text-transform:uppercase;font-family:var(--sans);font-weight:500}
 .missing ul{margin:0;padding-left:18px;display:grid;gap:4px;font-size:14px;color:var(--muted)}
 
 .explain{font-size:13.5px;color:var(--muted);max-width:72ch;border-left:2px solid var(--accent-soft);padding-left:12px}
-.explain b{color:var(--ink);font-weight:500}
+.explain b,.bnh{color:var(--ink);font-weight:500}
+.bnh{margin:0;font-size:inherit;font-family:inherit}
 
 footer{margin-top:40px;padding-top:14px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px;display:flex;flex-wrap:wrap;gap:6px 18px;justify-content:space-between}
 
@@ -233,15 +234,15 @@ a.themebtn{text-decoration:none}
    text below reading size. */
 .chart:has(svg.wide){overflow-x:auto}
 .chart svg.wide{min-width:860px;max-width:1100px}
-.chart h4{margin:0 4px 6px;font-size:14px;font-weight:600}
+.chart .ctitle{margin:0 4px 6px;font-size:14px;font-weight:600}
 .chart .cap{font-size:12.5px;color:var(--muted);margin:6px 4px 2px;max-width:80ch}
 /* How to read a chart: which way is good, and what to look for */
 .read{font-size:12.5px;color:var(--ink);margin:4px 4px 2px;max-width:100ch}
-.read b{font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ok);margin-right:6px}
-div.read b{display:block;margin-bottom:2px} .read ul{margin:0 0 0 1.25em;padding:0} .read li{margin:1px 0}
+.glabel{display:block;margin:0 0 2px;font-family:var(--sans);font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+.read .glabel{color:var(--ok)} .run .glabel{color:var(--accent)}
+.read p,.run p{margin:0} .read ul{margin:0 0 0 1.25em;padding:0} .read li{margin:1px 0}
 .run{font-size:12.5px;color:var(--ink);margin:6px 4px 2px;max-width:100ch;border-left:3px solid var(--accent);padding:2px 0 2px 10px}
-.run b{font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin-right:6px}
-div.run b{display:block;margin-bottom:2px} .run ul{margin:0 0 0 1.25em;padding:0} .run li{margin:1px 0}
+.run ul{margin:0 0 0 1.25em;padding:0} .run li{margin:1px 0}
 .axes{display:grid;gap:3px;margin:8px 4px 4px;font-size:12.5px;max-width:100ch}
 .axes div{display:grid;grid-template-columns:8.5em 1fr;gap:10px}
 .axes dt{font-weight:600;color:var(--ink)} .axes dd{margin:0;color:var(--muted)}

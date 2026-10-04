@@ -90,7 +90,7 @@ func TestFindingBandsAndSummaryBullets(t *testing.T) {
 	t.Parallel()
 	r, _ := buildWithExplorer(t, "application_1790380000000_0044") // a failed run: critical findings
 	page := html(t, r, Options{})
-	for _, want := range []string{`<div class="fpart what"><span class="k">Error</span>`, `<div class="fpart evid"><span class="k">Evidence</span>`, `<div class="fpart try"><span class="k">Try</span>`, `<h2>What happened</h2></div>
+	for _, want := range []string{`<div class="fpart what"><h4 class="k">Error</h4>`, `<div class="fpart evid"><h4 class="k">Evidence</h4>`, `<div class="fpart try"><h4 class="k">Try</h4>`, `<h2>What happened</h2></div>
           <ul><li>`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("report lacks %q", want)
