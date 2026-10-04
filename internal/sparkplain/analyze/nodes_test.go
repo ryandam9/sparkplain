@@ -178,7 +178,7 @@ func TestSettingOrigins(t *testing.T) {
 			t.Errorf("%s set by %q, want %q", k, got[k], want)
 		}
 	}
-	if !strings.Contains(r.Config.Missing[0], "EMR itself set") {
+	if !strings.Contains(r.Config.Missing[0], "come from EMR") {
 		t.Errorf("missing = %v", r.Config.Missing)
 	}
 }
@@ -279,12 +279,12 @@ func TestNodesWithoutEventLogKeepTheRunsInstances(t *testing.T) {
 		return strings.Join(ids, ",")
 	}
 	r := Run(Input{Tool: "t", Cluster: cl, RunStart: start, RunEnd: end})
-	if hosts(r) != "i-up,i-left" || !strings.Contains(r.Nodes.Lede, "The cluster had 2 nodes up while the application ran; 2 others that ended before it or joined after it are left out.") {
+	if hosts(r) != "i-up,i-left" || !strings.Contains(r.Nodes.Lede, "The cluster had 2 nodes while the application ran. The list does not show 2 other nodes that stopped before the run or started after it.") {
 		t.Errorf("hosts %s, lede %q", hosts(r), r.Nodes.Lede)
 	}
 	// Nothing says when it ran: all are shown, and the lede says so.
 	r = Run(Input{Tool: "t", Cluster: cl})
-	if hosts(r) != "i-up,i-left,i-before,i-after" || !strings.Contains(r.Nodes.Lede, "EMR lists 4 nodes for the cluster. Nothing says when the application ran") {
+	if hosts(r) != "i-up,i-left,i-before,i-after" || !strings.Contains(r.Nodes.Lede, "EMR lists 4 nodes for the cluster. No source shows when the application ran") {
 		t.Errorf("hosts %s, lede %q", hosts(r), r.Nodes.Lede)
 	}
 }

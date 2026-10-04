@@ -1,12 +1,5 @@
 # Text that broke an ASD-STE100 rule before TestPlainLanguage came in.
 # Rewrite it, then run with -ste-update; this list only shrinks.
-analyze/config.go	sentence of 26 words (at most 25)	Which of the unmarked settings EMR itself set (its defaults for the release and instance type are not in its API) and which the code set
-analyze/executors.go	sentence of 28 words (at most 25)	EMR lists %s for the cluster. Nothing says when the application ran (no event log, YARN summary or step), so they are all shown, including any that ended before it or joined after it.
-analyze/hbase_scans.go	not approved: "may" (use can)	%s were logged for its %s, so they cannot be matched one for one: an executor's log may be missing, or TableInputFormat split regions further (hbase.mapreduce.tableinput.mappers.per.region).
-analyze/hbase_scans.go	sentence of 26 words (at most 25)	%s were logged for its %s, so they cannot be matched one for one: an executor's log may be missing, or TableInputFormat split regions further (hbase.mapreduce.tableinput.mappers.per.region).
-analyze/hbase_scans.go	sentence of 26 words (at most 25)	Its splits in key order did not match the executors that ran its partitions (partition %d ran on executor %s, but executor %s logged that split).
-analyze/hbase_scans.go	sentence of 33 words (at most 25)	Scans for %s logged with no task: without the event log, a split is placed in its stage only when the executors' log layout prints the thread (log4j %%t), which names the task.
-analyze/runtime.go	not approved: "requires" (use is necessary)	simple trusts the user name; kerberos requires a ticket.
 analyze/settings.go	not approved: "may" (use can)	How long an executor may sit idle before dynamic allocation removes it.
 analyze/settings.go	not approved: "may" (use can)	How many times one task may fail before its job fails.
 analyze/settings.go	not approved: "may" (use can)	The most data actions like collect() may bring back to the driver. 0 means no limit.
@@ -20,23 +13,12 @@ analyze/settings.go	not approved: "whether" (use if)	Whether cache updates are l
 analyze/settings.go	not approved: "whether" (use if)	Whether executors report whole-process memory (RSS), including Python workers.
 analyze/settings.go	not approved: "whether" (use if)	Whether shuffle files are served by the node's shuffle service, so removing an executor does not lose them.
 analyze/settings.go	not approved: "whether" (use if)	Whether the event log is split into parts.
-analyze/stagedata.go	sentence of 34 words (at most 25)	Which stage read or wrote %d files or file ranges: their executors were running tasks of more than one stage when they logged them, in a layout that does not print the task's thread
 analyze/summary.go	not approved: "require" (use is necessary)	Hadoop services on the cluster require Kerberos tickets.
 analyze/summary.go	not approved: "require" (use is necessary)	Hadoop services require Kerberos. The principal was not in the Spark settings, so it came from a ticket cache or keytab on the node.
 analyze/summary.go	not approved: "whether" (use if)	Whether EMRFS data on S3 and the nodes' disks are encrypted by the security configuration.
-analyze/summary.go	not approved: "whether" (use if)	Whether Hive metastore, HBase and Kerberos connections succeeded (needs the container logs: -cluster-id or -from)
 analyze/summary.go	not approved: "whether" (use if)	Whether Lake Formation grants control access to tables, on top of IAM.
 analyze/summary.go	not approved: "whether" (use if)	Whether steps can run as their own IAM role instead of the instance profile.
 analyze/summary.go	not approved: "whether" (use if)	Whether traffic between the cluster's services is encrypted with TLS.
-analyze/summary.go	sentence of 27 words (at most 25)	There is no event log, so jobs, stages and resource use are not shown; this summary comes from YARN's records and the container, step and node logs.
-analyze/summary.go	sentence of 28 words (at most 25)	What each task did, from its executor's log: broadcasts read, shuffle blocks read locally and over the network, input, spills, cached blocks, commits, its result, warnings and errors
-analyze/summary.go	sentence of 33 words (at most 25)	Rules that read the event log (skew, spill, GC, CPU, memory size, lost executors, failures) and the container, step and node logs (first error, memory kills, out-of-memory, access, Kerberos, metastore and HBase errors)
-analyze/summary.go	sentence of 44 words (at most 25)	There is no event log, so this run was rebuilt from the driver's log: its jobs, stages, tasks and executors are as Spark logged them, but how much it read, wrote, shuffled and used of CPU and memory is only in the event log.
-analyze/tasklogs.go	sentence of 38 words (at most 25)	Which task logged %s of the executors' task lines (shuffle reads, broadcasts, cached blocks, spills, commits): the log layout prints no thread name and the executors ran several tasks at once, so these are counted per executor only. Adding %%t to the executors' log4j pattern ties every line to its task.
-report/anatomy.go	not approved: "may" (use can)	No executor or driver of this application ran on them; other applications may have.
-report/anatomy.go	not approved: "may" (use can)	Up to %s had to wait for room, for %s in all; some may have been other applications'.
-report/anatomy.go	sentence of 26 words (at most 25)	One per executor on the node: its peak heap against the heap it was given, its cores and container size, and how busy its cores were.
-report/anatomy.go	sentence of 31 words (at most 25)	Inside an executor, a peak line near the end of the heap means it nearly ran out; a short execution bar with spill elsewhere means each task had too little memory.
 report/assets/explorer.js	not approved: "happened" (use occurred)	Steep rises are when the work happened.
 report/assets/explorer.js	not approved: "happened" (use occurred)	What happened (left): the latest events, as a numbered list.
 report/assets/explorer.js	not approved: "lot" (use many, or much)	A large shuffle share: a lot of data moved between executors.
@@ -71,10 +53,6 @@ report/assets/explorer.js	sentence of 43 words (at most 25)	Every task's time ad
 report/assets/explorer.js	sentence of 43 words (at most 25)	What HBase's servers logged about a region the run read, while one of its tasks was reading it: flushes and compactions, the region going offline (closed on one server, opened on another), moves and splits the Master ran, refused writes, and slow calls. Events on a slow task's region (at least twice its stage's median) come first.
 report/assets/explorer.js	sentence of 46 words (at most 25)	A file split is a file, or a piece of a large file, that a task's log names as read; the size adds up each piece's length, which for a columnar file such as Parquet is more than was read, since only the columns needed are. 
 report/assets/explorer.js	sentence of 58 words (at most 25)	What each task did, as its executor logged it: the broadcast variables it read, the shuffle blocks it fetched from its own node or over the network, the files or HBase regions it read, the blocks it cached, the data it spilled to disk, the files it wrote, the output it committed and the result it sent back.
-report/charts_more.go	not approved: "may" (use can)	Not drawn, because the logs read do not say how much memory their NodeManager offered YARN (its registration and container placement lines may have rotated out of the ResourceManager's log): 
-report/charts_more.go	sentence of 30 words (at most 25)	Not drawn, because the logs read do not say how much memory their NodeManager offered YARN (its registration and container placement lines may have rotated out of the ResourceManager's log): 
 report/explorer.go	not approved: "lot" (use many, or much)	Data that did not fit in execution memory and went to local disk. A lot against the shuffle written means too few partitions or too little memory per task.
 report/runnotes.go	not approved: "may" (use can)	 Other applications ran on the cluster at the same time and may have used it.
 report/runnotes.go	sentence of 27 words (at most 25)	%s did the most scan work: %s of task time, up to %d tasks at once, busy for %s of the %s the scans ran, across %s.
-report/templates/report.html.tmpl	contraction "can't"	What each part of the analysis could show for this run, where its data came from, and what it can't show yet. This page is the summary;
-report/templates/report.html.tmpl	sentence of 29 words (at most 25)	). Task metrics (rows, bytes, CPU and GC time, spill, memory), SQL plans and Spark's configuration are only in the event log, so the sections built from them say so.

@@ -856,9 +856,9 @@ func statusFromLogs(c *ctx, r *model.Report) {
 	if final == "KILLED" {
 		state = "killed"
 	}
-	a.StatusReason = "Spark's event log ends normally, but YARN recorded the application as " + state + "."
+	a.StatusReason = "The Spark event log ends normally, but YARN recorded the application as " + state + "."
 	if h := e.line(); ok && h != nil {
-		a.StatusReason = fmt.Sprintf("Spark's event log ends normally, but the application master exited with code %s (%s), so YARN recorded it as failed.", h.l.Fields["exitCode"], h.l.Fields["meaning"])
+		a.StatusReason = fmt.Sprintf("The Spark event log ends normally, but the application master exited with code %s (%s). As a result, YARN recorded it as failed.", h.l.Fields["exitCode"], h.l.Fields["meaning"])
 	}
 }
 

@@ -9,12 +9,12 @@ import (
 
 func analyzeIdentity(c *ctx, r *model.Report) {
 	s := &r.Identity
-	s.Missing = []string{"AWS calls made by the job's role and every AccessDenied (needs -cluster-id; CloudTrail)"}
+	s.Missing = []string{"AWS calls of the job role, and each AccessDenied (needs -cluster-id and CloudTrail)"}
 	if r.AWSCalls != nil && r.AWSCalls.Coverage != model.NoData {
 		s.Missing = append([]string{}, r.AWSCalls.Missing...)
 		for _, st := range r.Steps {
 			if st.AppID != "" && st.ExecutionRole != "" {
-				s.Missing = append(s.Missing, "Calls made under the step's runtime role: CloudTrail names those sessions after nothing sparkplain can look up, so only the nodes' instance-profile calls are listed")
+				s.Missing = append(s.Missing, "Calls with the runtime role of the step. sparkplain cannot find the session names that CloudTrail gives them, so the list shows only the calls with the instance profile of the nodes")
 			}
 		}
 	}
@@ -22,7 +22,7 @@ func analyzeIdentity(c *ctx, r *model.Report) {
 		s.Missing = append(s.Missing, "AWS roles: instance profile and EMR service role (needs -cluster-id)", "EMR security configuration (needs -cluster-id)")
 	}
 	if c.logs == nil {
-		s.Missing = append(s.Missing, "Whether Hive metastore, HBase and Kerberos connections succeeded (needs the container logs: -cluster-id or -from)")
+		s.Missing = append(s.Missing, "If the Hive metastore, HBase and Kerberos connections succeeded (needs the container logs: -cluster-id or -from)")
 	}
 	add := func(label, value, explain string, srcs ...model.Source) {
 		f := model.Fact{Label: label, Value: value, Explain: explain}
@@ -259,7 +259,7 @@ func firstOf(m map[string]string, keys ...string) string {
 func analyzeSources(c *ctx, r *model.Report) {
 	ev := c.in.EventSource
 	if ev.Name == "" {
-		ev = model.SourceStatus{Name: "Spark event log", Status: "not-supplied", Detail: "No event log was given."}
+		ev = model.SourceStatus{Name: "Spark event log", Status: "not-supplied", Detail: "The run had no event log."}
 	}
 	r.Sources = append(r.Sources, ev)
 	notYet := func(name, detail string) {
@@ -275,13 +275,13 @@ func analyzeSources(c *ctx, r *model.Report) {
 	} else {
 		for _, name := range []string{"Container logs", "Step logs", "Node logs"} {
 			r.Sources = append(r.Sources, model.SourceStatus{Name: name, Status: "not-requested",
-				Detail: "Not read: pass -cluster-id with -profile to read them from S3, or -from with a local copy of the cluster's log folder."})
+				Detail: "Not read. To read them from S3, use -cluster-id with -profile. To read a local copy of the cluster log folder, use -from."})
 		}
-		r.Sources = append(r.Sources, model.SourceStatus{Name: "EMR API", Status: "not-requested", Detail: "Not called: pass -cluster-id with -profile."})
+		r.Sources = append(r.Sources, model.SourceStatus{Name: "EMR API", Status: "not-requested", Detail: "Not called. Use -cluster-id with -profile."})
 	}
 	if c.in.Cluster == nil {
-		r.Sources = append(r.Sources, model.SourceStatus{Name: "CloudWatch", Status: "not-requested", Detail: "Not called: pass -cluster-id with -profile for the cluster's and its nodes' metrics."},
-			model.SourceStatus{Name: "CloudTrail", Status: "not-requested", Detail: "Not called: pass -cluster-id with -profile for the AWS calls the application's nodes made, and every refusal."})
+		r.Sources = append(r.Sources, model.SourceStatus{Name: "CloudWatch", Status: "not-requested", Detail: "Not called. Use -cluster-id with -profile to get the metrics of the cluster and its nodes."},
+			model.SourceStatus{Name: "CloudTrail", Status: "not-requested", Detail: "Not called. Use -cluster-id with -profile to get the AWS calls of the application nodes, and each refusal."})
 	}
 	notYet("CloudWatch", "Not called.")
 	notYet("CloudTrail", "Not called.")
@@ -295,13 +295,13 @@ func analyzeCoverage(c *ctx, r *model.Report) {
 		for _, s := range []struct{ id, title string }{{"summary", "Application summary"}, {"nodes", "Cluster and nodes"}, {"executors", "Executors"}, {"memory", "Memory"}, {"cpu", "CPU"}, {"io", "Storage and I/O"}, {"stages", "Jobs, stages, tasks"}, {"config", "Configuration"}, {"access", "Identity and access"}} {
 			switch {
 			case s.id == "summary" && c.logs != nil:
-				row(s.id, s.title, model.Partial, "Name, user, queue, final status and times from YARN's records", []string{"Spark version, jobs, stages and resource use (the event log)"})
+				row(s.id, s.title, model.Partial, "Name, user, queue, final status and times from the YARN records", []string{"Spark version, jobs, stages and resource use (the event log)"})
 			case s.id == "nodes" && r.Nodes.Coverage != model.NeedsEventLog:
-				row(s.id, s.title, r.Nodes.Coverage, "The cluster's nodes from the EMR API, and CloudWatch's view of them while the application ran", r.Nodes.Missing)
+				row(s.id, s.title, r.Nodes.Coverage, "The nodes of the cluster from the EMR API, and their CloudWatch metrics while the application ran", r.Nodes.Missing)
 			case s.id == "access" && r.Identity.Coverage == model.Partial:
 				row(s.id, s.title, model.Partial, "User and queue from YARN, AWS roles, and the connections the logs show", r.Identity.Missing)
 			default:
-				row(s.id, s.title, model.NeedsEventLog, "Nothing: this section is built from the event log", []string{"The event log"})
+				row(s.id, s.title, model.NeedsEventLog, "Nothing. This section comes from the event log", []string{"The event log"})
 			}
 		}
 		taskStoriesRow(r, row)
@@ -312,7 +312,7 @@ func analyzeCoverage(c *ctx, r *model.Report) {
 	}
 	var appMissing []string
 	if r.Application.Status == model.StatusIncomplete {
-		appMissing = []string{"The end of the run: the log stops before the application ended"}
+		appMissing = []string{"The end of the run. The log stops before the application ended"}
 	}
 	appMissing = append(appMissing, "EMR release and step ID (needs the EMR API and step logs)")
 	row("summary", "Application summary", model.Partial, "Name, ID, Spark version, user, start, end, duration, final status", appMissing)
@@ -326,9 +326,9 @@ func analyzeCoverage(c *ctx, r *model.Report) {
 	row("access", "Identity and access", r.Identity.Coverage, "User, queue, Kerberos, table catalog, Spark security settings, credentials in settings", r.Identity.Missing)
 	taskStoriesRow(r, row)
 	if c.logs != nil {
-		row("findings", "Findings", model.Partial, "Rules that read the event log (skew, spill, GC, CPU, memory size, lost executors, failures) and the container, step and node logs (first error, memory kills, out-of-memory, access, Kerberos, metastore and HBase errors)", []string{"Rules that need CloudWatch and CloudTrail: host pressure, spot interruptions, every AWS call and AccessDenied (phase 3)"})
+		row("findings", "Findings", model.Partial, "Rules that read the event log and the container, step and node logs", []string{"Rules that use CloudWatch and CloudTrail: host pressure, spot interruptions, AWS calls and AccessDenied (needs -cluster-id)"})
 	} else {
-		row("findings", "Findings", model.Partial, "Rules that read the event log: skew, spill, GC, CPU, memory size, lost executors, failures", []string{"Rules that need the container logs (-cluster-id or -from): the error behind a failure, out-of-memory messages, access errors"})
+		row("findings", "Findings", model.Partial, "Rules that read the event log: skew, spill, GC, CPU, memory size, lost executors, failures", []string{"Rules that use the container logs (-cluster-id or -from): the error behind a failure, out-of-memory messages, access errors"})
 	}
 }
 
@@ -339,7 +339,7 @@ func analyzeSummary(c *ctx, r *model.Report) {
 		return
 	}
 	if !c.has() {
-		s.Sentences = []string{"sparkplain could not read the event log, so it has nothing to report about this run yet. The Sources panel says why."}
+		s.Sentences = []string{"sparkplain could not read the event log, so it has no data about this run. The Sources panel shows why."}
 		return
 	}
 	a := r.Application
@@ -360,7 +360,7 @@ func analyzeSummary(c *ctx, r *model.Report) {
 	case model.StatusFailed:
 		verb = "and failed"
 	case model.StatusIncomplete:
-		verb = "and had not finished when the log ends"
+		verb = "and did not finish before the log ended"
 	default:
 		verb = "with an unknown outcome"
 	}
@@ -383,7 +383,7 @@ func analyzeSummary(c *ctx, r *model.Report) {
 		model.Plural(len(c.log.Jobs), "job", "jobs"), model.Plural(len(c.log.Stages), "stage", "stages"), model.Num(tasks),
 		model.Plural(len(c.log.Executors), "executor", "executors"), model.Plural(hosts, "host", "hosts"))
 	if c.metrics() {
-		ran += fmt.Sprintf(" Tasks used %s of CPU time; executors held %s of core time.", model.Duration(r.CPU.CPUMs), model.Duration(r.CPU.AllocatedCoreMs))
+		ran += fmt.Sprintf(" Tasks used %s of CPU time, and executors held %s of core time.", model.Duration(r.CPU.CPUMs), model.Duration(r.CPU.AllocatedCoreMs))
 	}
 	s.Sentences = append(s.Sentences, ran)
 	var problems []string
@@ -391,19 +391,19 @@ func analyzeSummary(c *ctx, r *model.Report) {
 		if f.Severity == model.Info || len(problems) == 3 {
 			continue
 		}
-		problems = append(problems, lowerFirst(strings.TrimSuffix(f.Title, ".")))
+		problems = append(problems, strings.TrimSuffix(f.Title, "."))
 	}
 	if len(problems) > 0 {
-		s.Sentences = append(s.Sentences, "What needs attention: "+joinAnd(problems)+".")
+		s.Sentences = append(s.Sentences, "What needs attention:\n- "+strings.Join(problems, ".\n- ")+".")
 	} else {
-		s.Sentences = append(s.Sentences, "No warnings or critical findings came up.")
+		s.Sentences = append(s.Sentences, "sparkplain found no warnings and no critical problems.")
 	}
 	io := r.IO.Totals
 	if c.metrics() {
 		s.Sentences = append(s.Sentences, fmt.Sprintf("It read %s, wrote %s and moved %s between executors in shuffles.",
 			model.Bytes(io.InputBytes), model.Bytes(io.OutputBytes), model.Bytes(io.ShuffleWriteBytes)))
 	} else {
-		s.Sentences = append(s.Sentences, "There is no event log, so this run was rebuilt from the driver's log: its jobs, stages, tasks and executors are as Spark logged them, but how much it read, wrote, shuffled and used of CPU and memory is only in the event log.")
+		s.Sentences = append(s.Sentences, "There is no event log. sparkplain made this run again from the driver log, with the jobs, stages, tasks and executors that Spark logged. The data that the run read, wrote and shuffled, and its CPU and memory use, are only in the event log.")
 	}
 
 	crit, warn, info := 0, 0, 0
@@ -440,15 +440,15 @@ func analyzeSummary(c *ctx, r *model.Report) {
 		findTone = "warn"
 	}
 	s.KPIs = []model.KPI{
-		{Label: "Ran for", Value: model.Duration(a.DurationMs), Explain: "From application start to end" + map[bool]string{true: " (or to the last event, as it had not ended).", false: "."}[a.End.IsZero()]},
+		{Label: "Ran for", Value: model.Duration(a.DurationMs), Explain: "From the start to the end of the application" + map[bool]string{true: " (or to the last event, because it did not end).", false: "."}[a.End.IsZero()]},
 		{Label: "Hosts", Value: fmt.Sprint(hosts), Unit: "ran executors", Explain: hostsExplain(r)},
-		{Label: "Executors", Value: fmt.Sprint(len(c.log.Executors)), Unit: fmt.Sprintf("started · %d peak", r.Executors.Peak), Explain: fmt.Sprintf("Worker processes Spark launched, and the most at once. %d ended early.", killed), Tone: execTone},
-		{Label: "Executor size", Value: fmt.Sprint(mem.Cores), Unit: "cores · " + model.Bytes(mem.ContainerBytes), Explain: fmt.Sprintf("%s heap plus %s overhead, per executor.", model.Bytes(mem.HeapBytes), model.Bytes(mem.OverheadBytes))},
+		{Label: "Executors", Value: fmt.Sprint(len(c.log.Executors)), Unit: fmt.Sprintf("started · %d peak", r.Executors.Peak), Explain: fmt.Sprintf("The worker processes that Spark started, and the most at one time. %d stopped early.", killed), Tone: execTone},
+		{Label: "Executor size", Value: fmt.Sprint(mem.Cores), Unit: "cores · " + model.Bytes(mem.ContainerBytes), Explain: fmt.Sprintf("%s heap and %s overhead for each executor.", model.Bytes(mem.HeapBytes), model.Bytes(mem.OverheadBytes))},
 		cpuKPI(r.CPU),
 		heapKPI(r.Memory, peakHeap),
 		{Label: "Data read", Value: model.Bytes(io.InputBytes), Explain: fmt.Sprintf("%s rows from files and tables.", model.Num(io.InputRecords))},
 		{Label: "Data written", Value: model.Bytes(io.OutputBytes), Explain: fmt.Sprintf("%s rows. Shuffles moved %s more.", model.Num(io.OutputRecords), model.Bytes(io.ShuffleWriteBytes))},
-		{Label: "Findings", Value: fmt.Sprint(crit + warn + info), Unit: fmt.Sprintf("%d critical · %d warning", crit, warn), Explain: "Problems and notes found by the rules below.", Tone: findTone},
+		{Label: "Findings", Value: fmt.Sprint(crit + warn + info), Unit: fmt.Sprintf("%d critical · %d warning", crit, warn), Explain: "The problems and notes that the rules below found.", Tone: findTone},
 	}
 	if !c.metrics() {
 		// Rebuilt from the driver's log: what it says, not zeros for
@@ -458,9 +458,9 @@ func analyzeSummary(c *ctx, r *model.Report) {
 			failed += int(st.Totals.Failed)
 		}
 		s.KPIs = append(s.KPIs[:3:3],
-			model.KPI{Label: "Jobs", Value: fmt.Sprint(len(c.log.Jobs)), Unit: "run", Explain: "Actions the application ran (a count, a save), as the driver logged them."},
-			model.KPI{Label: "Stages", Value: fmt.Sprint(len(c.log.Stages)), Unit: "attempts", Explain: "Steps Spark split the jobs into, between shuffles; stages a job skipped are not in the driver's log."},
-			model.KPI{Label: "Tasks", Value: model.Num(tasks), Unit: fmt.Sprintf("attempts · %d failed", failed), Explain: "One task reads one partition; each attempt as the driver logged it."},
+			model.KPI{Label: "Jobs", Value: fmt.Sprint(len(c.log.Jobs)), Unit: "run", Explain: "The actions that the application ran (for example a count or a save), as the driver logged them."},
+			model.KPI{Label: "Stages", Value: fmt.Sprint(len(c.log.Stages)), Unit: "attempts", Explain: "The parts of the jobs between shuffles. The driver log does not show the stages that a job skipped."},
+			model.KPI{Label: "Tasks", Value: model.Num(tasks), Unit: fmt.Sprintf("attempts · %d failed", failed), Explain: "Each task reads one partition. This counts each attempt that the driver logged."},
 			s.KPIs[len(s.KPIs)-1])
 	}
 }
@@ -480,7 +480,7 @@ func summaryFromLogs(c *ctx, r *model.Report) {
 	case model.StatusFailed:
 		first = name + " failed"
 	default:
-		first = name + " ran with an outcome the logs do not show"
+		first = name + " ran, but the logs do not show its result"
 	}
 	if a.User != "" {
 		first += " as " + a.User
@@ -501,12 +501,12 @@ func summaryFromLogs(c *ctx, r *model.Report) {
 		if f.Severity == model.Info || f.Rule == "log-first-failure" || len(problems) == 3 {
 			continue
 		}
-		problems = append(problems, lowerFirst(strings.TrimSuffix(f.Title, ".")))
+		problems = append(problems, strings.TrimSuffix(f.Title, "."))
 	}
 	if len(problems) > 0 {
-		sentences = append(sentences, "Also: "+joinAnd(problems)+".")
+		sentences = append(sentences, "What needs attention:\n- "+strings.Join(problems, ".\n- ")+".")
 	}
-	sentences = append(sentences, "There is no event log, so jobs, stages and resource use are not shown; this summary comes from YARN's records and the container, step and node logs.")
+	sentences = append(sentences, "There is no event log, so this report does not show jobs, stages or resource use. This summary comes from the YARN records and the container, step and node logs.")
 	r.Summary.Sentences = sentences
 }
 
@@ -514,7 +514,7 @@ func summaryFromLogs(c *ctx, r *model.Report) {
 // logs told any.
 func taskStoriesRow(r *model.Report, row func(id, title string, cov model.Coverage, shown string, missing []string)) {
 	if s := r.TaskStories; s != nil {
-		row("tasklogs", "Task stories", s.Coverage, "What each task did, from its executor's log: broadcasts read, shuffle blocks read locally and over the network, input, spills, cached blocks, commits, its result, warnings and errors", s.Missing)
+		row("tasklogs", "Task stories", s.Coverage, "What each task did, from the log of its executor: broadcasts, shuffle blocks, input, spills, cached blocks, commits, its result and its errors", s.Missing)
 	}
 }
 
@@ -523,18 +523,6 @@ func orUnknown(s string) string {
 		return "an unknown user"
 	}
 	return s
-}
-
-func lowerFirst(s string) string {
-	if s == "" {
-		return s
-	}
-	// Keep proper nouns and identifiers such as "Stage 18" or "AWS" readable.
-	w, _, _ := strings.Cut(s, " ")
-	if w == strings.ToUpper(w) || w == "Stage" || w == "Job" || w == "Executor" || w == "Spark" || w == "Python" {
-		return s
-	}
-	return strings.ToLower(s[:1]) + s[1:]
 }
 
 func joinAnd(items []string) string {
@@ -551,7 +539,7 @@ func joinAnd(items []string) string {
 // instance is described when the EMR API was read.
 func hostsExplain(r *model.Report) string {
 	if r.Cluster == nil {
-		return "Machines that ran executors. Instance details need the EMR API."
+		return "The machines that ran executors. The instance details are only in the EMR API."
 	}
 	n := 0
 	for _, h := range r.Nodes.Hosts {
@@ -559,7 +547,7 @@ func hostsExplain(r *model.Report) string {
 			n++
 		}
 	}
-	return fmt.Sprintf("Machines that ran executors, of %s up during the run; the Nodes section describes each one.", model.Plural(n, "node", "nodes"))
+	return fmt.Sprintf("The machines that ran executors, of the %s in the cluster during the run. The explorer describes each node.", model.Plural(n, "node", "nodes"))
 }
 
 func cpuKPI(c model.CPUSection) model.KPI {
@@ -577,5 +565,5 @@ func heapKPI(m model.MemorySection, peak int64) model.KPI {
 		return model.KPI{Label: "Peak heap", Value: "—", Unit: "not recorded · " + model.Bytes(m.Config.HeapBytes) + " heap",
 			Explain: "The event log holds no executor memory samples. Set spark.eventLog.logStageExecutorMetrics=true to record them."}
 	}
-	return model.KPI{Label: "Peak heap", Value: model.Bytes(peak), Unit: "of " + model.Bytes(m.Config.HeapBytes), Explain: "Highest Java heap use sampled on any executor."}
+	return model.KPI{Label: "Peak heap", Value: model.Bytes(peak), Unit: "of " + model.Bytes(m.Config.HeapBytes), Explain: "The highest Java heap use that Spark measured on an executor."}
 }

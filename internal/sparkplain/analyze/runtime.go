@@ -87,7 +87,7 @@ func runtimeRows(c *ctx) []model.RuntimeRow {
 	add(groupRuntime, "JVM time zone", c.sys["user.timezone"], "System Properties › user.timezone", "The zone the driver used to read and write dates and timestamps without an explicit zone.", src)
 	add(groupRuntime, "File encoding", c.sys["file.encoding"], "System Properties › file.encoding", "The character set the driver used for text files without an explicit encoding.", src)
 	add(groupRuntime, "Default filesystem", c.conf["fs.defaultFS"], "Hadoop Properties › fs.defaultFS", "Where paths without a scheme point: HDFS on the cluster, or the local disk.", src)
-	add(groupRuntime, "Hadoop authentication", orDefault(c.conf["hadoop.security.authentication"], "simple"), "Hadoop Properties › hadoop.security.authentication", "simple trusts the user name; kerberos requires a ticket.", src)
+	add(groupRuntime, "Hadoop authentication", orDefault(c.conf["hadoop.security.authentication"], "simple"), "Hadoop Properties › hadoop.security.authentication", "simple trusts the user name, and kerberos asks for a ticket.", src)
 	add(groupRuntime, "Table catalog", orDefault(c.conf["spark.sql.catalogImplementation"], "in-memory"), "spark.sql.catalogImplementation", "hive means a Hive metastore or the AWS Glue Data Catalog; in-memory keeps tables for this run only.", src)
 
 	// Locations.

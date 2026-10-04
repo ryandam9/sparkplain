@@ -63,7 +63,7 @@ func analyzeConfig(c *ctx, r *model.Report) {
 	}
 	sort.SliceStable(s.Key, func(i, j int) bool { return s.Key[i].NonDefault && !s.Key[j].NonDefault })
 	if r.Cluster != nil {
-		s.Missing[0] = "Which of the unmarked settings EMR itself set (its defaults for the release and instance type are not in its API) and which the code set"
+		s.Missing[0] = "Which unmarked settings come from EMR and which come from the code. The EMR API does not show the EMR defaults for the release and instance type"
 	}
 	configFindings(c)
 }

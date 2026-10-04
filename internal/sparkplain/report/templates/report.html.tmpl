@@ -25,17 +25,17 @@
       {{if not $a.Start.IsZero}}<span><b class="num">{{time $a.Start "dt"}} → {{if $a.End.IsZero}}still running{{else}}{{time $a.End "hms"}}{{end}}</b> <span class="tzlabel">{{.Zone}}</span></span>{{end}}
     </div>
     <div class="mode">
-      {{if and $r.EventLog (eq $r.EventLog.Layout "container-logs")}}{{with $r.EventLog}}<strong>Event log: not supplied; the run was rebuilt from the driver's log.</strong>
-      <span>Jobs, stages, tasks and executors come from {{num .Events}} events rebuilt from the lines the driver logged about them ({{.Input}}). Task metrics (rows, bytes, CPU and GC time, spill, memory), SQL plans and Spark's configuration are only in the event log, so the sections built from them say so. {{if $r.Logs}}Container, step and node logs: {{len $r.Logs.Files}} file{{if ne (len $r.Logs.Files) 1}}s{{end}} read.{{end}} {{$.Complete}} sections are complete, {{$.Partial}} partial, {{$.Needs}} need data this run did not have. Exit code {{$r.ExitCode}}{{if eq $r.ExitCode 3}} (partial){{end}}.</span>{{end}}
+      {{if and $r.EventLog (eq $r.EventLog.Layout "container-logs")}}{{with $r.EventLog}}<strong>Event log: not supplied. sparkplain made the run again from the driver log.</strong>
+      <span>The jobs, stages, tasks and executors come from {{num .Events}} events that sparkplain made from the lines of the driver log ({{.Input}}). Task metrics (rows, bytes, CPU and GC time, spill, memory), SQL plans and the Spark configuration are only in the event log. The sections that use them tell you this. {{if $r.Logs}}Container, step and node logs: {{len $r.Logs.Files}} file{{if ne (len $r.Logs.Files) 1}}s{{end}} read.{{end}} {{$.Complete}} sections are complete, {{$.Partial}} are partial, and {{$.Needs}} have no data from this run. Exit code {{$r.ExitCode}}{{if eq $r.ExitCode 3}} (partial){{end}}.</span>{{end}}
       {{else if $r.EventLog}}{{with $r.EventLog}}<strong>Event log: {{if $r.EventLog.Truncated}}partly read{{else}}read{{end}}.</strong>
-      <span>Layout: {{.Layout}}, codec {{.Codec}}, {{len .Files}} file{{if ne (len .Files) 1}}s{{end}}, {{num .Events}} events. {{if $r.Logs}}Container, step and node logs: {{len $r.Logs.Files}} file{{if ne (len $r.Logs.Files) 1}}s{{end}} read.{{else}}Container, step and node logs were not read (pass -cluster-id, or -from with a copy of them).{{end}} {{$.Complete}} sections are complete, {{$.Partial}} partial, {{$.Needs}} need data this run did not have. Exit code {{$r.ExitCode}}{{if eq $r.ExitCode 3}} (partial){{end}}.</span>{{end}}
-      {{else if $r.Logs}}<strong>Event log: not read.</strong> <span>The summary, findings, identity and sources come from YARN's records and {{len $r.Logs.Files}} container, step and node log{{if ne (len $r.Logs.Files) 1}}s{{end}}; the sections built from the event log are empty. The Sources panel says why it is missing. Exit code {{$r.ExitCode}}.</span>
-      {{else}}<strong>Event log: not read.</strong> <span>Every section below needs it. The Sources panel says what went wrong. Exit code {{$r.ExitCode}}.</span>{{end}}
+      <span>Layout: {{.Layout}}, codec {{.Codec}}, {{len .Files}} file{{if ne (len .Files) 1}}s{{end}}, {{num .Events}} events. {{if $r.Logs}}Container, step and node logs: {{len $r.Logs.Files}} file{{if ne (len $r.Logs.Files) 1}}s{{end}} read.{{else}}sparkplain did not read the container, step and node logs. To read them, use -cluster-id, or -from with a copy of them.{{end}} {{$.Complete}} sections are complete, {{$.Partial}} are partial, and {{$.Needs}} have no data from this run. Exit code {{$r.ExitCode}}{{if eq $r.ExitCode 3}} (partial){{end}}.</span>{{end}}
+      {{else if $r.Logs}}<strong>Event log: not read.</strong> <span>The summary, findings, identity and sources come from the YARN records and {{len $r.Logs.Files}} container, step and node log{{if ne (len $r.Logs.Files) 1}}s{{end}}. The sections that use the event log are empty. The Sources panel shows why the event log is missing. Exit code {{$r.ExitCode}}.</span>
+      {{else}}<strong>Event log: not read.</strong> <span>All sections below use it. The Sources panel shows the problem. Exit code {{$r.ExitCode}}.</span>{{end}}
     </div>
     {{if $r.AccessGaps}}<div class="missing access">
-      <h3>No access to {{len $r.AccessGaps}} source{{if ne (len $r.AccessGaps) 1}}s{{end}}: parts of this report are missing</h3>
-      <ul>{{range $r.AccessGaps}}<li><b>{{.Source}}</b>: without it the report cannot show {{.Missing}}. It needs {{.Needs}}.</li>{{end}}</ul>
-      <p>sparkplain carried on with everything else. The Sources panel has each error.</p>
+      <h3>No access to {{len $r.AccessGaps}} source{{if ne (len $r.AccessGaps) 1}}s{{end}}, so parts of this report are missing</h3>
+      <ul>{{range $r.AccessGaps}}<li><b>{{.Source}}</b>: without it, the report cannot show {{.Missing}}. The necessary access is {{.Needs}}.</li>{{end}}</ul>
+      <p>sparkplain continued with all the other sources. The Sources panel shows each error.</p>
     </div>{{end}}
   </header>
 
@@ -61,7 +61,7 @@
       <section id="summary">
         <div class="story">
           <div class="sechead"><h2>What happened</h2>{{if .Explorer}}<a class="xlink" href="{{xTab .Explorer "summary"}}">Open in the explorer →</a>{{end}}</div>
-          <ul>{{range $r.Summary.Sentences}}<li>{{.}}</li>{{end}}</ul>
+          <ul>{{range $r.Summary.Sentences}}<li>{{prose . "s"}}</li>{{end}}</ul>
         </div>
         {{if $r.Summary.KPIs}}<div class="kpis">
           {{range $r.Summary.KPIs}}<div class="kpi"><span class="l">{{.Label}}</span><span class="v{{if .Tone}} {{.Tone}}{{end}}">{{.Value}}{{if .Unit}} <small>{{.Unit}}</small>{{end}}</span><span class="x">{{.Explain}}</span></div>
@@ -70,13 +70,13 @@
       </section>
 
       {{with anatomy $r}}<section id="anatomy">
-        <div class="sechead"><h2>The run at a glance</h2><span class="note">The whole run in one picture: where it ran, how much it was given, and what it used.</span>{{if $.Explorer}}<a class="xlink" href="{{xTab $.Explorer "anatomy"}}">Open in the explorer →</a>{{end}}</div>
+        <div class="sechead"><h2>The run at a glance</h2><span class="note">All of the run in one picture: where it ran, what it got and what it used.</span>{{if $.Explorer}}<a class="xlink" href="{{xTab $.Explorer "anatomy"}}">Open in the explorer →</a>{{end}}</div>
         {{.}}
       </section>{{end}}
 
       <section id="coverage">
         <div class="sechead"><h2>What this report covers</h2></div>
-        <p class="lede">What each part of the analysis could show for this run, where its data came from, and what it can't show yet. This page is the summary; {{if .Explorer}}each part opens in the explorer, which has the detail{{else}}the explorer (sparkplain -format explorer) has the detail{{end}}.</p>
+        <p class="lede">This table shows what each part of the analysis can show for this run, the source of its data, and what it cannot show yet. This page is the summary. {{if .Explorer}}Each part opens in the explorer, which has the details.{{else}}The explorer (sparkplain -format explorer) has the details.{{end}}</p>
         <div class="tbl"><table>
           <thead><tr><th>Section</th><th>Status</th><th>Shown</th><th>Not shown yet</th></tr></thead>
           <tbody>{{range $r.Coverage}}<tr><td>{{$t := .Title}}{{with xTab $.Explorer .ID}}<a href="{{.}}">{{$t}} →</a>{{else}}{{$t}}{{end}}</td><td><span class="pill {{cov .Coverage}}">{{covLabel .Coverage}}</span></td><td>{{.Shown}}</td><td>{{if .Missing}}{{join .Missing "; "}}{{else}}—{{end}}</td></tr>
@@ -85,7 +85,7 @@
       </section>
 
       <section id="findings">
-        <div class="sechead"><h2>Findings</h2><span class="note">{{.Crit}} critical · {{.Warn}} warning · {{.Info}} info. Ranked by severity; each points to the log line it came from.</span>{{if .Explorer}}<a class="xlink" href="{{xTab .Explorer "findings"}}">Open in the explorer →</a>{{end}}</div>
+        <div class="sechead"><h2>Findings</h2><span class="note">{{.Crit}} critical · {{.Warn}} warning · {{.Info}} info. The most severe come first. Each finding links to its log line.</span>{{if .Explorer}}<a class="xlink" href="{{xTab .Explorer "findings"}}">Open in the explorer →</a>{{end}}</div>
         {{if $r.Findings}}<div class="findings">
           {{range $i, $f := $r.Findings}}<article class="finding {{sev .Severity}}" id="finding-{{add $i 1}}"><div class="stripe"></div><div class="body">
             <div class="t"><span class="fnum {{sev .Severity}}">{{add $i 1}}</span><span class="pill {{sevPill .Severity}}">{{sevLabel .Severity}}</span><h3>{{.Title}}</h3></div>
@@ -94,7 +94,7 @@
             {{if .Fix}}<div class="fpart try"><span class="k">Try</span><div>{{prose .Fix "fix"}}</div></div>{{end}}
           </div></article>
           {{end}}
-        </div>{{else}}<p class="note">No rule found anything to report.</p>{{end}}
+        </div>{{else}}<p class="note">The rules found no problems.</p>{{end}}
       </section>
 
       <section id="sources">
@@ -107,7 +107,7 @@
         {{range $r.Sources}}{{if .Files}}{{$c := fileCounts .Files}}<details><summary>{{.Name}}: {{len .Files}} object{{if ne (len .Files) 1}}s{{end}} ({{index $c "read"}} read, {{index $c "skipped"}} skipped, {{index $c "error"}} failed)</summary><div class="inner">
           <div class="tbl"><table><thead><tr><th>Object</th><th class="num">Size</th><th>Status</th><th>Why</th></tr></thead>
           <tbody>{{range headFiles .Files 500}}<tr><td class="mono">{{.Location}}</td><td class="num">{{bytes .Bytes}}</td><td>{{.Status}}{{if .Class}} <span class="sub">{{.Class}}</span>{{end}}</td><td>{{if eq .Status "error"}}<span class="bad">{{.Detail}}</span>{{else if .Detail}}{{.Detail}}{{else}}—{{end}}</td></tr>{{end}}</tbody></table></div>
-          {{if gt (len .Files) 500}}<p class="sub">The first 500 are shown; report.json lists all {{len .Files}}.</p>{{end}}
+          {{if gt (len .Files) 500}}<p class="sub">This list shows the first 500. report.json lists all {{len .Files}}.</p>{{end}}
         </div></details>{{end}}{{end}}
         {{with $r.EventLog}}<details><summary>Event log details: {{len .Files}} file{{if ne (len .Files) 1}}s{{end}}, {{num .Lines}} lines</summary><div class="inner">
           <div class="tbl"><table><thead><tr><th>File</th><th>Codec</th><th class="num">Size</th><th class="num">Unpacked</th><th class="num">Lines</th><th>Problem</th></tr></thead>
@@ -117,7 +117,7 @@
             <dt>Malformed lines</dt><dd>{{num .Malformed}}{{if .Malformed}}, first at <span class="srcref">{{src .FirstMalformed}}</span>{{end}}</dd>
             <dt>Unknown events</dt><dd>{{if .UnknownEvents}}{{range $k, $v := .UnknownEvents}}{{$k}} ({{num $v}}) {{end}}{{else}}none{{end}}</dd>
             <dt>Unknown fields</dt><dd>{{if .UnknownFields}}{{range $k, $v := .UnknownFields}}{{$k}} ({{num $v}}) {{end}}{{else}}none{{end}}</dd>
-            <dt>Values hidden</dt><dd>{{num .Redacted}} settings whose names suggest secrets</dd>
+            <dt>Values hidden</dt><dd>{{num .Redacted}} settings with names that look like secrets</dd>
           </dl>
           {{if .Notes}}<ul class="note">{{range .Notes}}<li>{{.}}</li>{{end}}</ul>{{end}}
         </div></details>{{end}}
@@ -126,7 +126,7 @@
   </div>
 
   <footer>
-    <span>{{$r.Tool}} · report schema {{$r.SchemaVersion}} · every value links to the log line it came from</span>
+    <span>{{$r.Tool}} · report schema {{$r.SchemaVersion}} · each value links to its log line</span>
     <span>Times in <span class="tzlabel">{{.Zone}}</span></span>
   </footer>
 </div>

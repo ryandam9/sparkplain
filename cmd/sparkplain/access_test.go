@@ -82,7 +82,7 @@ func TestNoAccessToCluster(t *testing.T) {
 		t.Errorf("containers = %+v", s)
 	}
 	html, _ := os.ReadFile(outPath(dir, "report.html"))
-	if !strings.Contains(string(html), "No access to 1 source: parts of this report are missing") {
+	if !strings.Contains(string(html), "No access to 1 source, so parts of this report are missing") {
 		t.Error("report.html should open with the access notice")
 	}
 	page, _ := os.ReadFile(outPath(dir, "explorer.html"))

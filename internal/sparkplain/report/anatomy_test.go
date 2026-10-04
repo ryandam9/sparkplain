@@ -133,7 +133,7 @@ func TestAnatomyEscapesAndDegrades(t *testing.T) {
 	if strings.Contains(svg, "<script>") {
 		t.Error("a host name reached the diagram unescaped")
 	}
-	if !strings.Contains(svg, "pass -cluster-id") {
+	if !strings.Contains(svg, "Use -cluster-id with -profile") {
 		t.Error("without the EMR API the diagram should say what it needs")
 	}
 }
@@ -289,7 +289,7 @@ func TestAnatomyShowsExecutorSizeAndKey(t *testing.T) {
 		Execs: []anatExec{{ID: "1", Cores: 2, Heap: 2 * gib, PeakHeap: gib}, {ID: "2", Cores: 2, Heap: 2 * gib, PeakHeap: gib}}}
 	svg := anatomySVG(&anatomy{Cluster: "c", Nodes: []*anatNode{n}}, noLinks)
 	for _, want := range []string{"2 cores · 3.0 GiB container", ">Executor 3.0 GiB<", "Driver&#39;s container", "Executor container", "Free YARN memory",
-		"Executor heap: fill is its peak", "One core each; the more solid, the busier"} {
+		"Executor heap: fill is its peak", "One square for each core, darker when busier"} {
 		if !strings.Contains(svg, want) {
 			t.Errorf("diagram lacks %q", want)
 		}
@@ -434,9 +434,9 @@ func TestAnatomyCapacityCard(t *testing.T) {
 	got := strings.Join(rmLines(buildAnatomy(r).RM), "\n")
 	want := strings.Join([]string{
 		"The cluster had 24.0 GiB of memory and 8 vCPUs: 2 worker nodes × 12.0 GiB and 4 vCPUs each.",
-		"What each node gives YARN is set by yarn.nodemanager.resource.memory-mb and yarn.nodemanager.resource.cpu-vcores.",
-		"At its busiest, this application used 13.4 GiB (56%) and 4 of the 8 vCPUs; 10.6 GiB was left.",
-		"Up to 5 containers had to wait for room, for 1 min 0 s in all.",
+		"Two settings set what each node gives YARN: yarn.nodemanager.resource.memory-mb and yarn.nodemanager.resource.cpu-vcores.",
+		"At its busiest, this application used 13.4 GiB (56%) and 4 of the 8 vCPUs. 10.6 GiB remained free.",
+		"Up to 5 containers waited for room, for 1 min 0 s in all.",
 		"No other application ran at the same time, so this one had the cluster to itself.",
 	}, "\n")
 	if got != want {
@@ -444,7 +444,7 @@ func TestAnatomyCapacityCard(t *testing.T) {
 	}
 	r.Metrics.Summary = []model.Fact{{Label: "Containers waiting", Value: "0 at most, for 0 s"}, {Label: "Applications at once", Value: "3 at most"}}
 	got = strings.Join(rmLines(buildAnatomy(r).RM), "\n")
-	for _, w := range []string{"Nothing had to wait for room.", "Up to 2 other applications ran at the same time, so this one shared the cluster."} {
+	for _, w := range []string{"No container waited for room.", "Up to 2 other applications ran at the same time, so this one shared the cluster."} {
 		if !strings.Contains(got, w) {
 			t.Errorf("shared, nothing waiting: %s", got)
 		}

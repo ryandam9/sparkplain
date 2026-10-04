@@ -34,11 +34,11 @@ func hbaseScans(c *ctx, r *model.Report, h *model.HBaseSection) map[model.Source
 	if fromLogs {
 		stages = logScanStages(r)
 		if untasked := countUntasked(r); untasked > 0 {
-			h.Missing = append(h.Missing, fmt.Sprintf("Scans for %s logged with no task: without the event log, a split is placed in its stage only when the executors' log layout prints the thread (log4j %%t), which names the task.",
+			h.Missing = append(h.Missing, fmt.Sprintf("Scans with %s that name no task. Without the event log, sparkplain can put a split in its stage only when the log layout of the executors prints the thread (log4j %%t). The thread names the task.",
 				model.Plural(untasked, "split", "splits")))
 		}
 		if len(stages) > 0 {
-			h.Missing = append(h.Missing, "Rows each scan region returned: Spark records them only in the event log.")
+			h.Missing = append(h.Missing, "The rows that each scan region returned. Spark records them only in the event log.")
 		}
 	} else {
 		stages = c.log.Stages
@@ -401,7 +401,7 @@ func tieRegions(s *model.Stage, regions []model.HBaseRegionRead, execOf []string
 	case s.ScanTasksCapped:
 		return false, fmt.Sprintf("The stage ran more than %s tasks; sparkplain keeps the first %s.", model.Num(model.MaxScanTasks), model.Num(model.MaxScanTasks))
 	case len(regions) != s.NumTasks:
-		return false, fmt.Sprintf("%s were logged for its %s, so they cannot be matched one for one: an executor's log may be missing, or TableInputFormat split regions further (hbase.mapreduce.tableinput.mappers.per.region).",
+		return false, fmt.Sprintf("The logs have %s for its %s, so sparkplain cannot match them one to one. The log of an executor can be missing. Or TableInputFormat divided regions more (hbase.mapreduce.tableinput.mappers.per.region).",
 			model.Plural(len(regions), "split", "splits"), model.Plural(s.NumTasks, "task", "tasks"))
 	}
 	tasks := map[int]*model.ScanTask{}
@@ -410,7 +410,7 @@ func tieRegions(s *model.Stage, regions []model.HBaseRegionRead, execOf []string
 	}
 	for i := range regions {
 		if t := tasks[i]; t != nil && execOf[i] != "" && t.ExecutorID != execOf[i] {
-			return false, fmt.Sprintf("Its splits in key order did not match the executors that ran its partitions (partition %d ran on executor %s, but executor %s logged that split).", i, t.ExecutorID, execOf[i])
+			return false, fmt.Sprintf("Its splits in key order did not agree with the executors of its partitions. Partition %d ran on executor %s, but executor %s logged that split.", i, t.ExecutorID, execOf[i])
 		}
 	}
 	for i := range regions {

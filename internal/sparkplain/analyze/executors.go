@@ -221,12 +221,12 @@ func analyzeNodes(c *ctx, r *model.Report) {
 			}
 			switch {
 			case start.IsZero():
-				s.Lede = fmt.Sprintf("EMR lists %s for the cluster. Nothing says when the application ran (no event log, YARN summary or step), so they are all shown, including any that ended before it or joined after it.", model.Plural(len(s.Hosts), "node", "nodes"))
+				s.Lede = fmt.Sprintf("EMR lists %s for the cluster. No source shows when the application ran (no event log, YARN summary or step). As a result, the list shows all nodes, also nodes that stopped before the run or started after it.", model.Plural(len(s.Hosts), "node", "nodes"))
 			case others > 0:
-				s.Lede = fmt.Sprintf("The cluster had %s up while the application ran; %s that ended before it or joined after it %s left out. Without the event log, which of them ran this application is not known.",
-					model.Plural(len(s.Hosts), "node", "nodes"), model.Plural(others, "other", "others"), map[bool]string{true: "is", false: "are"}[others == 1])
+				s.Lede = fmt.Sprintf("The cluster had %s while the application ran. The list does not show %s that stopped before the run or started after it. Without the event log, sparkplain cannot know which nodes ran this application.",
+					model.Plural(len(s.Hosts), "node", "nodes"), model.Plural(others, "other node", "other nodes"))
 			default:
-				s.Lede = fmt.Sprintf("The cluster had %s up while the application ran. Without the event log, which of them ran this application is not known.", model.Plural(len(s.Hosts), "node", "nodes"))
+				s.Lede = fmt.Sprintf("The cluster had %s while the application ran. Without the event log, sparkplain cannot know which nodes ran this application.", model.Plural(len(s.Hosts), "node", "nodes"))
 			}
 		}
 		return

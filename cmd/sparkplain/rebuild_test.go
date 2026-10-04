@@ -57,14 +57,14 @@ func TestRebuiltFromDriverLog(t *testing.T) {
 		}
 	}
 	summary := strings.Join(r.Summary.Sentences, " ")
-	if !strings.Contains(summary, "rebuilt from the driver's log") || strings.Contains(summary, "of CPU time") {
+	if !strings.Contains(summary, "made this run again from the driver log") || strings.Contains(summary, "of CPU time") {
 		t.Errorf("summary: %s", summary)
 	}
 	html, err := os.ReadFile(filepath.Join(dir, app+"-report.html"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(html), "Event log: not supplied; the run was rebuilt from the driver's log.") {
+	if !strings.Contains(string(html), "Event log: not supplied. sparkplain made the run again from the driver log.") {
 		t.Error("the report's banner does not say the run was rebuilt")
 	}
 }
