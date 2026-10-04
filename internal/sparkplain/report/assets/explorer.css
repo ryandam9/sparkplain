@@ -120,6 +120,8 @@ details.logsrc>.inner{padding:6px 0 4px 16px}
 .anatwrap{background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden;cursor:grab;touch-action:none}
 .anatwrap:active{cursor:grabbing}
 .anatwrap .anat{min-width:0}
+.anatwrap.panel{cursor:auto;touch-action:auto}
+.anatwrap ~ .cap{font-size:12.5px;color:var(--muted);margin:0 4px;max-width:80ch}
 .anattools{margin:0 0 8px}
 .anat .badge.hl circle{stroke:var(--ink);stroke-width:3}
 .finding.flash{animation:flash 1.6s ease-out}

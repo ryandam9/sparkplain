@@ -3526,7 +3526,7 @@
   // D3 adds zoom and pan, double-click to zoom to a part, and hover that
   // lights up every badge of the same finding.
   views.anatomy = function (arg) {
-    var s = section("The run at a glance", "The whole run in one picture. It shows the cluster, what each node offered YARN and the containers on each node, to scale. Inside an executor, it shows the regions of the heap and the peak of each. Click an executor to see inside it.");
+    var s = section("The run at a glance", "The whole run in one picture. It shows the cluster, what each node offered YARN and the containers on each node, to scale. Under it, one executor and the driver show their memory, region by region. Click an executor to see inside it.");
     // #anatomy/<id>: that executor drawn in full, above the diagram
     if (arg != null) {
       var panel = (D.anatomyExecutors || {})[arg];
@@ -3549,7 +3549,18 @@
     s.appendChild(wrap);
     add(s, guideNodes(D.anatomyGuide || {}));
     anatomyZoom(wrap, tools);
-    return s;
+    // The executor and the driver, region by region: sections of their own.
+    var out = [s];
+    (D.anatomyPanels || []).forEach(function (p) {
+      var ps = section(p.title, p.note);
+      if (p.exec && execByID[p.exec]) ps.appendChild(el("div", { cls: "crumbs" }, link("#executor/" + encodeURIComponent(p.exec), "Open executor " + p.exec + "'s page")));
+      var pw = el("div", { cls: "anatwrap panel" });
+      pw.innerHTML = p.svg; // drawn and escaped in Go
+      ps.appendChild(pw);
+      add(ps, guideNodes(D.anatomyPanelGuide || {}));
+      out.push(ps);
+    });
+    return out;
   };
   function anatomyZoom(wrap, tools) {
     var d3 = window.d3, node = wrap.querySelector("svg.anat");
