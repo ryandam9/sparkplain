@@ -1045,14 +1045,14 @@
       flowEx[e.executor] = { e: e, maxFree: maxFree, maxRemote: maxRemote };
     });
     M.order.forEach(function (id) {
-      var e = M.ex[id], h = e.host || "unknown host";
+      var e = M.ex[id]; // the card names no node: the executor's page has it
       var slots = [];
       var row = el("div", { cls: "rp-slots", style: "grid-template-columns:repeat(" + Math.min(e.nslots, 6) + ",minmax(0,1fr))" });
       for (var k = 0; k < e.nslots; k++) { var sl = el("div", { cls: "rp-slot" }); slots.push(sl); row.appendChild(sl); }
       var net = el("div", { cls: "rp-bar gauge" }, el("span")), mem = el("div", { cls: "rp-bar gauge" }, el("span"));
       var netTxt = el("span", { cls: "rp-val" }), memTxt = el("span", { cls: "rp-val" });
       var card = el("div", { cls: "rp-exec" },
-        el("div", { cls: "rp-exhead" }, el("span", null, "Executor ", execByID[id] ? execLink(id) : String(id)), el("span", { cls: "sub", title: h, text: (e.cores ? e.cores + " cores" : num(e.nslots) + " at once") + " · " + String(h).split(".")[0] })), row,
+        el("div", { cls: "rp-exhead" }, el("span", null, "Executor ", execByID[id] ? execLink(id) : String(id)), el("span", { cls: "sub", text: e.cores ? plural(e.cores, "core", "cores") : num(e.nslots) + " at once" })), row,
         flowEx[id] && flowEx[id].maxRemote ? el("div", { cls: "rp-gauge" }, el("span", { text: "Network in" }), net, netTxt) : null,
         flowEx[id] && flowEx[id].maxFree ? el("div", { cls: "rp-gauge" }, el("span", { text: "Storage free" }), mem, memTxt) : null);
       cards[id] = { card: card, slots: slots, net: net.firstChild, mem: mem.firstChild, netTxt: netTxt, memTxt: memTxt };
