@@ -2100,11 +2100,11 @@
     if (keyed.length > 1) plot.parentNode.insertBefore(legendNode(keyed), plot);
     var rowH = 30, top = 4, bandH = rows.length * rowH;
     var P = plotSvg(plot, top + bandH + 26, g.t);
+    var val = function (sr, r) { return Math.max(sr.value(r), 0) || 0; };
+    var sum = function (r, all) { return series.reduce(function (s, sr) { return s + (all || !sr.rest ? val(sr, r) : 0); }, 0); };
     // room on the right for the longest note, such as "5.9 GiB of 6.0 GiB · 5 of 8 vCPU"
     var noteText = function (r) { return g.rowNote ? g.rowNote(r) : format(sum(r)); };
     var labelW = Math.min(170, Math.round(P.w * 0.36)), noteW = Math.min(Math.max(76, 12 + 6.4 * d3.max(rows, function (r) { return noteText(r).length; })), Math.round(P.w * 0.3));
-    var val = function (sr, r) { return Math.max(sr.value(r), 0) || 0; };
-    var sum = function (r, all) { return series.reduce(function (s, sr) { return s + (all || !sr.rest ? val(sr, r) : 0); }, 0); };
     var U = unitAxis(kind, d3.max(rows, function (r) { return sum(r, true); }), [labelW, P.w - noteW], Math.max(2, Math.floor((P.w - labelW - noteW) / 80)), g.wholeTicks), x = U.x;
     var ax = P.svg.append("g").attr("class", "ax").attr("transform", "translate(0," + (top + bandH) + ")")
       .call(d3.axisBottom(x).tickValues(U.ticks).tickFormat(U.label).tickSize(-bandH).tickPadding(6));
