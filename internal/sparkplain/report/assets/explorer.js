@@ -3615,17 +3615,12 @@
     add(body, views[name](arg));
     main.appendChild(body);
     headingLevels(body);
-    // The contents box goes in before the charts draw, so they measure the
-    // column they are drawn in; its list fills after, with their titles.
+    // The contents fill after the charts draw, with their titles; they
+    // sit outside the page's column, so the charts keep its full width.
     var toc = tocHeads(body).length + charts.length >= 2 ? pageToc() : null;
-    main.classList.toggle("withtoc", !!toc);
     if (toc) main.insertBefore(toc, body);
     drawCharts();
-    if (toc && toc.querySelectorAll("li").length < 2) {
-      main.removeChild(toc);
-      main.classList.remove("withtoc");
-      drawCharts(); // the full width
-    }
+    if (toc && toc.querySelectorAll("li").length < 2) main.removeChild(toc);
     window.scrollTo(0, 0);
   }
   // headingLevels closes any jump in a tab's heading levels (an h4
@@ -3648,8 +3643,8 @@
   // The contents ("On this page") list a tab's sections and parts: its h2
   // and h3 headings and its charts' titles, not the small labels in guides
   // and findings. A click scrolls to one without changing the address,
-  // which names the tab. Beside the page on wide screens, folded above it
-  // on narrow ones; none for a tab with fewer than two parts.
+  // which names the tab. In the margin beside the page when it is wide
+  // enough, else folded above it; none for a tab with fewer than two parts.
   function tocHeads(root) {
     return [].slice.call(root.querySelectorAll("h2, h3, h4, h5, h6")).filter(function (h) {
       if (h.closest(".finding, .fpart, .explain") || /\b(glabel|bnh|k)\b/.test(h.className)) return false;
@@ -3665,7 +3660,7 @@
   }
   function pageToc() {
     var box = el("details", { cls: "ontoc" }, el("summary", { text: "On this page" }), el("ol"));
-    box.open = !window.matchMedia || matchMedia("(min-width: 1100px)").matches;
+    box.open = !window.matchMedia || matchMedia("(min-width: 1800px)").matches; // open in the margin, folded above the page
     return el("nav", { cls: "pagetoc", "aria-label": "On this page" }, box);
   }
   // fillToc lists the headings again after each draw, because a redraw

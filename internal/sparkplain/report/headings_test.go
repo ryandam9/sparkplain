@@ -29,17 +29,21 @@ func TestReportHeadingsHaveNoGaps(t *testing.T) {
 }
 
 // Each explorer tab closes gaps in its headings and lists its parts in
-// "On this page", beside the page on wide screens and folded on narrow ones.
+// "On this page", which never narrows the page: fixed in the margin when
+// it is wide enough, else folded above the tab.
 func TestExplorerTabContents(t *testing.T) {
 	t.Parallel()
-	for _, want := range []string{`function headingLevels(`, `function tocHeads(`, `"On this page"`, `matchMedia("(min-width: 1100px)")`, `scrollIntoView(`} {
+	for _, want := range []string{`function headingLevels(`, `function tocHeads(`, `"On this page"`, `matchMedia("(min-width: 1800px)")`, `scrollIntoView(`} {
 		if !strings.Contains(explorerJS, want) {
 			t.Errorf("explorer.js lacks %q", want)
 		}
 	}
-	for _, want := range []string{`#sp-main.withtoc{`, `.pagetoc{position:sticky;`, `@media (max-width:1099px){`, `scroll-margin-top:`} {
+	for _, want := range []string{`@media (min-width:1800px){`, `.pagetoc{position:fixed;`, `scroll-margin-top:`} {
 		if !strings.Contains(explorerCSS, want) {
 			t.Errorf("explorer.css lacks %q", want)
 		}
+	}
+	if strings.Contains(explorerCSS, "withtoc") || strings.Contains(explorerJS, "withtoc") {
+		t.Error("the contents take a column from the page")
 	}
 }
