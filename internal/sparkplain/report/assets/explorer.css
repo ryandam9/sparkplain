@@ -10,25 +10,22 @@ a.themebtn{text-decoration:none}
 #sp-main{display:grid;gap:22px;min-width:0}
 .tabbody{display:grid;gap:22px;min-width:0}
 .tabbody > section{display:grid;gap:14px;min-width:0}
-/* "On this page": the tab's sections, beside it on wide screens (sticky
-   under the tabs bar) and folded above it on narrow ones. */
-#sp-main.withtoc{grid-template-columns:200px minmax(0,1fr);gap:28px;align-items:start}
+/* "On this page": the tab's sections. It never takes width from the
+   page: a folded box above the tab, or, when the margin beside the page
+   is wide enough, a list fixed in that margin. */
 #sp-main :is(h2,h3,h4,h5){scroll-margin-top:64px}
-.pagetoc{position:sticky;top:60px;max-height:calc(100vh - 76px);overflow-y:auto;font-size:13px}
+.pagetoc{font-size:13px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:8px 12px}
 .pagetoc details{background:none;border:0;border-radius:0}
-.pagetoc details[open]>summary{border-bottom:0}
-.pagetoc summary{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer;padding:2px 0 6px}
+.pagetoc details[open]>summary{border-bottom:0;padding-bottom:6px}
+.pagetoc summary{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer;padding:2px 0}
 .pagetoc ol{list-style:none;margin:0;padding:0 0 0 2px;display:grid;gap:1px;border-left:1px solid var(--line)}
 .pagetoc li a{display:block;padding:3px 10px;color:var(--muted);text-decoration:none;border-left:2px solid transparent;margin-left:-1px}
 .pagetoc li a:hover{color:var(--ink);border-left-color:var(--accent)}
 .pagetoc li.sub a{padding-left:22px;font-size:12.5px}
-@media (max-width:1099px){
-  #sp-main.withtoc{grid-template-columns:minmax(0,1fr);gap:16px}
-  .pagetoc{position:static;max-height:none;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:8px 12px}
-  .pagetoc summary{padding:2px 0}
-  .pagetoc details[open]>summary{padding-bottom:6px}
+@media (min-width:1800px){
+  .pagetoc{position:fixed;top:72px;left:calc((100vw - 1320px) / 2 - 212px);width:196px;max-height:calc(100vh - 96px);overflow-y:auto;border:0;background:none;padding:0}
 }
-@media print{.pagetoc{display:none} #sp-main.withtoc{grid-template-columns:minmax(0,1fr)}}
+@media print{.pagetoc{display:none}}
 .crumbs{font-size:13px;color:var(--muted)}
 .crumbs a{text-decoration:none}
 .bar-tools{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
