@@ -90,7 +90,10 @@ func analyzeMemory(c *ctx, r *model.Report) {
 		return
 	}
 	s.Coverage = model.Partial
-	s.Missing = []string{"Java OutOfMemoryError and YARN memory-kill lines from container logs (phase 2)", "Host memory from CloudWatch (phase 3)"}
+	s.Missing = []string{"Host memory over time (needs the CloudWatch agent)"}
+	if c.logs == nil {
+		s.Missing = append([]string{"Java OutOfMemoryError and YARN memory-kill lines (needs the container logs: -cluster-id or -from)"}, s.Missing...)
+	}
 	m := memoryConfig(c)
 	s.Config = m
 	var totalGC, totalRun int64

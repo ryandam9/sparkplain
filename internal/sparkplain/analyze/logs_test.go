@@ -417,7 +417,7 @@ py4j.protocol.Py4JJavaError: An error occurred while calling o228.parquet.
 	l.Application.AttemptID = "1"
 	r = runWithLogs(l, nil, logFile(t, rmLog, `2026-09-27 09:48:10,000 INFO org.apache.hadoop.yarn.server.resourcemanager.RMAppManager$ApplicationSummary (RM Event dispatcher): appId=application_1_1,name=job.py,user=hadoop,queue=default,state=FINISHED,trackingUrl=x,appMasterHost=h,submitTime=1790000000000,startTime=1790000000000,launchTime=1790000001000,finishTime=1790000010000,finalStatus=FAILED,memorySeconds=1,vcoreSeconds=1,applicationType=SPARK,diagnostics=
 `))
-	if r.Application.Status != model.StatusFailed || r.Application.StatusReason != "Spark's event log ends normally, but YARN recorded the application as failed." {
+	if r.Application.Status != model.StatusFailed || r.Application.StatusReason != "The Spark event log ends normally, but YARN recorded the application as failed." {
 		t.Errorf("from YARN's summary: %s: %s", r.Application.Status, r.Application.StatusReason)
 	}
 }

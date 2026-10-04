@@ -67,15 +67,15 @@ func analyzeTaskStories(c *ctx, r *model.Report) {
 	s.Coverage = model.Complete
 	if u := s.Untied; u.Lines > 0 {
 		s.Coverage = model.Partial
-		s.Missing = append(s.Missing, fmt.Sprintf("Which task logged %s of the executors' task lines (shuffle reads, broadcasts, cached blocks, spills, commits): the log layout prints no thread name and the executors ran several tasks at once, so these are counted per executor only. Adding %%t to the executors' log4j pattern ties every line to its task.",
+		s.Missing = append(s.Missing, fmt.Sprintf("Which task logged %s of the task lines of the executors (shuffle reads, broadcasts, cached blocks, spills, commits). The log layout prints no thread name, and the executors ran many tasks at the same time. As a result, sparkplain counts these lines only for each executor. Add %%t to the log4j pattern of the executors, and each line shows its task.",
 			model.Num(int64(u.Lines))))
 	}
 	if s.Cut > 0 {
 		s.Coverage = model.Partial
-		s.Missing = append(s.Missing, fmt.Sprintf("The stories of %s past %s per executor log, whose lines are counted per executor only", model.Plural(s.Cut, "task", "tasks"), model.Num(200_000)))
+		s.Missing = append(s.Missing, fmt.Sprintf("The stories of %s after the first %s in each executor log. sparkplain counts their lines only for each executor", model.Plural(s.Cut, "task", "tasks"), model.Num(200_000)))
 	}
 	if earlier > 0 {
-		s.Missing = append(s.Missing, fmt.Sprintf("%s from earlier attempts of the application, which YARN restarted: the final attempt reuses their task IDs", model.Plural(earlier, "task story", "task stories")))
+		s.Missing = append(s.Missing, fmt.Sprintf("%s from earlier attempts of the application. The final attempt uses their task IDs again", model.Plural(earlier, "task story", "task stories")))
 	}
 	if c.has() {
 		var want int64
@@ -84,11 +84,11 @@ func analyzeTaskStories(c *ctx, r *model.Report) {
 		}
 		if n := want - int64(len(s.Tasks)) - int64(s.Cut); n > 0 {
 			s.Coverage = model.Partial
-			s.Missing = append(s.Missing, fmt.Sprintf("%s of the %s the run records: their executors' logs were not read", model.Plural(int(n), "task attempt", "task attempts"), model.Num(want)))
+			s.Missing = append(s.Missing, fmt.Sprintf("%s of the %s that the run records. sparkplain did not read the logs of their executors", model.Plural(int(n), "task attempt", "task attempts"), model.Num(want)))
 		}
 	}
 	if !c.metrics() {
-		s.Missing = append(s.Missing, "Rows read and written, CPU and GC time per task: only the event log has them")
+		s.Missing = append(s.Missing, "Rows read and written, CPU and GC time for each task. Only the event log has them")
 	}
 	r.TaskStories = s
 }

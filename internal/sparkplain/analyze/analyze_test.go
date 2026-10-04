@@ -149,7 +149,7 @@ func TestFailedAndInProgressApps(t *testing.T) {
 		t.Errorf("summary: %s", r.Summary.Sentences[0])
 	}
 	p := fixtureReport(t, "application_1790380000000_0045.inprogress", "application_1790380000000_0045", DefaultThresholds())
-	if p.ExitCode != 3 || !strings.Contains(p.Summary.Sentences[0], "had not finished") {
+	if p.ExitCode != 3 || !strings.Contains(p.Summary.Sentences[0], "did not finish") {
 		t.Errorf("in-progress: exit %d, %s", p.ExitCode, p.Summary.Sentences[0])
 	}
 }

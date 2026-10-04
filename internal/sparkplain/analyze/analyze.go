@@ -197,7 +197,7 @@ func (c *ctx) metrics() bool { return c.log != nil && !c.rebuilt }
 
 // rebuiltNote says what a section misses when the run was rebuilt from
 // the driver's log.
-const rebuiltNote = "Task metrics (rows, bytes, CPU and GC time, spill, memory): only the event log has them; this run was rebuilt from the driver's log"
+const rebuiltNote = "Task metrics (rows, bytes, CPU and GC time, spill, memory). Only the event log has them, and sparkplain made this run from the driver log"
 
 func (c *ctx) confBool(key string, def bool) bool {
 	v, ok := c.conf[key]

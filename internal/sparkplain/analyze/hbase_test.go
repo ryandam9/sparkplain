@@ -149,7 +149,7 @@ func TestHBaseSection(t *testing.T) {
 	if strings.Join(tables, "; ") != want {
 		t.Errorf("tables = %s\nwant %s", strings.Join(tables, "; "), want)
 	}
-	if len(h.Missing) != 1 || !strings.Contains(h.Missing[0], "need the event log") {
+	if len(h.Missing) != 1 || !strings.Contains(h.Missing[0], "only in the event log") {
 		t.Errorf("missing = %v", h.Missing)
 	}
 

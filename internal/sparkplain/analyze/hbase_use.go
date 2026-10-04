@@ -118,13 +118,13 @@ func analyzeHBase(c *ctx, r *model.Report) {
 	hbaseLoad(c, h)
 	hbaseScanFindings(c, h)
 	if slices.ContainsFunc(h.Tables, func(t model.HBaseTable) bool { return t.Read && slices.Contains(t.APIs, "hbase-spark connector") }) {
-		h.Missing = append(h.Missing, "Regions per region server for tables the hbase-spark connector read: the connector does not log its regions (HBase's own logs, step 7, will).")
+		h.Missing = append(h.Missing, "The regions on each region server for the tables that the hbase-spark connector read. The connector does not log its regions.")
 	}
 	if c.log == nil {
-		h.Missing = append(h.Missing, "Tables the hbase-spark connector read or wrote: they are named in the SQL plans, which need the event log.")
+		h.Missing = append(h.Missing, "The tables that the hbase-spark connector read or wrote. The SQL plans name them, and the plans are only in the event log.")
 	}
 	if c.logs == nil {
-		h.Missing = append(h.Missing, "Tables read or written with TableInputFormat or TableOutputFormat, their regions, and the ZooKeeper connections: these are in the container logs (-cluster-id or -from).")
+		h.Missing = append(h.Missing, "The tables that TableInputFormat or TableOutputFormat read or wrote, their regions, and the ZooKeeper connections. They are in the container logs (-cluster-id or -from).")
 	}
 	r.HBase = h
 	hbaseSlowFindings(c, h)

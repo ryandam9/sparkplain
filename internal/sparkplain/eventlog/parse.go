@@ -1170,7 +1170,7 @@ func (p *parser) settleApplication() {
 		a.Status, a.StatusReason = model.StatusUnknown, "The event log holds no events."
 	case !p.sawEnd:
 		a.Status = model.StatusIncomplete
-		a.StatusReason = "The log has no application end event: the application was still running when the log was copied, or the driver stopped without closing the log."
+		a.StatusReason = "The log has no application end event. The application was still running when someone copied the log, or the driver stopped before it closed the log."
 		if p.lastMs > 0 && !a.Start.IsZero() {
 			a.DurationMs = p.lastMs - a.Start.UnixMilli()
 		}
@@ -1186,9 +1186,9 @@ func (p *parser) settleApplication() {
 		case last == nil:
 			a.StatusReason = "The application ended normally and ran no Spark jobs."
 		case nFailed > 0:
-			a.StatusReason = fmt.Sprintf("The application ended after its last job succeeded. %d earlier job(s) failed along the way (last: job %d).", nFailed, failed.ID)
+			a.StatusReason = fmt.Sprintf("The application ended after its last job succeeded. %d earlier job(s) failed (the last was job %d).", nFailed, failed.ID)
 		default:
-			a.StatusReason = "The application ended and every job succeeded."
+			a.StatusReason = "The application ended, and all jobs succeeded."
 		}
 		if a.ExitCode == nil {
 			a.StatusReason += " Spark 3.5 does not record the driver's exit code, so an error after the last job would not show here."

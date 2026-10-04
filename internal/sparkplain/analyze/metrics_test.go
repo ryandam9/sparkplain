@@ -122,7 +122,7 @@ func TestHostCPUCountsPeriodsTheRunOverlaps(t *testing.T) {
 			}
 		}
 	}
-	if k := r.Summary.KPIs[1]; k.Label != "Hosts" || k.Explain != "Machines that ran executors, of 2 nodes up during the run; the Nodes section describes each one." {
+	if k := r.Summary.KPIs[1]; k.Label != "Hosts" || k.Explain != "The machines that ran executors, of the 2 nodes in the cluster during the run. The explorer describes each node." {
 		t.Errorf("hosts card = %+v", k)
 	}
 }

@@ -98,15 +98,15 @@ func rmLines(rm anatRM) []string {
 			have += "."
 		}
 		out = append(out, have,
-			"What each node gives YARN is set by yarn.nodemanager.resource.memory-mb and yarn.nodemanager.resource.cpu-vcores.")
+			"Two settings set what each node gives YARN: yarn.nodemanager.resource.memory-mb and yarn.nodemanager.resource.cpu-vcores.")
 		used := fmt.Sprintf("At its busiest, this application used %s (%.0f%%)", model.Bytes(rm.HeldBytes), 100*float64(rm.HeldBytes)/float64(rm.OfferedBytes))
 		if rm.HeldCores > 0 && rm.OfferedCores > 0 {
 			used += fmt.Sprintf(" and %d of the %d vCPUs", rm.HeldCores, rm.OfferedCores)
 		}
 		if left := rm.OfferedBytes - rm.HeldBytes; left > 0 {
-			used += "; " + model.Bytes(left) + " was left."
+			used += ". " + model.Bytes(left) + " remained free."
 		} else {
-			used += "; no memory was left."
+			used += ". No memory remained free."
 		}
 		out = append(out, used)
 	}
@@ -118,11 +118,11 @@ func rmLines(rm anatRM) []string {
 	if m := rmWaitRE.FindStringSubmatch(rm.Waiting); m != nil {
 		switch n, _ := strconv.Atoi(m[1]); {
 		case n == 0:
-			out = append(out, "Nothing had to wait for room.")
+			out = append(out, "No container waited for room.")
 		case shared:
-			out = append(out, fmt.Sprintf("Up to %s had to wait for room, for %s in all; some may have been other applications'.", model.Plural(n, "container", "containers"), m[2]))
+			out = append(out, fmt.Sprintf("Up to %s waited for room, for %s in all. It is possible that some of them were from other applications.", model.Plural(n, "container", "containers"), m[2]))
 		default:
-			out = append(out, fmt.Sprintf("Up to %s had to wait for room, for %s in all.", model.Plural(n, "container", "containers"), m[2]))
+			out = append(out, fmt.Sprintf("Up to %s waited for room, for %s in all.", model.Plural(n, "container", "containers"), m[2]))
 		}
 	}
 	if m := rmAppsRE.FindStringSubmatch(rm.Apps); m != nil {
@@ -231,13 +231,13 @@ const (
 // NodeManager log was still missing half an hour after it started).
 func noCapacity(r *model.Report) (full []string, node string) {
 	if r.Cluster == nil {
-		return []string{"YARN's capacity is not known: it needs the EMR API and the node logs (-cluster-id)."}, "YARN capacity not known (needs -cluster-id)"
+		return []string{"The YARN capacity is not known. It is in the EMR API and the node logs (-cluster-id)."}, "YARN capacity not known (needs -cluster-id)"
 	}
 	if st := r.Cluster.State; st != "" && !strings.HasPrefix(st, "TERMINAT") {
-		return []string{"YARN's capacity is not in the node logs yet: EMR copies them to S3 from time to",
-			"time while the cluster runs. Run sparkplain again later, or once the cluster has ended."}, "YARN capacity not in S3 yet (the cluster is still running)"
+		return []string{"The YARN capacity is not in the node logs yet. EMR copies the logs to S3",
+			"from time to time while the cluster runs. Run sparkplain again later."}, "YARN capacity not in S3 yet (the cluster is still running)"
 	}
-	return []string{"YARN's capacity is not known: the node logs read did not record it."}, "YARN capacity not in its logs"
+	return []string{"The YARN capacity is not known. The node logs that sparkplain read do not show it."}, "YARN capacity not in its logs"
 }
 
 // away says when a node that was not up for most of the run left or
@@ -281,7 +281,7 @@ func buildAnatomy(r *model.Report) *anatomy {
 			a.Cluster += " · " + c.Release
 		}
 	} else {
-		a.ClusterNote = "Instance types and YARN's capacity need the EMR API: pass -cluster-id with -profile."
+		a.ClusterNote = "The instance types and the YARN capacity are in the EMR API. Use -cluster-id with -profile."
 	}
 	a.NoCapacity, a.NoNodeCapacity = noCapacity(r)
 	a.NoCPU = "CPU not known (needs CloudWatch)"
@@ -410,7 +410,7 @@ func buildAnatomy(r *model.Report) *anatomy {
 		}
 	}
 	if r.Executors.Peak > 0 {
-		a.PeakNote = fmt.Sprintf("Drawn at the application's busiest moment: %s alive at once, of %d started.", model.Plural(r.Executors.Peak, "executor", "executors"), r.Executors.Started)
+		a.PeakNote = fmt.Sprintf("This shows the busiest time of the application: %s at the same time, of %d started.", model.Plural(r.Executors.Peak, "executor", "executors"), r.Executors.Started)
 	}
 
 	// Nodes in a useful order: the driver's, those with findings or lost
@@ -496,7 +496,7 @@ func buildAnatomy(r *model.Report) *anatomy {
 		if m := r.Memory.Driver; m != nil {
 			d.PeakHeap, d.PeakExecution, d.PeakStorage = m.PeakHeap, m.PeakExecution, m.PeakStorage
 		}
-		d.Why = "It plans the work and collects results; it runs no tasks."
+		d.Why = "It plans the work and collects the results. It runs no tasks."
 		a.Driver = d
 	}
 	return a
@@ -1038,8 +1038,8 @@ func anatomySVG(a *anatomy, l anatLinks) string {
 	} else {
 		body.f(`<rect class="nbox unknown" x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="8"/>`, px, y, pw, topH)
 		body.text(px+12, y+20, "h", "", "Primary node")
-		body.text(px+12, y+40, "m", "", "Runs YARN's ResourceManager, which")
-		body.text(px+12, y+56, "m", "", "places every container on the workers.")
+		body.text(px+12, y+40, "m", "", "Runs the YARN ResourceManager. It places")
+		body.text(px+12, y+56, "m", "", "all containers on the worker nodes.")
 		body.text(px+12, y+80, "m", "", "Not known for this run.")
 	}
 	body.f(`<g class="rmpanel"><rect class="panel" x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="8"/>`, rx, y, rw, topH)
@@ -1094,7 +1094,7 @@ func anatomySVG(a *anatomy, l anatLinks) string {
 			y = drawUnused(body, a, a.Unused, y, l) + anGap
 		}
 	} else {
-		body.text(anPad+14, y+16, "m", "", "No worker node is known for this run: the event log names the hosts that ran executors.")
+		body.text(anPad+14, y+16, "m", "", "sparkplain knows no worker node for this run. The event log names the hosts that ran executors.")
 		y += 30
 	}
 
@@ -1215,7 +1215,7 @@ func drawUnused(b *svgw, a *anatomy, u *anatUnused, y float64, l anatLinks) floa
 	h := 50 + 16*float64(len(lines)+len(notes))
 	b.f(`<g class="unused"><rect class="nbox idle" x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="8"/>`, x, y, w, h)
 	b.text(x+12, y+20, "h", "", fmt.Sprintf("Not used by this application: %s", model.Plural(u.Count, "worker node", "worker nodes")))
-	b.text(x+12, y+37, "m", "", "No executor or driver of this application ran on them; other applications may have.")
+	b.text(x+12, y+37, "m", "", "No executor or driver of this application ran on them. It is possible that other applications used them.")
 	for i, line := range lines {
 		b.text(x+12, y+56+16*float64(i), "", "", line)
 	}
@@ -1281,7 +1281,7 @@ func drawKey(b *svgw, a *anatomy, y float64) float64 {
 	if chips {
 		items = append(items, item{func(x, y float64) {
 			b.f(`<rect class="core" x="%.1f" y="%.1f" width="7" height="7" rx="1.5" style="fill-opacity:.35"/><rect class="core" x="%.1f" y="%.1f" width="7" height="7" rx="1.5"/>`, x, y-8, x+9, y-8)
-		}, "One core each; the more solid, the busier"})
+		}, "One square for each core, darker when busier"})
 	}
 	if squares {
 		items = append(items, item{func(x, y float64) {
@@ -1648,7 +1648,7 @@ func drawJVM(b *svgw, a *anatomy, j *anatJVM, y float64, l anatLinks) float64 {
 	user := usable - unified
 	regions := []region{
 		{"Reserved", "r-res", reserved, "Spark keeps 300 MiB of the heap for itself."},
-		{"User memory", "r-user", user, "Your code's own objects and Spark's internal metadata: the heap left after Spark's working memory."},
+		{"User memory", "r-user", user, "The objects of your code and the internal metadata of Spark. This is the heap that remains after the working memory of Spark."},
 		{"Spark's working memory", "r-uni", unified, fmt.Sprintf("(heap − 300 MiB) × spark.memory.fraction (%.2g): shared by execution (shuffles, joins, sorts) and storage (cache).", frac)},
 	}
 	if j.Overhead > 0 {
@@ -1748,7 +1748,7 @@ func drawJVM(b *svgw, a *anatomy, j *anatJVM, y float64, l anatLinks) float64 {
 			b.text(bx+float64(min(j.Cores, 32))*16+10, cy+18, "m", "", strings.Join(st, " · "))
 		}
 	} else if j.Why != "" || j.Title == "The driver" {
-		b.text(bx, cy, "m", "", "It plans the work and gathers results; tasks run on the executors.")
+		b.text(bx, cy, "m", "", "It plans the work and collects the results. The tasks run on the executors.")
 	}
 	b.WriteString(`</g>`)
 	return y + h
@@ -1781,7 +1781,7 @@ func drawBadgeKey(b *svgw, a *anatomy, y float64, l anatLinks) float64 {
 		if len(ns) > 1 {
 			which = "Findings " + strings.Join(ns[:len(ns)-1], ", ") + " and " + ns[len(ns)-1] + " are"
 		}
-		b.text(x, y+8, "m", "", which+" about the work itself (jobs, stages, settings), not where it ran, so no badge marks them above.")
+		b.text(x, y+8, "m", "", which+" about the work (jobs, stages, settings), not about where it ran. As a result, no badge shows them above.")
 		y += 22
 	}
 	return y
@@ -1791,19 +1791,20 @@ func drawBadgeKey(b *svgw, a *anatomy, y float64, l anatLinks) float64 {
 // anatGuide explains the run-at-a-glance diagram; the explorer shows the same.
 var anatGuide = chartGuide{
 	Axes: [][2]string{
-		{"Boxes", "The cluster's nodes: the primary node runs YARN's ResourceManager, and each worker node that ran this application's driver or executors shows what it did. The worker nodes it did not use add up to one box, counted by role and instance type."},
-		{"Bar in each node", "The memory the node offered YARN, to scale, with this application's driver and executor containers placed on it at the application's busiest moment."},
-		{"Cards", "One per executor on the node: its peak heap against the heap it was given, its cores and container size, and how busy its cores were."},
-		{"Bottom panels", "Inside one executor (the one with the highest heap) and the driver: the Java heap's regions, to scale, with how far each peaked."},
-		{"Badges", "Numbered findings, pinned to the part they are about."},
+		{"Boxes", "The nodes of the cluster. The primary node runs the YARN ResourceManager. Each worker node that ran the driver or executors of this application shows its work. The worker nodes that the application did not use are in one box, counted by role and instance type."},
+		{"Bar in each node", "The memory that the node offered YARN, to scale. It shows the driver and executor containers of this application at its busiest time."},
+		{"Cards", "One card for each executor on the node. It shows the peak heap and the heap size, the cores, the container size and how busy the cores were."},
+		{"Bottom panels", "One executor (the one with the highest heap) and the driver. Each panel shows the regions of the Java heap, to scale, and the peak of each region."},
+		{"Badges", "Numbered findings, on the part that they are about."},
 	},
 	Read: []string{
-		"Read it top down: the cluster, then each node, then inside one executor.",
-		"Hatched space on a node is memory nobody used; if it is narrower than an executor, it could not hold one.",
-		"Red outlines are executors that were killed or lost.",
-		"Inside an executor, a peak line near the end of the heap means it nearly ran out; a short execution bar with spill elsewhere means each task had too little memory.",
+		"Read it from top to bottom: the cluster, then each node, then the inside of one executor.",
+		"Hatched space on a node is memory that no container used. If it is narrower than an executor, no executor could use it.",
+		"Red outlines are executors that Spark lost or that YARN killed.",
+		"In an executor, a peak line near the end of the heap means that the heap was almost full.",
+		"A short execution bar, with spill in other places, means that each task had too little memory.",
 	},
-	Note: "Hover anything for exact values; click a badge to read its finding.",
+	Note: "Hover over a part to see the exact values. Click a badge to read its finding.",
 }
 
 func anatomyHTML(r *model.Report, explorer string) template.HTML {

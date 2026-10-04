@@ -87,7 +87,7 @@ func TestHBaseScanUntied(t *testing.T) {
 	t.Parallel()
 	r := Run(scanRun(true))
 	sc := r.HBase.Scans[0]
-	if sc.Tied || !strings.Contains(sc.Untied, "did not match the executors") || sc.Servers[0].Rows != 0 {
+	if sc.Tied || !strings.Contains(sc.Untied, "did not agree with the executors") || sc.Servers[0].Rows != 0 {
 		t.Errorf("scan = %+v", sc)
 	}
 	for _, g := range sc.Regions {
@@ -223,7 +223,7 @@ func TestHBaseScanFromLogs(t *testing.T) {
 		t.Errorf("task stages = %+v", ts)
 	}
 	missing := strings.Join(r.HBase.Missing, "\n")
-	if !strings.Contains(missing, "Rows each scan region returned") || !strings.Contains(missing, "Scans for 1 split logged with no task") {
+	if !strings.Contains(missing, "The rows that each scan region returned") || !strings.Contains(missing, "Scans with 1 split that name no task") {
 		t.Errorf("missing = %s", missing)
 	}
 }

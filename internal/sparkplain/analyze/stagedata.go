@@ -114,7 +114,7 @@ func analyzeStageData(c *ctx, r *model.Report) {
 		})
 	}
 	if untied > 0 {
-		r.Jobs.Missing = append(r.Jobs.Missing, fmt.Sprintf("Which stage read or wrote %d files or file ranges: their executors were running tasks of more than one stage when they logged them, in a layout that does not print the task's thread", untied))
+		r.Jobs.Missing = append(r.Jobs.Missing, fmt.Sprintf("Which stage read or wrote %d files or file ranges. Their executors ran tasks of more than one stage when they logged them, and the log layout does not print the thread of the task", untied))
 	}
 }
 

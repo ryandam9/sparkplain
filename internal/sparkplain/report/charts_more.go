@@ -117,7 +117,7 @@ func unknownNote(nodes []string) string {
 	if len(nodes) == 0 {
 		return ""
 	}
-	return "Not drawn, because the logs read do not say how much memory their NodeManager offered YARN (its registration and container placement lines may have rotated out of the ResourceManager's log): " + strings.Join(nodes, "; ") + "."
+	return "Not drawn: " + strings.Join(nodes, "; ") + ". The logs that sparkplain read do not show how much memory their NodeManager offered YARN. It is possible that their registration and container lines rotated out of the ResourceManager log."
 }
 
 // chartFuncs are the report template's chart functions; explorer links
