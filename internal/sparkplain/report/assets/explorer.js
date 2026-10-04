@@ -26,6 +26,18 @@
     if (Array.isArray(c)) { c.forEach(function (x) { add(n, x); }); return; }
     n.appendChild(typeof c === "object" ? c : document.createTextNode(String(c)));
   }
+  // foldAll is a pair of buttons that open or close every fold in scope.
+  function foldAll(scope) {
+    var set = function (open) { return function () { scope.querySelectorAll("details").forEach(function (d) { d.open = open; }); }; };
+    return el("span", { cls: "foldall" }, el("button", { type: "button", text: "Open all", onclick: set(true) }), el("button", { type: "button", text: "Close all", onclick: set(false) }));
+  }
+  // Printing opens every fold, then puts them back.
+  var shut = [];
+  window.addEventListener("beforeprint", function () {
+    shut = [].slice.call(document.querySelectorAll("#sp-main details:not([open])"));
+    shut.forEach(function (d) { d.open = true; });
+  });
+  window.addEventListener("afterprint", function () { shut.forEach(function (d) { d.open = false; }); shut = []; });
   function link(href, text, cls) { return el("a", { href: href, text: text, cls: cls }); }
   function objs(t) {
     return t.rows.map(function (r) {
@@ -333,15 +345,17 @@
     var list = el("div", { cls: "findings" });
     D.findings.forEach(function (f, i) {
       var sev = { critical: "crit", warning: "warn", info: "info" }[f.sev] || "info";
-      list.appendChild(el("article", { cls: "finding " + sev, id: "finding-" + (i + 1) }, el("div", { cls: "stripe" }), el("div", { cls: "body" },
-        el("div", { cls: "t" }, el("span", { cls: "fnum " + sev, text: String(i + 1) }), el("span", { cls: "pill " + ({ crit: "crit", warn: "part", info: "info" }[sev]), text: { crit: "Critical", warn: "Warning", info: "Info" }[sev] }), el("h3", { text: f.title })),
-        el("div", { cls: "fpart what" }, el("h4", { cls: "k", text: { crit: "Error", warn: "Problem", info: "Note" }[sev] }), el("div", null, proseNodes(f.expl, "expl"))),
+      // Critical and warning findings start open; info starts closed.
+      list.appendChild(el("article", { cls: "finding " + sev, id: "finding-" + (i + 1) }, el("div", { cls: "stripe" }), el("details", { cls: "body", open: sev !== "info" },
+        el("summary", { cls: "t" }, el("span", { cls: "fnum " + sev, text: String(i + 1) }), el("span", { cls: "pill " + ({ crit: "crit", warn: "part", info: "info" }[sev]), text: { crit: "Critical", warn: "Warning", info: "Info" }[sev] }), el("h3", { text: f.title })),
+        el("div", { cls: "fbody" }, el("div", { cls: "fpart what" }, el("h4", { cls: "k", text: { crit: "Error", warn: "Problem", info: "Note" }[sev] }), el("div", null, proseNodes(f.expl, "expl"))),
         (f.ev || []).length ? el("div", { cls: "fpart evid" }, el("h4", { cls: "k", text: "Evidence" }), el("div", null, f.ev.map(function (e) {
           var h = refHref(e[1]), lh = logHref(e[2]);
           return el("div", { cls: "ev" }, h ? link(h, e[0]) : e[0], e[2] ? [" · ", lh ? link(lh, e[2]) : e[2]] : "");
         }))) : null,
-        f.fix ? el("div", { cls: "fpart try" }, el("h4", { cls: "k", text: "Try" }), el("div", null, proseNodes(f.fix, "fix"))) : null)));
+        f.fix ? el("div", { cls: "fpart try" }, el("h4", { cls: "k", text: "Try" }), el("div", null, proseNodes(f.fix, "fix"))) : null))));
     });
+    if (D.findings.length > 1) fs.appendChild(foldAll(list));
     fs.appendChild(list);
     out.push(fs);
     if (runningTasks.length) {
@@ -1775,8 +1789,8 @@
       ] }));
     }
     var box = el("input", { cls: "filter", type: "search", placeholder: "Search settings", "aria-label": "Search settings" });
-    s.appendChild(box);
     var groups = el("div", { cls: "findings" });
+    s.appendChild(el("div", { cls: "filterbar" }, box, foldAll(groups)));
     (D.config || []).forEach(function (g) {
       var d = el("details", { cls: "cfggroup" }, el("summary", { text: g.name + " (" + num(g.entries.length) + ")" }));
       d.appendChild(el("div", { cls: "tbl" }, el("table", null,
@@ -3465,16 +3479,20 @@
         }));
       }
     }
+    var srcs = el("div", { cls: "logsrcs" });
     (D.logSources || []).forEach(function (x) {
-      s2.appendChild(el("div", { cls: "logsrc" }, el("h3", null, x.name, " ", el("span", { cls: "pill " + ({ read: "full", partial: "part", error: "crit" }[x.status] || "none"), text: SRC_LABEL[x.status] || x.status }), x.class ? el("span", { cls: "sub", text: x.class }) : null),
-        x.loc ? el("p", { cls: "mono sub", text: x.loc }) : null, el("p", { text: x.detail }),
+      // Each source folds; one that was not read in full starts open.
+      srcs.appendChild(el("details", { cls: "logsrc", open: x.status === "partial" || x.status === "error" }, el("summary", null, el("h3", null, x.name, " ", el("span", { cls: "pill " + ({ read: "full", partial: "part", error: "crit" }[x.status] || "none"), text: SRC_LABEL[x.status] || x.status }), x.class ? el("span", { cls: "sub", text: x.class }) : null)),
+        el("div", { cls: "inner" }, x.loc ? el("p", { cls: "mono sub", text: x.loc }) : null, el("p", { text: x.detail }),
         (x.skipped || []).length ? el("details", null, el("summary", { text: num(x.skipped.length + (x.more || 0)) + " objects skipped or unreadable" }), el("div", { cls: "inner" },
           table({ rows: x.skipped, sort: 0, dir: "asc", page: 100, cols: [
             { h: "Object", v: function (o) { return o.location; }, f: function (o) { return el("span", { cls: "mono", text: o.location }); } },
             { h: "Size", num: true, v: function (o) { return o.bytes; }, f: function (o) { return bytes(o.bytes); } },
             { h: "Why", v: function (o) { return o.status + " " + (o.detail || ""); }, f: function (o) { return el("span", { cls: o.status === "error" ? "bad" : null, text: (o.errorClass ? o.errorClass + ": " : "") + (o.detail || o.status) }); } }
-          ] }), x.more ? explain(num(x.more) + " more are listed in report.json.") : null)) : null));
+          ] }), x.more ? explain(num(x.more) + " more are listed in report.json.") : null)) : null)));
     });
+    if ((D.logSources || []).length > 1) s2.appendChild(foldAll(srcs));
+    s2.appendChild(srcs);
     if (!logFiles.length) { s2.appendChild(explain("No container, step or node logs were read. Run sparkplain with -cluster-id (reads them from S3) or -from (a local copy).")); return s2; }
     var worst = function (f) { return f.found.reduce(function (m, r) { return Math.min(m, { critical: 0, warning: 1, info: 2 }[r[LC.sev]]); }, 3); };
     s2.appendChild(el("h3", { text: "Files" }));
@@ -3572,7 +3590,7 @@
   // #finding/3 opens the overview at that finding.
   views.finding = function (n) {
     var out = views.overview();
-    setTimeout(function () { var f = document.getElementById("finding-" + n); if (f) { f.scrollIntoView({ block: "start" }); f.classList.add("flash"); } }, 0);
+    setTimeout(function () { var f = document.getElementById("finding-" + n); if (f) { var d = f.querySelector("details"); if (d) d.open = true; f.scrollIntoView({ block: "start" }); f.classList.add("flash"); } }, 0);
     return out;
   };
 

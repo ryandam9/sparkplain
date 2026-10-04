@@ -91,4 +91,40 @@
       });
     });
   }
+
+  // Folding. The buttons open or close every fold in their section; a link
+  // to a finding opens it; printing opens every fold, then puts them back.
+  document.querySelectorAll(".foldall[data-fold]").forEach(function (bar) {
+    var scope = document.querySelector(bar.getAttribute("data-fold"));
+    if (!scope) return;
+    bar.hidden = false;
+    bar.querySelectorAll("button").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var open = b.hasAttribute("data-open");
+        scope.querySelectorAll("details").forEach(function (d) { d.open = open; });
+      });
+    });
+  });
+  function openTarget() {
+    var t = location.hash.length > 1 && document.getElementById(decodeURIComponent(location.hash.slice(1)));
+    if (!t) return;
+    var d = t.tagName === "DETAILS" ? t : t.querySelector(":scope > details");
+    for (var p = d || t; p; p = p.parentElement) if (p.tagName === "DETAILS") p.open = true;
+    t.scrollIntoView({ block: "start" });
+  }
+  window.addEventListener("hashchange", openTarget);
+  document.addEventListener("click", function (ev) {
+    var a = ev.target.closest && ev.target.closest('a[href^="#"]');
+    if (a && a.getAttribute("href") === location.hash) setTimeout(openTarget, 0); // the same link again: no hashchange
+  });
+  openTarget();
+  var shut = [];
+  window.addEventListener("beforeprint", function () {
+    shut = [].slice.call(document.querySelectorAll("details:not([open])"));
+    shut.forEach(function (d) { d.open = true; });
+  });
+  window.addEventListener("afterprint", function () {
+    shut.forEach(function (d) { d.open = false; });
+    shut = [];
+  });
 })();
