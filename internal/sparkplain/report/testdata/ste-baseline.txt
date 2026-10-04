@@ -1,21 +1,3 @@
 # Text that broke an ASD-STE100 rule before TestPlainLanguage came in.
 # Rewrite it, then run with -ste-update; this list only shrinks.
-analyze/settings.go	not approved: "may" (use can)	How long an executor may sit idle before dynamic allocation removes it.
-analyze/settings.go	not approved: "may" (use can)	How many times one task may fail before its job fails.
-analyze/settings.go	not approved: "may" (use can)	The most data actions like collect() may bring back to the driver. 0 means no limit.
-analyze/settings.go	not approved: "may" (use can)	The most executors dynamic allocation may request.
-analyze/settings.go	not approved: "whether" (use if)	Whether Spark adds and removes executors as the workload changes.
-analyze/settings.go	not approved: "whether" (use if)	Whether Spark also uses memory outside the Java heap.
-analyze/settings.go	not approved: "whether" (use if)	Whether Spark starts backup copies of slow tasks.
-analyze/settings.go	not approved: "whether" (use if)	Whether adaptive execution merges small shuffle partitions.
-analyze/settings.go	not approved: "whether" (use if)	Whether adaptive execution splits oversized partitions in joins.
-analyze/settings.go	not approved: "whether" (use if)	Whether cache updates are logged. Needed to show cached data sizes.
-analyze/settings.go	not approved: "whether" (use if)	Whether executors report whole-process memory (RSS), including Python workers.
-analyze/settings.go	not approved: "whether" (use if)	Whether shuffle files are served by the node's shuffle service, so removing an executor does not lose them.
-analyze/settings.go	not approved: "whether" (use if)	Whether the event log is split into parts.
-analyze/summary.go	not approved: "require" (use is necessary)	Hadoop services on the cluster require Kerberos tickets.
-analyze/summary.go	not approved: "require" (use is necessary)	Hadoop services require Kerberos. The principal was not in the Spark settings, so it came from a ticket cache or keytab on the node.
-analyze/summary.go	not approved: "whether" (use if)	Whether EMRFS data on S3 and the nodes' disks are encrypted by the security configuration.
-analyze/summary.go	not approved: "whether" (use if)	Whether Lake Formation grants control access to tables, on top of IAM.
-analyze/summary.go	not approved: "whether" (use if)	Whether steps can run as their own IAM role instead of the instance profile.
-analyze/summary.go	not approved: "whether" (use if)	Whether traffic between the cluster's services is encrypted with TLS.
+
