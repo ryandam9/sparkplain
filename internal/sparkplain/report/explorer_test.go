@@ -504,7 +504,8 @@ func TestClusterNodesUpDuringTheRun(t *testing.T) {
 // The replay is a tab of its own when the executors' logs told the tasks'
 // stories, and it plays only when asked (it starts paused). A legend says
 // which stage each colour is, and what happened is a numbered list whose
-// tasks are grouped by stage and second.
+// tasks are grouped by stage and second. Each executor's card names its
+// cores but not its node.
 func TestExplorerReplay(t *testing.T) {
 	t.Parallel()
 	for _, want := range []string{
@@ -524,6 +525,12 @@ func TestExplorerReplay(t *testing.T) {
 	}
 	if strings.Contains(explorerJS, "setInterval(") {
 		t.Error("the replay should animate with requestAnimationFrame, which stops with the tab")
+	}
+	// An executor's card names its cores, not its node (the user asked).
+	card := explorerJS[strings.Index(explorerJS, `el("div", { cls: "rp-exhead" }`):]
+	card = card[:strings.Index(card, "\n")]
+	if strings.Contains(card, "host") || !strings.Contains(card, `plural(e.cores, "core", "cores")`) {
+		t.Errorf("replay card header: %s", card)
 	}
 }
 
