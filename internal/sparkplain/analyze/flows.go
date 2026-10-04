@@ -31,7 +31,14 @@ func analyzeFlows(c *ctx, r *model.Report) {
 	}
 	f := &model.FlowSection{}
 	execAt := map[string]int{}
-	var steps []stepOf
+	nSteps := 0
+	for _, x := range s.Executors {
+		nSteps += len(x.Untied.Steps)
+	}
+	for k := range s.Tasks {
+		nSteps += len(s.Tasks[k].Steps)
+	}
+	steps := make([]stepOf, 0, nSteps) // sized once, as for the task stories
 	addExec := func(id, host, file string) int {
 		if i, ok := execAt[id]; ok {
 			return i

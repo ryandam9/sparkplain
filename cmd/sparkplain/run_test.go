@@ -127,10 +127,10 @@ func TestConfigFileThresholdsAndFormat(t *testing.T) {
 		t.Error("format json should not write html")
 	}
 	js, _ := os.ReadFile(outPath(out, "report.json"))
-	if bytes.Contains(js, []byte(`"rule": "stage-skew"`)) {
+	if bytes.Contains(js, []byte(`"rule":"stage-skew"`)) {
 		t.Error("skew-ratio 100 from the config file should silence the skew rule")
 	}
-	if !bytes.Contains(js, []byte(`"timeZone": "Australia/Sydney"`)) {
+	if !bytes.Contains(js, []byte(`"timeZone":"Australia/Sydney"`)) {
 		t.Error("timezone from config not applied")
 	}
 
@@ -389,7 +389,7 @@ func TestOnlineEventLog(t *testing.T) {
 			t.Fatalf("%v: exit %d: %s", args, code, errs)
 		}
 		js, _ := os.ReadFile(outPath(dir, "report.json"))
-		if !bytes.Contains(js, []byte(`"id": "application_1790380000000_0042"`)) || !strings.Contains(out, outPath(dir, "report.html")) {
+		if !bytes.Contains(js, []byte(`"id":"application_1790380000000_0042"`)) || !strings.Contains(out, outPath(dir, "report.html")) {
 			t.Errorf("%v: no report for the S3 event log: %s", args, errs)
 		}
 	}

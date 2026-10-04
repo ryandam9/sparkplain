@@ -530,7 +530,7 @@ func (c *classifier) header(h header, line string) {
 		m := krbLoginRE.FindStringSubmatch(msg)
 		l = c.entry(model.LogIdentity, model.Info, h.time, msg)
 		l.Fields["principal"], l.Fields["keytab"], l.Fields["via"] = redact.Text(m[1]), redact.Text(m[2]), "Kerberos login"
-	case metaConnRE.MatchString(msg):
+	case strings.Contains(msg, "metastore") && metaConnRE.MatchString(msg): // the word first: the pattern alone is slow on every line
 		m := metaConnRE.FindStringSubmatch(msg)
 		l = c.entry(model.LogMetastore, model.Info, h.time, msg)
 		if m[1] != "" {
@@ -567,7 +567,7 @@ func (c *classifier) header(h header, line string) {
 		l.Fields["table"], l.Fields["access"], l.Fields["api"] = m[1], "write", "TableOutputFormat"
 		c.add(l)
 		return
-	case !problem && hbaseConnRE.MatchString(msg):
+	case !problem && (strings.Contains(msg, "connectString=") || strings.Contains(msg, "hbase.zookeeper.quorum")) && hbaseConnRE.MatchString(msg):
 		m := hbaseConnRE.FindStringSubmatch(msg)
 		text := msg
 		if z := zkConnectRE.FindString(msg); z != "" {
