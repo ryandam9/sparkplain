@@ -27,6 +27,9 @@ type Limits struct {
 	MaxZipMemory int64         // zip bytes held in memory across all workers; default 1 GiB
 	PerObject    time.Duration // timeout per object; default 5 minutes
 	MaxEntries   int           // zip entries read per archive; default 1000
+	// Progress, when set, counts the objects readers take from these
+	// limits, for the command line's progress line.
+	Progress *Progress
 }
 
 func (l Limits) withDefaults() Limits {

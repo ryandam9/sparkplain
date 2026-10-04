@@ -95,9 +95,11 @@ type Input struct {
 	// inside the log can confirm it is the right one (see SP-008).
 	NameMatches bool
 	Notes       []string
-	parts       []part
-	closer      io.Closer
-	limits      Limits
+	// Progress, when set, counts the bytes and parts read as Parse goes.
+	Progress *source.Progress
+	parts    []part
+	closer   io.Closer
+	limits   Limits
 }
 
 // Where names what is read, for people: the log file, the zip and the

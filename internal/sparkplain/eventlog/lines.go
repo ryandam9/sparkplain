@@ -16,13 +16,15 @@ import (
 type lineFunc func(line []byte, src model.Source, partial bool) error
 
 type countingReader struct {
-	r io.Reader
-	n int64
+	r    io.Reader
+	n    int64
+	prog *source.Progress // when set, also counts into it
 }
 
 func (c *countingReader) Read(p []byte) (int, error) {
 	n, err := c.r.Read(p)
 	c.n += int64(n)
+	c.prog.Read(int64(n))
 	return n, err
 }
 
@@ -36,6 +38,9 @@ func (in *Input) eachLine(ctx context.Context, fn lineFunc, onLong func(model.So
 		notes     []string
 	)
 	for _, p := range in.parts {
+		in.Progress.Add(p.size)
+	}
+	for _, p := range in.parts {
 		fr := model.FileRead{Name: p.name, Bytes: p.size}
 		err := func() error {
 			rc, err := p.open()
@@ -43,7 +48,8 @@ func (in *Input) eachLine(ctx context.Context, fn lineFunc, onLong func(model.So
 				return classify(err)
 			}
 			defer rc.Close()
-			raw := &countingReader{r: source.ContextReader(ctx, rc)}
+			defer in.Progress.Done()
+			raw := &countingReader{r: source.ContextReader(ctx, rc), prog: in.Progress}
 			dr, codec, note, done, err := decompressor(raw, p.name)
 			fr.Codec = codec
 			if note != "" {

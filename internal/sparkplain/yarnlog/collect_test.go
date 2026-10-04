@@ -39,7 +39,12 @@ func kindCount(c Collection) map[string]int {
 func TestCollectUnderPrefix(t *testing.T) {
 	t.Parallel()
 	st := source.NewLocalStore(emrlogs)
-	c := Collect(context.Background(), st, Plan{Root: "j-FIXTURE0049CLUSTER/", AppID: "application_1790380000000_0049"})
+	prog := &source.Progress{}
+	c := Collect(context.Background(), st, Plan{Root: "j-FIXTURE0049CLUSTER/", AppID: "application_1790380000000_0049", Limits: source.Limits{Progress: prog}})
+	// Every object read is counted for the progress line, with its size.
+	if n := prog.Files.Load(); n < int64(len(c.Files)) || n != prog.FilesTotal.Load() || prog.Bytes.Load() != prog.BytesTotal.Load() || prog.Bytes.Load() == 0 {
+		t.Errorf("progress: %d of %d files, %d of %d bytes; %d files read", n, prog.FilesTotal.Load(), prog.Bytes.Load(), prog.BytesTotal.Load(), len(c.Files))
+	}
 	if len(c.Steps) != 1 || c.Steps[0] != "s-FIXTURESTEP0001" {
 		t.Errorf("steps = %v (the s3-dist-cp step submitted no application)", c.Steps)
 	}

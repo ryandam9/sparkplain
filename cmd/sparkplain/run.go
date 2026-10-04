@@ -127,6 +127,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return decodeScan(o.decodeScan, os.Stdin, stdout, stderr)
 	}
 	con := newConsole(stdout, stderr)
+	defer con.clear() // stops a status line or heartbeat on every way out
 	fail := func(format string, a ...any) int {
 		con.clear()
 		fmt.Fprintf(stderr, "sparkplain: "+format+"\n", a...)
@@ -249,7 +250,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		outDir = filepath.Join(home, "sparkplain", time.Now().Format("2006-01-02"), o.appID)
 	}
-	con.status("checking what the run can read")
+	con.step("access check", "checking what the run can read")
 	chk := accessCheck(ctx, cloud, checkInput{o: o, eventLogPrefix: cfg.EventLogPrefix, outDir: outDir})
 	checks := chk.rows
 	con.accessCheck(chk, o.profile, cloud.regionName(), online)
@@ -259,7 +260,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	var cluster *model.Cluster
 	logs := clusterLogs{logLoc: logLoc}
 	if online {
-		con.status("reading the cluster from the EMR API")
+		con.step("EMR API", "reading the cluster from the EMR API")
 		c, err := cloud.cluster(ctx, o.clusterID, o.clusterName)
 		switch {
 		case errors.Is(err, errNoProfile), errors.Is(err, awsmeta.ErrNotFound):
@@ -272,7 +273,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		default:
 			cluster = &c
 			con.clusterFound(c)
-			con.status("reading the cluster's steps and instances")
+			con.step("EMR API", "reading the cluster's steps and instances")
 			logs = emrMetadata(ctx, cloud, cluster)
 		}
 		logs.logLoc = logLoc // the two above start a new clusterLogs
@@ -321,7 +322,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	var log *model.EventLog
 	var in *eventlog.Input
 	var stepDirs []string
-	con.status("reading the event log")
+	con.step("event log", "reading the event log")
 	switch {
 	case evPath != "":
 		in, err = cloud.resolve(ctx, evPath, o.appID, eventlog.Limits{MaxObjectBytes: maxSize, MaxUnpackedBytes: maxUnpacked})
@@ -369,6 +370,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 			con.note("%s", n)
 		}
 		start := time.Now()
+		in.Progress = &source.Progress{}
+		con.track(in.Progress)
 		opt := eventlog.Options{}
 		if outputs["explorer"] {
 			lim := cfg.Explorer.WithDefaults()
@@ -408,7 +411,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	con.sources(src)
 
-	lim := source.Limits{Workers: o.workers, MaxObject: maxSize, MaxUnpacked: maxUnpacked}
+	lim := source.Limits{Workers: o.workers, MaxObject: maxSize, MaxUnpacked: maxUnpacked, Progress: &source.Progress{}}
 	var fetched []report.FetchedSource // the application's scripts, from S3
 	mode := "offline-eventlog"
 	switch {
@@ -416,26 +419,28 @@ func run(args []string, stdout, stderr io.Writer) int {
 		mode = "online" // no cluster details: its logs and metrics cannot be found
 	case online:
 		mode = "online"
-		con.status("reading container, step and node logs")
+		con.step("cluster logs", "reading container, step and node logs")
+		con.track(lim.Progress)
 		separate := o.hbaseClusterID != "" || o.hbaseClusterName != ""
 		logs.readLogs(ctx, cloud, log, o.appID, lim, !separate, o.off)
 		if why, off := o.off["HBase server logs"]; separate && off {
 			logs.sources = append(logs.sources, model.SourceStatus{Name: "HBase server logs", Status: "not-requested", Location: firstNonEmpty(o.hbaseClusterID, o.hbaseClusterName),
 				Detail: "Not read: " + why + "."})
 		} else if separate {
-			con.status("reading HBase server logs from " + firstNonEmpty(o.hbaseClusterID, o.hbaseClusterName))
+			con.step("HBase logs", "reading HBase server logs from "+firstNonEmpty(o.hbaseClusterID, o.hbaseClusterName))
+			con.track(lim.Progress)
 			logs.readHBaseCluster(ctx, cloud, o.hbaseClusterID, o.hbaseClusterName, log, lim)
 		}
 		con.sources(logs.sources...)
-		con.status("reading CloudWatch metrics")
+		con.step("CloudWatch", "reading CloudWatch metrics")
 		logs.readMetrics(ctx, cloud, log, o.off["CloudWatch"], o.windowPad)
 		con.sources(logs.sources...)
-		con.status("reading CloudTrail")
+		con.step("CloudTrail", "reading CloudTrail")
 		logs.readCalls(ctx, cloud, log, o.off["CloudTrail"], o.windowPad)
 		con.sources(logs.sources...)
 		if outputs["explorer"] {
 			var row *model.SourceStatus
-			con.status("reading the application's code")
+			con.step("code", "reading the application's code")
 			if fetched, row = logs.fetchScripts(ctx, cloud, o.appID); row != nil {
 				logs.sources = append(logs.sources, *row)
 			}
@@ -443,7 +448,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 	case o.from != "":
 		mode = "offline-logs"
-		con.status("reading the logs in " + o.from)
+		con.step("cluster logs", "reading the logs in "+o.from)
+		con.track(lim.Progress)
 		if logs, err = offlineLogs(ctx, o.from, o.appID, log, lim, o.off, logLoc); err != nil {
 			if !errors.Is(err, iofs.ErrPermission) {
 				return fail("%v", err)
@@ -473,6 +479,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			lim := cfg.Explorer.WithDefaults()
 			opt.Explorer = &lim
 		}
+		con.step("rebuild", "rebuilding the run from the driver log")
 		if rlog, row := rebuildFromLogs(ctx, logs.files, o.appID, opt); rlog != nil {
 			log = rlog
 			logs.sources = append(logs.sources, *row)
@@ -480,7 +487,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			con.sources(*row)
 		}
 	}
-	con.status("writing the report")
+	con.step("analysis", "analysing the run")
 	ain := analyze.Input{
 		AppID:       o.appID,
 		Tool:        "sparkplain " + version,
@@ -538,6 +545,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	var srcNotes []string
 	if len(o.sources) > 0 || len(fetched) > 0 {
 		var err error
+		con.step("code", "reading the application's code")
 		if srcs, srcNotes, err = report.LoadSourcesFrom(r, o.sources, fetched); err != nil {
 			return fail("%v", err)
 		}
@@ -547,6 +555,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		ropt.ExplorerHref = outputName(r.Application.ID, "explorer.html")
 	}
 	if outputs["html"] {
+		con.step("report", "writing the report")
 		p := filepath.Join(outDir, outputName(r.Application.ID, "report.html"))
 		if err := writeFile(p, func(w io.Writer) error { return report.WriteHTML(w, r, ropt) }); err != nil {
 			return fail("writing %s: %v", p, err)
@@ -554,6 +563,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		wrote("Report", p)
 	}
 	if outputs["explorer"] {
+		con.step("explorer", "writing the explorer")
 		p := filepath.Join(outDir, outputName(r.Application.ID, "explorer.html"))
 		var x *model.Explorer
 		if log != nil {
@@ -569,6 +579,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		wrote("Explorer", p)
 	}
 	if outputs["json"] {
+		con.step("JSON", "writing the JSON")
 		p := filepath.Join(outDir, outputName(r.Application.ID, "report.json"))
 		if err := writeFile(p, func(w io.Writer) error { return report.WriteJSON(w, r) }); err != nil {
 			return fail("writing %s: %v", p, err)
