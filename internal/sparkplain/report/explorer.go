@@ -976,7 +976,7 @@ func resourceUse(r *model.Report, a *anatomy) []xUse {
 		}
 		sp := r.Memory.TotalDiskSpill
 		u := xUse{"memory", "Disk spill", model.Bytes(sp), "", -1, nil, "ok", "None",
-			"Data that did not fit in execution memory and went to local disk. A lot against the shuffle written means too few partitions or too little memory per task."}
+			"Data that did not fit in execution memory and went to local disk. Much spill, compared with the shuffle data written, means too few partitions or too little memory for each task."}
 		if shWrite > 0 {
 			u.Detail = "against " + model.Bytes(shWrite) + " shuffle written"
 		}
