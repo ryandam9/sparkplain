@@ -17,9 +17,18 @@ func analyzeTaskStories(c *ctx, r *model.Report) {
 	if r.Logs == nil {
 		return
 	}
-	s := &model.TaskStorySection{Tasks: []model.TaskLog{}, Executors: []model.TaskStoryExec{}}
-	earlier := 0
+	n := 0
 	for _, f := range r.Logs.Files {
+		n += len(f.TaskLogs)
+	}
+	// Sized once: a run of 400,000 tasks spent most of this step growing it.
+	s := &model.TaskStorySection{Tasks: make([]model.TaskLog, 0, n), Executors: []model.TaskStoryExec{}}
+	earlier := 0
+	for i := range r.Logs.Files {
+		f := r.Logs.Files[i]
+		// The stories are copied below: drop the file's own list, which
+		// nothing else reads, so a large run holds them once, not twice.
+		r.Logs.Files[i].TaskLogs = nil
 		if len(f.TaskLogs) == 0 && f.Untied == nil {
 			continue
 		}
