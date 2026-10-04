@@ -104,7 +104,17 @@ details.logline>summary::-webkit-details-marker{display:none}
 details.logline>summary::before{content:"▸ ";color:var(--muted)}
 details.logline[open]>summary::before{content:"▾ "}
 details.logline pre{white-space:pre-wrap;word-break:break-word;margin:0;font-size:12px}
-.logsrc{border-top:1px solid var(--line);padding-top:8px}
+/* Each log source folds under its name and status. */
+details.logsrc{background:none;border:0;border-top:1px solid var(--line);border-radius:0;padding-top:8px}
+details.logsrc>summary{list-style:none;padding:0;font-weight:inherit;display:flex;align-items:center;gap:10px}
+details.logsrc>summary::-webkit-details-marker{display:none}
+details.logsrc>summary::before{content:"";flex:none;border-left:6px solid var(--muted);border-top:5px solid transparent;border-bottom:5px solid transparent;transition:transform .15s}
+details[open].logsrc>summary{border-bottom:0}
+details[open].logsrc>summary::before{transform:rotate(90deg)}
+details.logsrc>.inner{padding:6px 0 4px 16px}
+.logsrcs{display:grid;gap:8px}
+.filterbar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.filterbar .foldall{margin-left:auto}
 .logsrc h3{display:flex;gap:8px;align-items:center}
 
 /* access gaps */

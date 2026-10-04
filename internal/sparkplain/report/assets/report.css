@@ -127,7 +127,21 @@ tr.lost td{color:var(--muted)}
 .finding{display:grid;grid-template-columns:4px minmax(0,1fr);background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .finding .stripe{background:var(--faint)}
 .finding.crit .stripe{background:var(--crit)} .finding.warn .stripe{background:var(--warn)} .finding.info .stripe{background:var(--accent)}
-.finding .body{padding:14px 16px;display:grid;gap:6px}
+/* A finding folds: its number, severity and title always show. */
+.finding>details.body{display:block;padding:0;background:none;border:0;border-radius:0;min-width:0}
+.finding>details.body>summary.t{list-style:none;cursor:pointer;padding:14px 16px;font-weight:inherit}
+.finding>details.body>summary.t::-webkit-details-marker{display:none}
+.finding>details.body>summary.t::before{content:"";align-self:center;border-left:6px solid var(--muted);border-top:5px solid transparent;border-bottom:5px solid transparent;transition:transform .15s}
+.finding>details[open].body>summary.t{border-bottom:0;padding-bottom:6px}
+.finding>details[open].body>summary.t::before{transform:rotate(90deg)}
+.finding>details.body>summary.t:hover h3{text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
+.finding .fbody{padding:0 16px 14px;display:grid;gap:6px}
+.foldall{display:inline-flex;gap:6px}
+section>.foldall{justify-self:end}
+.foldall[hidden]{display:none}
+.foldall button{font:inherit;font-size:12.5px;padding:2px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);cursor:pointer}
+.foldall button:hover{background:var(--surface-2)}
+@media print{.foldall{display:none} details::details-content{content-visibility:visible;display:block}}
 .finding .t{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline}
 .finding .t h3{font-size:16px}
 .finding p{max-width:100ch}

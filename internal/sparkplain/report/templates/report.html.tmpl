@@ -77,22 +77,22 @@
       <section id="coverage">
         <div class="sechead"><h2>What this report covers</h2></div>
         <p class="lede">This table shows what each part of the analysis can show for this run, the source of its data, and what it cannot show yet. This page is the summary. {{if .Explorer}}Each part opens in the explorer, which has the details.{{else}}The explorer (sparkplain -format explorer) has the details.{{end}}</p>
-        <div class="tbl"><table>
+        <details class="cover"><summary>{{len $r.Coverage}} parts: {{covCounts $r.Coverage}}</summary><div class="tbl"><table>
           <thead><tr><th>Section</th><th>Status</th><th>Shown</th><th>Not shown yet</th></tr></thead>
           <tbody>{{range $r.Coverage}}<tr><td>{{$t := .Title}}{{with xTab $.Explorer .ID}}<a href="{{.}}">{{$t}} →</a>{{else}}{{$t}}{{end}}</td><td><span class="pill {{cov .Coverage}}">{{covLabel .Coverage}}</span></td><td>{{.Shown}}</td><td>{{if .Missing}}{{join .Missing "; "}}{{else}}—{{end}}</td></tr>
           {{end}}</tbody>
-        </table></div>
+        </table></div></details>
       </section>
 
       <section id="findings">
-        <div class="sechead"><h2>Findings</h2><span class="note">{{.Crit}} critical · {{.Warn}} warning · {{.Info}} info. The most severe come first. Each finding links to its log line.</span>{{if .Explorer}}<a class="xlink" href="{{xTab .Explorer "findings"}}">Open in the explorer →</a>{{end}}</div>
-        {{if $r.Findings}}<div class="findings">
-          {{range $i, $f := $r.Findings}}<article class="finding {{sev .Severity}}" id="finding-{{add $i 1}}"><div class="stripe"></div><div class="body">
-            <div class="t"><span class="fnum {{sev .Severity}}">{{add $i 1}}</span><span class="pill {{sevPill .Severity}}">{{sevLabel .Severity}}</span><h3>{{.Title}}</h3></div>
+        <div class="sechead"><h2>Findings</h2><span class="note">{{.Crit}} critical · {{.Warn}} warning · {{.Info}} info. The most severe come first. Each finding links to its log line. Click a title to open or close it.</span>{{if .Explorer}}<a class="xlink" href="{{xTab .Explorer "findings"}}">Open in the explorer →</a>{{end}}</div>
+        {{if $r.Findings}}{{if gt (len $r.Findings) 1}}<span class="foldall" data-fold="#findings" hidden><button type="button" data-open="1">Open all</button><button type="button">Close all</button></span>{{end}}<div class="findings">
+          {{range $i, $f := $r.Findings}}<article class="finding {{sev .Severity}}" id="finding-{{add $i 1}}"><div class="stripe"></div><details class="body"{{if ne (sev .Severity) "info"}} open{{end}}>
+            <summary class="t"><span class="fnum {{sev .Severity}}">{{add $i 1}}</span><span class="pill {{sevPill .Severity}}">{{sevLabel .Severity}}</span><h3>{{.Title}}</h3></summary><div class="fbody">
             <div class="fpart what"><h4 class="k">{{if eq (sev .Severity) "crit"}}Error{{else if eq (sev .Severity) "warn"}}Problem{{else}}Note{{end}}</h4><div>{{prose .Explanation "expl"}}</div></div>
             {{if .Evidence}}<div class="fpart evid"><h4 class="k">Evidence</h4><div>{{range .Evidence}}<p class="ev">{{if .Source.File}}{{src .Source}} {{end}}{{if and $.Explorer .Ref}}<a href="{{explorerURL $.Explorer .Ref}}">{{.Text}}</a>{{else}}{{.Text}}{{end}}</p>{{end}}</div></div>{{end}}
             {{if .Fix}}<div class="fpart try"><h4 class="k">Try</h4><div>{{prose .Fix "fix"}}</div></div>{{end}}
-          </div></article>
+          </div></details></article>
           {{end}}
         </div>{{else}}<p class="note">The rules found no problems.</p>{{end}}
       </section>

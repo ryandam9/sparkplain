@@ -187,6 +187,7 @@ func funcs(loc *time.Location) template.FuncMap {
 		"covLabel": func(c model.Coverage) string {
 			return map[model.Coverage]string{model.Complete: "Complete", model.Partial: "Partial", model.NeedsEventLog: "Needs event log", model.NoData: "No data"}[c]
 		},
+		"covCounts": covCounts,
 		"sev": func(s model.Severity) string {
 			return map[model.Severity]string{model.Critical: "crit", model.Warning: "warn", model.Info: "info"}[s]
 		},
@@ -326,4 +327,32 @@ func explorerTab(href, id string) template.URL {
 		return ""
 	}
 	return template.URL(href + "#" + tab)
+}
+
+// covCounts sums the coverage table for its folded summary line, for
+// example "5 complete, 2 partial, 1 needs the event log".
+func covCounts(secs []model.SectionStatus) string {
+	n := map[model.Coverage]int{}
+	for _, s := range secs {
+		n[s.Coverage]++
+	}
+	var out []string
+	for _, c := range []struct {
+		k         model.Coverage
+		one, many string
+	}{
+		{model.Complete, "complete", "complete"},
+		{model.Partial, "partial", "partial"},
+		{model.NeedsEventLog, "needs the event log", "need the event log"},
+		{model.NoData, "has no data", "have no data"},
+	} {
+		switch n[c.k] {
+		case 0:
+		case 1:
+			out = append(out, "1 "+c.one)
+		default:
+			out = append(out, fmt.Sprintf("%d %s", n[c.k], c.many))
+		}
+	}
+	return strings.Join(out, ", ")
 }
