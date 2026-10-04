@@ -43,16 +43,17 @@ func (g chartGuide) html() template.HTML {
 }
 
 // pointList is a titled paragraph for one point, or a titled bullet list
-// for several.
+// for several. The title is a heading (the report's guides sit under a
+// section's h2), styled as a small label.
 func pointList(cls, title string, points []string) template.HTML {
 	switch len(points) {
 	case 0:
 		return ""
 	case 1:
-		return template.HTML(fmt.Sprintf(`<p class="%s"><b>%s</b> %s</p>`, cls, esc(title), esc(points[0])))
+		return template.HTML(fmt.Sprintf(`<div class="%s"><h3 class="glabel">%s</h3><p>%s</p></div>`, cls, esc(title), esc(points[0])))
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, `<div class="%s"><b>%s</b><ul>`, cls, esc(title))
+	fmt.Fprintf(&b, `<div class="%s"><h3 class="glabel">%s</h3><ul>`, cls, esc(title))
 	for _, p := range points {
 		fmt.Fprintf(&b, `<li>%s</li>`, esc(p))
 	}
@@ -73,10 +74,10 @@ func runList(points []runPoint) template.HTML {
 	case 0:
 		return ""
 	case 1:
-		return template.HTML(`<p class="run"><b>In this run</b> ` + item(points[0]) + `</p>`)
+		return template.HTML(`<div class="run"><h3 class="glabel">In this run</h3><p>` + item(points[0]) + `</p></div>`)
 	}
 	var b strings.Builder
-	b.WriteString(`<div class="run"><b>In this run</b><ul>`)
+	b.WriteString(`<div class="run"><h3 class="glabel">In this run</h3><ul>`)
 	for _, p := range points {
 		b.WriteString(`<li>` + item(p) + `</li>`)
 	}

@@ -33,7 +33,7 @@
       {{else}}<strong>Event log: not read.</strong> <span>All sections below use it. The Sources panel shows the problem. Exit code {{$r.ExitCode}}.</span>{{end}}
     </div>
     {{if $r.AccessGaps}}<div class="missing access">
-      <h3>No access to {{len $r.AccessGaps}} source{{if ne (len $r.AccessGaps) 1}}s{{end}}, so parts of this report are missing</h3>
+      <h2>No access to {{len $r.AccessGaps}} source{{if ne (len $r.AccessGaps) 1}}s{{end}}, so parts of this report are missing</h2>
       <ul>{{range $r.AccessGaps}}<li><b>{{.Source}}</b>: without it, the report cannot show {{.Missing}}. The necessary access is {{.Needs}}.</li>{{end}}</ul>
       <p>sparkplain continued with all the other sources. The Sources panel shows each error.</p>
     </div>{{end}}
@@ -89,9 +89,9 @@
         {{if $r.Findings}}<div class="findings">
           {{range $i, $f := $r.Findings}}<article class="finding {{sev .Severity}}" id="finding-{{add $i 1}}"><div class="stripe"></div><div class="body">
             <div class="t"><span class="fnum {{sev .Severity}}">{{add $i 1}}</span><span class="pill {{sevPill .Severity}}">{{sevLabel .Severity}}</span><h3>{{.Title}}</h3></div>
-            <div class="fpart what"><span class="k">{{if eq (sev .Severity) "crit"}}Error{{else if eq (sev .Severity) "warn"}}Problem{{else}}Note{{end}}</span><div>{{prose .Explanation "expl"}}</div></div>
-            {{if .Evidence}}<div class="fpart evid"><span class="k">Evidence</span><div>{{range .Evidence}}<p class="ev">{{if .Source.File}}{{src .Source}} {{end}}{{if and $.Explorer .Ref}}<a href="{{explorerURL $.Explorer .Ref}}">{{.Text}}</a>{{else}}{{.Text}}{{end}}</p>{{end}}</div></div>{{end}}
-            {{if .Fix}}<div class="fpart try"><span class="k">Try</span><div>{{prose .Fix "fix"}}</div></div>{{end}}
+            <div class="fpart what"><h4 class="k">{{if eq (sev .Severity) "crit"}}Error{{else if eq (sev .Severity) "warn"}}Problem{{else}}Note{{end}}</h4><div>{{prose .Explanation "expl"}}</div></div>
+            {{if .Evidence}}<div class="fpart evid"><h4 class="k">Evidence</h4><div>{{range .Evidence}}<p class="ev">{{if .Source.File}}{{src .Source}} {{end}}{{if and $.Explorer .Ref}}<a href="{{explorerURL $.Explorer .Ref}}">{{.Text}}</a>{{else}}{{.Text}}{{end}}</p>{{end}}</div></div>{{end}}
+            {{if .Fix}}<div class="fpart try"><h4 class="k">Try</h4><div>{{prose .Fix "fix"}}</div></div>{{end}}
           </div></article>
           {{end}}
         </div>{{else}}<p class="note">The rules found no problems.</p>{{end}}
