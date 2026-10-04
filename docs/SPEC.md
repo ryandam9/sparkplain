@@ -106,7 +106,7 @@ A pipeline: resolve (cluster, application, window) → access check → collect 
 
 **Design rules**
 
-- **Stream, never load whole logs.** Task events fold into per-stage aggregates and fixed-size samples. Budget: 60 s and 1 GB of memory per GB of event log, checked in CI (`make bench`).
+- **Stream, never load whole logs.** Task events fold into per-stage aggregates and fixed-size samples. Budget: 60 s and 1 GB of memory per GB of event log, and 1.5 GB per GB when every task's executor log is read too (task stories and flows), both checked in CI (`make bench`, on a synthetic 150,000-task log and, with `scripts/benchlog -logs`, its executors' logs). The binary sets a soft memory limit of 1 GiB unless `GOMEMLIMIT` sets one, so the garbage collector works harder before the heap doubles. Lines are read without backtracking patterns on every line: Spark's header is parsed by hand, and patterns that cannot start with a fixed word are tried only when a word they need is in the line.
 - **Provenance.** Every value records its source file and line (or API call); every finding cites its evidence and, where it applies, the stage, job, executor or node it concerns.
 - **Degrade, don't fail.** A missing, refused or unreadable source is a Sources row with its reason; its sections say what they lack; the run exits 3.
 - **Secrets never reach the output.** Keys matching password, secret, token, key or credential are redacted in configuration and log lines; free text loses matching `key=value` pairs, URL passwords and AWS access key IDs; source code loses every string on a line naming a secret, except the key. Tests plant fake secrets and assert they never appear. Some harmless Hadoop settings with "key" in their name are hidden too, deliberately.
@@ -197,7 +197,7 @@ Rules that judge CPU, GC and memory size skip runs with less than `min-run-time`
 
 Explorer data is collected while streaming, within the memory budget: per-stage quartiles and log-scale histograms; per stage the 100 slowest tasks and a uniform sample of 1,000 (fixed seed), 100,000 sampled tasks at most in the app (halved by subsampling past it; charts drawn from samples say so); stage × executor totals (1,000,000 cells); running tasks in time buckets (2,000); SQL operator metrics; log lines (200 per file, 5,000 in all). The page stays under 25 MB at the defaults. This data is only in `explorer.html`; `report.json` keeps everything else.
 
-**JSON.** Mirrors the model package, with a `schemaVersion`.
+**JSON.** Mirrors the model package, with a `schemaVersion`. It is written compact, not indented (`jq .` indents it), and the task stories are streamed into it one at a time, so the file is never held in memory whole.
 
 **Config file** (`-config`, default `~/.config/sparkplain/config.yaml` on macOS and Linux, or under `$XDG_CONFIG_HOME` when set, `%AppData%` on Windows; flags win; unknown keys are rejected):
 

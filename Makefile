@@ -86,14 +86,19 @@ bench-log:
 
 # bench checks the SPEC §4 budget (60 s and 1 GB of RAM per GB of log) on a
 # synthetic 150,000-task log, about 0.6 GB, with every output on (past the
-# explorer's 100,000-task sample, so sampling runs too); CI runs it.
+# explorer's 100,000-task sample, so sampling runs too). It then reads every
+# task's executor log too, so task stories and flows are measured, within
+# SPEC §4's budget for that case (1.5 GB of RAM per GB of event log); CI
+# runs both.
 BENCH_TASKS ?= 150000
 BENCH_APP = application_1790380000000_0042
 bench: build
-	mkdir -p out/bench
-	$(GO) run ./scripts/benchlog -out out/bench/$(BENCH_APP) -tasks $(BENCH_TASKS)
+	rm -rf out/bench && mkdir -p out/bench
+	$(GO) run ./scripts/benchlog -out out/bench/$(BENCH_APP) -tasks $(BENCH_TASKS) -logs out/bench/logs
 	$(GO) run ./scripts/benchcheck -log out/bench/$(BENCH_APP) -- \
 		./$(BINARY) -app-id $(BENCH_APP) -eventlog out/bench/$(BENCH_APP) -format html,json,explorer -out out/bench/report
+	$(GO) run ./scripts/benchcheck -log out/bench/$(BENCH_APP) -rss-mb-per-gb 1536 -- \
+		./$(BINARY) -app-id $(BENCH_APP) -eventlog out/bench/$(BENCH_APP) -from out/bench/logs -format html,json,explorer -out out/bench/report-logs
 
 # fixtures regenerates testdata/eventlog; needs Java 17+, pyspark==3.5.1 and SP_SCRATCH.
 fixtures:

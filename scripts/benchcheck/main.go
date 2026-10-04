@@ -42,6 +42,9 @@ func main() {
 	start := time.Now()
 	runErr := cmd.Run()
 	took := time.Since(start)
+	if cmd.ProcessState == nil {
+		log.Fatalf("benchcheck: could not run %s: %v", flag.Arg(0), runErr)
+	}
 	rss := peakMB(cmd.ProcessState)
 	fmt.Printf("benchcheck: %.2f GB log in %s (budget %s), peak memory %.0f MB (budget %.0f MB)\n",
 		gb, took.Round(10*time.Millisecond), maxTime.Round(10*time.Millisecond), rss, maxRSS)
