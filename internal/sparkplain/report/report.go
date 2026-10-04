@@ -4,6 +4,7 @@
 package report
 
 import (
+	"bufio"
 	"bytes"
 	_ "embed"
 	"encoding/json"
@@ -28,10 +29,49 @@ var (
 
 // WriteJSON writes the report as indented JSON.
 func WriteJSON(w io.Writer, r *model.Report) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
+	// Not indented: on a run of 400,000 tasks, indenting doubled the file
+	// (to 629 MB) and took 18 s. jq . prints it indented.
+	ts := r.TaskStories
+	if ts == nil || len(ts.Tasks) == 0 {
+		enc := json.NewEncoder(w)
+		enc.SetEscapeHTML(false)
+		return enc.Encode(r)
+	}
+	// The task stories are most of a large run's report: write the rest
+	// with an empty list, and stream the stories into it one at a time,
+	// so the whole file is never held in memory. A key cannot occur
+	// inside a JSON string (its quotes would be escaped), so the first
+	// "tasks":[] after "taskStories":{ is the list's place.
+	empty := *ts
+	empty.Tasks = []model.TaskLog{}
+	rest := *r
+	rest.TaskStories = &empty
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
-	return enc.Encode(r)
+	if err := enc.Encode(&rest); err != nil {
+		return err
+	}
+	head := bytes.Index(b.Bytes(), []byte(`"taskStories":{`))
+	at := bytes.Index(b.Bytes()[max(head, 0):], []byte(`"tasks":[]`))
+	if head < 0 || at < 0 {
+		return fmt.Errorf("report JSON: the task stories' list was not where expected")
+	}
+	at += head + len(`"tasks":[`)
+	bw := bufio.NewWriterSize(w, 1<<20)
+	bw.Write(b.Bytes()[:at])
+	tasks := json.NewEncoder(bw)
+	tasks.SetEscapeHTML(false)
+	for i := range ts.Tasks {
+		if i > 0 {
+			bw.WriteByte(',')
+		}
+		if err := tasks.Encode(&ts.Tasks[i]); err != nil {
+			return err
+		}
+	}
+	bw.Write(b.Bytes()[at:])
+	return bw.Flush()
 }
 
 // Options control HTML rendering.

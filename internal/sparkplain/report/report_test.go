@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -272,5 +273,38 @@ func TestHBaseRegionEventsRender(t *testing.T) {
 	d := embedded(t, renderExplorer(t, r, nil))
 	if e, _ := d["hbaseRegionEvents"].([]any); len(e) != 1 {
 		t.Errorf("explorer region events: %d", len(e))
+	}
+}
+
+// WriteJSON streams the task stories into the report, so the file reads
+// exactly as the whole report encoded at once would.
+func TestWriteJSONStreamsTaskStories(t *testing.T) {
+	t.Parallel()
+	r, _ := buildWithExplorer(t, "application_1790380000000_0042")
+	r.TaskStories = &model.TaskStorySection{Coverage: model.Partial, Missing: []string{`a "tasks":[] look-alike in a string`},
+		Executors: []model.TaskStoryExec{{Executor: "1", Tasks: 3}}}
+	for i := range 3 {
+		r.TaskStories.Tasks = append(r.TaskStories.Tasks, model.TaskLog{TaskID: int64(i), Executor: "1", Outcome: "finished", Error: "<a & b>"})
+	}
+	var streamed bytes.Buffer
+	if err := WriteJSON(&streamed, r); err != nil {
+		t.Fatal(err)
+	}
+	whole, err := json.Marshal(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a, b any
+	if err := json.Unmarshal(streamed.Bytes(), &a); err != nil {
+		t.Fatalf("streamed JSON does not parse: %v", err)
+	}
+	if err := json.Unmarshal(whole, &b); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(a, b) {
+		t.Error("the streamed report differs from the report encoded at once")
+	}
+	if !strings.Contains(streamed.String(), `"error":"<a & b>"`) {
+		t.Error("HTML characters were escaped in the JSON")
 	}
 }
