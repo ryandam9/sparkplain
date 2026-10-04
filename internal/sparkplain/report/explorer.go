@@ -72,7 +72,7 @@ func WriteExplorer(w io.Writer, r *model.Report, x *model.Explorer, opt Explorer
 		JS    template.JS
 		D3    template.JS
 		Data  template.HTML
-	}{title, template.CSS(css + "\n" + explorerCSS), template.JS(explorerJS), template.JS(d3JS),
+	}{title, template.CSS(css + "\n" + explorerCSS), template.JS(propsJS + "\n" + explorerJS), template.JS(d3JS),
 		template.HTML(`<script type="application/json" id="sp-data">` + string(data) + `</script>`)})
 	if err != nil {
 		return err

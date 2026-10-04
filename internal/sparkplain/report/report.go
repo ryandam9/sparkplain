@@ -23,6 +23,10 @@ var (
 	css string
 	//go:embed assets/report.js
 	js string
+	// propsJS styles configuration keys in text as code; both pages
+	// run it before their own script.
+	//go:embed assets/props.js
+	propsJS string
 	//go:embed templates/report.html.tmpl
 	pageTmpl string
 )
@@ -115,7 +119,7 @@ func WriteHTML(w io.Writer, r *model.Report, opt Options) error {
 	if err != nil {
 		return err
 	}
-	p := page{R: r, CSS: template.CSS(css), JS: template.JS(js), Zone: zoneLabel(loc, r.Application.Start), Explorer: opt.ExplorerHref}
+	p := page{R: r, CSS: template.CSS(css), JS: template.JS(propsJS + "\n" + js), Zone: zoneLabel(loc, r.Application.Start), Explorer: opt.ExplorerHref}
 	for _, c := range r.Coverage {
 		switch c.Coverage {
 		case model.Complete:
