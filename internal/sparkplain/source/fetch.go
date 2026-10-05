@@ -108,9 +108,18 @@ func readOne(ctx context.Context, st Store, o Object, lim Limits, zipMem *budget
 		return err
 	}
 	defer rc.Close()
+	// Progress counts the bytes as they arrive, so a large file moves the
+	// progress line while it is read; once it is done, what was not read
+	// (a gzip trailer, an entry left out, an error) is counted too.
+	pr := &progressReader{r: rc, p: lim.Progress}
+	defer func() {
+		if rest := o.Size - pr.n; rest > 0 {
+			lim.Progress.Read(rest)
+		}
+	}()
 	where := st.Location(o.Key)
 	// The object may have grown since it was listed; never read past the cap.
-	body := Bounded(ContextReader(ctx, rc), lim.MaxObject, where, "-max-size")
+	body := Bounded(ContextReader(ctx, pr), lim.MaxObject, where, "-max-size")
 	switch strings.ToLower(path.Ext(o.Key)) {
 	case ".gz":
 		zr, err := gzip.NewReader(body)
@@ -191,4 +200,18 @@ func wrapRead(where string, err error) error {
 		class = ClassTimeout
 	}
 	return &Error{Class: class, Key: where, Err: err}
+}
+
+// progressReader adds what is read from one object to p as it goes.
+type progressReader struct {
+	r io.Reader
+	p *Progress
+	n int64
+}
+
+func (r *progressReader) Read(b []byte) (int, error) {
+	n, err := r.r.Read(b)
+	r.n += int64(n)
+	r.p.Read(int64(n))
+	return n, err
 }

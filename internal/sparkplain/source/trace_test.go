@@ -75,3 +75,47 @@ func TestTrace(t *testing.T) {
 		t.Errorf("still tracing after Close:\n%s", strings.Join(lines[n:], "\n"))
 	}
 }
+
+// Fetch counts a file's bytes as they are read, not only once it is done,
+// so the progress line moves while a large log is read; at the end every
+// byte of the object is counted, even when the reader stops early.
+func TestFetchCountsProgressWhileReading(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	const size = 1 << 20
+	for _, name := range []string{"big.log", "short.log"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(strings.Repeat("y", size)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	st := NewLocalStore(dir)
+	objs, err := st.List(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog := &Progress{}
+	var mid int64
+	reads := Fetch(context.Background(), st, objs, Limits{Workers: 1, Progress: prog}, func(o Object, _ string, r io.Reader) error {
+		if o.Key == "short.log" {
+			_, err := io.ReadFull(r, make([]byte, 10)) // stops early
+			return err
+		}
+		if _, err := io.ReadFull(r, make([]byte, size/2)); err != nil {
+			return err
+		}
+		mid = prog.Bytes.Load()
+		_, err := io.Copy(io.Discard, r)
+		return err
+	})
+	for _, rd := range reads {
+		if rd.Err != nil {
+			t.Fatal(rd.Err)
+		}
+	}
+	if mid < size/2 || mid >= size {
+		t.Errorf("halfway through big.log, progress counted %d bytes, want at least %d and under %d", mid, size/2, size)
+	}
+	if got := prog.Bytes.Load(); got != 2*size {
+		t.Errorf("progress counted %d bytes in all, want %d", got, 2*size)
+	}
+}
