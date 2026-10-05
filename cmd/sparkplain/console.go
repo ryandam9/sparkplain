@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
@@ -50,9 +51,10 @@ type console struct {
 	spinStop chan struct{} // stops the status line's spinner
 	spinDone chan struct{} // closed once the spinner has stopped writing
 
-	prog   atomic.Pointer[source.Progress] // how far the current step is, when it counts
-	steps  []stepTime                      // how long each step took, for the closing line
-	stepAt time.Time                       // when the current step started
+	verbose bool                            // -verbose: trace lines, no spinner (setVerbose)
+	prog    atomic.Pointer[source.Progress] // how far the current step is, when it counts
+	steps   []stepTime                      // how long each step took, for the closing line
+	stepAt  time.Time                       // when the current step started
 }
 
 // stepTime is one step of the run and how long it took.
@@ -306,6 +308,39 @@ func (c *console) endStep() {
 	}
 }
 
+// setVerbose turns on trace lines (-verbose). The status line then
+// prints once and says every heartbeat that it is still working, as when
+// piped, so the trace lines that readers print from their own goroutines
+// never meet a line being redrawn; one lock keeps lines whole.
+func (c *console) setVerbose() {
+	c.verbose, c.animate = true, false
+	c.err = &lockedWriter{w: c.err}
+}
+
+// trace prints one line of what the run is doing (-verbose), after the
+// time since it started. Readers call it from their own goroutines.
+func (c *console) trace(msg string) {
+	at := time.Since(c.started).Round(time.Second)
+	line := fmt.Sprintf("[%d:%02d] %s", int(at.Minutes()), int(at.Seconds())%60, msg)
+	if c.live {
+		fmt.Fprintln(c.err, paint(c.colErr, dim, "  · "+line))
+		return
+	}
+	fmt.Fprintln(c.err, "sparkplain: "+line)
+}
+
+// lockedWriter lets several goroutines write whole lines to one writer.
+type lockedWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (l *lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
+}
+
 // track shows p's counts beside the current step until the next one.
 func (c *console) track(p *source.Progress) { c.prog.Store(p) }
 
@@ -319,8 +354,11 @@ func (c *console) status(doing string) {
 	c.prog.Store(nil)
 	stop, done := make(chan struct{}), make(chan struct{})
 	start := time.Now()
+	if c.verbose {
+		c.trace(doing)
+	}
 	switch {
-	case !c.live:
+	case !c.live || c.verbose:
 		c.spinStop, c.spinDone = stop, done
 		go func() {
 			defer close(done)

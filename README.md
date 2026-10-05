@@ -260,6 +260,14 @@ On a terminal the marks are coloured dots: green ● (readable), red ● (refuse
 
 Use `-no-cloudwatch` or `-no-cloudtrail` to skip those calls when you lack the permissions, and `-no-step-logs`, `-no-node-logs` or `-no-hbase-logs` to skip those logs. Only their sections are affected, and the run is not marked partial for them. To skip a source every time, or only in one environment, set it to `no` under `read:` in the config file (below).
 
+If a step such as "reading container, step and node logs" takes a long time, add `-verbose`. It prints each log folder listed and each file read, with its size and how long it took. A file still being read after 30 seconds is named again with how far it is, so you can see which log is large or slow:
+
+```text
+sparkplain: [0:12] listed s3://my-logs/j-1ABC/node/i-0a1b/applications/hadoop-yarn/: 412 objects, 3.1 GiB (2.4s)
+sparkplain: [0:13] reading s3://my-logs/j-1ABC/node/i-0a1b/applications/hadoop-yarn/yarn-yarn-nodemanager-ip-10-0-1-23.log.gz (1.2 GiB)
+sparkplain: [0:43] still reading s3://my-logs/j-1ABC/node/i-0a1b/applications/hadoop-yarn/yarn-yarn-nodemanager-ip-10-0-1-23.log.gz: 180.0 MiB of 1.2 GiB so far (30s)
+```
+
 ### 3. Offline, from a copy of the cluster's logs
 
 No AWS access from where you run sparkplain? Copy the cluster's log folder (or just this application's part of it) and use `-from`. It makes no AWS calls.
