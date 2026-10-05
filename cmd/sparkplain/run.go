@@ -55,7 +55,7 @@ type options struct {
 	eventLog, from, out, format, maxSize, maxUnpacked, show, decodeScan, logTZ                        string
 	workers                                                                                           int
 	timeout, windowPad                                                                                time.Duration
-	noCloudWatch, noCloudTrail, showVersion, check, initConfig                                        bool
+	noCloudWatch, noCloudTrail, showVersion, check, initConfig, verbose                               bool
 	noStepLogs, noNodeLogs, noHBaseLogs                                                               bool
 	// off says why each source turned off is not read, by its name in the
 	// Sources list (see applyReads).
@@ -96,6 +96,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.DurationVar(&o.windowPad, "window-pad", 5*time.Minute, "padding around the run's time window for CloudWatch and CloudTrail queries")
 	fs.BoolVar(&o.showVersion, "version", false, "print the version and exit")
 	fs.BoolVar(&o.initConfig, "init-config", false, "write a starter config file, every key explained, to ~/.config/sparkplain/config.yaml (or -config) and exit")
+	fs.BoolVar(&o.verbose, "verbose", false, "print each log folder listed and each file read, with its size and how long it took, as the run goes")
 	fs.BoolVar(&o.check, "check", false, "check what the run can read, print it, and exit (0 all readable, 3 not)")
 	fs.StringVar(&o.show, "show", "", "print the event at file:line (as the pages cite it), redacted, and exit")
 	fs.StringVar(&o.decodeScan, "decode-scan", "", "print an HBase scan string (hbase.mapreduce.scan, base64) decoded: key range, columns, filters; - reads it from stdin; reads nothing else and exits")
@@ -127,6 +128,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return decodeScan(o.decodeScan, os.Stdin, stdout, stderr)
 	}
 	con := newConsole(stdout, stderr)
+	if o.verbose {
+		con.setVerbose()
+	}
 	defer con.clear() // stops a status line or heartbeat on every way out
 	fail := func(format string, a ...any) int {
 		con.clear()
@@ -239,6 +243,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cloud := &awsSession{profile: o.profile, region: o.region, at: appClusterStart(o.appID)}
+	if o.verbose {
+		cloud.trace = con.trace
+	}
 	if online && o.profile == "" {
 		return fail("%v", errNoProfile)
 	}
@@ -450,7 +457,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		mode = "offline-logs"
 		con.step("cluster logs", "reading the logs in "+o.from)
 		con.track(lim.Progress)
-		if logs, err = offlineLogs(ctx, o.from, o.appID, log, lim, o.off, logLoc); err != nil {
+		if logs, err = offlineLogs(ctx, o.from, o.appID, log, lim, o.off, logLoc, cloud.trace); err != nil {
 			if !errors.Is(err, iofs.ErrPermission) {
 				return fail("%v", err)
 			}
@@ -752,6 +759,8 @@ type awsSession struct {
 	// at is when the application's YARN started, from its ID; a cluster
 	// named rather than given by ID is the one of that name up then.
 	at time.Time
+	// trace, when set (-verbose), hears of each S3 listing and read.
+	trace func(string)
 	// picked says which cluster each name found, and why.
 	picked map[string]awsmeta.Pick
 }
@@ -886,9 +895,18 @@ func (a *awsSession) resolve(ctx context.Context, loc, appID string, lim eventlo
 	if err != nil {
 		return nil, &eventlog.SourceError{Class: eventlog.ClassAccessDenied, Err: err}
 	}
-	st, err := awsDeps.s3(ctx, cfg, bucket)
+	st, err := a.s3(ctx, cfg, bucket)
 	if err != nil {
 		return nil, &eventlog.SourceError{Class: source.ClassOf(err), Err: err}
 	}
 	return eventlog.ResolveStore(ctx, st, key, appID, lim)
+}
+
+// s3 opens a log bucket, traced when -verbose asked for it.
+func (a *awsSession) s3(ctx context.Context, cfg aws.Config, bucket string) (source.Store, error) {
+	st, err := awsDeps.s3(ctx, cfg, bucket)
+	if err != nil {
+		return nil, err
+	}
+	return source.Trace(st, a.trace), nil
 }

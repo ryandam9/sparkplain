@@ -138,7 +138,7 @@ func (out *clusterLogs) readLogs(ctx context.Context, cloud *awsSession, log *mo
 		}
 		return
 	}
-	st, err := awsDeps.s3(ctx, cfg, bucket)
+	st, err := cloud.s3(ctx, cfg, bucket)
 	if err != nil {
 		for _, name := range []string{"Container logs", "Step logs", "Node logs"} {
 			out.sources = append(out.sources, model.SourceStatus{Name: name, Status: "error", Class: source.ClassOf(err),
@@ -223,7 +223,7 @@ func (out *clusterLogs) readHBaseCluster(ctx context.Context, cloud *awsSession,
 		out.sources = append(out.sources, model.SourceStatus{Name: "HBase server logs", Status: "not-supplied", Location: cl.ID, Detail: why})
 		return
 	}
-	st, err := awsDeps.s3(ctx, cfg, bucket)
+	st, err := cloud.s3(ctx, cfg, bucket)
 	if err != nil {
 		out.sources = append(out.sources, model.SourceStatus{Name: "HBase server logs", Status: "error", Class: source.ClassOf(err),
 			Location: "s3://" + bucket + "/" + root + "node/", Detail: "Could not open the HBase cluster's log bucket: " + err.Error()})
@@ -402,7 +402,7 @@ func shortHost(h string) string {
 // cluster's log root (containers/, steps/, node/), a folder holding one
 // such copy per cluster (j-…/containers/…), or one application's
 // container folders (container_*/stderr.gz).
-func offlineLogs(ctx context.Context, dir, appID string, log *model.EventLog, lim source.Limits, off map[string]string, loc *time.Location) (clusterLogs, error) {
+func offlineLogs(ctx context.Context, dir, appID string, log *model.EventLog, lim source.Limits, off map[string]string, loc *time.Location, trace func(string)) (clusterLogs, error) {
 	root, appFolder, err := fromLayout(dir, appID)
 	if err != nil {
 		return clusterLogs{}, err
@@ -411,7 +411,7 @@ func offlineLogs(ctx context.Context, dir, appID string, log *model.EventLog, li
 	if log != nil {
 		since, until = log.Application.Start, log.Application.End
 	}
-	col := yarnlog.Collect(ctx, source.NewLocalStore(dir), yarnlog.Plan{Root: root, AppFolder: appFolder, AppID: appID, Since: since, Until: until, Limits: lim, Off: off, Loc: loc})
+	col := yarnlog.Collect(ctx, source.Trace(source.NewLocalStore(dir), trace), yarnlog.Plan{Root: root, AppFolder: appFolder, AppID: appID, Since: since, Until: until, Limits: lim, Off: off, Loc: loc})
 	return clusterLogs{files: col.Files, sources: col.Sources, logLoc: loc}, nil
 }
 
@@ -521,7 +521,7 @@ func (out *clusterLogs) fetchScripts(ctx context.Context, cloud *awsSession, app
 		bucket, key, _ := source.ParseS3(p)
 		f := model.SourceFile{Location: p, Status: "read"}
 		data, err := func() ([]byte, error) {
-			st, err := awsDeps.s3(ctx, cfg, bucket)
+			st, err := cloud.s3(ctx, cfg, bucket)
 			if err != nil {
 				return nil, err
 			}

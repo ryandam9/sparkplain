@@ -670,7 +670,6 @@ func (g *group) read(ctx context.Context) {
 		i := index[o.Key]
 		if len(results[i]) == 0 { // the object's first file: count it once
 			defer g.plan.Limits.Progress.Done()
-			defer g.plan.Limits.Progress.Read(o.Size)
 		}
 		cr := &countReader{r: r}
 		// name is the key, or key!entry inside a zip: lines cite the entry.
