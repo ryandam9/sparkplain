@@ -87,7 +87,7 @@ func (t *traced) Open(ctx context.Context, obj Object) (io.ReadCloser, error) {
 		t.note(fmt.Sprintf("could not read %s: %v", where, err))
 		return nil, err
 	}
-	tr := &traceReader{r: r, t: t, where: where, size: obj.Size, start: time.Now(), stop: make(chan struct{})}
+	tr := &traceReader{r: r, t: t, where: where, size: obj.Size, start: time.Now(), stop: make(chan struct{}), exited: make(chan struct{})}
 	go tr.watch()
 	return tr, nil
 }
@@ -102,6 +102,7 @@ type traceReader struct {
 	start     time.Time
 	n         atomic.Int64
 	stop      chan struct{}
+	exited    chan struct{} // closed when watch returns
 	closeOnce sync.Once
 }
 
@@ -112,6 +113,7 @@ func (r *traceReader) Read(p []byte) (int, error) {
 }
 
 func (r *traceReader) watch() {
+	defer close(r.exited)
 	tick := time.NewTicker(TraceEvery)
 	defer tick.Stop()
 	for {
@@ -132,6 +134,7 @@ func (r *traceReader) Close() error {
 	err := r.r.Close()
 	r.closeOnce.Do(func() {
 		close(r.stop)
+		<-r.exited // no "still reading" after "done"
 		r.t.note(fmt.Sprintf("done %s: %s in %s", r.where, model.Bytes(r.n.Load()), since(r.start)))
 	})
 	return err
