@@ -1,0 +1,69 @@
+# Builds the macOS (Apple Silicon) binary after every push to master whose
+# CI checks pass, and publishes it to one rolling GitHub Release, "latest",
+# so the download link never changes:
+#   https://github.com/ryandam9/sparkplain/releases/latest/download/sparkplain-macos-arm64.tar.gz
+# Each build replaces the one before; older builds are not kept. The binary
+# is not signed by Apple: README.md says how to open it.
+name: Release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: true # a newer push to master supersedes this build
+
+jobs:
+  macos:
+    # Only a push to master whose checks passed; never a pull request.
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: macos-15 # Apple Silicon
+    timeout-minutes: 20
+    permissions:
+      contents: write # move the tag and replace the release's files
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha }}
+      ASSET: sparkplain-macos-arm64.tar.gz
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: build
+        env:
+          CGO_ENABLED: "0"
+          GOOS: darwin
+          GOARCH: arm64
+        run: |
+          echo "VERSION=master-${SHA:0:7}" >> "$GITHUB_ENV"
+          go build -trimpath -ldflags "-s -w -X main.version=master-${SHA:0:7}" -o sparkplain ./cmd/sparkplain
+      - name: smoke test
+        run: |
+          file sparkplain | grep -q 'arm64'
+          ./sparkplain -version | grep -qx "sparkplain $VERSION"
+      - name: package
+        run: |
+          tar -czf "$ASSET" sparkplain
+          shasum -a 256 "$ASSET" > "$ASSET.sha256"
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          notes="macOS (Apple Silicon) build of master at $SHA, built $(date -u +%Y-%m-%dT%H:%MZ). Not signed by Apple: see the README's Download section."
+          if gh release view latest >/dev/null 2>&1; then
+            gh api -X PATCH "repos/$GH_REPO/git/refs/tags/latest" -f sha="$SHA" -F force=true
+            gh release upload latest "$ASSET" "$ASSET.sha256" --clobber
+            gh release edit latest --title "sparkplain $VERSION" --notes "$notes" --latest
+          else
+            gh release create latest "$ASSET" "$ASSET.sha256" --target "$SHA" --title "sparkplain $VERSION" --notes "$notes" --latest
+          fi

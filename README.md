@@ -73,6 +73,21 @@ sparkplain decodes that line as it reads it and keeps only the decoded scan, nev
 
 ![Explorer timeline: queries, jobs and stages over time, executors alive, tasks running, with the driver-only gaps shaded](docs/images/explorer-timeline.png)
 
+## Download (macOS, Apple Silicon)
+
+After every push to `master` whose checks pass, GitHub builds a binary for Macs with Apple Silicon (M1 and later) and puts it on the [`latest` release](https://github.com/ryandam9/sparkplain/releases/tag/latest), replacing the one before. There are no Linux, Windows or Intel builds; on those, build from source as below.
+
+```sh
+curl -fLO https://github.com/ryandam9/sparkplain/releases/latest/download/sparkplain-macos-arm64.tar.gz
+curl -fLO https://github.com/ryandam9/sparkplain/releases/latest/download/sparkplain-macos-arm64.tar.gz.sha256
+shasum -a 256 -c sparkplain-macos-arm64.tar.gz.sha256   # optional: check the download
+tar -xzf sparkplain-macos-arm64.tar.gz
+xattr -d com.apple.quarantine sparkplain   # once: the binary is not signed by Apple
+./sparkplain -version                      # sparkplain master-<commit>
+```
+
+Without the `xattr` step, a binary downloaded with a browser does not open ("cannot be verified"); one fetched with `curl` usually has no quarantine, and the command then says so harmlessly. Move it to a folder on your `PATH`, such as `/usr/local/bin`, to run it from anywhere.
+
 ## Try it in a minute
 
 You need [Go](https://go.dev/dl/) (the release in `go.mod`, currently 1.27.1) on Linux or macOS.
