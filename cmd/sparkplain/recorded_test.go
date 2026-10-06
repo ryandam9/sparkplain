@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	emrtypes "github.com/aws/aws-sdk-go-v2/service/emr/types"
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/awsmeta"
 	"github.com/ryandam9/sparkplain/internal/sparkplain/awsmeta/awsfake"
@@ -105,6 +107,28 @@ func replayAWS(t *testing.T, name string) *awsfake.Recording {
 	return rec
 }
 
+// replayLive replays a recording as if its cluster were still up: the
+// instances that ended with the cluster are RUNNING, with no end time, and
+// those that ended earlier (a reclaimed spot node, a scaled-in task node)
+// stay TERMINATED, as ListInstances would show a live cluster. The
+// recordings were made after each cluster ended, when every instance is
+// TERMINATED and sparkplain drops them all (TestTerminatedInstancesNeverShown).
+func replayLive(t *testing.T, name string) *awsfake.Recording {
+	t.Helper()
+	rec := replayAWS(t, name)
+	end := aws.ToTime(rec.Cluster.Status.Timeline.EndDateTime)
+	for i := range rec.Instances {
+		st := rec.Instances[i].Status
+		if st == nil || st.Timeline == nil || st.State != emrtypes.InstanceStateTerminated {
+			continue
+		}
+		if ended := aws.ToTime(st.Timeline.EndDateTime); !ended.IsZero() && end.Sub(ended) < time.Minute {
+			st.State, st.Timeline.EndDateTime, st.StateChangeReason = emrtypes.InstanceStateRunning, nil, nil
+		}
+	}
+	return rec
+}
+
 // findingRules lists a report's finding rules and titles.
 func findingRules(t *testing.T, dir string) map[string]string {
 	t.Helper()
@@ -121,7 +145,7 @@ func findingRules(t *testing.T, dir string) map[string]string {
 // driver on a different worker node, and neither's 11 GiB executors fitted
 // beside it, so both waited until the cluster was stopped.
 func TestRecordedDeadlock(t *testing.T) {
-	replayAWS(t, "j-FIXTURE0056CLUSTER")
+	replayLive(t, "j-FIXTURE0056CLUSTER")
 	for app, want := range map[string]map[string]string{
 		"application_1790380000000_0056": {
 			"waited-for-capacity": "Containers waited 12 min 0 s while 34% of YARN memory was free",
@@ -161,7 +185,7 @@ func TestRecordedDeadlock(t *testing.T) {
 // call, a job whose settings SparkContext refused, a heap that ran out, and
 // a Python job that allocated 3 GiB too briefly for YARN to notice.
 func TestRecordedPhase3(t *testing.T) {
-	replayAWS(t, "j-FIXTURE0062CLUSTER")
+	replayLive(t, "j-FIXTURE0062CLUSTER")
 	type want struct {
 		code   int
 		status string
@@ -211,7 +235,10 @@ func TestRecordedPhase3(t *testing.T) {
 				t.Errorf("%s: unexpected %s: %q", n, rule, got[rule])
 			}
 		}
-		if len(r.Cluster.Instances) != 5 || r.Cluster.Instances[0].VCPU != 4 || r.AWSCalls == nil || r.Metrics == nil {
+		// The two spot nodes that ended before the cluster did are dropped,
+		// and 0066 ran its executors on one of them (ip-10-0-2-13), so no
+		// node of it is known to look up in CloudTrail.
+		if len(r.Cluster.Instances) != 3 || r.Cluster.Instances[0].VCPU != 4 || (r.AWSCalls == nil) != (n == "0066") || r.Metrics == nil {
 			t.Errorf("%s: cluster %+v, calls %v, metrics %v", n, r.Cluster, r.AWSCalls != nil, r.Metrics != nil)
 		}
 	}
@@ -223,23 +250,24 @@ func TestRecordedPhase3(t *testing.T) {
 // findings job ran at once. Recorded after the cluster ended, so every
 // log, the daemons' included, had reached S3.
 func TestRecordedPhase4(t *testing.T) {
-	replayAWS(t, "j-FIXTURE0071CLUSTER")
+	replayLive(t, "j-FIXTURE0071CLUSTER")
 	type want struct {
 		has    map[string]string // rule → title prefix
 		hasNot []string
 		expl   map[string][]string // rule → phrases its explanation holds
 	}
 	for n, w := range map[string]want{
+		// The reclaimed spot node is TERMINATED, so it is dropped: no
+		// spot-interrupted finding and no word of it from EMR; YARN's own
+		// log line about the node still explains the retry.
 		"0071": {map[string]string{
-			"spot-interrupted": "Spot node i-0fee0000000000003 stopped while the application ran",
-			"app-retried":      "YARN restarted the application after 1 failed attempt",
-			"memory-spill":     "3 stages spilled 2.2 GiB to disk",
-			"driver-gaps":      "No Spark job ran for 2 min 20 s (54%) of the run",
-			"task-retries":     "1 task attempt failed, and its retry succeeded",
-		}, []string{"idle-nodes", "log-first-failure", "stage-skew"}, map[string][]string{
+			"app-retried":  "YARN restarted the application after 1 failed attempt",
+			"memory-spill": "3 stages spilled 2.2 GiB to disk",
+			"driver-gaps":  "No Spark job ran for 2 min 20 s (54%) of the run",
+			"task-retries": "1 task attempt failed, and its retry succeeded",
+		}, []string{"idle-nodes", "log-first-failure", "stage-skew", "spot-interrupted"}, map[string][]string{
 			"app-retried": {"Its driver ran on ip-10-0-2-12.us-east-1.compute.internal.", "YARN reported that node DECOMMISSIONING",
-				"EMR reports instance i-0fee0000000000003 ended", "INTERNAL_ERROR_BROADCAST", "and attempt 2 finished"},
-			"spot-interrupted": {"The application lost the driver of attempt 1.", "The reason from EMR: Spot Instance was terminated due to not enough capacity"},
+				"INTERNAL_ERROR_BROADCAST", "and attempt 2 finished"},
 		}},
 		"0072": {map[string]string{
 			"waited-for-capacity": "Containers waited 2 min 53 s for room on the cluster",
@@ -299,6 +327,33 @@ func TestRecordedPhase4(t *testing.T) {
 		}
 		if n == "0071" && (len(r.Summary.Sentences) == 0 || !strings.Contains(r.Summary.Sentences[0], "finished on attempt 2, after YARN restarted it.") || !strings.Contains(out, "What happened")) {
 			t.Errorf("0071: summary does not say which attempt finished: %q", r.Summary.Sentences)
+		}
+	}
+}
+
+// No terminated instance shows anywhere: not in report.json, the report or
+// the explorer, not even a node that ran the application. Recorded after
+// the cluster ended, every instance of j-FIXTURE0071CLUSTER is TERMINATED.
+func TestTerminatedInstancesNeverShown(t *testing.T) {
+	rec := replayAWS(t, "j-FIXTURE0071CLUSTER")
+	dir := t.TempDir()
+	runCLI(t, "-app-id", "application_1790380000000_0071", "-cluster-id", "j-FIXTURE0071CLUSTER", "-profile", "test", "-out", dir, "-format", "json,html,explorer")
+	if r := readReport(t, dir); r.Cluster == nil || len(r.Cluster.Instances) != 0 {
+		t.Fatalf("cluster instances %+v, want none", r.Cluster)
+	}
+	files, err := filepath.Glob(filepath.Join(dir, "*"))
+	if err != nil || len(files) != 3 {
+		t.Fatalf("outputs %v %v", files, err)
+	}
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, in := range rec.Instances {
+			if id := aws.ToString(in.Ec2InstanceId); strings.Contains(string(b), id) {
+				t.Errorf("%s names terminated instance %s", filepath.Base(f), id)
+			}
 		}
 	}
 }

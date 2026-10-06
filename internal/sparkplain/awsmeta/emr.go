@@ -267,13 +267,15 @@ func Steps(ctx context.Context, api EMRAPI, id string) ([]model.Step, error) {
 	return out, nil
 }
 
-// Instances lists the cluster's EC2 instances, current and ended
+// Instances lists the cluster's EC2 instances that are not terminated
 // (ListInstances), marking the primary node by the DNS name DescribeCluster
 // gave. Node logs are kept by instance ID, the event log names hosts, and
-// this joins the two.
+// this joins the two. A terminated instance is never asked for, and one
+// that comes back anyway is dropped: the user decided that no page, finding
+// or JSON shows one, even a node that ran the application (SPEC §3).
 func Instances(ctx context.Context, api EMRAPI, cl model.Cluster) ([]model.Instance, error) {
 	var out []model.Instance
-	p := emr.NewListInstancesPaginator(api, &emr.ListInstancesInput{ClusterId: aws.String(cl.ID)})
+	p := emr.NewListInstancesPaginator(api, &emr.ListInstancesInput{ClusterId: aws.String(cl.ID), InstanceStates: liveStates()})
 	for p.HasMorePages() {
 		page, err := p.NextPage(ctx)
 		if err != nil {
@@ -295,6 +297,9 @@ func Instances(ctx context.Context, api EMRAPI, cl model.Cluster) ([]model.Insta
 					in.Created, in.Ready, in.Ended = aws.ToTime(t.CreationDateTime), aws.ToTime(t.ReadyDateTime), aws.ToTime(t.EndDateTime)
 				}
 			}
+			if in.State == string(types.InstanceStateTerminated) {
+				continue
+			}
 			if d := cl.PrimaryDNS; d != "" && (d == in.PrivateDNS || d == aws.ToString(i.PublicDnsName) || d == in.PrivateIP) {
 				in.Primary = true
 			}
@@ -303,6 +308,17 @@ func Instances(ctx context.Context, api EMRAPI, cl model.Cluster) ([]model.Insta
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Created.Before(out[j].Created) })
 	return out, nil
+}
+
+// liveStates are every instance state but TERMINATED.
+func liveStates() []types.InstanceState {
+	var live []types.InstanceState
+	for _, st := range types.InstanceStateTerminated.Values() {
+		if st != types.InstanceStateTerminated {
+			live = append(live, st)
+		}
+	}
+	return live
 }
 
 // ErrorClass names an EMR API error's class for the Sources panel.

@@ -3459,7 +3459,7 @@
         fact("Cluster", el("span", null, el("span", { cls: "mono", text: c.id }), c.name ? " (" + c.name + ")" : ""), c.release + ", " + c.state + (c.reason ? ": " + c.reason : "") + "."),
         fact("Log URI", el("span", { cls: "mono", text: c.logUri || "none" }), "Where EMR copies the cluster's logs."),
         fact("Instance profile", c.profile || "none", "The IAM role the nodes' processes use for AWS calls."),
-        fact("Nodes up during the run", num(c.nodes.length) + nodeKinds(c.nodes), "The nodes the run could use, as At a glance counts them" + (c.allInstances > c.nodes.length ? ", of " + num(c.allInstances) + " instances the cluster has had (ended ones included)" : "") + ". Listed below by role.")));
+        fact("Nodes up during the run", num(c.nodes.length) + nodeKinds(c.nodes), "The nodes the run could use, as At a glance counts them" + (c.allInstances > c.nodes.length ? ", of " + num(c.allInstances) + " instances the cluster has that are not terminated" : "") + ". Listed below by role.")));
       if (c.nodes.length) {
         s2.appendChild(el("h3", { text: "Nodes up during the run" }));
         s2.appendChild(table({
