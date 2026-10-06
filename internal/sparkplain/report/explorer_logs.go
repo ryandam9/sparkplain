@@ -65,8 +65,9 @@ type xCluster struct {
 	Security string `json:"security,omitempty"`
 	// Nodes are the instances up during the run (the ones the Nodes section
 	// and "At a glance" count), primary first, then core and task nodes,
-	// each numbered within its role; AllInstances is how many the cluster
-	// has ever had, terminated ones included.
+	// each numbered within its role; AllInstances is how many instances
+	// the cluster has that are not terminated (terminated ones are never
+	// read, SPEC §3).
 	Nodes        []xClusterNode `json:"nodes"`
 	AllInstances int            `json:"allInstances"`
 }

@@ -118,7 +118,7 @@ func TestReadSwitchesKeepAppNodes(t *testing.T) {
 }
 
 func keepAppNodes(t *testing.T, withLog bool) {
-	rec := replayAWS(t, "j-FIXTURE0062CLUSTER")
+	rec := replayLive(t, "j-FIXTURE0062CLUSTER")
 	if !withLog {
 		bucket, _, _ := source.ParseS3(aws.ToString(rec.Cluster.LogUri))
 		store := routeStore{bucket: bucket, routes: map[string]string{"emr-logs": emrlogs}} // no spark-events: no event log

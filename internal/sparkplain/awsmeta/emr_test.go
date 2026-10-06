@@ -3,6 +3,7 @@ package awsmeta
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +22,7 @@ type stubEMR struct {
 	pages     [][]types.ClusterSummary
 	steps     []types.StepSummary
 	instances []types.Instance
+	asked     []types.InstanceState // the states ListInstances was asked for
 	groups    []types.InstanceGroup
 	fleets    []types.InstanceFleet
 	security  map[string]string
@@ -68,7 +70,8 @@ func (s *stubEMR) ListSteps(context.Context, *emr.ListStepsInput, ...func(*emr.O
 	return &emr.ListStepsOutput{Steps: s.steps}, nil
 }
 
-func (s *stubEMR) ListInstances(context.Context, *emr.ListInstancesInput, ...func(*emr.Options)) (*emr.ListInstancesOutput, error) {
+func (s *stubEMR) ListInstances(_ context.Context, in *emr.ListInstancesInput, _ ...func(*emr.Options)) (*emr.ListInstancesOutput, error) {
+	s.asked = in.InstanceStates
 	return &emr.ListInstancesOutput{Instances: s.instances}, nil
 }
 
@@ -192,7 +195,7 @@ func TestAppInStepLog(t *testing.T) {
 func TestInstancesMarkPrimary(t *testing.T) {
 	inst := func(id, dns string, created time.Time) types.Instance {
 		return types.Instance{Ec2InstanceId: aws.String(id), PrivateDnsName: aws.String(dns), PublicDnsName: aws.String(""), InstanceType: aws.String("m5.xlarge"),
-			Market: types.MarketTypeSpot, Status: &types.InstanceStatus{State: types.InstanceStateTerminated,
+			Market: types.MarketTypeSpot, Status: &types.InstanceStatus{State: types.InstanceStateRunning,
 				StateChangeReason: &types.InstanceStateChangeReason{Message: aws.String("Spot instance interrupted")},
 				Timeline:          &types.InstanceTimeline{CreationDateTime: aws.Time(created)}}}
 	}
@@ -204,6 +207,29 @@ func TestInstancesMarkPrimary(t *testing.T) {
 	}
 	if len(got) != 2 || got[0].ID != "i-1" || !got[0].Primary || got[1].Primary || got[1].Market != "SPOT" || got[1].StateReason != "Spot instance interrupted" {
 		t.Errorf("instances = %+v", got)
+	}
+}
+
+// No terminated instance is ever kept: ListInstances is asked only for the
+// other states, and one that comes back anyway is dropped.
+func TestInstancesDropTerminated(t *testing.T) {
+	inst := func(id string, st types.InstanceState) types.Instance {
+		return types.Instance{Ec2InstanceId: aws.String(id), Status: &types.InstanceStatus{State: st}}
+	}
+	api := &stubEMR{instances: []types.Instance{inst("i-gone", types.InstanceStateTerminated), inst("i-up", types.InstanceStateRunning), inst("i-new", types.InstanceStateBootstrapping)}}
+	got, err := Instances(context.Background(), api, model.Cluster{ID: "j-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, in := range got {
+		ids = append(ids, in.ID)
+	}
+	if strings.Join(ids, ",") != "i-up,i-new" {
+		t.Errorf("instances = %v, want i-up,i-new", ids)
+	}
+	if len(api.asked) == 0 || slices.Contains(api.asked, types.InstanceStateTerminated) || !slices.Contains(api.asked, types.InstanceStateRunning) {
+		t.Errorf("ListInstances asked for %v, want every state but TERMINATED", api.asked)
 	}
 }
 
