@@ -524,3 +524,35 @@ func TestAnatomyDriverCard(t *testing.T) {
 		t.Error("a driver outside YARN has no container card")
 	}
 }
+
+// When the node logs were not read (as on an ended cluster, whose
+// terminated instances sparkplain drops), the driver's container size is
+// unknown. In cluster mode the event log still says which node ran it, so
+// that node draws the driver's card, saying the size was not logged;
+// in client mode it ran outside YARN and has no card.
+func TestAnatomyDriverCardWithoutContainerSize(t *testing.T) {
+	t.Parallel()
+	r := anatReport()
+	for i := range r.Nodes.Hosts {
+		r.Nodes.Hosts[i].DriverContainerBytes = 0
+	}
+	host := r.Nodes.Hosts[1].Name
+	r.Executors.Driver = &model.Executor{ID: "driver", Host: host, Cores: 1}
+	r.Memory.Driver = &model.ExecMemory{PeakHeap: 300 << 20}
+
+	r.Application.DeployMode = "cluster"
+	svg := anatomySVG(buildAnatomy(r), noLinks)
+	for _, want := range []string{`class="chip drvchip"`, "heap 300 MiB of 2.0 GiB", "1 core · size not logged", "runs no tasks"} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("cluster mode, size unknown: diagram lacks %q", want)
+		}
+	}
+	if strings.Contains(svg, "client mode") {
+		t.Error("a cluster-mode driver is not in client mode")
+	}
+
+	r.Application.DeployMode = "client"
+	if svg := anatomySVG(buildAnatomy(r), noLinks); strings.Contains(svg, "drvchip") {
+		t.Error("a client-mode driver ran outside YARN and has no container card")
+	}
+}

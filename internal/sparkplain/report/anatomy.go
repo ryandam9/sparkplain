@@ -63,7 +63,11 @@ type anatUnused struct {
 }
 
 // used reports whether the node ran any of the application's containers.
-func (n *anatNode) used() bool { return len(n.Execs) > 0 || n.DriverBytes > 0 || n.ClientDriver }
+func (n *anatNode) used() bool { return len(n.Execs) > 0 || n.hasDriver() }
+
+// hasDriver reports whether the driver ran on the node, in a YARN container
+// or, in client mode, outside YARN.
+func (n *anatNode) hasDriver() bool { return n.DriverBytes > 0 || n.DriverHere || n.ClientDriver }
 
 type anatRM struct {
 	Known        bool
@@ -145,9 +149,13 @@ type anatNode struct {
 	YARNCores    int
 	DriverBytes  int64 // the driver's (application master's) container here
 	ClientDriver bool  // the driver ran here outside YARN
-	ExecBytes    int64 // each executor container
-	AtOnce       int   // most executors alive here at once
-	Execs        []anatExec
+	// DriverHere says the driver ran here in a YARN container (cluster
+	// mode, by the event log) whose size the logs read do not give, as
+	// when the node logs were not read.
+	DriverHere bool
+	ExecBytes  int64 // each executor container
+	AtOnce     int   // most executors alive here at once
+	Execs      []anatExec
 	// Driver is the driver's own card, drawn first among the node's
 	// containers when YARN placed it here (cluster mode: it runs inside
 	// the application master's container).
@@ -359,7 +367,14 @@ func buildAnatomy(r *model.Report) *anatomy {
 			n.CPUAvg, n.CPUPeak, n.HasCPU = h.HostCPU.Average, h.HostCPU.Peak, true
 		}
 		if h.Name == driverHost && n.DriverBytes == 0 {
-			n.ClientDriver = true
+			// In cluster mode the driver ran in the application master's
+			// container on this node, though the logs read do not give its
+			// size; otherwise it ran here outside YARN.
+			if r.Application.DeployMode == "cluster" {
+				n.DriverHere = true
+			} else {
+				n.ClientDriver = true
+			}
 		}
 		if n.Role == "MASTER" && a.Primary == nil {
 			a.Primary = n
@@ -370,7 +385,7 @@ func buildAnatomy(r *model.Report) *anatomy {
 
 	// The driver's card, on the node whose YARN container held it.
 	for _, n := range a.Nodes {
-		if n.DriverBytes == 0 {
+		if n.DriverBytes == 0 && !n.DriverHere {
 			continue
 		}
 		d := &anatDriver{Container: n.DriverBytes, Heap: r.Memory.Config.DriverHeapBytes}
@@ -817,7 +832,7 @@ func mentions(f model.Finding, n *anatNode) bool {
 // for group 1, its lowest executor ID.
 func nodeOrder(n *anatNode) (int, string) {
 	if len(n.Execs) == 0 {
-		if n.DriverBytes > 0 || n.ClientDriver {
+		if n.hasDriver() {
 			return 0, ""
 		}
 		return 2, ""
@@ -833,7 +848,7 @@ func nodeOrder(n *anatNode) (int, string) {
 
 func nodeRank(n *anatNode) int {
 	switch {
-	case n.DriverBytes > 0 || n.ClientDriver:
+	case n.hasDriver():
 		return 0
 	case len(n.Badges) > 0:
 		return 1
@@ -1522,7 +1537,7 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 	} else {
 		b.f(`<rect class="yarn unknown" x="%.1f" y="%.1f" width="%.1f" height="22" rx="4"/>`, x+12, by+8, bw)
 		b.text(x+20, by+23, "m", "", a.NoNodeCapacity)
-		if n.DriverBytes > 0 || n.ClientDriver {
+		if n.Driver == nil && n.hasDriver() {
 			b.text(x+12, by+46, "", "", "Runs the driver")
 		}
 	}
@@ -1686,7 +1701,12 @@ func drawDriverChip(b *svgw, d *anatDriver, x, y float64, l anatLinks) {
 	default:
 		b.text(x+8, y+43, "s", "", "heap peak not logged")
 	}
-	if size := execSize(d.Cores, d.Container); size != "" {
+	switch size := execSize(d.Cores, d.Container); {
+	case d.Container == 0 && size != "":
+		b.text(x+8, y+57, "s", "", size+" · size not logged")
+	case d.Container == 0:
+		b.text(x+8, y+57, "s", "", "container size not logged")
+	default:
 		b.text(x+8, y+57, "s", "", size)
 	}
 	b.text(x+8, y+70, "s", "", "runs no tasks")
