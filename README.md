@@ -90,7 +90,7 @@ Without the `xattr` step, a binary downloaded with a browser does not open ("can
 
 ## Try it in a minute
 
-You need [Go](https://go.dev/dl/) (the release in `go.mod`, currently 1.27.1) on Linux or macOS.
+You need [Go](https://go.dev/dl/) (the release in `go.mod`, currently 1.27.2) on Linux or macOS.
 
 ```sh
 git clone https://github.com/ryandam9/sparkplain.git
