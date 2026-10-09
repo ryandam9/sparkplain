@@ -301,3 +301,9 @@ td .dl{display:block;font-size:13px;overflow-wrap:anywhere}
   .attn-bar{grid-column:2/-1;grid-row:2}.attn-why{grid-column:2/-1;grid-row:3}}
 .explain.bullets ul{margin:2px 0 0;padding-left:18px;display:grid;gap:2px}
 .explain.bullets{margin:6px 0}
+/* A grid item is at least as wide as its content, so one long setting
+   (a classpath, a list of hosts) widened its group, and the page, far past
+   the window. Groups keep to the column; long values wrap in their cell. */
+.findings>*{min-width:0}
+details.cfggroup td{overflow-wrap:anywhere}
+details.cfggroup td:first-child{min-width:14em}
