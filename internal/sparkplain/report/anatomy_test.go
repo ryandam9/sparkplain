@@ -494,3 +494,33 @@ func TestAnatomyTilesWhenMany(t *testing.T) {
 		}
 	}
 }
+
+// The driver's YARN container (the application master's, in cluster mode)
+// is drawn as a card of its own on its node, first among the node's
+// containers and linked to the driver's page; in client mode it has none.
+func TestAnatomyDriverCard(t *testing.T) {
+	t.Parallel()
+	r := anatReport()
+	r.Memory.Driver = &model.ExecMemory{PeakHeap: 300 << 20}
+	links := anatLinks{Finding: func(int) string { return "" }, Ref: func(ref string) string { return "#" + ref }}
+	svg := anatomySVG(buildAnatomy(r), links)
+	for _, want := range []string{`<g class="chip drvchip" data-exec="driver">`, `href="#driver"`, ">Driver<", "heap 300 MiB of 2.0 GiB", "2.4 GiB container", "runs no tasks"} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("diagram lacks %q", want)
+		}
+	}
+	if !strings.Contains(svg, "The driver and ") && !strings.Contains(svg, "Only the driver ran here") {
+		t.Error("the node's heading should count the driver with its executors")
+	}
+	if i, j := strings.Index(svg, `class="chip drvchip"`), strings.Index(svg, `data-exec="`+r.Executors.Executors[0].ID+`"`); i < 0 || j >= 0 && j < i && r.Executors.Executors[0].Host == r.Nodes.Hosts[1].Name {
+		t.Error("the driver's card should come before the executors on its node")
+	}
+
+	// Client mode: the driver ran outside YARN, so no node draws its card.
+	for i := range r.Nodes.Hosts {
+		r.Nodes.Hosts[i].DriverContainerBytes = 0
+	}
+	if svg := anatomySVG(buildAnatomy(r), links); strings.Contains(svg, "drvchip") {
+		t.Error("a driver outside YARN has no container card")
+	}
+}

@@ -300,6 +300,8 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 			switch kind {
 			case "executor":
 				return "#anatomy/" + url.PathEscape(id)
+			case "driver":
+				return "#executor/driver"
 			case "node":
 				if r.Cluster != nil {
 					return "#cluster"
