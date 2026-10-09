@@ -136,18 +136,22 @@ func rmLines(rm anatRM) []string {
 }
 
 type anatNode struct {
-	Name, Short     string
-	Role, Type      string
-	Market          string
-	VCPU            int
-	MemBytes        int64
-	YARNBytes       int64
-	YARNCores       int
-	DriverBytes     int64 // the driver's (application master's) container here
-	ClientDriver    bool  // the driver ran here outside YARN
-	ExecBytes       int64 // each executor container
-	AtOnce          int   // most executors alive here at once
-	Execs           []anatExec
+	Name, Short  string
+	Role, Type   string
+	Market       string
+	VCPU         int
+	MemBytes     int64
+	YARNBytes    int64
+	YARNCores    int
+	DriverBytes  int64 // the driver's (application master's) container here
+	ClientDriver bool  // the driver ran here outside YARN
+	ExecBytes    int64 // each executor container
+	AtOnce       int   // most executors alive here at once
+	Execs        []anatExec
+	// Driver is the driver's own card, drawn first among the node's
+	// containers when YARN placed it here (cluster mode: it runs inside
+	// the application master's container).
+	Driver          *anatDriver
 	CPUAvg, CPUPeak float64
 	CPU             []float64 // CloudWatch average points while it ran
 	HasCPU          bool
@@ -175,6 +179,22 @@ func (n *anatNode) free() (int64, bool) {
 	}
 	f := n.YARNBytes - n.DriverBytes - int64(n.AtOnce)*n.ExecBytes
 	return max(f, 0), n.ExecBytes > 0 && f >= n.ExecBytes
+}
+
+// anatDriver is the driver drawn as a card like an executor's: its heap's
+// peak against its size, its cores and the container YARN gave it.
+type anatDriver struct {
+	Container, Heap, PeakHeap int64
+	Cores                     int
+}
+
+// slots is how many cards the node draws: its executors, and the driver
+// when it ran here in a YARN container.
+func (n *anatNode) slots() int {
+	if n.Driver != nil {
+		return len(n.Execs) + 1
+	}
+	return len(n.Execs)
 }
 
 type anatExec struct {
@@ -346,6 +366,22 @@ func buildAnatomy(r *model.Report) *anatomy {
 			continue
 		}
 		a.Nodes = append(a.Nodes, n)
+	}
+
+	// The driver's card, on the node whose YARN container held it.
+	for _, n := range a.Nodes {
+		if n.DriverBytes == 0 {
+			continue
+		}
+		d := &anatDriver{Container: n.DriverBytes, Heap: r.Memory.Config.DriverHeapBytes}
+		if m := r.Memory.Driver; m != nil {
+			d.PeakHeap = m.PeakHeap
+		}
+		if x := r.Executors.Driver; x != nil {
+			d.Cores = x.Cores
+			d.PeakHeap = max(d.PeakHeap, x.Peak.JVMHeap)
+		}
+		n.Driver = d
 	}
 
 	// Every node is judged against the application's executor size, so a
@@ -1365,21 +1401,21 @@ func chipsPerRow(nw float64) int { return max(1, int((nw-24+8)/(anChipW+8))) }
 
 // compact says a node ran more executors than three rows of cards hold,
 // so they are drawn as tiles.
-func compact(n *anatNode, nw float64) bool { return len(n.Execs) > 3*chipsPerRow(nw) }
+func compact(n *anatNode, nw float64) bool { return n.slots() > 3*chipsPerRow(nw) }
 
 func tilesPerRow(nw float64) int { return max(1, int((nw-24+6)/(anTileW+6))) }
 
 func nodeHeight(n *anatNode, nw float64) float64 {
 	h := 128.0 // header, CPU, YARN bar and its note
 	switch {
-	case len(n.Execs) == 0:
+	case n.slots() == 0:
 		h += 26
 	case compact(n, nw):
 		per := tilesPerRow(nw)
-		h += 24 + float64((len(n.Execs)+per-1)/per)*(anTileH+6)
+		h += 24 + float64((n.slots()+per-1)/per)*(anTileH+6)
 	default:
 		per := chipsPerRow(nw)
-		h += 22 + float64((len(n.Execs)+per-1)/per)*(anChipH+8)
+		h += 22 + float64((n.slots()+per-1)/per)*(anChipH+8)
 	}
 	return h
 }
@@ -1491,12 +1527,20 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 		}
 	}
 
-	// The executors that ran here.
+	// The containers that ran here: the driver's first, then the executors.
 	ey := y + 128
+	ran := model.Plural(len(n.Execs), "executor", "executors") + " ran here"
+	first := 0 // the executors' cards start after the driver's
+	if n.Driver != nil {
+		ran, first = "The driver and "+ran, 1
+		if len(n.Execs) == 0 {
+			ran = "Only the driver ran here"
+		}
+	}
 	switch {
-	case len(n.Execs) == 0:
+	case n.slots() == 0:
 		msg := "No executors ran here"
-		if n.DriverBytes > 0 || n.ClientDriver {
+		if n.ClientDriver {
 			msg = "Only the driver ran here"
 		}
 		b.text(x+12, ey+12, "m", "", msg)
@@ -1509,17 +1553,25 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 		if s := execSize(sameCores(n.Execs), n.ExecBytes); s != "" {
 			size = ", each " + s
 		}
-		b.text(x+12, ey+12, "m", "", fitText(fmt.Sprintf("%s ran here%s, %d at once%s", model.Plural(len(n.Execs), "executor", "executors"), each, n.AtOnce, size), w-24, 12))
+		b.text(x+12, ey+12, "m", "", fitText(fmt.Sprintf("%s%s, %d at once%s", ran, each, n.AtOnce, size), w-24, 12))
 		per := tilesPerRow(w)
+		if n.Driver != nil {
+			drawDriverTile(b, n.Driver, x+12, ey+20, l)
+		}
 		for i, e := range n.Execs {
-			drawTile(b, e, x+12+float64(i%per)*(anTileW+6), ey+20+float64(i/per)*(anTileH+6), l)
+			j := i + first
+			drawTile(b, e, x+12+float64(j%per)*(anTileW+6), ey+20+float64(j/per)*(anTileH+6), l)
 		}
 	default:
-		b.text(x+12, ey+12, "m", "", fmt.Sprintf("%s ran here", model.Plural(len(n.Execs), "executor", "executors")))
+		b.text(x+12, ey+12, "m", "", ran)
 		per := chipsPerRow(w)
+		if n.Driver != nil {
+			drawDriverChip(b, n.Driver, x+12, ey+22, l)
+		}
 		for i, e := range n.Execs {
-			cx := x + 12 + float64(i%per)*(anChipW+8)
-			cy := ey + 22 + float64(i/per)*(anChipH+8)
+			j := i + first
+			cx := x + 12 + float64(j%per)*(anChipW+8)
+			cy := ey + 22 + float64(j/per)*(anChipH+8)
 			drawChip(b, a, e, n.ExecBytes, cx, cy, l)
 		}
 	}
@@ -1584,6 +1636,71 @@ func drawTile(b *svgw, e anatExec, x, y float64, l anatLinks) {
 		}
 		b.f(`<rect class="%s" x="%.1f" y="%.1f" width="%.1f" height="7" rx="2"/>`, hc, x+6, y+anTileH-13, hw*f)
 	}
+	b.WriteString(`</g>`)
+}
+
+// driverTip is the driver card's tooltip.
+func driverTip(d *anatDriver) string {
+	s := "Driver, in the application master's YARN container"
+	if d.Container > 0 {
+		s += " (" + model.Bytes(d.Container) + ")"
+	}
+	if d.Cores > 0 {
+		s += fmt.Sprintf(", %d cores", d.Cores)
+	}
+	if d.Heap > 0 && d.PeakHeap > 0 {
+		s += fmt.Sprintf(", peak heap %s of %s", model.Bytes(d.PeakHeap), model.Bytes(d.Heap))
+	}
+	return s + ". It plans the work and collects the results. It runs no tasks."
+}
+
+// heapBar draws a heap's peak against its size, w wide and h high.
+func heapBar(b *svgw, heap, peak int64, x, y, w, h float64) {
+	b.f(`<rect class="heap" x="%.1f" y="%.1f" width="%.1f" height="%.0f" rx="2"/>`, x, y, w, h)
+	if heap > 0 && peak > 0 {
+		f := math.Min(1, float64(peak)/float64(heap))
+		hc := "hpeak"
+		if f >= 0.9 {
+			hc += " hot"
+		}
+		b.f(`<rect class="%s" x="%.1f" y="%.1f" width="%.1f" height="%.0f" rx="2"/>`, hc, x, y, w*f, h)
+	}
+}
+
+// drawDriverChip draws the driver as a card the size of an executor's, in
+// the driver's colour: its heap's peak against its size, and the cores and
+// container YARN gave the application master it runs in.
+func drawDriverChip(b *svgw, d *anatDriver, x, y float64, l anatLinks) {
+	b.f(`<g class="chip drvchip" data-exec="driver"><title>%s</title>`, esc(driverTip(d)))
+	b.link(l.Ref("driver"), func() {
+		b.f(`<rect class="cbox" x="%.1f" y="%.1f" width="%.0f" height="%.0f" rx="6"/>`, x, y, anChipW, anChipH)
+		b.text(x+8, y+15, "b", "", "Driver")
+	})
+	b.text(x+anChipW-8, y+15, "m", "end", "application master")
+	heapBar(b, d.Heap, d.PeakHeap, x+8, y+22, anChipW-16, 9)
+	switch {
+	case d.Heap > 0 && d.PeakHeap > 0:
+		b.text(x+8, y+43, "s", "", fmt.Sprintf("heap %s of %s", model.Bytes(d.PeakHeap), model.Bytes(d.Heap)))
+	case d.Heap > 0:
+		b.text(x+8, y+43, "s", "", "heap "+model.Bytes(d.Heap)+", peak not logged")
+	default:
+		b.text(x+8, y+43, "s", "", "heap peak not logged")
+	}
+	if size := execSize(d.Cores, d.Container); size != "" {
+		b.text(x+8, y+57, "s", "", size)
+	}
+	b.text(x+8, y+70, "s", "", "runs no tasks")
+	b.WriteString(`</g>`)
+}
+
+// drawDriverTile draws the driver small, as a tile among the executors'.
+func drawDriverTile(b *svgw, d *anatDriver, x, y float64, l anatLinks) {
+	b.f(`<g class="chip tile drvchip" data-exec="driver"><title>%s</title>`, esc(driverTip(d)))
+	b.link(l.Ref("driver"), func() {
+		b.f(`<rect class="cbox" x="%.1f" y="%.1f" width="%.0f" height="%.0f" rx="5"/>`, x, y, anTileW, anTileH)
+		b.text(x+anTileW/2, y+15, "b", "middle", "Driver")
+	})
+	heapBar(b, d.Heap, d.PeakHeap, x+6, y+anTileH-13, anTileW-12, 7)
 	b.WriteString(`</g>`)
 }
 
@@ -1895,6 +2012,8 @@ func anatomyHTML(r *model.Report, explorer string) template.HTML {
 				return explorer + "#executor/" + id
 			case kind == "node":
 				return explorer + "#anatomy"
+			case kind == "driver":
+				return explorer + "#executor/driver"
 			}
 			return ""
 		},

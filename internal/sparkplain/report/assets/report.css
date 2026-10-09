@@ -264,9 +264,9 @@ a.themebtn{text-decoration:none}
 @media (max-width:560px){.axes div{grid-template-columns:1fr;gap:0}}
 /* categorical series, validated for colour-blind separation (dataviz reference palette, slots 1-5) */
 /* --exec-soft is a pale --viz-1: the fill of an executor's card, so cards read as the executor colour */
-:root{--viz-1:#2a78d6;--viz-2:#eb6834;--viz-3:#1baf7a;--viz-4:#eda100;--viz-5:#e87ba4;--exec-soft:#E4EEFB;--core:#c2185b}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--viz-1:#3987e5;--viz-2:#d95926;--viz-3:#199e70;--viz-4:#c98500;--viz-5:#d55181;--exec-soft:#15263B;--core:#f06292}}
-:root[data-theme="dark"]{--viz-1:#3987e5;--viz-2:#d95926;--viz-3:#199e70;--viz-4:#c98500;--viz-5:#d55181;--exec-soft:#15263B;--core:#f06292}
+:root{--viz-1:#2a78d6;--viz-2:#eb6834;--viz-3:#1baf7a;--viz-4:#eda100;--viz-5:#e87ba4;--exec-soft:#E4EEFB;--drv-soft:#FCE9E0;--core:#c2185b}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--viz-1:#3987e5;--viz-2:#d95926;--viz-3:#199e70;--viz-4:#c98500;--viz-5:#d55181;--exec-soft:#15263B;--drv-soft:#3A2116;--core:#f06292}}
+:root[data-theme="dark"]{--viz-1:#3987e5;--viz-2:#d95926;--viz-3:#199e70;--viz-4:#c98500;--viz-5:#d55181;--exec-soft:#15263B;--drv-soft:#3A2116;--core:#f06292}
 
 /* "What happened" as full-width bullets, the headline figures below */
 #summary{display:grid;gap:14px}
@@ -298,6 +298,7 @@ a.themebtn{text-decoration:none}
 .anat .ico{fill:none;stroke:var(--muted);stroke-width:1.2;stroke-linecap:round}
 .anat .gauge{fill:var(--surface-2);stroke:var(--line)} .anat .gfill{fill:var(--muted)} .anat .gpeak{stroke:var(--ink);stroke-width:2}
 .anat .chip .cbox{fill:var(--exec-soft);stroke:var(--viz-1);stroke-width:1.25} .anat .chip.bad .cbox{stroke:var(--crit);stroke-width:2;fill:var(--crit-soft)}
+.anat .chip.drvchip .cbox{fill:var(--drv-soft);stroke:var(--viz-2)} .anat .chip.drvchip .hpeak{fill:var(--viz-2)} .anat .chip.drvchip .hpeak.hot{fill:var(--crit)}
 .anat .chip.gone .cbox{stroke-dasharray:4 3} .anat .chip.bad .st{fill:var(--crit);font-weight:600}
 .anat .heap{fill:var(--surface-2);stroke:var(--line)} .anat .hpeak{fill:var(--viz-1)} .anat .hpeak.hot{fill:var(--crit)}
 .anat .core{fill:var(--core);stroke:var(--core);stroke-width:1} /* dark pink, the only pink in the diagram: always outlined, filled faint to solid by how busy */
