@@ -163,7 +163,7 @@ Rules that judge CPU, GC and memory size skip runs with less than `min-run-time`
 
 **Outputs.** `<app-id>-report.html`, `<app-id>-report.json` and `<app-id>-explorer.html` in `~/sparkplain/<yyyy-mm-dd>/<app-id>/` unless `-out` is given. Files are 0600 and new folders 0700, because reports carry user names, hosts and log lines. Both pages are single self-contained files that make no network requests, in light and dark themes; `report.html` uses system fonts and inline SVG. On both pages a small embedded script (`props.js`) shows configuration keys in running text (`spark.executor.memory`, or `key=value`) as code with a border; text that is already code is left as it is. Linux and macOS only (outputs are replaced with a POSIX rename). The only ready-built binary is for macOS on Apple Silicon (`darwin/arm64`, unsigned): `.github/workflows/release.yml` builds it after every push to master whose CI passes and replaces the files of the rolling `latest` release; elsewhere, build from source. Release binaries are for macOS on Apple Silicon only (`darwin/arm64`, unsigned), built and published by `.github/workflows/release.yml` on a `v*` tag after the CI checks pass; elsewhere, build from source.
 
-**Flags**
+**Flags** (`sparkplain --help` lists them, drawn by Fang). Each long flag takes one dash or two: `-app-id` and `--app-id` are the same. Help goes to stdout and exits 0; a flag mistake exits 2.
 
 | Flag | Purpose |
 | --- | --- |
