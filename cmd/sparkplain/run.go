@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	iofs "io/fs"
@@ -67,18 +66,18 @@ type options struct {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("sparkplain", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	cmd := newRootCmd(stdout, stderr)
+	fs := cmd.Flags()
 	var o options
 	fs.StringVar(&o.profile, "profile", "", "named AWS profile for online runs (default for the default chain)")
-	fs.StringVar(&o.region, "region", "", "AWS region override (online runs)")
-	fs.StringVar(&o.configPath, "config", "", "YAML defaults file (default ~/.config/sparkplain/config.yaml)")
+	fs.StringVar(&o.region, "region", "", "an AWS region override (online runs)")
+	fs.StringVar(&o.configPath, "config", "", "the YAML defaults file (default ~/.config/sparkplain/config.yaml)")
 	fs.StringVar(&o.logTZ, "log-timezone", "", "the time zone the cluster writes its log times in, such as Australia/Sydney (default UTC, EMR's default; or log-timezone in the config file)")
 	fs.StringVar(&o.env, "env", "", "environment in the config file, such as prod or nonprod: its clusters, profile, region and event log location")
-	fs.StringVar(&o.clusterID, "cluster-id", "", "EMR cluster ID: read its metadata and logs from AWS (needs -profile)")
-	fs.StringVar(&o.clusterName, "cluster-name", "", "EMR cluster name, instead of -cluster-id: the cluster of that name that ran the application (also cluster-name in the config file)")
-	fs.StringVar(&o.hbaseClusterID, "hbase-cluster-id", "", "EMR cluster ID that runs HBase when it is separate from the Spark cluster")
-	fs.StringVar(&o.hbaseClusterName, "hbase-cluster-name", "", "EMR cluster name, instead of -hbase-cluster-id: the cluster of that name up when the application ran (also hbase-cluster-name in the config file)")
+	fs.StringVar(&o.clusterID, "cluster-id", "", "the EMR cluster ID: read its metadata and logs from AWS (needs --profile)")
+	fs.StringVar(&o.clusterName, "cluster-name", "", "the EMR cluster name, instead of --cluster-id: the cluster of that name that ran the application (also cluster-name in the config file)")
+	fs.StringVar(&o.hbaseClusterID, "hbase-cluster-id", "", "the EMR cluster ID that runs HBase when it is separate from the Spark cluster")
+	fs.StringVar(&o.hbaseClusterName, "hbase-cluster-name", "", "the EMR cluster name, instead of --hbase-cluster-id: the cluster of that name up when the application ran (also hbase-cluster-name in the config file)")
 	fs.StringVar(&o.appID, "app-id", "", "Spark application ID, e.g. application_1700000000000_0042 (required)")
 	fs.StringVar(&o.eventLog, "eventlog", "", "event log: local file, rolling eventlog_v2_* folder, folder of logs, or History Server zip")
 	fs.StringVar(&o.from, "from", "", "local copy of the cluster's logs (containers/, steps/, node/) or of one application's container folders")
@@ -87,7 +86,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.IntVar(&o.workers, "workers", 16, "how many log files to read at once, 1 to 256")
 	fs.StringVar(&o.maxSize, "max-size", "", "largest file to read, as stored (compressed), e.g. 10GiB (default 10GiB)")
 	fs.StringVar(&o.maxUnpacked, "max-unpacked", "", "most bytes one compressed file may unpack to, e.g. 50GiB (default 50GiB)")
-	fs.DurationVar(&o.timeout, "overall-timeout", 0, "deadline for the whole run (default 30m)")
+	fs.DurationVar(&o.timeout, "overall-timeout", 0, "deadline for the whole run")
+	fs.Lookup("overall-timeout").DefValue = "30m" // 0 means the default
 	fs.BoolVar(&o.noCloudWatch, "no-cloudwatch", false, "skip CloudWatch metrics (fewer permissions needed)")
 	fs.BoolVar(&o.noCloudTrail, "no-cloudtrail", false, "skip CloudTrail lookups (fewer permissions needed)")
 	fs.BoolVar(&o.noStepLogs, "no-step-logs", false, "skip the EMR step logs (also read: step-logs: no in the config file)")
@@ -95,27 +95,19 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.BoolVar(&o.noHBaseLogs, "no-hbase-logs", false, "skip HBase's Master and region server logs (also read: hbase-logs: no)")
 	fs.DurationVar(&o.windowPad, "window-pad", 5*time.Minute, "padding around the run's time window for CloudWatch and CloudTrail queries")
 	fs.BoolVar(&o.showVersion, "version", false, "print the version and exit")
-	fs.BoolVar(&o.initConfig, "init-config", false, "write a starter config file, every key explained, to ~/.config/sparkplain/config.yaml (or -config) and exit")
+	fs.BoolVar(&o.initConfig, "init-config", false, "write a starter config file, every key explained, to ~/.config/sparkplain/config.yaml (or --config) and exit")
 	fs.BoolVar(&o.verbose, "verbose", false, "print each log folder listed and each file read, with its size and how long it took, as the run goes")
 	fs.BoolVar(&o.check, "check", false, "check what the run can read, print it, and exit (0 all readable, 3 not)")
 	fs.StringVar(&o.show, "show", "", "print the event at file:line (as the pages cite it), redacted, and exit")
 	fs.StringVar(&o.decodeScan, "decode-scan", "", "print an HBase scan string (hbase.mapreduce.scan, base64) decoded: key range, columns, filters; - reads it from stdin; reads nothing else and exits")
-	fs.Func("source", "the application's source file or folder, such as a local copy of its repo, shown beside jobs and stages in the explorer (repeatable; redacted; or source: in the config file)", func(v string) error {
-		o.sources = append(o.sources, v)
-		return nil
-	})
+	fs.StringArrayVar(&o.sources, "source", nil, "the application's source file or folder, such as a local copy of its repo, shown beside jobs and stages in the explorer (repeatable; redacted; or source: in the config file)")
 	fs.IntVar(&o.sourceContext, "source-context", 0, "lines of code shown before and after the line a stage or job ran (default 20, or source-context in the config file)")
-	fs.Usage = func() {
-		fmt.Fprintf(stderr, "Usage: sparkplain -app-id <application id> [-eventlog <path>] [-profile <p> -cluster-id <id> | -from <folder>] [flags]\n\n")
-		fmt.Fprintf(stderr, "Turns one Spark application's event log and YARN, step and node logs into <app-id>-report.html, <app-id>-report.json and <app-id>-explorer.html.\n\nFlags:\n")
-		fs.PrintDefaults()
-		fmt.Fprintf(stderr, "\nExit codes: 0 complete, 2 fatal, 3 partial (a source missing or unreadable), 130 interrupted.\n")
-	}
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return exitOK
-		}
+	rest, ran, err := parseArgs(cmd, args)
+	if err != nil {
 		return exitFatal
+	}
+	if !ran { // --help
+		return exitOK
 	}
 	if o.showVersion {
 		fmt.Fprintln(stdout, "sparkplain", version)
@@ -137,13 +129,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "sparkplain: "+format+"\n", a...)
 		return exitFatal
 	}
-	if fs.NArg() > 0 {
-		return fail("unexpected argument %q (flags go before values, e.g. -eventlog <path>)", fs.Arg(0))
+	if len(rest) > 0 {
+		return fail("unexpected argument %q (each value follows its flag, e.g. --eventlog <path>)", rest[0])
 	}
 
 	if o.appID == "" {
-		fs.Usage()
-		return fail("-app-id is required")
+		return fail("--app-id is required (sparkplain --help lists every flag)")
 	}
 	if !appIDRE.MatchString(o.appID) {
 		return fail("-app-id %q does not look like a Spark application ID", o.appID)

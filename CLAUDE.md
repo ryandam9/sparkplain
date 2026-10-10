@@ -22,6 +22,7 @@ A Go CLI that turns one Spark application's logs into a single plain-language HT
   - `github.com/klauspost/compress` (zstd, snappy)
   - `github.com/pierrec/lz4/v4`
   - `gopkg.in/yaml.v3`
+  - `github.com/spf13/cobra` and `github.com/charmbracelet/fang` (the CLI and its help)
   - D3 v7 (JavaScript), embedded in the explorer page only, pinned by hash (`internal/sparkplain/report/assets/vendor`)
 
   Ask before adding anything else.
