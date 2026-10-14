@@ -129,19 +129,22 @@ type xData struct {
 	Execs          []string              `json:"execs"` // executor IDs; task and cell rows use their index
 	Executors      table                 `json:"executors"`
 	HeapBytes      int64                 `json:"heapBytes"`
-	Jobs           table                 `json:"jobs"`
-	Stages         table                 `json:"stages"`
-	Detail         map[string]xDetail    `json:"detail"` // by "id.attempt"
-	TaskCols       []string              `json:"taskCols"`
-	CellCols       []string              `json:"cellCols"`
-	Running        *xRunning             `json:"running,omitempty"`
-	SQL            table                 `json:"sql"`
-	Graphs         map[string][]xNode    `json:"graphs"`      // by query ID
-	PlanLays       map[string]xLayout    `json:"planLayouts"` // by query ID, for graphs small enough to draw
-	JobDags        map[string]xJobDag    `json:"jobDags"`     // by job ID, for jobs with 2 to maxGraphNodes stages
-	RunPath        *xRunPath             `json:"runPath,omitempty"`
-	Resources      []xUse                `json:"resources"` // the Overview's utilisation panel
-	StageOps       map[string]xStageOps  `json:"stageOps"`  // by "id.attempt": the RDDs each stage computes, laid out as a graph
+	// Scaling is when Spark changed how many executors it wanted
+	// (dynamic allocation), for the Executors tab's charts.
+	Scaling   *model.ExecScaling   `json:"scaling,omitempty"`
+	Jobs      table                `json:"jobs"`
+	Stages    table                `json:"stages"`
+	Detail    map[string]xDetail   `json:"detail"` // by "id.attempt"
+	TaskCols  []string             `json:"taskCols"`
+	CellCols  []string             `json:"cellCols"`
+	Running   *xRunning            `json:"running,omitempty"`
+	SQL       table                `json:"sql"`
+	Graphs    map[string][]xNode   `json:"graphs"`      // by query ID
+	PlanLays  map[string]xLayout   `json:"planLayouts"` // by query ID, for graphs small enough to draw
+	JobDags   map[string]xJobDag   `json:"jobDags"`     // by job ID, for jobs with 2 to maxGraphNodes stages
+	RunPath   *xRunPath            `json:"runPath,omitempty"`
+	Resources []xUse               `json:"resources"` // the Overview's utilisation panel
+	StageOps  map[string]xStageOps `json:"stageOps"`  // by "id.attempt": the RDDs each stage computes, laid out as a graph
 	// HBaseScans are the TableInputFormat scan stages, region by region, by
 	// "id.attempt"; RegionsCut counts regions left out past the cap.
 	HBaseScans map[string]xHBaseScan `json:"hbaseScans,omitempty"`
@@ -283,7 +286,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		App: xApp{ID: a.ID, Name: a.Name, User: a.User, Attempt: a.AttemptID, Spark: a.SparkVersion, Master: a.Master,
 			Deploy: a.DeployMode, Status: a.Status, Reason: a.StatusReason, Start: unixMs(a.Start), End: unixMs(a.End), Duration: a.DurationMs,
 			DriverLogs: a.DriverLogs},
-		Summary: r.Summary.Sentences, KPIs: r.Summary.KPIs, HeapBytes: r.Memory.Config.HeapBytes,
+		Summary: r.Summary.Sentences, KPIs: r.Summary.KPIs, HeapBytes: r.Memory.Config.HeapBytes, Scaling: r.Executors.Scaling,
 		Detail: map[string]xDetail{}, TaskCols: taskCols, CellCols: cellCols, Graphs: map[string][]xNode{},
 		Findings: []xFinding{}, Files: []string{}, Execs: []string{}, Notes: []string{},
 		PlanLays: map[string]xLayout{}, JobDags: map[string]xJobDag{}, StageOps: map[string]xStageOps{}, Adaptive: map[string][][]any{},

@@ -72,6 +72,7 @@
       {{with anatomy $r}}<section id="anatomy">
         <div class="sechead"><h2>The run at a glance</h2><span class="note">All of the run in one picture: where it ran, what it got and what it used.</span>{{if $.Explorer}}<a class="xlink" href="{{xTab $.Explorer "anatomy"}}">Open in the explorer →</a>{{end}}</div>
         {{.}}
+        {{with $r.Executors.Scaling}}<p class="scaling"><b>Executors over time.</b> {{.Summary}}{{if $.Explorer}} <a href="{{xTab $.Explorer "executors"}}">See when, in the explorer →</a>{{end}}</p>{{end}}
       </section>{{end}}
 
       <section id="coverage">

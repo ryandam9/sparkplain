@@ -1461,6 +1461,13 @@
     var s = section("Executors", "Executors are the worker processes that ran tasks. The driver coordinates and usually runs none.");
     // which executor behaved differently first; the charts after it explain one
     s.appendChild(chartSlot("", "heatmap"));
+    // when dynamic allocation scaled up and down, and which executors came and went
+    if (D.scaling) {
+      s.appendChild(el("h3", { text: "Executors over time" }));
+      s.appendChild(explain(D.scaling.summary));
+      s.appendChild(chartSlot("", "scaling"));
+      s.appendChild(chartSlot("", "scaleEvents"));
+    }
     s.appendChild(chartSlot("tall", "executorsTimeline"));
     s.appendChild(chartSlot("", "execTime"));
     s.appendChild(chartSlot("", "execHeapAll"));
@@ -2165,7 +2172,7 @@
     series.forEach(function (s) {
       var curve = s.step ? d3.curveStepAfter : d3.curveLinear, pts = s.points.filter(function (p) { return p[1] != null; });
       if (s.area != null) P.svg.append("path").attr("d", d3.area().curve(curve).x(X).y0(y(0)).y1(Y)(pts)).style("fill", s.color).style("fill-opacity", s.area);
-      P.svg.append("path").attr("class", "ln").attr("d", d3.line().curve(curve).x(X).y(Y)(pts)).style("stroke", s.color).style("stroke-dasharray", s.dash || null);
+      if (!s.noLine) P.svg.append("path").attr("class", "ln").attr("d", d3.line().curve(curve).x(X).y(Y)(pts)).style("stroke", s.color).style("stroke-dasharray", s.dash || null);
       if (s.dots) P.svg.append("g").selectAll("circle").data(pts).join("circle").attr("cx", X).attr("cy", Y).attr("r", 2.5).style("fill", s.color);
     });
     // the cursor: the nearest sample time, and each series' value there
@@ -3016,19 +3023,81 @@
         read: ["Longer bars took longer.", "Gaps between bars are time the driver spent outside Spark jobs: planning, Python code or waiting.", "Bars that overlap ran at the same time."],
         note: "Click a bar to open the job." }, "No job has a start time.");
     },
+    scaling: function (c) {
+      var sc = D.scaling, workers = execs.filter(function (x) { return x.id !== "driver" && x.added; });
+      var t0 = a.start || d3.min(workers, function (x) { return x.added; }), t1 = appEnd;
+      // executors running: one step at each add and remove
+      var ev = [];
+      workers.forEach(function (x) { ev.push([x.added, 1, x]); if (x.removed && x.removed < t1) ev.push([x.removed, -1, x]); });
+      ev.sort(function (p, q) { return p[0] - q[0] || p[1] - q[1]; });
+      var n = 0, running = t0 ? [[t0, 0]] : [], added = [], removed = [];
+      ev.forEach(function (e) { n += e[1]; running.push([e[0], n]); (e[1] > 0 ? added : removed).push([e[0], n]); });
+      if (t1) running.push([t1, n]);
+      // what Spark wanted: the driver's target, from its log
+      var wanted = (sc.targets || []).map(function (x) { return [Date.parse(x.time), x.total]; });
+      if (wanted.length && t1) wanted.push([t1, wanted[wanted.length - 1][1]]);
+      if (!wanted.length && !workers.length) { waitText(c, "No executor was added and the driver's log does not show what Spark asked for."); return; }
+      var series = [];
+      if (wanted.length) series.push({ label: "Executors Spark wanted", color: V.viz[1], points: wanted, step: true });
+      series.push({ label: "Executors running", color: V.series, points: running, step: true, area: 0.12 });
+      if (added.length) series.push({ label: "An executor added (dot)", color: V.viz[2], points: added, noLine: true, dots: true });
+      if (removed.length) series.push({ label: "An executor removed (dot)", color: V.neutral, points: removed, noLine: true, dots: true });
+      timeChart(c, series, { t: "Executors Spark wanted, against executors running", run: RUN("scaling"),
+        axes: [["Across", "Time of day, while the application ran."], ["Up", "Executors. The orange line is how many Spark asked YARN for, from the driver's log; it changes when dynamic allocation scales up or down. The blue area is how many were running, from the event log."]],
+        read: ["The orange line goes up: tasks waited, so dynamic allocation asked for more executors. It goes down: tasks finished or executors were idle, so it asked for fewer.", "The orange line above the blue area: Spark wanted more executors than YARN gave it. The gap is the wait for room on the cluster.", "Dots mark each executor that was added (green) or removed (grey)."],
+        note: sc.dynamic ? "Spark lowers its first request one executor at a time within seconds; that drop is not a sign of a problem." : "Dynamic allocation was off, so the orange line stays at the fixed request." }, "count");
+    },
+    scaleEvents: function (c) {
+      var workers = execs.filter(function (x) { return x.id !== "driver" && x.added; });
+      var t0 = a.start || d3.min(workers, function (x) { return x.added; }), t1 = appEnd;
+      if (!workers.length || !t0 || !t1 || t1 <= t0) { waitText(c, "No executor was added."); return; }
+      // a step about a sixtieth of the run, rounded to whole seconds
+      var step = Math.max(1000, Math.ceil((t1 - t0) / 60 / 1000) * 1000), nb = Math.ceil((t1 - t0) / step) || 1;
+      var bins = []; for (var i = 0; i < nb; i++) bins.push({ at: t0 + i * step, up: [], down: [] });
+      var bin = function (t) { return bins[Math.max(0, Math.min(nb - 1, Math.floor((t - t0) / step)))]; };
+      var bad = function (x) { return x.kind === "memory-kill" || x.kind === "lost" || x.kind === "decommissioned"; };
+      workers.forEach(function (x) { bin(x.added).up.push(x); if (x.removed && x.removed < t1) bin(x.removed).down.push(x); });
+      var plot = frame(c, { t: "Executors added and removed", run: RUN("scaleEvents"),
+        axes: [["Across", "Time of day, in steps of " + dur(step) + "."], ["Up", "Executors added in each step, above the line, and removed, below it."], ["Colour", "Green: added. Grey: removed by Spark (for example when dynamic allocation released an executor). Red: killed or lost."]],
+        read: ["Bars above the line where the orange line in the chart above goes up: dynamic allocation scaled up and YARN gave it executors.", "Grey bars below the line: Spark gave executors back. Red bars below the line: executors were killed or lost, which is a problem.", "Many bars up and down close together: executors were added and removed often. Each new executor takes time to start, so a longer executorIdleTimeout can help."],
+        note: "Click a bar to open its executor when the bar has only one. Executors still running at the end are not counted as removed." });
+      plot.parentNode.insertBefore(legendNode([{ label: "Added", color: V.viz[2] }, { label: "Removed by Spark", color: V.neutral }, { label: "Killed or lost", color: V.fail }]), plot);
+      var H = 220, m = { l: 44, r: 18, t: 10, b: 28 }, P = plotSvg(plot, H, "Executors added and removed");
+      var top = d3.max(bins, function (b) { return b.up.length; }) || 0, bot = d3.max(bins, function (b) { return b.down.length; }) || 0, lim = Math.max(1, top, bot);
+      var x = d3.scaleTime().domain([t0, t1]).range([m.l, P.w - m.r]), y = d3.scaleLinear().domain([-lim, lim]).range([H - m.b, m.t]);
+      P.svg.append("g").attr("class", "ax").attr("transform", "translate(" + m.l + ",0)")
+        .call(d3.axisLeft(y).ticks(Math.min(lim * 2, 6)).tickFormat(function (v) { return Number.isInteger(v) ? String(Math.abs(v)) : ""; }).tickSize(-(P.w - m.l - m.r)).tickPadding(6)).select(".domain").remove();
+      var tf = t1 - t0 < 10 * 60000 ? tfmt : hmfmt;
+      P.svg.append("g").attr("class", "ax xax").attr("transform", "translate(0," + (H - m.b) + ")")
+        .call(d3.axisBottom(x).ticks(timeTicks(P.w - m.l - m.r, tf)).tickFormat(function (d) { return tf.format(d); }).tickSizeOuter(0).tickPadding(6)).call(leanEnds, x, m.l, P.w - m.r);
+      P.svg.append("line").attr("class", "cursor").attr("x1", m.l).attr("x2", P.w - m.r).attr("y1", y(0)).attr("y2", y(0)).style("display", null);
+      var bw = Math.max(2, x(t0 + step) - x(t0) - 2), marks = [];
+      bins.forEach(function (b) {
+        var bx = x(b.at) + 1, tip = function (xs, what) { return dfmt.format(new Date(b.at)) + " to " + tfmt.format(new Date(b.at + step)) + ": " + num(xs.length) + " " + what + "\n" + xs.slice(0, 8).map(function (e) { return "Executor " + e.id + (e.host ? " on " + e.host : "") + (what === "removed" ? ": " + (e.reason || "no reason logged") : ""); }).join("\n") + (xs.length > 8 ? "\nand " + num(xs.length - 8) + " more" : ""); };
+        if (b.up.length) marks.push({ x: bx, y: y(b.up.length), h: y(0) - y(b.up.length), color: V.viz[2], tip: tip(b.up, "added"), one: b.up.length === 1 ? b.up[0] : null });
+        var red = b.down.filter(bad), grey = b.down.filter(function (e) { return !bad(e); });
+        if (grey.length) marks.push({ x: bx, y: y(0), h: y(-grey.length) - y(0), color: V.neutral, tip: tip(grey, "removed"), one: grey.length === 1 ? grey[0] : null });
+        if (red.length) marks.push({ x: bx, y: y(-grey.length), h: y(-grey.length - red.length) - y(-grey.length), color: V.fail, tip: tip(red, "removed"), one: red.length === 1 ? red[0] : null });
+      });
+      var sel = P.svg.append("g").selectAll("rect").data(marks).join("rect").attr("x", function (d) { return d.x; }).attr("y", function (d) { return d.y; })
+        .attr("width", bw).attr("height", function (d) { return Math.max(d.h, 1); }).attr("rx", 1.5).style("fill", function (d) { return d.color; });
+      hover(sel, function (d) { return d.tip; });
+      linkify(sel, function (d) { return d.one ? "#executor/" + encodeURIComponent(d.one.id) : null; }, function (d) { return d.tip; });
+    },
     executorsTimeline: function (c) {
       c.link = function (r) { return "#executor/" + encodeURIComponent(r.id); };
       timeline(c, execs.filter(function (x) { return x.id !== "driver" && x.added; }).map(function (x) {
         var bad = x.kind === "memory-kill" || x.kind === "lost";
+        var bySpark = x.kind === "killed-by-driver" || x.kind === "idle";
         var end = x.removed || appEnd;
-        return { id: x.id, row: "Executor " + x.id, bar: x.host || "", color: bad ? V.fail : x.removed ? V.neutral : V.series, start: x.added, end: end,
+        return { id: x.id, row: "Executor " + x.id, bar: x.host || "", color: bad ? V.fail : bySpark ? V.viz[2] : x.removed ? V.neutral : V.series, start: x.added, end: end,
           tip: "Executor " + x.id + " on " + x.host + "\n" + (x.removed ? "Removed: " + (x.reason || "no reason logged") : "Ran to the end") + ", " + dur(end - x.added) };
       }).concat(exclusions.filter(function (x) { return x.scope === "application"; }).map(function (x) {
         var end = x.lifted || appEnd;
         return { id: x.kind === "executor" ? x.target : "", row: (x.kind === "executor" ? "Executor " : "Node ") + x.target + " excluded", bar: num(x.failures) + " failures", color: V.fail, start: x.time, end: end,
           tip: (x.kind === "executor" ? "Executor " : "Node ") + x.target + " excluded after " + num(x.failures) + " failures" + (x.lifted ? ", lifted after " + dur(x.lifted - x.time) : "") };
       })), { t: "Executor lifetimes", run: RUN("lifetimes"),
-        axes: [["Across", "Time of day, while the application ran."], ["Rows", "One executor each, from when it was added to when it was removed."], ["Colour", "Blue: ran to the end. Red: killed or lost, or a period it was excluded. Grey: removed for another reason, such as being idle."]],
+        axes: [["Across", "Time of day, while the application ran."], ["Rows", "One executor each, from when it was added to when it was removed."], ["Colour", "Blue: ran to the end. Green: Spark removed it, for example when dynamic allocation released an executor it no longer needed. Red: killed or lost, or a period it was excluded. Grey: removed for another reason."]],
         read: ["Long blue bars are healthy.", "Any red deserves a look.", "Many short grey bars: dynamic allocation added and removed executors often, which costs start-up time."],
         note: "Click one to open it." }, "No executor was logged.");
     },
