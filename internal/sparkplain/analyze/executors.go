@@ -124,7 +124,87 @@ func analyzeExecutors(c *ctx, r *model.Report) {
 	} else {
 		s.DynamicAlloc = "off"
 	}
+	s.Scaling = execScaling(c, c.confBool("spark.dynamicAllocation.enabled", false))
 	executorFindings(c)
+}
+
+// scaleGap is how close two changes of the executor target in the same
+// direction must be to count as one scale-up or scale-down: Spark lowers
+// its opening request one executor at a time within a few seconds, and
+// raises its target in steps while tasks keep waiting.
+const scaleGap = 10 * time.Second
+
+// execScaling says when Spark changed how many executors it wanted, from
+// the driver's container logs, and how many executors came and went.
+func execScaling(c *ctx, dynamic bool) *model.ExecScaling {
+	sc := &model.ExecScaling{Dynamic: dynamic, Targets: []model.ExecTarget{}}
+	var all []model.ExecTarget
+	for _, f := range c.in.Logs {
+		all = append(all, f.ExecTargets...)
+	}
+	sort.SliceStable(all, func(i, j int) bool { return all[i].Time.Before(all[j].Time) })
+	for _, t := range all {
+		if k := len(sc.Targets); k > 0 && sc.Targets[k-1].Total == t.Total {
+			continue
+		}
+		sc.Targets = append(sc.Targets, t)
+	}
+	prev, dir := 0, 0
+	var last time.Time
+	for _, t := range sc.Targets {
+		d := 0
+		switch {
+		case t.Total > prev:
+			d = 1
+		case t.Total < prev:
+			d = -1
+		}
+		if d != 0 && (d != dir || t.Time.Sub(last) > scaleGap) {
+			if d > 0 {
+				sc.Ups++
+			} else {
+				sc.Downs++
+			}
+		}
+		if d != 0 {
+			dir, last = d, t.Time
+		}
+		prev = t.Total
+		sc.Most = max(sc.Most, t.Total)
+	}
+	for _, x := range c.log.Executors {
+		if x.Added.IsZero() {
+			continue
+		}
+		sc.Added++
+		if !x.Removed.IsZero() && (c.end.IsZero() || x.Removed.Before(c.end)) {
+			sc.Removed++
+		}
+	}
+	sc.Summary = scalingSummary(sc)
+	return sc
+}
+
+// scalingSummary is the scaling in plain sentences.
+func scalingSummary(sc *model.ExecScaling) string {
+	var out []string
+	switch {
+	case !sc.Dynamic && len(sc.Targets) > 0:
+		out = append(out, fmt.Sprintf("Dynamic allocation was off, so Spark asked for a fixed number of executors (at most %d).", sc.Most))
+	case !sc.Dynamic:
+		out = append(out, "Dynamic allocation was off, so Spark asked for a fixed number of executors.")
+	case len(sc.Targets) == 0:
+		out = append(out, "Dynamic allocation was on. The driver's log does not show when it changed the number of executors it wanted.")
+	default:
+		up := model.Plural(sc.Ups, "time", "times")
+		down := model.Plural(sc.Downs, "time", "times")
+		out = append(out, fmt.Sprintf("Dynamic allocation raised the number of executors it wanted %s, to at most %d, and lowered it %s.", up, sc.Most, down))
+	}
+	added := fmt.Sprintf("%s added", model.Plural(sc.Added, "executor was", "executors were"))
+	if sc.Removed > 0 {
+		added += fmt.Sprintf(", and %d removed before the end", sc.Removed)
+	}
+	return strings.Join(append(out, added+"."), " ")
 }
 
 func executorFindings(c *ctx) {

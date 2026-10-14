@@ -59,6 +59,9 @@ type Result struct {
 	// executors, in file order, up to maxDriverEvents: they rebuild the run
 	// when there is no event log.
 	DriverEvents []model.DriverEvent
+	// ExecTargets are each change in how many executors the driver asked
+	// for, up to maxExecTargets: when dynamic allocation scaled up and down.
+	ExecTargets []model.ExecTarget
 	// TaskLogs are the stories of the tasks this executor ran, in the
 	// order they started, up to maxTaskLogs (TaskLogsCut more); Untied
 	// adds up the task lines no task could be found for.
@@ -90,7 +93,7 @@ func Classify(r io.Reader, name string, f File, opt Options) (Result, error) {
 	if opt.MaxEntries <= 0 {
 		opt.MaxEntries = 500
 	}
-	c := &classifier{res: Result{Name: name, File: f}, opt: opt, index: map[string]int{}, lastOOM: -1, errTask: -1}
+	c := &classifier{res: Result{Name: name, File: f}, opt: opt, index: map[string]int{}, lastOOM: -1, errTask: -1, lastTarget: -1}
 	if m := idRE.FindStringSubmatch(opt.AppID); m != nil {
 		c.appKey = m[1]
 	}
@@ -170,6 +173,7 @@ type classifier struct {
 	// The most executors the driver asked for at once, kept as one line.
 	maxDesired     int
 	maxDesiredLine *model.LogLine
+	lastTarget     int // the last executor target kept, -1 before the first
 	maxRequest     int
 	maxRequestLine *model.LogLine
 }
@@ -460,8 +464,16 @@ func (c *classifier) header(h header, line string) {
 		return
 	case cancelRE.MatchString(msg):
 		return // the most desired total below says what the churn added up to
+	case backlogRE.MatchString(msg):
+		if n, err := strconv.Atoi(backlogRE.FindStringSubmatch(msg)[1]); err == nil {
+			c.target(h.time, n, true)
+		}
+		return
 	case desiredRE.MatchString(msg):
 		m := desiredRE.FindStringSubmatch(msg)
+		if n, err := strconv.Atoi(m[1]); err == nil {
+			c.target(h.time, n, false)
+		}
 		if n, _ := strconv.Atoi(m[1]); n > c.maxDesired || c.maxDesiredLine == nil {
 			c.maxDesired = n
 			c.maxDesiredLine = c.entry(model.LogYarnRequest, model.Info, h.time, msg)
@@ -681,6 +693,28 @@ func InZone(t time.Time, loc *time.Location, kind FileKind) time.Time {
 		return t
 	}
 	return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), loc).UTC()
+}
+
+// maxExecTargets caps the executor targets kept per log. Only changes are
+// kept, and dynamic allocation changes its target at most every second or so.
+const maxExecTargets = 5000
+
+// target keeps a change in how many executors the driver asked for. The
+// allocator logs the new total first; the allocation manager's line after
+// it, with the same total, says why (tasks were waiting), so it marks the
+// change just kept rather than adding one.
+func (c *classifier) target(t time.Time, n int, backlog bool) {
+	if n == c.lastTarget {
+		if k := len(c.res.ExecTargets); backlog && k > 0 && c.res.ExecTargets[k-1].Total == n {
+			c.res.ExecTargets[k-1].Backlog = true
+		}
+		return
+	}
+	if len(c.res.ExecTargets) >= maxExecTargets {
+		return
+	}
+	c.lastTarget = n
+	c.res.ExecTargets = append(c.res.ExecTargets, model.ExecTarget{Time: t, Total: n, Backlog: backlog, Source: model.Source{File: c.res.Name, Line: c.n}})
 }
 
 // maxDriverEvents caps the driver lines kept per log: two per task, so a

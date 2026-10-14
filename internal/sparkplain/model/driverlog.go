@@ -8,6 +8,16 @@ import "time"
 // BlockManagerMasterEndpoint, YarnAllocator, TaskSchedulerImpl and
 // SparkContext write them. Read in order, they rebuild the run when there
 // is no event log (eventlog.Rebuild). Fields a kind does not use are zero.
+// ExecTarget is one change in how many executors Spark asked YARN for: the
+// target dynamic allocation sets (and, without it, the fixed request).
+// Backlog says the driver raised it because tasks were waiting.
+type ExecTarget struct {
+	Time    time.Time `json:"time"`
+	Total   int       `json:"total"`
+	Backlog bool      `json:"backlog,omitempty"`
+	Source  Source    `json:"source"`
+}
+
 type DriverEvent struct {
 	Kind   string    `json:"kind"`
 	Time   time.Time `json:"time"`

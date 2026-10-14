@@ -209,17 +209,33 @@ type Count struct {
 
 // ExecSection is module 3.
 type ExecSection struct {
-	Coverage     Coverage    `json:"coverage"`
-	Started      int         `json:"started"`
-	Peak         int         `json:"peak"`
-	PeakAt       time.Time   `json:"peakAt,omitzero"`
-	EndedBy      []Count     `json:"endedBy"`
-	Cores        int         `json:"coresEach"`
-	DynamicAlloc string      `json:"dynamicAllocation"`
-	Executors    []*Executor `json:"executors"`
-	Driver       *Executor   `json:"driver,omitempty"`
-	Exclusions   []Exclusion `json:"exclusions,omitempty"`
-	Missing      []string    `json:"missing,omitempty"`
+	Coverage     Coverage  `json:"coverage"`
+	Started      int       `json:"started"`
+	Peak         int       `json:"peak"`
+	PeakAt       time.Time `json:"peakAt,omitzero"`
+	EndedBy      []Count   `json:"endedBy"`
+	Cores        int       `json:"coresEach"`
+	DynamicAlloc string    `json:"dynamicAllocation"`
+	// Scaling is when dynamic allocation scaled up and down, from the
+	// driver's log; nil without it.
+	Scaling    *ExecScaling `json:"scaling,omitempty"`
+	Executors  []*Executor  `json:"executors"`
+	Driver     *Executor    `json:"driver,omitempty"`
+	Exclusions []Exclusion  `json:"exclusions,omitempty"`
+	Missing    []string     `json:"missing,omitempty"`
+}
+
+// ExecScaling is when Spark changed how many executors it wanted, and how
+// many executors came and went.
+type ExecScaling struct {
+	Dynamic bool         `json:"dynamic"`
+	Targets []ExecTarget `json:"targets"` // each change, in time order
+	Ups     int          `json:"ups"`     // times the target went up
+	Downs   int          `json:"downs"`   // times it went down
+	Most    int          `json:"most"`    // the highest target
+	Added   int          `json:"added"`   // executors added
+	Removed int          `json:"removed"` // executors removed before the application ended
+	Summary string       `json:"summary"`
 }
 
 // MemoryConfig is the memory an executor asked for, and how Spark splits it.
@@ -565,6 +581,9 @@ type LogFile struct {
 	// executors; they rebuild the run when there is no event log, and the
 	// rebuilt run is what the JSON report carries.
 	DriverEvents []DriverEvent `json:"-"`
+	// ExecTargets are the changes in how many executors Spark asked YARN
+	// for, from the driver's container log, in time order.
+	ExecTargets []ExecTarget `json:"-"`
 	// TaskLogs are the stories of the tasks this executor ran
 	// (TaskLogsCut more past the cap), and Untied adds up its task lines
 	// no task could be found for; the report's TaskStories gathers them.
