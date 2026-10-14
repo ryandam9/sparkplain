@@ -2,7 +2,8 @@
 # CI checks pass, and publishes it to one rolling GitHub Release, "latest",
 # so the download link never changes:
 #   https://github.com/ryandam9/sparkplain/releases/latest/download/sparkplain-macos-arm64.tar.gz
-# Each build replaces the one before; older builds are not kept. The binary
+# Each build replaces the one before (the release is deleted and published
+# again, so its date is the build's); older builds are not kept. The binary
 # is not signed by Apple: README.md says how to open it.
 name: Release
 
@@ -26,7 +27,7 @@ jobs:
     runs-on: macos-15 # Apple Silicon
     timeout-minutes: 20
     permissions:
-      contents: write # move the tag and replace the release's files
+      contents: write # move the tag and publish the release again
     env:
       SHA: ${{ github.event.workflow_run.head_sha }}
       ASSET: sparkplain-macos-arm64.tar.gz
@@ -60,10 +61,11 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           notes="macOS (Apple Silicon) build of master at $SHA, built $(date -u +%Y-%m-%dT%H:%MZ). Not signed by Apple: see the README's Download section."
+          # Publish afresh each time rather than edit: an edit keeps the
+          # first publish date, so GitHub would show the release as weeks
+          # old. Deleting the release keeps the tag, which moves to $SHA.
           if gh release view latest >/dev/null 2>&1; then
+            gh release delete latest --yes
             gh api -X PATCH "repos/$GH_REPO/git/refs/tags/latest" -f sha="$SHA" -F force=true
-            gh release upload latest "$ASSET" "$ASSET.sha256" --clobber
-            gh release edit latest --title "sparkplain $VERSION" --notes "$notes" --latest
-          else
-            gh release create latest "$ASSET" "$ASSET.sha256" --target "$SHA" --title "sparkplain $VERSION" --notes "$notes" --latest
           fi
+          gh release create latest "$ASSET" "$ASSET.sha256" --target "$SHA" --title "sparkplain $VERSION" --notes "$notes" --latest
