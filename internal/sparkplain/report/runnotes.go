@@ -22,29 +22,31 @@ type runPoint struct {
 // that fired is linked from the chart's "In this run", so a reader looking
 // at the chart is pointed at the problem it shows.
 var chartRules = map[string][]string{
-	"stages":     {"job-failed", "stage-retried"},
-	"spread":     {"stage-skew"},
-	"skew":       {"stage-skew"},
-	"health":     {"stage-skew", "memory-spill", "stage-retried"},
-	"attention":  {"job-failed", "stage-retried", "stage-skew", "memory-spill"},
-	"heatmap":    {"stage-skew", "executors-excluded"},
-	"data":       {"memory-spill"},
-	"spill":      {"memory-spill"},
-	"execTime":   {"memory-gc-pressure", "cpu-low", "cpu-idle-executors"},
-	"split":      {"scheduler-delay", "memory-gc-pressure", "large-results"},
-	"nodeMemory": {"executor-fit", "idle-nodes"},
-	"nodeCPU":    {"host-cpu-saturated", "cpu-low"},
-	"containers": {"waited-for-capacity", "shared-cluster"},
-	"executors":  {"executor-lost", "executor-memory-kill", "spot-interrupted", "executor-decommissioned", "slow-executor-startup"},
-	"lifetimes":  {"executor-lost", "executor-memory-kill", "spot-interrupted", "executor-decommissioned", "slow-executor-startup"},
-	"jobs":       {"driver-gaps", "job-failed"},
-	"timeline":   {"driver-gaps", "job-failed", "executor-lost", "waited-for-capacity"},
-	"running":    {"driver-gaps", "cpu-idle-executors"},
-	"chain":      {"driver-gaps"},
-	"peakHeap":   {"memory-heap-near-limit", "memory-over-provisioned", "out-of-memory"},
-	"hbaseLoad":  {"hbase-server-load", "hbase-hotspot"},
-	"flows":      {"shuffle-network", "task-spill", "cache-evicted"},
-	"memory":     {"cache-evicted"},
+	"stages":      {"job-failed", "stage-retried"},
+	"spread":      {"stage-skew"},
+	"skew":        {"stage-skew"},
+	"health":      {"stage-skew", "memory-spill", "stage-retried"},
+	"attention":   {"job-failed", "stage-retried", "stage-skew", "memory-spill"},
+	"heatmap":     {"stage-skew", "executors-excluded"},
+	"data":        {"memory-spill"},
+	"spill":       {"memory-spill"},
+	"execTime":    {"memory-gc-pressure", "cpu-low", "cpu-idle-executors"},
+	"split":       {"scheduler-delay", "memory-gc-pressure", "large-results"},
+	"nodeMemory":  {"executor-fit", "idle-nodes"},
+	"nodeCPU":     {"host-cpu-saturated", "cpu-low"},
+	"containers":  {"waited-for-capacity", "shared-cluster"},
+	"executors":   {"executor-lost", "executor-memory-kill", "spot-interrupted", "executor-decommissioned", "slow-executor-startup"},
+	"lifetimes":   {"executor-lost", "executor-memory-kill", "spot-interrupted", "executor-decommissioned", "slow-executor-startup"},
+	"scaling":     {"waited-for-capacity", "executor-fit", "config-dynalloc-no-shuffle", "cpu-idle-executors"},
+	"scaleEvents": {"executor-lost", "executor-memory-kill", "spot-interrupted", "executor-decommissioned", "config-dynalloc-no-shuffle"},
+	"jobs":        {"driver-gaps", "job-failed"},
+	"timeline":    {"driver-gaps", "job-failed", "executor-lost", "waited-for-capacity"},
+	"running":     {"driver-gaps", "cpu-idle-executors"},
+	"chain":       {"driver-gaps"},
+	"peakHeap":    {"memory-heap-near-limit", "memory-over-provisioned", "out-of-memory"},
+	"hbaseLoad":   {"hbase-server-load", "hbase-hotspot"},
+	"flows":       {"shuffle-network", "task-spill", "cache-evicted"},
+	"memory":      {"cache-evicted"},
 }
 
 // runNotes says, for each chart, what this run's version of it shows: a
@@ -248,6 +250,15 @@ func runNotes(r *model.Report) map[string][]runPoint {
 		}
 		for _, c := range []string{"executors", "lifetimes"} {
 			n[c] = append(n[c], runPoint{Text: text})
+		}
+	}
+	if sc := r.Executors.Scaling; sc != nil {
+		add("scaling", "%s", sc.Summary)
+		if sc.Most > 0 && r.Executors.Peak < sc.Most {
+			add("scaling", "Spark wanted %s at most, but at most %d ran at the same time. YARN did not place the others.", model.Plural(sc.Most, "executor", "executors"), r.Executors.Peak)
+		}
+		if sc.Added > 0 {
+			add("scaleEvents", "%s, %d removed before the end.", model.Plural(sc.Added, "executor added", "executors added"), sc.Removed)
 		}
 	}
 	if m := r.Memory; m.HeapKnown && m.Config.HeapBytes > 0 && len(m.Executors) > 0 {

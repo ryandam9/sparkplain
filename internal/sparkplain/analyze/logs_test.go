@@ -421,3 +421,37 @@ py4j.protocol.Py4JJavaError: An error occurred while calling o228.parquet.
 		t.Errorf("from YARN's summary: %s: %s", r.Application.Status, r.Application.StatusReason)
 	}
 }
+
+// When dynamic allocation scaled up and down, from a real run's driver log:
+// each change of the target is kept, and steps the same way within a few
+// seconds count once (the opening request of 16 cut back to 0 is one
+// scale-down, not sixteen).
+func TestExecScaling(t *testing.T) {
+	t.Parallel()
+	in, err := resolveFixture("application_1790380000000_0049")
+	if err != nil {
+		t.Fatal(err)
+	}
+	col := yarnlog.Collect(context.Background(), source.NewLocalStore(filepath.Join(emrlogs, "j-FIXTURE0049CLUSTER")), yarnlog.Plan{AppID: "application_1790380000000_0049"})
+	r := Run(Input{Tool: "t", TimeZone: "UTC", EventLog: in, EventSource: model.SourceStatus{Name: "Spark event log", Status: "read"}, Logs: col.Files, LogsRead: true, LogSources: col.Sources})
+	sc := r.Executors.Scaling
+	if sc == nil || !sc.Dynamic {
+		t.Fatalf("scaling = %+v", sc)
+	}
+	if sc.Ups != 6 || sc.Downs != 7 || sc.Most != 16 || sc.Added != 1 || sc.Removed != 0 {
+		t.Errorf("ups %d, downs %d, most %d, added %d, removed %d; want 6, 7, 16, 1, 0", sc.Ups, sc.Downs, sc.Most, sc.Added, sc.Removed)
+	}
+	for i, x := range sc.Targets {
+		if i > 0 && (x.Total == sc.Targets[i-1].Total || x.Time.Before(sc.Targets[i-1].Time)) {
+			t.Errorf("target %d repeats or goes back in time: %+v after %+v", i, x, sc.Targets[i-1])
+		}
+		if x.Source.File == "" || x.Source.Line == 0 {
+			t.Errorf("target %d has no source line", i)
+		}
+	}
+	for _, want := range []string{"raised the number of executors it wanted 6 times, to at most 16", "lowered it 7 times", "1 executor was added."} {
+		if !strings.Contains(sc.Summary, want) {
+			t.Errorf("summary %q lacks %q", sc.Summary, want)
+		}
+	}
+}

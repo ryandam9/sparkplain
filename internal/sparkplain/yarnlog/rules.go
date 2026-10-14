@@ -214,6 +214,7 @@ var (
 	willRequestRE = regexp.MustCompile(`^Will request (\d+) executor container\(s\) for\s+ResourceProfile Id: (\d+), each with (\d+) core\(s\) and (\d+) MB memory`)
 	cancelRE      = regexp.MustCompile(`^Canceling requests for (\d+) executor container\(s\) to have a new desired total (\d+) executors`)
 	desiredRE     = regexp.MustCompile(`^Driver requested a total number of (\d+) executor\(s\)`)
+	backlogRE     = regexp.MustCompile(`^Requesting \d+ new executors? because tasks are backlogged \(new desired total will be (\d+)`)
 	launchHeapRE  = regexp.MustCompile(`^Launching executor with (\d+)m of heap \(plus (\d+)m overhead/off heap\) and (\d+) cores`)
 	amRequestRE   = regexp.MustCompile(`^Will allocate AM container, with (\d+) MB memory including (\d+) MB overhead`)
 	maxAllocRE    = regexp.MustCompile(`maximum memory capability of the cluster \((\d+) MB per container\)`)

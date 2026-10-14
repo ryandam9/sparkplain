@@ -316,3 +316,4 @@ a.themebtn{text-decoration:none}
 .anat a:hover .nbox{stroke:var(--accent);stroke-width:2.5} .anat a:hover .cbox{stroke:var(--ink);stroke-width:2}
 .fnum{display:inline-grid;place-items:center;min-width:20px;height:20px;border-radius:10px;font-size:11px;font-weight:700;color:#fff;background:var(--accent)}
 .fnum.crit{background:var(--crit)} .fnum.warn{background:var(--warn)}
+.scaling{margin:12px 0 0;color:var(--muted);max-width:80ch} .scaling b{color:var(--ink)}

@@ -626,3 +626,43 @@ func TestDriverHostAndNodeState(t *testing.T) {
 		t.Errorf("node state = %+v", f)
 	}
 }
+
+// Each change in how many executors the driver asked for is kept, from a
+// real driver log: the allocator's total, marked when the allocation
+// manager says tasks were waiting; repeats of the same total are not.
+func TestExecTargets(t *testing.T) {
+	t.Parallel()
+	p := "../../../testdata/emrlogs/j-FIXTURE0049CLUSTER/containers/application_1790380000000_0049/container_1790380000000_0049_01_000001/stderr.gz"
+	fh, err := os.Open(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fh.Close()
+	zr, err := gzip.NewReader(fh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := Classify(zr, p, Describe("containers/application_1790380000000_0049/container_1790380000000_0049_01_000001/stderr.gz"), Options{AppID: "application_1790380000000_0049"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := res.ExecTargets
+	if len(ts) < 5 || ts[0].Total != 16 || ts[0].Backlog {
+		t.Fatalf("targets = %+v", ts)
+	}
+	backlog := false
+	for i, x := range ts {
+		if i > 0 && x.Total == ts[i-1].Total {
+			t.Errorf("target %d repeats total %d", i, x.Total)
+		}
+		if x.Time.IsZero() || x.Source.Line == 0 {
+			t.Errorf("target %d has no time or line: %+v", i, x)
+		}
+		if x.Total == 2 && x.Backlog {
+			backlog = true
+		}
+	}
+	if !backlog {
+		t.Error("the rise to 2 should be marked as tasks waiting")
+	}
+}
