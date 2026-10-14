@@ -148,13 +148,19 @@ func TestConsoleAnimated(t *testing.T) {
 		t.Errorf("stdout lacks the header or the closing rule:\n%q", out)
 	}
 	// What is left once the frames are drawn over is the still console's
-	// text (less its timings).
+	// text (less its timings and the Took line).
 	landed := func(s string) string {
 		s = ansiRE.ReplaceAllString(s, "")
 		var keep []string
 		for _, line := range strings.Split(s, "\n") {
 			if i := strings.LastIndex(line, "\r"); i >= 0 {
 				line = line[i+1:]
+			}
+			// The Took line lists only steps of a second or more, so a
+			// slow runner (-race) can print it in one run and not the
+			// other.
+			if strings.HasPrefix(line, "  Took ") {
+				continue
 			}
 			keep = append(keep, line)
 		}
