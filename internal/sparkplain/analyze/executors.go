@@ -391,7 +391,11 @@ func analyzeNodes(c *ctx, r *model.Report) {
 		lede += fmt.Sprintf(" The driver ran on %s.", driverHost)
 	}
 	if c.log.Application.DeployMode == "client" {
-		lede += " In client mode the driver runs where spark-submit ran (on EMR, usually the primary node)."
+		if c.onYARN() {
+			lede += " In client mode the driver runs where spark-submit ran (on EMR, usually the primary node)."
+		} else {
+			lede += " In client mode the driver runs where spark-submit ran."
+		}
 	}
 	if r.Cluster != nil && len(r.Cluster.Instances) > 0 {
 		up := 0

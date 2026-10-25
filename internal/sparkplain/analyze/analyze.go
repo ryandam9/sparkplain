@@ -191,6 +191,7 @@ func Run(in Input) *model.Report {
 	analyzeSources(c, r)
 	accessGaps(r)
 	analyzeCoverage(c, r)
+	offYARN(c, r)
 	analyzeSummary(c, r)
 	r.ExitCode = exitCode(c, r)
 	return r

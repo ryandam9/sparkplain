@@ -133,9 +133,21 @@
     "app-exit": "Application master exit", "lost-executor": "Lost executor", "task-error": "Task error", signal: "Signal", "access-denied": "Access denied",
     kerberos: "Kerberos", metastore: "Metastore", hbase: "HBase", "hbase-use": "HBase table use", "hbase-server": "HBase server event", "hbase-scan": "HBase scan printed", localized: "Localized file", classpath: "Missing class", identity: "Identity", submit: "spark-submit command", submitted: "Submitted application",
     resource: "Uploaded file", "step-status": "Step status", "app-report": "YARN report", "app-summary": "YARN summary", bootstrap: "Bootstrap", error: "Error" };
-  var FILE_KIND = { "container-stderr": "Container stderr", "container-stdout": "Container stdout", "step-controller": "Step controller", "step-stderr": "Step stderr", "step-stdout": "Step stdout",
+  var FILE_KIND = { "container-stderr": "Container stderr", "container-stdout": "Container stdout", "standalone-worker": "Worker log", "standalone-master": "Master log", "step-controller": "Step controller", "step-stderr": "Step stderr", "step-stdout": "Step stdout",
     nodemanager: "NodeManager", resourcemanager: "ResourceManager", bootstrap: "Bootstrap log", "bootstrap-output": "Bootstrap action output",
     "hbase-master": "HBase Master", "hbase-regionserver": "HBase region server" };
+  // fileKind names a log file's kind. A Spark Standalone driver's or
+  // executor's log has no container, so it is named after its process.
+  function fileKind(f) {
+    if (!f.container && /^container-/.test(f.kind)) return (f.exec === "driver" ? "Driver " : "Executor ") + f.kind.slice("container-".length);
+    return FILE_KIND[f.kind] || f.kind;
+  }
+  // logKind names a recognised line's kind; a Standalone worker's line
+  // about how an executor ended is about an executor, not a container.
+  function logKind(l) {
+    if (l.kind === "container-exit" && l.file && /^standalone-/.test(l.file.kind)) return "Executor exit";
+    return LOG_KIND[l.kind] || l.kind;
+  }
   function sevPill(sev) {
     var k = { critical: "crit", warning: "part", info: "info" }[sev] || "info";
     return el("span", { cls: "pill " + k, text: { critical: "Critical", warning: "Warning", info: "Info" }[sev] || sev });
@@ -1503,7 +1515,7 @@
       if (!only.length) return notFound("Executor " + id);
       var s0 = section(id === "driver" ? "Driver" : "Executor " + id, "The event log has no record of it, so only its own container logs are shown.");
       s0.insertBefore(el("div", { cls: "crumbs" }, link("#executors", "Executors"), " / " + id), s0.firstChild);
-      only.forEach(function (f) { s0.appendChild(el("p", null, link("#logs/" + f.i, FILE_KIND[f.kind] || f.kind), el("span", { cls: "sub mono", text: f.loc }))); });
+      only.forEach(function (f) { s0.appendChild(el("p", null, link("#logs/" + f.i, fileKind(f)), el("span", { cls: "sub mono", text: f.loc }))); });
       s0.appendChild(logLinesTable([].concat.apply([], only.map(function (f) { return f.rows; })), true));
       return s0;
     }
@@ -1568,10 +1580,10 @@
       cols: [
         { h: "Severity", v: function (l) { return rank[l.sev] * 1e12 + (l.time || 0); }, f: function (l) { return sevPill(l.sev); } },
         { h: "Line", num: true, v: function (l) { return l.line; }, f: function (l) {
-          return el("span", null, withFile ? link("#logs/" + l.file.i + ":" + l.line, String(l.line)) : String(l.line), l.end ? el("span", { cls: "sub", text: "to " + l.end }) : null, withFile ? el("span", { cls: "sub", text: FILE_KIND[l.file.kind] || l.file.kind }) : null);
+          return el("span", null, withFile ? link("#logs/" + l.file.i + ":" + l.line, String(l.line)) : String(l.line), l.end ? el("span", { cls: "sub", text: "to " + l.end }) : null, withFile ? el("span", { cls: "sub", text: fileKind(l.file) }) : null);
         } },
         { h: "Time", num: true, v: function (l) { return l.time || 0; }, f: function (l) { return l.time ? when(l.time) : "—"; } },
-        { h: "What", v: function (l) { return LOG_KIND[l.kind] || l.kind; }, f: function (l) { return LOG_KIND[l.kind] || l.kind; } },
+        { h: "What", v: logKind, f: logKind },
         { h: "Line text", v: function (l) { return l.text; }, f: function (l) {
           var extra = (l.detail || []).length || Object.keys(l.fields || {}).length;
           var head = el("span", { cls: "mono" }, l.text, l.count > 1 ? el("span", { cls: "sub", text: num(l.count) + " times, last at line " + l.last }) : null);
@@ -3043,8 +3055,8 @@
       if (added.length) series.push({ label: "An executor added (dot)", color: V.viz[2], points: added, noLine: true, dots: true });
       if (removed.length) series.push({ label: "An executor removed (dot)", color: V.neutral, points: removed, noLine: true, dots: true });
       timeChart(c, series, { t: "Executors Spark wanted, against executors running", run: RUN("scaling"),
-        axes: [["Across", "Time of day, while the application ran."], ["Up", "Executors. The orange line is how many Spark asked YARN for, from the driver's log; it changes when dynamic allocation scales up or down. The blue area is how many were running, from the event log."]],
-        read: ["The orange line goes up: tasks waited, so dynamic allocation asked for more executors. It goes down: tasks finished or executors were idle, so it asked for fewer.", "The orange line above the blue area: Spark wanted more executors than YARN gave it. The gap is the wait for room on the cluster.", "Dots mark each executor that was added (green) or removed (grey)."],
+        axes: [["Across", "Time of day, while the application ran."], ["Up", "Executors. The orange line is how many Spark asked the cluster for, from the driver's log; it changes when dynamic allocation scales up or down. The blue area is how many were running, from the event log."]],
+        read: ["The orange line goes up: tasks waited, so dynamic allocation asked for more executors. It goes down: tasks finished or executors were idle, so it asked for fewer.", "The orange line above the blue area: Spark wanted more executors than the cluster gave it. The gap is the wait for room on the cluster.", "Dots mark each executor that was added (green) or removed (grey)."],
         note: sc.dynamic ? "Spark lowers its first request one executor at a time within seconds; that drop is not a sign of a problem." : "Dynamic allocation was off, so the orange line stays at the fixed request." }, "count");
     },
     scaleEvents: function (c) {
@@ -3059,7 +3071,7 @@
       workers.forEach(function (x) { bin(x.added).up.push(x); if (x.removed && x.removed < t1) bin(x.removed).down.push(x); });
       var plot = frame(c, { t: "Executors added and removed", run: RUN("scaleEvents"),
         axes: [["Across", "Time of day, in steps of " + dur(step) + "."], ["Up", "Executors added in each step, above the line, and removed, below it."], ["Colour", "Green: added. Grey: removed by Spark (for example when dynamic allocation released an executor). Red: killed or lost."]],
-        read: ["Bars above the line where the orange line in the chart above goes up: dynamic allocation scaled up and YARN gave it executors.", "Grey bars below the line: Spark gave executors back. Red bars below the line: executors were killed or lost, which is a problem.", "Many bars up and down close together: executors were added and removed often. Each new executor takes time to start, so a longer executorIdleTimeout can help."],
+        read: ["Bars above the line where the orange line in the chart above goes up: dynamic allocation scaled up and the cluster gave it executors.", "Grey bars below the line: Spark gave executors back. Red bars below the line: executors were killed or lost, which is a problem.", "Many bars up and down close together: executors were added and removed often. Each new executor takes time to start, so a longer executorIdleTimeout can help."],
         note: "Click a bar to open its executor when the bar has only one. Executors still running at the end are not counted as removed." });
       plot.parentNode.insertBefore(legendNode([{ label: "Added", color: V.viz[2] }, { label: "Removed by Spark", color: V.neutral }, { label: "Killed or lost", color: V.fail }]), plot);
       var H = 220, m = { l: 44, r: 18, t: 10, b: 28 }, P = plotSvg(plot, H, "Executors added and removed");
@@ -3508,7 +3520,7 @@
     if (arg != null && arg !== "") {
       var parts = String(arg).split(":"), f = logFiles[+parts[0]];
       if (!f) return notFound("Log " + arg);
-      var s = section(FILE_KIND[f.kind] || f.kind);
+      var s = section(fileKind(f));
       s.insertBefore(el("div", { cls: "crumbs" }, link("#logs", "Logs"), " / " + (logWho(f) || f.kind)), s.firstChild);
       s.appendChild(el("div", { cls: "facts" },
         fact("Object", el("span", null, el("span", { cls: "mono", text: f.loc }), f.href ? el("span", { cls: "sub" }, extLink(f.href, "Open in the S3 console")) : null), "Where it was read from. The console link needs your own AWS sign-in; this page never fetches it."),
@@ -3521,7 +3533,7 @@
       else s.appendChild(logLinesTable(f.rows, false, parts[1] ? +parts[1] : null));
       return s;
     }
-    var s2 = section("Logs", "The container, step and node logs that sparkplain read for this application. For each log, it shows what sparkplain recognised: errors with their causes, exits, memory kills, and the user that the application ran as.");
+    var s2 = section("Logs", "The logs that sparkplain read for this application. For each log, it shows what sparkplain recognised: errors with their causes, exits, memory kills, and the user that the application ran as.");
     if (D.cluster) {
       var c = D.cluster;
       s2.appendChild(el("div", { cls: "facts" },
@@ -3570,7 +3582,7 @@
       text: function (f) { return f.loc + " " + f.kind + " " + logWho(f); },
       rowCls: function (f) { return worst(f) === 0 ? "failedrow" : null; },
       cols: [
-        { h: "Log", v: function (f) { return f.loc; }, f: function (f) { return el("span", { title: f.loc }, link("#logs/" + f.i, FILE_KIND[f.kind] || f.kind), el("span", { cls: "sub mono", text: shortLoc(f.loc) })); } },
+        { h: "Log", v: function (f) { return f.loc; }, f: function (f) { return el("span", { title: f.loc }, link("#logs/" + f.i, fileKind(f)), el("span", { cls: "sub mono", text: shortLoc(f.loc) })); } },
         { h: "Process", v: function (f) { return logWho(f); }, f: function (f) { return f.exec && f.exec !== "am" ? execLink(f.exec) : logWho(f) || "—"; } },
         { h: "Worst", v: worst, f: function (f) { var w = worst(f); return w < 3 ? sevPill(["critical", "warning", "info"][w]) : "—"; } },
         { h: "Found", num: true, v: function (f) { return f.found.length; }, f: function (f) { return num(f.found.length); } },

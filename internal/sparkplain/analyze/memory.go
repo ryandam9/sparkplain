@@ -91,8 +91,14 @@ func analyzeMemory(c *ctx, r *model.Report) {
 	}
 	s.Coverage = model.Partial
 	s.Missing = []string{"Host memory over time (needs the CloudWatch agent)"}
-	if c.logs == nil {
+	// c.logs is not set yet (the logs are analyzed after this section), so
+	// ask whether the run read them at all.
+	switch {
+	case c.in.LogsRead:
+	case c.onYARN():
 		s.Missing = append([]string{"Java OutOfMemoryError and YARN memory-kill lines (needs the container logs: -cluster-id or -from)"}, s.Missing...)
+	default:
+		s.Missing = append([]string{"Java OutOfMemoryError lines (needs the executors' logs: -from with their work folder)"}, s.Missing...)
 	}
 	m := memoryConfig(c)
 	s.Config = m
@@ -136,6 +142,12 @@ func analyzeMemory(c *ctx, r *model.Report) {
 }
 
 func memoryLede(c *ctx, m model.MemoryConfig) string {
+	if !c.onYARN() {
+		// Spark Standalone and local-cluster size an executor by its heap
+		// only: spark.executor.memoryOverhead is for YARN and Kubernetes.
+		lede := fmt.Sprintf("Each executor had a %s Java heap. This run did not use YARN, so no container held the executor, and Spark did not add overhead memory. Memory outside the heap, such as the Python workers, came from the free memory of the machine.", model.Bytes(m.HeapBytes))
+		return lede + fmt.Sprintf(" Spark uses %s of the heap for shuffles, joins and cached data. The rest holds the objects of your code.", model.Bytes(m.UnifiedBytes))
+	}
 	lede := fmt.Sprintf("Each executor asked YARN for about %s: a %s Java heap plus %s overhead", model.Bytes(m.ContainerBytes), model.Bytes(m.HeapBytes), model.Bytes(m.OverheadBytes))
 	if m.OffHeapBytes > 0 {
 		lede += fmt.Sprintf(", %s off-heap", model.Bytes(m.OffHeapBytes))

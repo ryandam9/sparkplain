@@ -113,7 +113,11 @@ func analyzeIdentity(c *ctx, r *model.Report) {
 	if len(on) == 0 {
 		val = "none of Spark's own protections"
 	}
-	add("Spark security settings", val, "Off: "+strings.Join(off, ", ")+". EMR can also encrypt traffic and disks through its security configuration, which needs the EMR API to show.", src)
+	secNote := "Off: " + strings.Join(off, ", ") + "."
+	if c.onYARN() {
+		secNote += " EMR can also encrypt traffic and disks through its security configuration, which needs the EMR API to show."
+	}
+	add("Spark security settings", val, secNote, src)
 	var creds []string
 	for _, k := range []string{"spark.hadoop.fs.s3a.access.key", "spark.hadoop.fs.s3a.secret.key", "fs.s3a.access.key", "fs.s3a.secret.key", "spark.hadoop.fs.s3.awsAccessKeyId", "spark.hadoop.fs.s3.awsSecretAccessKey", "spark.executorEnv.AWS_SECRET_ACCESS_KEY", "spark.executorEnv.AWS_ACCESS_KEY_ID", "spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY"} {
 		if _, ok := c.conf[k]; ok {
@@ -127,7 +131,7 @@ func analyzeIdentity(c *ctx, r *model.Report) {
 			Title:       "Static AWS credentials are set in the Spark configuration",
 			Explanation: "The settings of the application had AWS keys. All persons who can read the event log, the Spark UI or the History Server can see the settings, and static keys do not expire. sparkplain hides the values. Spark hides them only if spark.redaction.regex matches them.",
 			Evidence:    []model.Evidence{{Source: src, Text: strings.Join(creds, ", ") + " (values hidden)"}},
-			Fix:         "Remove the keys. Let the EMR instance profile or an EMR runtime role give the credentials.\nIf someone shared the logs, replace the keys.",
+			Fix:         staticKeysFix(c),
 		})
 	}
 }
@@ -441,7 +445,7 @@ func analyzeSummary(c *ctx, r *model.Report) {
 	}
 	s.KPIs = []model.KPI{
 		{Label: "Ran for", Value: model.Duration(a.DurationMs), Explain: "From the start to the end of the application" + map[bool]string{true: " (or to the last event, because it did not end).", false: "."}[a.End.IsZero()]},
-		{Label: "Hosts", Value: fmt.Sprint(hosts), Unit: "ran executors", Explain: hostsExplain(r)},
+		{Label: "Hosts", Value: fmt.Sprint(hosts), Unit: "ran executors", Explain: hostsExplain(c, r)},
 		{Label: "Executors", Value: fmt.Sprint(len(c.log.Executors)), Unit: fmt.Sprintf("started · %d peak", r.Executors.Peak), Explain: fmt.Sprintf("The worker processes that Spark started, and the most at one time. %d stopped early.", killed), Tone: execTone},
 		{Label: "Executor size", Value: fmt.Sprint(mem.Cores), Unit: "cores · " + model.Bytes(mem.ContainerBytes), Explain: fmt.Sprintf("%s heap and %s overhead for each executor.", model.Bytes(mem.HeapBytes), model.Bytes(mem.OverheadBytes))},
 		cpuKPI(r.CPU),
@@ -537,8 +541,11 @@ func joinAnd(items []string) string {
 
 // hostsExplain says what the Hosts card counts, and where each host's
 // instance is described when the EMR API was read.
-func hostsExplain(r *model.Report) string {
-	if r.Cluster == nil {
+func hostsExplain(c *ctx, r *model.Report) string {
+	switch {
+	case r.Cluster == nil && !c.onYARN():
+		return "The machines that ran executors."
+	case r.Cluster == nil:
 		return "The machines that ran executors. The instance details are only in the EMR API."
 	}
 	n := 0
@@ -566,4 +573,65 @@ func heapKPI(m model.MemorySection, peak int64) model.KPI {
 			Explain: "The event log holds no executor memory samples. Set spark.eventLog.logStageExecutorMetrics=true to record them."}
 	}
 	return model.KPI{Label: "Peak heap", Value: model.Bytes(peak), Unit: "of " + model.Bytes(m.Config.HeapBytes), Explain: "The highest Java heap use that Spark measured on an executor."}
+}
+
+// staticKeysFix is the access-static-keys fix: on EMR a role gives the
+// credentials; elsewhere Spark also copies AWS_ACCESS_KEY_ID and
+// AWS_SECRET_ACCESS_KEY from the environment into these settings.
+func staticKeysFix(c *ctx) string {
+	if c.onYARN() {
+		return "Remove the keys. Let the EMR instance profile or an EMR runtime role give the credentials.\nIf someone shared the logs, replace the keys."
+	}
+	return "Remove the keys from the settings. Spark also copies AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY from the environment into them, so remove those variables too. Let a role give the credentials, for example an EC2 instance profile.\nIf someone shared the logs, replace the keys."
+}
+
+// offYARN tidies a run that did not use YARN or EMR (Spark Standalone or
+// local-cluster): what only an EMR cluster gives (the EMR API, CloudWatch,
+// CloudTrail, instance details, roles) cannot be read for it, so the
+// coverage stops asking for it, and the Sources panel says why those
+// sources were not read instead of how to read them.
+func offYARN(c *ctx, r *model.Report) {
+	if c.onYARN() {
+		return
+	}
+	emrOnly := func(s string) bool {
+		for _, w := range []string{"-cluster-id", "EMR", "CloudWatch", "CloudTrail"} {
+			if strings.Contains(s, w) {
+				return true
+			}
+		}
+		return false
+	}
+	keep := func(xs []string) []string {
+		var out []string
+		for _, x := range xs {
+			switch {
+			case strings.Contains(x, "(needs the CloudWatch agent)"):
+				// The machines' CPU and memory over time are still unknown;
+				// only the way to get them is EMR's.
+				out = append(out, strings.Replace(x, "(needs the CloudWatch agent)", "(not in Spark's logs)", 1))
+			case !emrOnly(x):
+				out = append(out, x)
+			}
+		}
+		return out
+	}
+	for i := range r.Coverage {
+		row := &r.Coverage[i]
+		row.Missing = keep(row.Missing)
+		if row.Coverage == model.Partial && len(row.Missing) == 0 {
+			row.Coverage = model.Complete
+		}
+	}
+	r.Nodes.Missing, r.CPU.Missing, r.Memory.Missing, r.IO.Missing = keep(r.Nodes.Missing), keep(r.CPU.Missing), keep(r.Memory.Missing), keep(r.IO.Missing)
+	r.Identity.Missing, r.Config.Missing = keep(r.Identity.Missing), keep(r.Config.Missing)
+	for i := range r.Sources {
+		switch s := &r.Sources[i]; s.Name {
+		case "EMR API", "CloudWatch", "CloudTrail":
+			if s.Status == "not-requested" {
+				s.Status = "none"
+				s.Detail = "Not used: this run did not use YARN or EMR (for example Spark Standalone), and sparkplain reads this source only for an EMR cluster."
+			}
+		}
+	}
 }

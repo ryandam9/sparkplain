@@ -662,7 +662,8 @@ func offlineCheck(o options, prefix string) checked {
 	}
 	if lay, lerr := fromLayout(o.from, o.appID); lerr == nil && len(lay.standalone) > 0 {
 		// A Spark Standalone run: its executors' work folders, and no
-		// containers, steps or YARN nodes to look for.
+		// containers, steps or YARN nodes to look for, nor an EMR cluster.
+		c.rows[0].Detail = "EMR API, CloudWatch and CloudTrail: not used, as a Spark Standalone run has no EMR cluster."
 		r := model.AccessCheck{Name: "Executor logs", Location: path.Join(o.from, lay.standalone[0]) + "/", Status: "empty", Detail: "No executor's stderr or stdout in this copy."}
 		for _, prefix := range lay.standalone {
 			objs, err := source.NewLocalStore(o.from).List(context.Background(), prefix)
