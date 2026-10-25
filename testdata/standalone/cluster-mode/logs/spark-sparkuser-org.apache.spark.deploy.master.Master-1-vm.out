@@ -1,0 +1,43 @@
+Spark Command: /usr/lib/jvm/java-21-openjdk-amd64/bin/java -cp /opt/spark/conf/:/opt/spark/jars/* -Xmx1g org.apache.spark.deploy.master.Master --host vm --port 7077 --webui-port 8080 --host localhost
+========================================
+Using Spark's default log4j profile: org/apache/spark/log4j2-defaults.properties
+26/10/25 04:30:32 INFO Master: Started daemon with process name: 760@vm
+26/10/25 04:30:32 INFO SignalUtils: Registering signal handler for TERM
+26/10/25 04:30:32 INFO SignalUtils: Registering signal handler for HUP
+26/10/25 04:30:32 INFO SignalUtils: Registering signal handler for INT
+26/10/25 04:30:32 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+26/10/25 04:30:32 INFO SecurityManager: Changing view acls to: sparkuser
+26/10/25 04:30:32 INFO SecurityManager: Changing modify acls to: sparkuser
+26/10/25 04:30:32 INFO SecurityManager: Changing view acls groups to: 
+26/10/25 04:30:32 INFO SecurityManager: Changing modify acls groups to: 
+26/10/25 04:30:32 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: sparkuser; groups with view permissions: EMPTY; users with modify permissions: sparkuser; groups with modify permissions: EMPTY
+26/10/25 04:30:33 INFO Utils: Successfully started service 'sparkMaster' on port 7077.
+26/10/25 04:30:33 INFO Master: Starting Spark master at spark://localhost:7077
+26/10/25 04:30:33 INFO Master: Running Spark version 3.5.3
+26/10/25 04:30:33 INFO JettyUtils: Start Jetty 127.0.0.1:8080 for MasterUI
+26/10/25 04:30:33 INFO Utils: Successfully started service 'MasterUI' on port 8080.
+26/10/25 04:30:33 INFO MasterWebUI: Bound MasterWebUI to 127.0.0.1, and started at http://localhost:8080
+26/10/25 04:30:33 INFO Master: I have been elected leader! New state: ALIVE
+26/10/25 04:30:42 INFO Master: Registering worker localhost:42721 with 4 cores, 4.0 GiB RAM
+26/10/25 04:30:52 INFO Master: Driver submitted org.apache.spark.deploy.worker.DriverWrapper
+26/10/25 04:30:52 INFO Master: Launching driver driver-20261025043052-0000 on worker worker-20261025043041-localhost-42721
+26/10/25 04:30:58 INFO Master: 127.0.0.1:51378 got disassociated, removing it.
+26/10/25 04:30:58 INFO Master: localhost:35115 got disassociated, removing it.
+26/10/25 04:30:58 INFO Master: Registering app Spark Pi
+26/10/25 04:30:58 INFO Master: Registered app Spark Pi with ID app-20261025043058-0000
+26/10/25 04:30:58 INFO Master: Start scheduling for app app-20261025043058-0000 with rpId: 0
+26/10/25 04:30:58 INFO Master: Launching executor app-20261025043058-0000/0 on worker worker-20261025043041-localhost-42721
+26/10/25 04:30:58 INFO Master: Launching executor app-20261025043058-0000/1 on worker worker-20261025043041-localhost-42721
+26/10/25 04:30:58 INFO Master: Launching executor app-20261025043058-0000/2 on worker worker-20261025043041-localhost-42721
+26/10/25 04:30:59 INFO Master: Start scheduling for app app-20261025043058-0000 with rpId: 0
+26/10/25 04:30:59 INFO Master: Start scheduling for app app-20261025043058-0000 with rpId: 0
+26/10/25 04:30:59 INFO Master: Start scheduling for app app-20261025043058-0000 with rpId: 0
+26/10/25 04:31:10 INFO Master: Received unregister request from application app-20261025043058-0000
+26/10/25 04:31:10 INFO Master: Removing app app-20261025043058-0000
+26/10/25 04:31:10 INFO Master: 127.0.0.1:37694 got disassociated, removing it.
+26/10/25 04:31:10 INFO Master: localhost:36107 got disassociated, removing it.
+26/10/25 04:31:10 WARN Master: Got status update for unknown executor app-20261025043058-0000/1
+26/10/25 04:31:10 WARN Master: Got status update for unknown executor app-20261025043058-0000/0
+26/10/25 04:31:10 WARN Master: Got status update for unknown executor app-20261025043058-0000/2
+26/10/25 04:31:11 INFO Master: Removing driver: driver-20261025043052-0000
+26/10/25 04:31:23 ERROR Master: RECEIVED SIGNAL TERM

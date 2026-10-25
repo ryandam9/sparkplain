@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -408,11 +409,40 @@ func offlineLogs(ctx context.Context, dir, appID string, log *model.EventLog, li
 		return clusterLogs{}, err
 	}
 	var since, until time.Time
+	driver := ""
 	if log != nil {
 		since, until = log.Application.Start, log.Application.End
+		driver = standaloneDriverID(log.Application.DriverLogs)
 	}
-	col := yarnlog.Collect(ctx, source.Trace(source.NewLocalStore(dir), trace), yarnlog.Plan{Root: lay.root, AppFolder: lay.appFolder, Standalone: lay.standalone, AppID: appID, Since: since, Until: until, Limits: lim, Off: off, Loc: loc})
+	col := yarnlog.Collect(ctx, source.Trace(source.NewLocalStore(dir), trace), yarnlog.Plan{Root: lay.root, AppFolder: lay.appFolder, Standalone: lay.standalone, StandaloneDriver: driver, AppID: appID, Since: since, Until: until, Limits: lim, Off: off, Loc: loc})
 	return clusterLogs{files: col.Files, sources: col.Sources, logLoc: loc}, nil
+}
+
+// addDriverLog reads a driver's console saved to a file (-driver-log) as
+// the driver's log, beside whatever other logs the run read.
+func (l *clusterLogs) addDriverLog(ctx context.Context, file, appID string, lim source.Limits, off map[string]string, loc *time.Location, trace func(string)) {
+	dl := yarnlog.CollectDriverLog(ctx, source.Trace(source.NewLocalStore(filepath.Dir(file)), trace), filepath.Base(file),
+		yarnlog.Plan{AppID: appID, Limits: lim, Off: off, Loc: loc})
+	l.files = append(l.files, dl.Files...)
+	l.sources = append(l.sources, dl.Sources...)
+	if l.logLoc == nil {
+		l.logLoc = loc
+	}
+}
+
+// standaloneDriverID is the cluster-mode driver's ID (driver-…) that a
+// Spark Standalone driver's log links name, as the event log records them:
+// http://<worker>:8081/logPage/?driverId=driver-…&logType=stderr. "" for
+// a driver in client mode or on YARN.
+func standaloneDriverID(links map[string]string) string {
+	for _, k := range []string{"stderr", "stdout"} {
+		if u, err := url.Parse(links[k]); err == nil {
+			if id := u.Query().Get("driverId"); strings.HasPrefix(id, "driver-") && !strings.ContainsAny(id, "/\\") {
+				return id
+			}
+		}
+	}
+	return ""
 }
 
 // fromLayout is what a -from folder holds: a copy of an EMR cluster's log

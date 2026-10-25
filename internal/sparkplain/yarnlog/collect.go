@@ -1,6 +1,7 @@
 package yarnlog
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -33,7 +34,12 @@ type Plan struct {
 	// machine for copies from several); a run read from them has no
 	// containers, steps or YARN nodes.
 	Standalone []string
-	AppID      string
+	// StandaloneDriver is the cluster-mode driver's ID (driver-…) that the
+	// event log's driver log links name; "" ties a driver-*/ folder in the
+	// same work folder by its own "Connected to Spark cluster with app ID"
+	// line.
+	StandaloneDriver string
+	AppID            string
 	// Steps are the step IDs to look through for the one that submitted
 	// AppID (from ListSteps); nil looks through every step folder.
 	Steps []string
@@ -170,6 +176,36 @@ func (c *Collection) off(st source.Store, p Plan, name, under string) bool {
 
 // CollectHBase reads only HBase Master and region-server logs. It is used
 // when those logs live under a different EMR cluster's log root.
+// CollectDriverLog reads a driver's log that was saved from its console
+// (a client-mode driver logs only there), the object key in st, as the
+// driver's stderr: its lines rebuild the run and tie the tasks like a
+// cluster-mode driver's.
+func CollectDriverLog(ctx context.Context, st source.Store, key string, p Plan) Collection {
+	p.MaxFiles = max(p.MaxFiles, 1)
+	var c Collection
+	src := model.SourceStatus{Name: "Driver log", Location: st.Location(key)}
+	o, ok, err := st.Head(ctx, key)
+	switch {
+	case err != nil:
+		c.Sources = append(c.Sources, listFailed(src, err))
+		return c
+	case !ok:
+		src.Status, src.Class, src.Detail = "error", source.ClassNotFound, "No such file."
+		c.Sources = append(c.Sources, src)
+		return c
+	}
+	g := group{st: st, plan: p}
+	g.offer(o, File{Kind: ContainerStderr, Executor: "driver"}, true, "")
+	g.read(ctx)
+	src.Status, src.Class = g.status()
+	src.Detail = fmt.Sprintf("%s: the driver's console, saved to a file.%s", g.summary(), g.problems())
+	src.Brief = "the driver's console"
+	src.Files = g.sourceFiles
+	c.Files = append(c.Files, g.files...)
+	c.Sources = append(c.Sources, src)
+	return c
+}
+
 func CollectHBase(ctx context.Context, st source.Store, p Plan) Collection {
 	if p.MaxFiles <= 0 {
 		p.MaxFiles = 5000
@@ -470,27 +506,86 @@ func (c *Collection) containers(ctx context.Context, st source.Store, p Plan) {
 	c.Sources = append(c.Sources, src)
 }
 
+// tieLine is how a Standalone driver's log names its application.
+const tieLine = "Connected to Spark cluster with app ID "
+
+// maxTieBytes is how much of each driver's stderr is searched for
+// tieLine; Spark logs it in the first few hundred lines.
+const maxTieBytes = 1 << 20
+
+// standaloneDriver picks the cluster-mode driver folder (driver-…) of the
+// application among a work folder's: the one the event log names, else
+// the one whose stderr says it connected with the application's ID. ""
+// when none is the application's (client mode, or the driver's machine
+// was not copied).
+func standaloneDriver(ctx context.Context, st source.Store, drivers []source.Object, p Plan) string {
+	if p.StandaloneDriver != "" {
+		return p.StandaloneDriver
+	}
+	for _, o := range drivers {
+		if path.Base(o.Key) != "stderr" {
+			continue
+		}
+		rc, err := st.Open(ctx, o)
+		if err != nil {
+			continue
+		}
+		buf := make([]byte, maxTieBytes)
+		n, _ := io.ReadFull(rc, buf)
+		rc.Close()
+		if bytes.Contains(buf[:n], []byte(tieLine+p.AppID)) {
+			return path.Base(path.Dir(o.Key))
+		}
+	}
+	return ""
+}
+
 // standalone reads a Spark Standalone run's executor logs, from each
 // worker's work/<app-id>/<executor-id>/ folder; the folder names the
 // executor, so no container needs joining.
 func (c *Collection) standalone(ctx context.Context, st source.Store, p Plan) {
 	src := model.SourceStatus{Name: "Executor logs", Location: st.Location(p.Standalone[0])}
 	g := group{st: st, plan: p}
-	for _, prefix := range p.Standalone {
-		objs, err := st.List(ctx, prefix)
-		if err != nil {
-			c.Sources = append(c.Sources, listFailed(src, err))
-			return
+	// One listing of the -from folder: the application's executor folders
+	// (each <app-id>/ in p.Standalone), and the cluster-mode drivers'
+	// folders, driver-*/ at the top of any worker's work folder, which may
+	// be on a machine that ran no executor.
+	objs, err := st.List(ctx, p.Root)
+	if err != nil {
+		c.Sources = append(c.Sources, listFailed(src, err))
+		return
+	}
+	var drivers []source.Object
+	for _, o := range objs {
+		if f := DescribeStandaloneDriver(o.Key); f.Kind != Unread && strings.Count(strings.TrimPrefix(o.Key, p.Root), "/") <= 3 {
+			drivers = append(drivers, o)
+			continue
 		}
-		for _, o := range objs {
-			f := DescribeStandalone(o.Key, p.AppID)
-			g.offer(o, f, f.Kind == ContainerStderr || f.Kind == ContainerStdout, "not a log sparkplain reads")
+		if !slices.ContainsFunc(p.Standalone, func(pre string) bool { return strings.HasPrefix(o.Key, pre) }) {
+			continue // another application's, or not a work folder
+		}
+		f := DescribeStandalone(o.Key, p.AppID)
+		g.offer(o, f, f.Kind == ContainerStderr || f.Kind == ContainerStdout, "not a log sparkplain reads")
+	}
+	driver := standaloneDriver(ctx, st, drivers, p)
+	for _, o := range drivers {
+		if path.Base(path.Dir(o.Key)) == driver {
+			g.offer(o, DescribeStandaloneDriver(o.Key), true, "")
 		}
 	}
 	g.read(ctx)
 	execs := map[string]bool{}
+	driverRead := false
 	for _, f := range g.files {
+		if f.Executor == "driver" {
+			driverRead = true
+			continue
+		}
 		execs[f.Host+"/"+f.Executor] = true
+	}
+	who := model.Plural(len(execs), "executor", "executors")
+	if driverRead {
+		who += " and the driver"
 	}
 	switch {
 	case len(g.picked) == 0:
@@ -498,8 +593,8 @@ func (c *Collection) standalone(ctx context.Context, st source.Store, p Plan) {
 		src.Detail = "No executor logs for this application. A Spark Standalone worker keeps them in $SPARK_HOME/work/<app-id>/ on its machine."
 	default:
 		src.Status, src.Class = g.status()
-		src.Detail = fmt.Sprintf("%s from %s, in the Spark Standalone work folders.%s", g.summary(), model.Plural(len(execs), "executor", "executors"), g.problems())
-		src.Brief = fmt.Sprintf("%s from %s", model.Plural(len(g.files), "file", "files"), model.Plural(len(execs), "executor", "executors"))
+		src.Detail = fmt.Sprintf("%s from %s, in the Spark Standalone work folders.%s", g.summary(), who, g.problems())
+		src.Brief = fmt.Sprintf("%s from %s", model.Plural(len(g.files), "file", "files"), who)
 	}
 	src.Files = g.sourceFiles
 	c.Files = append(c.Files, g.files...)

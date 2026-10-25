@@ -51,7 +51,7 @@ var appIDRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.\-]{0,127}$`)
 
 type options struct {
 	profile, region, configPath, env, clusterID, clusterName, hbaseClusterID, hbaseClusterName, appID string
-	eventLog, from, out, format, maxSize, maxUnpacked, show, decodeScan, logTZ                        string
+	eventLog, from, driverLog, out, format, maxSize, maxUnpacked, show, decodeScan, logTZ             string
 	workers                                                                                           int
 	timeout, windowPad                                                                                time.Duration
 	noCloudWatch, noCloudTrail, showVersion, check, initConfig, verbose                               bool
@@ -81,6 +81,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&o.appID, "app-id", "", "Spark application ID, e.g. application_1700000000000_0042 (required)")
 	fs.StringVar(&o.eventLog, "eventlog", "", "event log: local file, rolling eventlog_v2_* folder, folder of logs, or History Server zip")
 	fs.StringVar(&o.from, "from", "", "local copy of the cluster's logs (containers/, steps/, node/), of one application's container folders, or a Spark Standalone work/ folder")
+	fs.StringVar(&o.driverLog, "driver-log", "", "the driver's console saved to a file (a client-mode driver logs only there), read as the driver's log")
 	fs.StringVar(&o.out, "out", "", "output folder (default ~/sparkplain/<yyyy-mm-dd>/<app-id>/)")
 	fs.StringVar(&o.format, "format", "", "outputs, comma-separated: html, json, explorer (default all three; both = html,json)")
 	fs.IntVar(&o.workers, "workers", 16, "how many log files to read at once, 1 to 256")
@@ -141,7 +142,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	// A leading ~/ means the home folder, in the config file and in
 	// quoted flags alike, which no shell expands.
-	o.configPath, o.eventLog, o.from, o.out = expandHome(o.configPath), expandHome(o.eventLog), expandHome(o.from), expandHome(o.out)
+	o.configPath, o.eventLog, o.from, o.driverLog, o.out = expandHome(o.configPath), expandHome(o.eventLog), expandHome(o.from), expandHome(o.driverLog), expandHome(o.out)
 	cfgPath, explicit := o.configPath, o.configPath != ""
 	if !explicit {
 		cfgPath = defaultConfigPath()
@@ -292,7 +293,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			con.note("using the cluster's spark.eventLog.dir %s", evPath)
 		}
 	}
-	if evPath == "" && !online && o.from == "" {
+	if evPath == "" && !online && o.from == "" && o.driverLog == "" {
 		return fail("pass -eventlog <path> (a file, rolling folder, folder of logs, History Server zip or s3:// location), -cluster-id to read from the cluster, or -from with a copy of its logs")
 	}
 	if o.show != "" {
@@ -457,6 +458,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 			}
 		}
 	}
+	if o.driverLog != "" {
+		con.step("driver log", "reading the driver's log in "+o.driverLog)
+		logs.addDriverLog(ctx, o.driverLog, o.appID, lim, o.off, logLoc, cloud.trace)
+	}
 	con.sources(logs.sources...)
 	if ctx.Err() == context.Canceled {
 		con.clear()
@@ -499,7 +504,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		Logs:        logs.files,
 		Metrics:     logs.metrics,
 		AWSCalls:    logs.calls,
-		LogsRead:    online || o.from != "",
+		LogsRead:    online || o.from != "" || o.driverLog != "",
 	}
 	if log == nil {
 		ain.RunStart, ain.RunEnd, _, _ = runWindow(nil, logs.files, logs.steps, logs.cluster)
