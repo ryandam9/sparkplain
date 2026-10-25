@@ -419,3 +419,46 @@ func TestStandaloneAtAGlance(t *testing.T) {
 		}
 	}
 }
+
+// A local-mode run (local[4], made with PySpark from PyPI) starts no
+// executor: the driver runs every task. The report says so instead of "0
+// executors across 0 hosts", the tasks' stories come from the saved
+// console, and there is no cluster diagram to draw.
+func TestLocalMode(t *testing.T) {
+	const app = "local-1792911433877"
+	out := t.TempDir()
+	code, stdout, errs := runCLI(t, "-app-id", app, "-eventlog", filepath.Join(fx, app), "-driver-log", "../../testdata/local/driver.txt", "-out", out)
+	if code != exitOK {
+		t.Fatalf("exit %d: %s", code, errs)
+	}
+	r := readReport(t, out)
+	if r.Nodes.Manager != "local" {
+		t.Errorf("manager %q, want local", r.Nodes.Manager)
+	}
+	sum := strings.Join(r.Summary.Sentences, " ")
+	if !strings.Contains(sum, "in local mode. The driver ran every task, in 4 task slots.") || strings.Contains(sum, "0 executors") || strings.Contains(sum, "between executors") {
+		t.Errorf("summary: %q", sum)
+	}
+	if strings.Contains(stdout, "0 executors across 0 hosts") {
+		t.Error("the console says 0 executors across 0 hosts")
+	}
+	labels := map[string]string{}
+	for _, k := range r.Summary.KPIs {
+		labels[k.Label] = k.Value + " " + k.Unit
+	}
+	if labels["Task slots"] != "4 in the driver · 1.0 GiB heap" || labels["Executors"] != "0 local mode" || labels["Hosts"] != "1 ran the driver" {
+		t.Errorf("cards: %q", labels)
+	}
+	if !strings.Contains(r.Memory.Lede, "spark.executor.memory has no effect") {
+		t.Errorf("memory lede: %q", r.Memory.Lede)
+	}
+	if h := r.Nodes.Hosts; len(h) != 1 || h[0].Cores != 4 || h[0].Tasks.Tasks != 59 {
+		t.Errorf("hosts: %+v", h)
+	}
+	if s := r.TaskStories; s == nil || len(s.Tasks) != 59 {
+		t.Errorf("task stories from the console: %v", s != nil)
+	}
+	if b, _ := os.ReadFile(filepath.Join(out, app+"-report.html")); strings.Contains(string(b), `class="anat"`) {
+		t.Error("a local-mode run has no cluster to draw, but the report draws one")
+	}
+}

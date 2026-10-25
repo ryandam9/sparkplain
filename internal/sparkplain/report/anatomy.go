@@ -367,8 +367,8 @@ func away(in model.Instance, start, end time.Time) string {
 
 func buildAnatomy(r *model.Report) *anatomy {
 	a := &anatomy{}
-	if len(r.Nodes.Hosts) == 0 && r.Cluster == nil {
-		return nil
+	if len(r.Nodes.Hosts) == 0 && r.Cluster == nil || r.Nodes.Manager == "local" {
+		return nil // local mode is one process: no cluster to draw
 	}
 	if r.Nodes.Manager != "" {
 		a.Standalone, a.LocalCluster, a.MasterHost = true, r.Nodes.Manager == "local-cluster", r.Nodes.MasterHost

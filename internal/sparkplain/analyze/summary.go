@@ -386,7 +386,15 @@ func analyzeSummary(c *ctx, r *model.Report) {
 	ran := fmt.Sprintf("It ran %s (%s, %s tasks) on %s across %s.",
 		model.Plural(len(c.log.Jobs), "job", "jobs"), model.Plural(len(c.log.Stages), "stage", "stages"), model.Num(tasks),
 		model.Plural(len(c.log.Executors), "executor", "executors"), model.Plural(hosts, "host", "hosts"))
-	if c.metrics() {
+	slots, local := c.localMode()
+	if local {
+		ran = fmt.Sprintf("It ran %s (%s, %s tasks) in local mode. The driver ran every task, in %s.",
+			model.Plural(len(c.log.Jobs), "job", "jobs"), model.Plural(len(c.log.Stages), "stage", "stages"), model.Num(tasks), model.Plural(slots, "task slot", "task slots"))
+	}
+	switch {
+	case c.metrics() && local:
+		ran += fmt.Sprintf(" Tasks used %s of CPU time.", model.Duration(r.CPU.CPUMs))
+	case c.metrics():
 		ran += fmt.Sprintf(" Tasks used %s of CPU time, and executors held %s of core time.", model.Duration(r.CPU.CPUMs), model.Duration(r.CPU.AllocatedCoreMs))
 	}
 	s.Sentences = append(s.Sentences, ran)
@@ -404,8 +412,12 @@ func analyzeSummary(c *ctx, r *model.Report) {
 	}
 	io := r.IO.Totals
 	if c.metrics() {
-		s.Sentences = append(s.Sentences, fmt.Sprintf("It read %s, wrote %s and moved %s between executors in shuffles.",
-			model.Bytes(io.InputBytes), model.Bytes(io.OutputBytes), model.Bytes(io.ShuffleWriteBytes)))
+		between := "between executors"
+		if _, local := c.localMode(); local {
+			between = "between stages" // one process: no executors to move it between
+		}
+		s.Sentences = append(s.Sentences, fmt.Sprintf("It read %s, wrote %s and moved %s %s in shuffles.",
+			model.Bytes(io.InputBytes), model.Bytes(io.OutputBytes), model.Bytes(io.ShuffleWriteBytes), between))
 	} else {
 		s.Sentences = append(s.Sentences, "There is no event log. sparkplain made this run again from the driver log, with the jobs, stages, tasks and executors that Spark logged. The data that the run read, wrote and shuffled, and its CPU and memory use, are only in the event log.")
 	}
@@ -454,6 +466,21 @@ func analyzeSummary(c *ctx, r *model.Report) {
 		{Label: "Data written", Value: model.Bytes(io.OutputBytes), Explain: fmt.Sprintf("%s rows. Shuffles moved %s more.", model.Num(io.OutputRecords), model.Bytes(io.ShuffleWriteBytes))},
 		{Label: "Findings", Value: fmt.Sprint(crit + warn + info), Unit: fmt.Sprintf("%d critical · %d warning", crit, warn), Explain: "The problems and notes that the rules below found.", Tone: findTone},
 	}
+	if slots, local := c.localMode(); local {
+		// Local mode starts no executors: say what ran the tasks instead.
+		for k := range s.KPIs {
+			switch s.KPIs[k].Label {
+			case "Hosts":
+				s.KPIs[k] = model.KPI{Label: "Hosts", Value: "1", Unit: "ran the driver", Explain: "Local mode runs the driver, and its tasks, in one process on one machine."}
+			case "Executors":
+				s.KPIs[k] = model.KPI{Label: "Executors", Value: "0", Unit: "local mode", Explain: fmt.Sprintf("Local mode starts no executors. The driver ran all the tasks, in %s.", model.Plural(slots, "task slot", "task slots"))}
+			case "Executor size":
+				s.KPIs[k] = model.KPI{Label: "Task slots", Value: fmt.Sprint(slots), Unit: "in the driver · " + model.Bytes(mem.DriverHeapBytes) + " heap",
+					Explain: "The tasks shared the Java heap of the driver, which spark.driver.memory sets. spark.executor.memory has no effect in local mode."}
+			}
+		}
+	}
+
 	if !c.metrics() {
 		// Rebuilt from the driver's log: what it says, not zeros for
 		// what only the event log holds.
