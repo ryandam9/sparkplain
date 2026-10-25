@@ -20,6 +20,7 @@ Both pages are single self-contained files. They make no network calls, so they 
 - [Try it in a minute](#try-it-in-a-minute)
 - [Install](#install)
 - [Run it on your own application](#run-it-on-your-own-application)
+- [Examples: Spark on your own machine](examples/README.md)
 - [Get more out of your runs](#get-more-out-of-your-runs)
 - [AWS permissions](#aws-permissions)
 - [Configuration file](#configuration-file)
@@ -173,7 +174,7 @@ You need the **application ID**, for example `application_1700000000000_0042`. L
 - the Spark History Server's application list;
 - your code: `spark.sparkContext.applicationId`.
 
-Then pick one of three ways to run it. They can be combined.
+Then pick one of three ways to run it. They can be combined. For a run on your own machine, see [4](#4-a-spark-run-on-your-own-machine).
 
 ### 1. From an event log file
 
@@ -299,6 +300,13 @@ sparkplain -from ./logs/j-1ABCDEF -app-id application_1700000000000_0042 \
 ```
 
 `-from` accepts a cluster's log folder (`containers/`, `steps/`, `node/`), a folder holding several of those (the one with the application wins), or one application's `container_*` folders. For HBase, copy `node/` too: HBase's own logs are under `node/<instance>/applications/hbase/`, and only the hours the application ran are read.
+
+### 4. A Spark run on your own machine
+
+sparkplain also reads runs that are not on EMR: PySpark from PyPI in local mode, `local-cluster`, and a Spark Standalone cluster. The [examples](examples/README.md) show each one step by step, with a sample job and the output to expect:
+
+- [PySpark from PyPI](examples/pyspark-pypi.md): `pip install pyspark`, `spark-submit --master "local[4]"`, then `sparkplain -eventlog … -driver-log …`.
+- [A full Standalone cluster](examples/standalone-cluster.md): a master and a worker from the Spark distribution, client and cluster deploy mode, then `sparkplain -from $SPARK_HOME …`.
 
 ## Get more out of your runs
 
