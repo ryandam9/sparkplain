@@ -1,0 +1,76 @@
+Spark Executor Command: "/usr/lib/jvm/java-21-openjdk-amd64/bin/java" "-cp" "/opt/spark/conf/:/opt/spark/jars/*" "-Xmx1024M" "-Dspark.driver.port=36107" "-Dspark.rpc.askTimeout=10s" "-Djava.net.preferIPv6Addresses=false" "-XX:+IgnoreUnrecognizedVMOptions" "--add-opens=java.base/java.lang=ALL-UNNAMED" "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED" "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED" "--add-opens=java.base/java.io=ALL-UNNAMED" "--add-opens=java.base/java.net=ALL-UNNAMED" "--add-opens=java.base/java.nio=ALL-UNNAMED" "--add-opens=java.base/java.util=ALL-UNNAMED" "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED" "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED" "--add-opens=java.base/jdk.internal.ref=ALL-UNNAMED" "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED" "--add-opens=java.base/sun.nio.cs=ALL-UNNAMED" "--add-opens=java.base/sun.security.action=ALL-UNNAMED" "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED" "--add-opens=java.security.jgss/sun.security.krb5=ALL-UNNAMED" "-Djdk.reflect.useDirectMethodHandle=false" "org.apache.spark.executor.CoarseGrainedExecutorBackend" "--driver-url" "spark://CoarseGrainedScheduler@localhost:36107" "--executor-id" "1" "--hostname" "localhost" "--cores" "1" "--app-id" "app-20261025043058-0000" "--worker-url" "spark://Worker@localhost:42721" "--resourceProfileId" "0"
+========================================
+
+Using Spark's default log4j profile: org/apache/spark/log4j2-defaults.properties
+26/10/25 04:31:02 INFO CoarseGrainedExecutorBackend: Started daemon with process name: 1054@vm
+26/10/25 04:31:02 INFO SignalUtils: Registering signal handler for TERM
+26/10/25 04:31:02 INFO SignalUtils: Registering signal handler for HUP
+26/10/25 04:31:02 INFO SignalUtils: Registering signal handler for INT
+26/10/25 04:31:04 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+26/10/25 04:31:04 INFO SecurityManager: Changing view acls to: sparkuser
+26/10/25 04:31:04 INFO SecurityManager: Changing modify acls to: sparkuser
+26/10/25 04:31:04 INFO SecurityManager: Changing view acls groups to: 
+26/10/25 04:31:04 INFO SecurityManager: Changing modify acls groups to: 
+26/10/25 04:31:04 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: sparkuser; groups with view permissions: EMPTY; users with modify permissions: sparkuser; groups with modify permissions: EMPTY
+26/10/25 04:31:05 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:36107 after 166 ms (0 ms spent in bootstraps)
+26/10/25 04:31:05 INFO SecurityManager: Changing view acls to: sparkuser
+26/10/25 04:31:05 INFO SecurityManager: Changing modify acls to: sparkuser
+26/10/25 04:31:05 INFO SecurityManager: Changing view acls groups to: 
+26/10/25 04:31:05 INFO SecurityManager: Changing modify acls groups to: 
+26/10/25 04:31:05 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: sparkuser; groups with view permissions: EMPTY; users with modify permissions: sparkuser; groups with modify permissions: EMPTY
+26/10/25 04:31:05 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:36107 after 12 ms (0 ms spent in bootstraps)
+26/10/25 04:31:06 INFO DiskBlockManager: Created local directory at /tmp/spark-780523a5-7a3b-450e-ba8a-7ef2d7fa9d66/executor-9ca1c911-8d9f-4201-827c-b6b99808ffea/blockmgr-086834a8-b2c1-4009-892d-9f1ef1118af4
+26/10/25 04:31:06 INFO MemoryStore: MemoryStore started with capacity 434.4 MiB
+26/10/25 04:31:07 INFO CoarseGrainedExecutorBackend: Connecting to driver: spark://CoarseGrainedScheduler@localhost:36107
+26/10/25 04:31:07 INFO WorkerWatcher: Connecting to worker spark://Worker@localhost:42721
+26/10/25 04:31:07 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:42721 after 4 ms (0 ms spent in bootstraps)
+26/10/25 04:31:07 INFO WorkerWatcher: Successfully connected to spark://Worker@localhost:42721
+26/10/25 04:31:07 INFO ResourceUtils: ==============================================================
+26/10/25 04:31:07 INFO ResourceUtils: No custom resources configured for spark.executor.
+26/10/25 04:31:07 INFO ResourceUtils: ==============================================================
+26/10/25 04:31:07 INFO CoarseGrainedExecutorBackend: Successfully registered with driver
+26/10/25 04:31:07 INFO Executor: Starting executor ID 1 on host localhost
+26/10/25 04:31:07 INFO Executor: OS info Linux, 6.18.44-fc-v153, amd64
+26/10/25 04:31:07 INFO Executor: Java version 21.0.10
+26/10/25 04:31:07 INFO Utils: Successfully started service 'org.apache.spark.network.netty.NettyBlockTransferService' on port 38167.
+26/10/25 04:31:07 INFO NettyBlockTransferService: Server created on localhost:38167
+26/10/25 04:31:07 INFO BlockManager: Using org.apache.spark.storage.RandomBlockReplicationPolicy for block replication policy
+26/10/25 04:31:07 INFO BlockManagerMaster: Registering BlockManager BlockManagerId(1, localhost, 38167, None)
+26/10/25 04:31:07 INFO BlockManagerMaster: Registered BlockManager BlockManagerId(1, localhost, 38167, None)
+26/10/25 04:31:07 INFO BlockManager: Initialized BlockManager: BlockManagerId(1, localhost, 38167, None)
+26/10/25 04:31:07 INFO Executor: Starting executor with user classpath (userClassPathFirst = false): ''
+26/10/25 04:31:07 INFO Executor: Created or updated repl class loader org.apache.spark.util.MutableURLClassLoader@1f13b149 for default.
+26/10/25 04:31:07 INFO Executor: Fetching spark://localhost:36107/jars/spark-examples_2.12-3.5.3.jar with timestamp 1792902657307
+26/10/25 04:31:07 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:36107 after 16 ms (0 ms spent in bootstraps)
+26/10/25 04:31:07 INFO Utils: Fetching spark://localhost:36107/jars/spark-examples_2.12-3.5.3.jar to /tmp/spark-780523a5-7a3b-450e-ba8a-7ef2d7fa9d66/executor-9ca1c911-8d9f-4201-827c-b6b99808ffea/spark-c330ac8a-c865-4b23-b116-0a174f3c6cd3/fetchFileTemp14036251601957764118.tmp
+26/10/25 04:31:07 INFO Utils: Copying /tmp/spark-780523a5-7a3b-450e-ba8a-7ef2d7fa9d66/executor-9ca1c911-8d9f-4201-827c-b6b99808ffea/spark-c330ac8a-c865-4b23-b116-0a174f3c6cd3/-4913081831792902657307_cache to /opt/spark/work/app-20261025043058-0000/1/./spark-examples_2.12-3.5.3.jar
+26/10/25 04:31:08 INFO Executor: Adding file:/opt/spark/work/app-20261025043058-0000/1/./spark-examples_2.12-3.5.3.jar to class loader default
+26/10/25 04:31:08 INFO CoarseGrainedExecutorBackend: Got assigned task 2
+26/10/25 04:31:08 INFO Executor: Running task 2.0 in stage 0.0 (TID 2)
+26/10/25 04:31:08 INFO TorrentBroadcast: Started reading broadcast variable 0 with 1 pieces (estimated total size 4.0 MiB)
+26/10/25 04:31:09 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:38063 after 9 ms (0 ms spent in bootstraps)
+26/10/25 04:31:09 INFO MemoryStore: Block broadcast_0_piece0 stored as bytes in memory (estimated size 2.3 KiB, free 434.4 MiB)
+26/10/25 04:31:09 INFO TorrentBroadcast: Reading broadcast variable 0 took 341 ms
+26/10/25 04:31:09 INFO MemoryStore: Block broadcast_0 stored as values in memory (estimated size 4.0 KiB, free 434.4 MiB)
+26/10/25 04:31:09 INFO Executor: Finished task 2.0 in stage 0.0 (TID 2). 1055 bytes result sent to driver
+26/10/25 04:31:10 INFO CoarseGrainedExecutorBackend: Got assigned task 4
+26/10/25 04:31:10 INFO Executor: Running task 4.0 in stage 0.0 (TID 4)
+26/10/25 04:31:10 INFO Executor: Finished task 4.0 in stage 0.0 (TID 4). 1012 bytes result sent to driver
+26/10/25 04:31:10 INFO CoarseGrainedExecutorBackend: Got assigned task 7
+26/10/25 04:31:10 INFO Executor: Running task 7.0 in stage 0.0 (TID 7)
+26/10/25 04:31:10 INFO Executor: Finished task 7.0 in stage 0.0 (TID 7). 1012 bytes result sent to driver
+26/10/25 04:31:10 INFO CoarseGrainedExecutorBackend: Got assigned task 10
+26/10/25 04:31:10 INFO Executor: Running task 10.0 in stage 0.0 (TID 10)
+26/10/25 04:31:10 INFO Executor: Finished task 10.0 in stage 0.0 (TID 10). 969 bytes result sent to driver
+26/10/25 04:31:10 INFO CoarseGrainedExecutorBackend: Got assigned task 13
+26/10/25 04:31:10 INFO Executor: Running task 13.0 in stage 0.0 (TID 13)
+26/10/25 04:31:10 INFO Executor: Finished task 13.0 in stage 0.0 (TID 13). 969 bytes result sent to driver
+26/10/25 04:31:10 INFO CoarseGrainedExecutorBackend: Got assigned task 16
+26/10/25 04:31:10 INFO Executor: Running task 16.0 in stage 0.0 (TID 16)
+26/10/25 04:31:10 INFO Executor: Finished task 16.0 in stage 0.0 (TID 16). 1012 bytes result sent to driver
+26/10/25 04:31:10 INFO CoarseGrainedExecutorBackend: Got assigned task 19
+26/10/25 04:31:10 INFO Executor: Running task 19.0 in stage 0.0 (TID 19)
+26/10/25 04:31:10 INFO Executor: Finished task 19.0 in stage 0.0 (TID 19). 1012 bytes result sent to driver
+26/10/25 04:31:10 INFO CoarseGrainedExecutorBackend: Driver commanded a shutdown
+26/10/25 04:31:10 ERROR CoarseGrainedExecutorBackend: RECEIVED SIGNAL TERM
+tdown
