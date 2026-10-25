@@ -403,7 +403,7 @@ func shortHost(h string) string {
 // such copy per cluster (j-…/containers/…), or one application's
 // container folders (container_*/stderr.gz).
 func offlineLogs(ctx context.Context, dir, appID string, log *model.EventLog, lim source.Limits, off map[string]string, loc *time.Location, trace func(string)) (clusterLogs, error) {
-	root, appFolder, err := fromLayout(dir, appID)
+	lay, err := fromLayout(dir, appID)
 	if err != nil {
 		return clusterLogs{}, err
 	}
@@ -411,15 +411,25 @@ func offlineLogs(ctx context.Context, dir, appID string, log *model.EventLog, li
 	if log != nil {
 		since, until = log.Application.Start, log.Application.End
 	}
-	col := yarnlog.Collect(ctx, source.Trace(source.NewLocalStore(dir), trace), yarnlog.Plan{Root: root, AppFolder: appFolder, AppID: appID, Since: since, Until: until, Limits: lim, Off: off, Loc: loc})
+	col := yarnlog.Collect(ctx, source.Trace(source.NewLocalStore(dir), trace), yarnlog.Plan{Root: lay.root, AppFolder: lay.appFolder, Standalone: lay.standalone, AppID: appID, Since: since, Until: until, Limits: lim, Off: off, Loc: loc})
 	return clusterLogs{files: col.Files, sources: col.Sources, logLoc: loc}, nil
 }
 
+// fromLayout is what a -from folder holds: a copy of an EMR cluster's log
+// folder (root, the folder itself or a j-* folder in it), one
+// application's container folders (appFolder), or a Spark Standalone run's
+// executor logs (standalone: each <app-id>/ folder found).
+type logLayout struct {
+	root       string
+	appFolder  bool
+	standalone []string
+}
+
 // fromLayout works out what a -from folder holds.
-func fromLayout(dir, appID string) (root string, appFolder bool, err error) {
+func fromLayout(dir, appID string) (logLayout, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return "", false, fmt.Errorf("-from: %w", err)
+		return logLayout{}, fmt.Errorf("-from: %w", err)
 	}
 	isRoot := func(d string) bool {
 		for _, sub := range []string{"containers", "steps", "node"} {
@@ -430,13 +440,16 @@ func fromLayout(dir, appID string) (root string, appFolder bool, err error) {
 		return false
 	}
 	if isRoot(dir) {
-		return "", false, nil
+		return logLayout{}, nil
+	}
+	if sa := standaloneFolders(dir, appID, entries); len(sa) > 0 {
+		return logLayout{standalone: sa}, nil
 	}
 	var clusters []string
 	for _, e := range entries {
 		switch {
 		case e.IsDir() && strings.HasPrefix(e.Name(), "container_"):
-			return "", true, nil
+			return logLayout{appFolder: true}, nil
 		case e.IsDir() && strings.HasPrefix(e.Name(), "j-") && isRoot(filepath.Join(dir, e.Name())):
 			clusters = append(clusters, e.Name())
 		}
@@ -444,13 +457,43 @@ func fromLayout(dir, appID string) (root string, appFolder bool, err error) {
 	sort.Strings(clusters)
 	for _, c := range clusters {
 		if fi, err := os.Stat(filepath.Join(dir, c, "containers", appID)); err == nil && fi.IsDir() {
-			return c + "/", false, nil
+			return logLayout{root: c + "/"}, nil
 		}
 	}
 	if len(clusters) == 1 {
-		return clusters[0] + "/", false, nil
+		return logLayout{root: clusters[0] + "/"}, nil
 	}
-	return "", false, fmt.Errorf("-from %s holds no cluster log folder (containers/, steps/, node/) and no container_* folders; copy the cluster's log folder, for example with aws s3 cp --recursive <LogUri>/<cluster-id>/ %s", dir, dir)
+	return logLayout{}, fmt.Errorf("-from %s holds no cluster log folder (containers/, steps/, node/), no container_* folders and no Spark Standalone work folder for %s; copy the cluster's log folder, for example with aws s3 cp --recursive <LogUri>/<cluster-id>/ %s, or pass the folder that holds a worker's work/ folder", dir, appID, dir)
+}
+
+// standaloneFolders finds a Spark Standalone run's executor log folders,
+// work/<app-id>/, in a -from folder that is a worker's work folder, the
+// folder that holds it (such as $SPARK_HOME), or one folder per machine
+// (<host>/work/<app-id>/ or <host>/<app-id>/), as copies from several
+// workers would be. Each is given relative to the -from folder.
+func standaloneFolders(dir, appID string, entries []os.DirEntry) []string {
+	isDir := func(rel string) bool {
+		fi, err := os.Stat(filepath.Join(dir, filepath.FromSlash(rel)))
+		return err == nil && fi.IsDir()
+	}
+	for _, rel := range []string{appID, "work/" + appID} {
+		if isDir(rel) {
+			return []string{rel + "/"}
+		}
+	}
+	var out []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		for _, rel := range []string{e.Name() + "/work/" + appID, e.Name() + "/" + appID} {
+			if isDir(rel) {
+				out = append(out, rel+"/")
+				break
+			}
+		}
+	}
+	return out
 }
 
 // maxScriptBytes caps each script fetched from S3, like -source files.

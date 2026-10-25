@@ -80,7 +80,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&o.hbaseClusterName, "hbase-cluster-name", "", "the EMR cluster name, instead of --hbase-cluster-id: the cluster of that name up when the application ran (also hbase-cluster-name in the config file)")
 	fs.StringVar(&o.appID, "app-id", "", "Spark application ID, e.g. application_1700000000000_0042 (required)")
 	fs.StringVar(&o.eventLog, "eventlog", "", "event log: local file, rolling eventlog_v2_* folder, folder of logs, or History Server zip")
-	fs.StringVar(&o.from, "from", "", "local copy of the cluster's logs (containers/, steps/, node/) or of one application's container folders")
+	fs.StringVar(&o.from, "from", "", "local copy of the cluster's logs (containers/, steps/, node/), of one application's container folders, or a Spark Standalone work/ folder")
 	fs.StringVar(&o.out, "out", "", "output folder (default ~/sparkplain/<yyyy-mm-dd>/<app-id>/)")
 	fs.StringVar(&o.format, "format", "", "outputs, comma-separated: html, json, explorer (default all three; both = html,json)")
 	fs.IntVar(&o.workers, "workers", 16, "how many log files to read at once, 1 to 256")
@@ -466,7 +466,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if msg := logZoneCheck(log, logs.files, logs.steps, logLoc); msg != "" {
 		con.note("%s", msg)
 		for i := range logs.sources {
-			if logs.sources[i].Name == "Container logs" {
+			if n := logs.sources[i].Name; n == "Container logs" || n == "Executor logs" {
 				logs.sources[i].Detail = strings.TrimSpace(logs.sources[i].Detail + " " + msg)
 			}
 		}
