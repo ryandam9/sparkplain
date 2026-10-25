@@ -289,7 +289,7 @@ func (c *classifier) feed(line string) {
 			c.addRegionEvent(model.HBaseRegionEvent{Time: c.lastTime, Event: "busy", Region: m[2], Detail: "refused writes: its memstore was over " + m[1]})
 		}
 		return
-	case NodeManager, ResourceManager, Bootstrap, StepController, HBaseMaster:
+	case NodeManager, ResourceManager, Bootstrap, StepController, HBaseMaster, StandaloneWorker, StandaloneMaster:
 		return // daemons quote other processes' stacks; those are read from their own logs
 	}
 	if javaExcRE.MatchString(line) || strings.HasPrefix(line, "Traceback (most recent call last):") {
@@ -322,6 +322,13 @@ func (c *classifier) header(h header, line string) {
 	case NodeManager:
 		if !c.capacity(h) && c.mine(line) {
 			c.nodeManager(h)
+		}
+		return
+	case StandaloneWorker, StandaloneMaster:
+		// A daemon's log holds every application's executors: only lines
+		// that name this one's are read.
+		if c.opt.AppID != "" && strings.Contains(msg, c.opt.AppID+"/") {
+			c.standaloneDaemon(h)
 		}
 		return
 	case HBaseMaster, HBaseRegion:
@@ -1023,6 +1030,38 @@ func (c *classifier) nodeManager(h header) {
 }
 
 // mine reports whether a daemon's line is about this application.
+// A Standalone worker logs how each executor ended; "Unknown Executor …"
+// lines repeat ones already gone when the worker shuts down.
+var (
+	saExecEndRE    = regexp.MustCompile(`^Executor (app-[\w-]+)/(\d+) finished with state (\w+)(?: message (.*?))? exitStatus (-?\d+)$`)
+	saExecLaunchRE = regexp.MustCompile(`^Launching executor (app-[\w-]+)/(\d+) on worker worker-\d+-(.+)-\d+$`)
+)
+
+// standaloneDaemon reads a Standalone worker's or master's line about one
+// of the application's executors: how it ended, and where the master
+// placed it.
+func (c *classifier) standaloneDaemon(h header) {
+	if m := saExecEndRE.FindStringSubmatch(h.msg); m != nil && m[1] == c.opt.AppID {
+		code, _ := strconv.Atoi(m[5])
+		if m[3] == "KILLED" || code == 0 {
+			return // the driver let it go: the application ended, or it was idle
+		}
+		l := c.entry(model.LogContainerEnd, exitSeverity(code), h.time, h.msg)
+		l.Fields["executor"], l.Fields["exitCode"], l.Fields["state"] = m[2], m[5], m[3]
+		if c.res.File.Host != "" {
+			l.Fields["host"] = c.res.File.Host
+		}
+		l.Fields["meaning"] = StandaloneExitMeaning(code)
+		c.add(l)
+		return
+	}
+	if m := saExecLaunchRE.FindStringSubmatch(h.msg); m != nil && m[1] == c.opt.AppID {
+		l := c.entry(model.LogExecutorHost, model.Info, h.time, h.msg)
+		l.Fields["executor"], l.Fields["host"] = m[2], m[3]
+		c.add(l)
+	}
+}
+
 func (c *classifier) mine(line string) bool {
 	if c.appKey == "" {
 		return true

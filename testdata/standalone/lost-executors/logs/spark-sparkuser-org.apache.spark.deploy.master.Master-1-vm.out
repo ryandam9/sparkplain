@@ -1,0 +1,66 @@
+Spark Command: /usr/lib/jvm/java-21-openjdk-amd64/bin/java -cp /opt/spark/conf/:/opt/spark/jars/* -Xmx1g org.apache.spark.deploy.master.Master --host vm --port 7077 --webui-port 8080 --host localhost
+========================================
+Using Spark's default log4j profile: org/apache/spark/log4j2-defaults.properties
+26/10/25 05:42:26 INFO Master: Started daemon with process name: 2647@vm
+26/10/25 05:42:26 INFO SignalUtils: Registering signal handler for TERM
+26/10/25 05:42:26 INFO SignalUtils: Registering signal handler for HUP
+26/10/25 05:42:26 INFO SignalUtils: Registering signal handler for INT
+26/10/25 05:42:26 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+26/10/25 05:42:26 INFO SecurityManager: Changing view acls to: sparkuser
+26/10/25 05:42:26 INFO SecurityManager: Changing modify acls to: sparkuser
+26/10/25 05:42:26 INFO SecurityManager: Changing view acls groups to: 
+26/10/25 05:42:26 INFO SecurityManager: Changing modify acls groups to: 
+26/10/25 05:42:26 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: sparkuser; groups with view permissions: EMPTY; users with modify permissions: sparkuser; groups with modify permissions: EMPTY
+26/10/25 05:42:27 INFO Utils: Successfully started service 'sparkMaster' on port 7077.
+26/10/25 05:42:27 INFO Master: Starting Spark master at spark://localhost:7077
+26/10/25 05:42:27 INFO Master: Running Spark version 3.5.3
+26/10/25 05:42:27 INFO JettyUtils: Start Jetty 127.0.0.1:8080 for MasterUI
+26/10/25 05:42:27 INFO Utils: Successfully started service 'MasterUI' on port 8080.
+26/10/25 05:42:27 INFO MasterWebUI: Bound MasterWebUI to 127.0.0.1, and started at http://localhost:8080
+26/10/25 05:42:27 INFO Master: I have been elected leader! New state: ALIVE
+26/10/25 05:42:36 INFO Master: Registering worker localhost:43677 with 4 cores, 4.0 GiB RAM
+26/10/25 05:42:47 INFO Master: Registering app sparkplain_lost_executors
+26/10/25 05:42:47 INFO Master: Registered app sparkplain_lost_executors with ID app-20261025054247-0000
+26/10/25 05:42:47 INFO Master: Start scheduling for app app-20261025054247-0000 with rpId: 0
+26/10/25 05:42:48 INFO Master: Launching executor app-20261025054247-0000/0 on worker worker-20261025054235-localhost-43677
+26/10/25 05:42:48 INFO Master: Launching executor app-20261025054247-0000/1 on worker worker-20261025054235-localhost-43677
+26/10/25 05:42:48 INFO Master: Launching executor app-20261025054247-0000/2 on worker worker-20261025054235-localhost-43677
+26/10/25 05:42:48 INFO Master: Launching executor app-20261025054247-0000/3 on worker worker-20261025054235-localhost-43677
+26/10/25 05:42:48 INFO Master: Start scheduling for app app-20261025054247-0000 with rpId: 0
+26/10/25 05:42:48 INFO Master: Start scheduling for app app-20261025054247-0000 with rpId: 0
+26/10/25 05:42:48 INFO Master: Start scheduling for app app-20261025054247-0000 with rpId: 0
+26/10/25 05:42:48 INFO Master: Start scheduling for app app-20261025054247-0000 with rpId: 0
+26/10/25 05:43:15 INFO Master: Removing executor app-20261025054247-0000/1 because it is EXITED
+26/10/25 05:43:15 INFO Master: Start scheduling for app app-20261025054247-0000 with rpId: 0
+26/10/25 05:43:15 INFO Master: Launching executor app-20261025054247-0000/4 on worker worker-20261025054235-localhost-43677
+26/10/25 05:43:15 INFO Master: Start scheduling for app app-20261025054247-0000 with rpId: 0
+26/10/25 05:44:10 INFO Master: Removing executor app-20261025054247-0000/3 because it is EXITED
+26/10/25 05:44:10 INFO Master: Start scheduling for app app-20261025054247-0000 with rpId: 0
+26/10/25 05:44:10 INFO Master: Launching executor app-20261025054247-0000/5 on worker worker-20261025054235-localhost-43677
+26/10/25 05:44:10 INFO Master: Start scheduling for app app-20261025054247-0000 with rpId: 0
+26/10/25 05:44:12 INFO Master: Removing executor app-20261025054247-0000/0 because it is EXITED
+26/10/25 05:44:12 INFO Master: Start scheduling for app app-20261025054247-0000 with rpId: 0
+26/10/25 05:44:12 INFO Master: Launching executor app-20261025054247-0000/6 on worker worker-20261025054235-localhost-43677
+26/10/25 05:44:12 INFO Master: Start scheduling for app app-20261025054247-0000 with rpId: 0
+26/10/25 05:44:13 INFO Master: Removing executor app-20261025054247-0000/4 because it is EXITED
+26/10/25 05:44:13 INFO Master: Start scheduling for app app-20261025054247-0000 with rpId: 0
+26/10/25 05:44:13 INFO Master: Launching executor app-20261025054247-0000/7 on worker worker-20261025054235-localhost-43677
+26/10/25 05:44:13 INFO Master: Start scheduling for app app-20261025054247-0000 with rpId: 0
+26/10/25 05:44:13 INFO Master: Removing executor app-20261025054247-0000/2 because it is EXITED
+26/10/25 05:44:13 INFO Master: Start scheduling for app app-20261025054247-0000 with rpId: 0
+26/10/25 05:44:13 INFO Master: Launching executor app-20261025054247-0000/8 on worker worker-20261025054235-localhost-43677
+26/10/25 05:44:13 INFO Master: Start scheduling for app app-20261025054247-0000 with rpId: 0
+26/10/25 05:44:21 INFO Master: Received unregister request from application app-20261025054247-0000
+26/10/25 05:44:21 INFO Master: Removing app app-20261025054247-0000
+26/10/25 05:44:21 INFO Master: 127.0.0.1:54676 got disassociated, removing it.
+26/10/25 05:44:21 INFO Master: localhost:45213 got disassociated, removing it.
+26/10/25 05:44:21 WARN Master: Got status update for unknown executor app-20261025054247-0000/7
+26/10/25 05:44:21 WARN Master: Got status update for unknown executor app-20261025054247-0000/6
+26/10/25 05:44:21 WARN Master: Got status update for unknown executor app-20261025054247-0000/5
+26/10/25 05:44:21 WARN Master: Got status update for unknown executor app-20261025054247-0000/8
+26/10/25 05:44:25 WARN Master: Got status update for unknown executor app-20261025054247-0000/0
+26/10/25 05:44:25 WARN Master: Got status update for unknown executor app-20261025054247-0000/4
+26/10/25 05:44:25 WARN Master: Got status update for unknown executor app-20261025054247-0000/3
+26/10/25 05:44:25 WARN Master: Got status update for unknown executor app-20261025054247-0000/2
+26/10/25 05:44:25 WARN Master: Got status update for unknown executor app-20261025054247-0000/1
+26/10/25 05:44:25 ERROR Master: RECEIVED SIGNAL TERM

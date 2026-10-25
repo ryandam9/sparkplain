@@ -1,0 +1,168 @@
+Spark Executor Command: "/usr/lib/jvm/java-21-openjdk-amd64/bin/java" "-cp" "/opt/spark/conf/:/opt/spark/jars/*" "-Xmx512M" "-Dspark.driver.port=45213" "-Djava.net.preferIPv6Addresses=false" "-XX:+IgnoreUnrecognizedVMOptions" "--add-opens=java.base/java.lang=ALL-UNNAMED" "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED" "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED" "--add-opens=java.base/java.io=ALL-UNNAMED" "--add-opens=java.base/java.net=ALL-UNNAMED" "--add-opens=java.base/java.nio=ALL-UNNAMED" "--add-opens=java.base/java.util=ALL-UNNAMED" "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED" "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED" "--add-opens=java.base/jdk.internal.ref=ALL-UNNAMED" "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED" "--add-opens=java.base/sun.nio.cs=ALL-UNNAMED" "--add-opens=java.base/sun.security.action=ALL-UNNAMED" "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED" "--add-opens=java.security.jgss/sun.security.krb5=ALL-UNNAMED" "-Djdk.reflect.useDirectMethodHandle=false" "org.apache.spark.executor.CoarseGrainedExecutorBackend" "--driver-url" "spark://CoarseGrainedScheduler@localhost:45213" "--executor-id" "3" "--hostname" "localhost" "--cores" "1" "--app-id" "app-20261025054247-0000" "--worker-url" "spark://Worker@localhost:43677" "--resourceProfileId" "0"
+========================================
+
+Using Spark's default log4j profile: org/apache/spark/log4j2-defaults.properties
+26/10/25 05:42:52 INFO CoarseGrainedExecutorBackend: Started daemon with process name: 2905@vm
+26/10/25 05:42:52 INFO SignalUtils: Registering signal handler for TERM
+26/10/25 05:42:52 INFO SignalUtils: Registering signal handler for HUP
+26/10/25 05:42:52 INFO SignalUtils: Registering signal handler for INT
+26/10/25 05:42:53 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+26/10/25 05:42:53 INFO SecurityManager: Changing view acls to: sparkuser
+26/10/25 05:42:53 INFO SecurityManager: Changing modify acls to: sparkuser
+26/10/25 05:42:53 INFO SecurityManager: Changing view acls groups to: 
+26/10/25 05:42:53 INFO SecurityManager: Changing modify acls groups to: 
+26/10/25 05:42:53 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: sparkuser; groups with view permissions: EMPTY; users with modify permissions: sparkuser; groups with modify permissions: EMPTY
+26/10/25 05:42:54 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:45213 after 201 ms (0 ms spent in bootstraps)
+26/10/25 05:42:55 INFO SecurityManager: Changing view acls to: sparkuser
+26/10/25 05:42:55 INFO SecurityManager: Changing modify acls to: sparkuser
+26/10/25 05:42:55 INFO SecurityManager: Changing view acls groups to: 
+26/10/25 05:42:55 INFO SecurityManager: Changing modify acls groups to: 
+26/10/25 05:42:55 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: sparkuser; groups with view permissions: EMPTY; users with modify permissions: sparkuser; groups with modify permissions: EMPTY
+26/10/25 05:42:55 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:45213 after 9 ms (0 ms spent in bootstraps)
+26/10/25 05:42:55 INFO DiskBlockManager: Created local directory at /tmp/spark-7f3e2473-e1ea-41ac-b3ac-bf8ca7dc8f9b/executor-4bbc2654-970f-4cbe-9c33-a41eeba27e38/blockmgr-ef31cf2a-b7cc-4dc7-9e53-0655002e6bf7
+26/10/25 05:42:55 INFO MemoryStore: MemoryStore started with capacity 127.2 MiB
+26/10/25 05:42:56 INFO CoarseGrainedExecutorBackend: Connecting to driver: spark://CoarseGrainedScheduler@localhost:45213
+26/10/25 05:42:56 INFO WorkerWatcher: Connecting to worker spark://Worker@localhost:43677
+26/10/25 05:42:56 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:43677 after 12 ms (0 ms spent in bootstraps)
+26/10/25 05:42:56 INFO WorkerWatcher: Successfully connected to spark://Worker@localhost:43677
+26/10/25 05:42:56 INFO ResourceUtils: ==============================================================
+26/10/25 05:42:56 INFO ResourceUtils: No custom resources configured for spark.executor.
+26/10/25 05:42:56 INFO ResourceUtils: ==============================================================
+26/10/25 05:42:57 INFO CoarseGrainedExecutorBackend: Successfully registered with driver
+26/10/25 05:42:57 INFO Executor: Starting executor ID 3 on host localhost
+26/10/25 05:42:57 INFO Executor: OS info Linux, 6.18.44-fc-v153, amd64
+26/10/25 05:42:57 INFO Executor: Java version 21.0.10
+26/10/25 05:42:57 INFO Utils: Successfully started service 'org.apache.spark.network.netty.NettyBlockTransferService' on port 36137.
+26/10/25 05:42:57 INFO NettyBlockTransferService: Server created on localhost:36137
+26/10/25 05:42:57 INFO BlockManager: Using org.apache.spark.storage.RandomBlockReplicationPolicy for block replication policy
+26/10/25 05:42:57 INFO BlockManagerMaster: Registering BlockManager BlockManagerId(3, localhost, 36137, None)
+26/10/25 05:42:57 INFO BlockManagerMaster: Registered BlockManager BlockManagerId(3, localhost, 36137, None)
+26/10/25 05:42:57 INFO BlockManager: Initialized BlockManager: BlockManagerId(3, localhost, 36137, None)
+26/10/25 05:42:57 INFO Executor: Starting executor with user classpath (userClassPathFirst = false): ''
+26/10/25 05:42:57 INFO Executor: Created or updated repl class loader org.apache.spark.util.MutableURLClassLoader@d8eb2b1 for default.
+26/10/25 05:43:00 INFO CoarseGrainedExecutorBackend: Got assigned task 0
+26/10/25 05:43:00 INFO Executor: Running task 0.0 in stage 0.0 (TID 0)
+26/10/25 05:43:00 INFO TorrentBroadcast: Started reading broadcast variable 0 with 1 pieces (estimated total size 4.0 MiB)
+26/10/25 05:43:00 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:37715 after 4 ms (0 ms spent in bootstraps)
+26/10/25 05:43:00 INFO MemoryStore: Block broadcast_0_piece0 stored as bytes in memory (estimated size 16.7 KiB, free 127.2 MiB)
+26/10/25 05:43:00 INFO TorrentBroadcast: Reading broadcast variable 0 took 247 ms
+26/10/25 05:43:00 INFO MemoryStore: Block broadcast_0 stored as values in memory (estimated size 36.3 KiB, free 127.1 MiB)
+26/10/25 05:43:02 INFO CodeGenerator: Code generated in 512.8137 ms
+26/10/25 05:43:02 INFO CodeGenerator: Code generated in 25.53444 ms
+26/10/25 05:43:02 INFO CodeGenerator: Code generated in 23.958572 ms
+26/10/25 05:43:02 INFO CodeGenerator: Code generated in 21.632316 ms
+26/10/25 05:43:02 INFO Executor: Finished task 0.0 in stage 0.0 (TID 0). 2327 bytes result sent to driver
+26/10/25 05:43:03 INFO CoarseGrainedExecutorBackend: Got assigned task 2
+26/10/25 05:43:03 INFO Executor: Running task 0.0 in stage 2.0 (TID 2)
+26/10/25 05:43:03 INFO MapOutputTrackerWorker: Updating epoch to 1 and clearing cache
+26/10/25 05:43:03 INFO TorrentBroadcast: Started reading broadcast variable 1 with 1 pieces (estimated total size 4.0 MiB)
+26/10/25 05:43:03 INFO MemoryStore: Block broadcast_1_piece0 stored as bytes in memory (estimated size 16.5 KiB, free 127.1 MiB)
+26/10/25 05:43:03 INFO TorrentBroadcast: Reading broadcast variable 1 took 18 ms
+26/10/25 05:43:03 INFO MemoryStore: Block broadcast_1 stored as values in memory (estimated size 35.6 KiB, free 127.1 MiB)
+26/10/25 05:43:03 INFO MapOutputTrackerWorker: Don't have map outputs for shuffle 0, fetching them
+26/10/25 05:43:03 INFO MapOutputTrackerWorker: Doing the fetch; tracker endpoint = NettyRpcEndpointRef(spark://MapOutputTracker@localhost:45213)
+26/10/25 05:43:03 INFO MapOutputTrackerWorker: Got the map output locations
+26/10/25 05:43:03 INFO ShuffleBlockFetcherIterator: Getting 2 (530.0 B) non-empty blocks including 1 (265.0 B) local and 1 (265.0 B) host-local and 0 (0.0 B) push-merged-local and 0 (0.0 B) remote blocks
+26/10/25 05:43:03 INFO ShuffleBlockFetcherIterator: Started 0 remote fetches in 22 ms
+26/10/25 05:43:03 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:35281 after 1 ms (0 ms spent in bootstraps)
+26/10/25 05:43:03 INFO CodeGenerator: Code generated in 21.628842 ms
+26/10/25 05:43:03 INFO Executor: Finished task 0.0 in stage 2.0 (TID 2). 4990 bytes result sent to driver
+26/10/25 05:43:03 INFO CoarseGrainedExecutorBackend: Got assigned task 4
+26/10/25 05:43:03 INFO Executor: Running task 1.0 in stage 3.0 (TID 4)
+26/10/25 05:43:03 INFO TorrentBroadcast: Started reading broadcast variable 2 with 1 pieces (estimated total size 4.0 MiB)
+26/10/25 05:43:03 INFO MemoryStore: Block broadcast_2_piece0 stored as bytes in memory (estimated size 4.5 KiB, free 127.1 MiB)
+26/10/25 05:43:03 INFO TorrentBroadcast: Reading broadcast variable 2 took 69 ms
+26/10/25 05:43:04 INFO MemoryStore: Block broadcast_2 stored as values in memory (estimated size 7.1 KiB, free 127.1 MiB)
+26/10/25 05:43:14 WARN GarbageCollectionMetrics: To enable non-built-in garbage collector(s) List(G1 Concurrent GC), users should configure it(them) to spark.eventLog.gcMetrics.youngGenerationGarbageCollectors or spark.eventLog.gcMetrics.oldGenerationGarbageCollectors
+26/10/25 05:43:45 INFO PythonRunner: Times: total = 41473, boot = 1147, init = 326, finish = 40000
+26/10/25 05:43:45 INFO Executor: Finished task 1.0 in stage 3.0 (TID 4). 1366 bytes result sent to driver
+26/10/25 05:44:00 INFO CoarseGrainedExecutorBackend: Got assigned task 9
+26/10/25 05:44:00 INFO Executor: Running task 1.0 in stage 4.0 (TID 9)
+26/10/25 05:44:00 INFO MapOutputTrackerWorker: Updating epoch to 2 and clearing cache
+26/10/25 05:44:00 INFO TorrentBroadcast: Started reading broadcast variable 3 with 1 pieces (estimated total size 4.0 MiB)
+26/10/25 05:44:00 INFO MemoryStore: Block broadcast_3_piece0 stored as bytes in memory (estimated size 11.6 KiB, free 127.2 MiB)
+26/10/25 05:44:00 INFO TorrentBroadcast: Reading broadcast variable 3 took 41 ms
+26/10/25 05:44:00 INFO MemoryStore: Block broadcast_3 stored as values in memory (estimated size 24.8 KiB, free 127.2 MiB)
+26/10/25 05:44:00 INFO CodeGenerator: Code generated in 50.790946 ms
+26/10/25 05:44:00 INFO CodeGenerator: Code generated in 27.256233 ms
+26/10/25 05:44:01 INFO CodeGenerator: Code generated in 36.102196 ms
+26/10/25 05:44:01 INFO CodeGenerator: Code generated in 38.283936 ms
+26/10/25 05:44:08 INFO CodeGenerator: Code generated in 64.748195 ms
+26/10/25 05:44:08 INFO CodeGenerator: Code generated in 30.387732 ms
+26/10/25 05:44:10 ERROR Executor: Exception in task 1.0 in stage 4.0 (TID 9)
+java.lang.OutOfMemoryError: Java heap space
+	at org.apache.spark.sql.catalyst.expressions.codegen.BufferHolder.grow(BufferHolder.java:80)
+	at org.apache.spark.sql.catalyst.expressions.codegen.UnsafeArrayWriter.initialize(UnsafeArrayWriter.java:71)
+	at org.apache.spark.sql.catalyst.expressions.GeneratedClass$SpecificUnsafeProjection.apply(Unknown Source)
+	at org.apache.spark.sql.catalyst.expressions.aggregate.Collect.serialize(collect.scala:75)
+	at org.apache.spark.sql.catalyst.expressions.aggregate.Collect.serialize(collect.scala:39)
+	at org.apache.spark.sql.catalyst.expressions.aggregate.TypedImperativeAggregate.serializeAggregateBufferInPlace(interfaces.scala:621)
+	at org.apache.spark.sql.execution.aggregate.AggregationIterator.$anonfun$generateResultProjection$6(AggregationIterator.scala:280)
+	at org.apache.spark.sql.execution.aggregate.AggregationIterator$$Lambda/0x00007f27b8746000.apply(Unknown Source)
+	at org.apache.spark.sql.execution.aggregate.ObjectAggregationIterator.next(ObjectAggregationIterator.scala:97)
+	at org.apache.spark.sql.execution.aggregate.ObjectAggregationIterator.next(ObjectAggregationIterator.scala:33)
+	at scala.collection.Iterator$$anon$10.next(Iterator.scala:461)
+	at org.apache.spark.shuffle.sort.BypassMergeSortShuffleWriter.write(BypassMergeSortShuffleWriter.java:169)
+	at org.apache.spark.shuffle.ShuffleWriteProcessor.write(ShuffleWriteProcessor.scala:59)
+	at org.apache.spark.scheduler.ShuffleMapTask.runTask(ShuffleMapTask.scala:104)
+	at org.apache.spark.scheduler.ShuffleMapTask.runTask(ShuffleMapTask.scala:54)
+	at org.apache.spark.TaskContext.runTaskWithListeners(TaskContext.scala:166)
+	at org.apache.spark.scheduler.Task.run(Task.scala:141)
+	at org.apache.spark.executor.Executor$TaskRunner.$anonfun$run$4(Executor.scala:620)
+	at org.apache.spark.executor.Executor$TaskRunner$$Lambda/0x00007f27b84ab2d0.apply(Unknown Source)
+	at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally(SparkErrorUtils.scala:64)
+	at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally$(SparkErrorUtils.scala:61)
+	at org.apache.spark.util.Utils$.tryWithSafeFinally(Utils.scala:94)
+	at org.apache.spark.executor.Executor$TaskRunner.run(Executor.scala:623)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.runWith(Thread.java:1596)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+26/10/25 05:44:10 ERROR SparkUncaughtExceptionHandler: Uncaught exception in thread Thread[#46,Executor task launch worker for task 1.0 in stage 4.0 (TID 9),5,main]
+java.lang.OutOfMemoryError: Java heap space
+	at org.apache.spark.sql.catalyst.expressions.codegen.BufferHolder.grow(BufferHolder.java:80)
+	at org.apache.spark.sql.catalyst.expressions.codegen.UnsafeArrayWriter.initialize(UnsafeArrayWriter.java:71)
+	at org.apache.spark.sql.catalyst.expressions.GeneratedClass$SpecificUnsafeProjection.apply(Unknown Source)
+	at org.apache.spark.sql.catalyst.expressions.aggregate.Collect.serialize(collect.scala:75)
+	at org.apache.spark.sql.catalyst.expressions.aggregate.Collect.serialize(collect.scala:39)
+	at org.apache.spark.sql.catalyst.expressions.aggregate.TypedImperativeAggregate.serializeAggregateBufferInPlace(interfaces.scala:621)
+	at org.apache.spark.sql.execution.aggregate.AggregationIterator.$anonfun$generateResultProjection$6(AggregationIterator.scala:280)
+	at org.apache.spark.sql.execution.aggregate.AggregationIterator$$Lambda/0x00007f27b8746000.apply(Unknown Source)
+	at org.apache.spark.sql.execution.aggregate.ObjectAggregationIterator.next(ObjectAggregationIterator.scala:97)
+	at org.apache.spark.sql.execution.aggregate.ObjectAggregationIterator.next(ObjectAggregationIterator.scala:33)
+	at scala.collection.Iterator$$anon$10.next(Iterator.scala:461)
+	at org.apache.spark.shuffle.sort.BypassMergeSortShuffleWriter.write(BypassMergeSortShuffleWriter.java:169)
+	at org.apache.spark.shuffle.ShuffleWriteProcessor.write(ShuffleWriteProcessor.scala:59)
+	at org.apache.spark.scheduler.ShuffleMapTask.runTask(ShuffleMapTask.scala:104)
+	at org.apache.spark.scheduler.ShuffleMapTask.runTask(ShuffleMapTask.scala:54)
+	at org.apache.spark.TaskContext.runTaskWithListeners(TaskContext.scala:166)
+	at org.apache.spark.scheduler.Task.run(Task.scala:141)
+	at org.apache.spark.executor.Executor$TaskRunner.$anonfun$run$4(Executor.scala:620)
+	at org.apache.spark.executor.Executor$TaskRunner$$Lambda/0x00007f27b84ab2d0.apply(Unknown Source)
+	at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally(SparkErrorUtils.scala:64)
+	at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally$(SparkErrorUtils.scala:61)
+	at org.apache.spark.util.Utils$.tryWithSafeFinally(Utils.scala:94)
+	at org.apache.spark.executor.Executor$TaskRunner.run(Executor.scala:623)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.runWith(Thread.java:1596)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+26/10/25 05:44:10 INFO CoarseGrainedExecutorBackend: Got assigned task 12
+26/10/25 05:44:10 ERROR Inbox: Ignoring error
+java.util.concurrent.RejectedExecutionException: Task org.apache.spark.executor.Executor$TaskRunner@788f8848 rejected from java.util.concurrent.ThreadPoolExecutor@52a61208[Shutting down, pool size = 1, active threads = 1, queued tasks = 0, completed tasks = 3]
+	at java.base/java.util.concurrent.ThreadPoolExecutor$AbortPolicy.rejectedExecution(ThreadPoolExecutor.java:2081)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.reject(ThreadPoolExecutor.java:841)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.execute(ThreadPoolExecutor.java:1376)
+	at org.apache.spark.executor.Executor.launchTask(Executor.scala:363)
+	at org.apache.spark.executor.CoarseGrainedExecutorBackend$$anonfun$receive$1.applyOrElse(CoarseGrainedExecutorBackend.scala:195)
+	at org.apache.spark.rpc.netty.Inbox.$anonfun$process$1(Inbox.scala:115)
+	at org.apache.spark.rpc.netty.Inbox.safelyCall(Inbox.scala:213)
+	at org.apache.spark.rpc.netty.Inbox.process(Inbox.scala:100)
+	at org.apache.spark.rpc.netty.MessageLoop.org$apache$spark$rpc$netty$MessageLoop$$receiveLoop(MessageLoop.scala:75)
+	at org.apache.spark.rpc.netty.MessageLoop$$anon$1.run(MessageLoop.scala:41)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+26/10/25 05:44:10 INFO MemoryStore: MemoryStore cleared
+26/10/25 05:44:10 INFO BlockManager: BlockManager stopped
+26/10/25 05:44:10 INFO ShutdownHookManager: Shutdown hook called

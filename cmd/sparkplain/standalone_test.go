@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
 )
 
 const standalone = "../../testdata/standalone"
@@ -207,6 +209,53 @@ func TestDriverLogFlag(t *testing.T) {
 	for _, s := range readReport(t, out).Sources {
 		if s.Name == "Driver log" && s.Status != "error" {
 			t.Errorf("missing driver log: %+v", s)
+		}
+	}
+}
+
+// On the lost-executors fixture one executor was killed with SIGKILL (137)
+// and four ran out of heap (52). The worker's log adds those deaths as
+// evidence, with or without the event log, and the 137 finding says what
+// it means without YARN: no memory limit, the machine's out-of-memory
+// killer or a person.
+func TestStandaloneLostExecutors(t *testing.T) {
+	const app = "app-20261025054247-0000"
+	for _, withLog := range []bool{true, false} {
+		out := t.TempDir()
+		args := []string{"-app-id", app, "-from", filepath.Join(standalone, "lost-executors"), "-out", out, "-format", "json"}
+		if withLog {
+			args = append(args, "-eventlog", filepath.Join(fx, app))
+		}
+		if code, _, errs := runCLI(t, args...); code != exitOK && code != exitPartial {
+			t.Fatalf("event log %v: exit %d: %s", withLog, code, errs)
+		}
+		r := readReport(t, out)
+		daemons := false
+		for _, s := range r.Sources {
+			daemons = daemons || s.Name == "Worker and master logs" && s.Status == "read"
+		}
+		if !daemons {
+			t.Errorf("event log %v: worker and master logs not read: %+v", withLog, r.Sources)
+		}
+		var kill *model.Finding
+		for i, f := range r.Findings {
+			if f.Rule == "executor-memory-kill" {
+				kill = &r.Findings[i]
+			}
+		}
+		if kill == nil {
+			t.Fatalf("event log %v: no finding for the executor killed with 137", withLog)
+		}
+		text := kill.Title + " " + kill.Explanation + " " + kill.Fix
+		if !strings.Contains(kill.Explanation, "did not use YARN") || strings.Contains(text, "memoryOverhead") || strings.Contains(kill.Title, "YARN") {
+			t.Errorf("event log %v: the 137 finding reads as YARN's: %q", withLog, text)
+		}
+		fromWorker := false
+		for _, e := range kill.Evidence {
+			fromWorker = fromWorker || strings.Contains(e.Source.File, "Worker-1-vm.out") && strings.Contains(e.Text, "137")
+		}
+		if !fromWorker {
+			t.Errorf("event log %v: the worker's line is not evidence: %+v", withLog, kill.Evidence)
 		}
 	}
 }

@@ -5,6 +5,7 @@ package analyze
 
 import (
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/ryandam9/sparkplain/internal/sparkplain/model"
@@ -99,6 +100,22 @@ type ctx struct {
 }
 
 func (c *ctx) add(f model.Finding) { c.findings = append(c.findings, f) }
+
+// onYARN says the run used YARN, as on EMR: the event log's master, or,
+// without one, a Spark Standalone layout in the logs (executor logs named
+// by their folder, or a worker's or master's daemon log) says it did not.
+// Rules whose meaning or fix is YARN's (a memory-limit kill) ask it.
+func (c *ctx) onYARN() bool {
+	if c.log != nil && c.log.Application.Master != "" {
+		return strings.HasPrefix(c.log.Application.Master, "yarn")
+	}
+	for _, f := range c.in.Logs {
+		if strings.HasPrefix(f.Kind, "standalone-") || f.Container == "" && f.Executor != "" && strings.HasPrefix(f.Kind, "container-") {
+			return false
+		}
+	}
+	return true
+}
 
 // drop removes the finding with this rule and returns it, if there was one.
 func (c *ctx) drop(rule string) *model.Finding {
