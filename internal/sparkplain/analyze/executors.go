@@ -238,15 +238,20 @@ func executorFindings(c *ctx) {
 		return n
 	}
 	if len(killed) > 0 {
-		c.add(model.Finding{
+		rerun := fmt.Sprintf("The tasks on %s started again on other executors (%s failed on these executors).",
+			pronoun(len(killed)), model.Plural(int(failedTasks(killed)), "task", "tasks"))
+		f := model.Finding{
 			Rule: "executor-memory-kill", Severity: model.Critical, Section: "executors",
 			Title: fmt.Sprintf("%s killed with exit code 137", model.Plural(len(killed), "executor was", "executors were")),
-			Explanation: fmt.Sprintf("Exit code 137 means that the executor process got SIGKILL. On YARN, this almost always means that the container used more memory than YARN gave it. "+
-				"The memory includes the Java heap, the overhead and the Python workers. The tasks on %s started again on other executors (%s failed on these executors).",
-				pronoun(len(killed)), model.Plural(int(failedTasks(killed)), "task", "tasks")),
+			Explanation: "Exit code 137 means that the executor process got SIGKILL. On YARN, this almost always means that the container used more memory than YARN gave it. " +
+				"The memory includes the Java heap, the overhead and the Python workers. " + rerun,
 			Evidence: evidence(killed),
 			Fix:      "Look for “exceeding physical memory limits” in the stderr of the container. If you find it, do one of these:\n- Increase spark.executor.memoryOverhead. PySpark jobs often use 20–40% of the heap for it.\n- Use fewer cores for each executor, so that fewer tasks share the memory.",
-		})
+		}
+		if !c.onYARN() {
+			f.Explanation, f.Fix = standaloneKill+" "+rerun, standaloneKillFix
+		}
+		c.add(f)
 	}
 	if len(lost) > 0 {
 		c.add(model.Finding{
@@ -710,3 +715,11 @@ func jobLabel(j *model.Job) string {
 	}
 	return fmt.Sprintf("job %d", j.ID)
 }
+
+// standaloneKill and standaloneKillFix say what exit code 137 means for a
+// run that did not use YARN (Spark Standalone or local-cluster), where no
+// memory limit sends SIGKILL.
+const (
+	standaloneKill    = "Exit code 137 means that the executor process got SIGKILL. This run did not use YARN, so no memory limit sent it. Usually the out-of-memory killer of the operating system stopped the process because the machine had no free memory. A person or a script can also stop it."
+	standaloneKillFix = "Look in the system log of the machine for the out-of-memory killer (dmesg or journalctl -k, the words “Out of memory: Killed process”). If you find it, do one of these:\n- Give each executor less memory (spark.executor.memory), or start fewer executors on the machine.\n- Give the machine more memory."
+)

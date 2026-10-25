@@ -561,10 +561,15 @@ func memoryKillFindings(c *ctx, r *model.Report) {
 			if usage != "" {
 				expl += "\nThe message from YARN: “" + usage + "”."
 			}
-			c.add(model.Finding{Rule: "executor-memory-kill", Severity: model.Critical, Section: "executors",
+			f := model.Finding{Rule: "executor-memory-kill", Severity: model.Critical, Section: "executors",
 				Title:       fmt.Sprintf("YARN killed %s because they used too much memory", model.Plural(n, "container", "containers")),
 				Explanation: expl, Evidence: ev,
-				Fix: "Do one of these:\n- Increase spark.executor.memoryOverhead. PySpark jobs often use 20–40% of the heap for it.\n- Use fewer cores for each executor, so that fewer tasks share the memory."})
+				Fix: "Do one of these:\n- Increase spark.executor.memoryOverhead. PySpark jobs often use 20–40% of the heap for it.\n- Use fewer cores for each executor, so that fewer tasks share the memory."}
+			if !c.onYARN() {
+				f.Title = fmt.Sprintf("%s killed with exit code 137", model.Plural(len(kills), "executor was", "executors were"))
+				f.Explanation, f.Fix = standaloneKill, standaloneKillFix
+			}
+			c.add(f)
 		}
 	}
 
