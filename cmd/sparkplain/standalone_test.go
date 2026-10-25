@@ -1,8 +1,10 @@
 package main
 
 import (
+	"html"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -359,6 +361,61 @@ func TestWorkerCapacity(t *testing.T) {
 	for _, h := range readReport(t, emr).Nodes.Hosts {
 		if h.Workers != 0 || h.WorkerCores != 0 {
 			t.Errorf("EMR host %s has Standalone workers: %+v", h.Name, h)
+		}
+	}
+}
+
+// At a glance draws a run not on YARN as it ran: a master, workers with
+// what each offered Spark, and executors (and a cluster-mode driver) sized
+// by their heap, with nothing about YARN, containers or EMR. The busiest
+// time counts cores as well as memory, as a Standalone worker does.
+func TestStandaloneAtAGlance(t *testing.T) {
+	text := func(svg string) string {
+		var b strings.Builder
+		for _, m := range regexp.MustCompile(`>([^<]+)<`).FindAllStringSubmatch(svg, -1) {
+			b.WriteString(html.UnescapeString(m[1]) + "\n")
+		}
+		return b.String()
+	}
+	for _, c := range []struct{ app, from, worker string }{
+		{"app-20261025032316-0000", "cluster", "Worker · localhost"},
+		{"app-20261025032411-0000", "local-cluster", "4 workers · localhost"},
+		{"app-20261025043058-0000", "cluster-mode", "Worker · localhost"},
+		{"app-20261025054247-0000", "lost-executors", "Worker · localhost"},
+	} {
+		out := t.TempDir()
+		if code, _, errs := runCLI(t, "-app-id", c.app, "-eventlog", filepath.Join(fx, c.app), "-from", filepath.Join(standalone, c.from), "-out", out); code != exitOK {
+			t.Fatalf("%s: exit %d: %s", c.from, code, errs)
+		}
+		page, _ := os.ReadFile(filepath.Join(out, c.app+"-report.html"))
+		s := string(page)
+		i := strings.Index(s, `class="anat"`)
+		if i < 0 {
+			t.Fatalf("%s: no diagram", c.from)
+		}
+		svg := text(s[i : i+strings.Index(s[i:], "</svg>")])
+		for _, bad := range []string{"YARN", "ResourceManager", "container", "Container", "EMR", "Primary", "-cluster-id"} {
+			if strings.Contains(svg, bad) {
+				t.Errorf("%s: the diagram says %q", c.from, bad)
+			}
+		}
+		for _, want := range []string{c.worker, "The workers offered Spark 4.0 GiB of memory and 4 cores", "heap"} {
+			if !strings.Contains(svg, want) {
+				t.Errorf("%s: the diagram lacks %q", c.from, want)
+			}
+		}
+		if !strings.Contains(s, "The memory that the worker offered Spark, to scale.") {
+			t.Errorf("%s: the guide under the diagram is not the Standalone one", c.from)
+		}
+		switch c.from {
+		case "cluster-mode": // the driver's heap and core are the worker's too
+			if !strings.Contains(svg, "Driver's heap") || !strings.Contains(svg, "4 of the 4 cores") {
+				t.Errorf("cluster-mode: driver not counted: %s", svg)
+			}
+		case "lost-executors": // 4 of 512 MiB at once, not the 9 started; cores are the limit
+			if !strings.Contains(svg, "used 2.0 GiB (50%) and 4 of the 4 cores") || !strings.Contains(svg, "all cores in use") || !strings.Contains(svg, "killed (137)") {
+				t.Errorf("lost-executors: busiest time: %s", svg)
+			}
 		}
 	}
 }

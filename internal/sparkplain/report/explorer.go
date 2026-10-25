@@ -292,7 +292,7 @@ func explorerData(r *model.Report, x *model.Explorer, opt ExplorerOptions) xData
 		PlanLays: map[string]xLayout{}, JobDags: map[string]xJobDag{}, StageOps: map[string]xStageOps{}, Adaptive: map[string][][]any{},
 	}
 	d.Resources = resourceUse(r, buildAnatomy(r))
-	d.AnatGuide, d.AnatPanelGuide = &anatClusterGuide, &anatPanelGuide
+	_, d.AnatGuide, d.AnatPanelGuide = anatGuides(r)
 	d.RunNotes = runNotes(r)
 	// An executor's chip opens At a glance with that executor drawn in
 	// full (AnatExecs), which links on to its own page.
