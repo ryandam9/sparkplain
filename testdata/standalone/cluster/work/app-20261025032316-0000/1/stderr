@@ -1,0 +1,351 @@
+Spark Executor Command: "/usr/lib/jvm/java-21-openjdk-amd64/bin/java" "-cp" "/opt/spark/conf/:/opt/spark/jars/*" "-Xmx1024M" "-Dspark.driver.port=45747" "-Djava.net.preferIPv6Addresses=false" "-XX:+IgnoreUnrecognizedVMOptions" "--add-opens=java.base/java.lang=ALL-UNNAMED" "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED" "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED" "--add-opens=java.base/java.io=ALL-UNNAMED" "--add-opens=java.base/java.net=ALL-UNNAMED" "--add-opens=java.base/java.nio=ALL-UNNAMED" "--add-opens=java.base/java.util=ALL-UNNAMED" "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED" "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED" "--add-opens=java.base/jdk.internal.ref=ALL-UNNAMED" "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED" "--add-opens=java.base/sun.nio.cs=ALL-UNNAMED" "--add-opens=java.base/sun.security.action=ALL-UNNAMED" "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED" "--add-opens=java.security.jgss/sun.security.krb5=ALL-UNNAMED" "-Djdk.reflect.useDirectMethodHandle=false" "org.apache.spark.executor.CoarseGrainedExecutorBackend" "--driver-url" "spark://CoarseGrainedScheduler@localhost:45747" "--executor-id" "1" "--hostname" "localhost" "--cores" "1" "--app-id" "app-20261025032316-0000" "--worker-url" "spark://Worker@localhost:41579" "--resourceProfileId" "0"
+========================================
+
+Using Spark's default log4j profile: org/apache/spark/log4j2-defaults.properties
+26/10/25 03:23:21 INFO CoarseGrainedExecutorBackend: Started daemon with process name: 4972@vm
+26/10/25 03:23:21 INFO SignalUtils: Registering signal handler for TERM
+26/10/25 03:23:21 INFO SignalUtils: Registering signal handler for HUP
+26/10/25 03:23:21 INFO SignalUtils: Registering signal handler for INT
+26/10/25 03:23:22 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+26/10/25 03:23:23 INFO SecurityManager: Changing view acls to: sparkuser
+26/10/25 03:23:23 INFO SecurityManager: Changing modify acls to: sparkuser
+26/10/25 03:23:23 INFO SecurityManager: Changing view acls groups to: 
+26/10/25 03:23:23 INFO SecurityManager: Changing modify acls groups to: 
+26/10/25 03:23:23 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: sparkuser; groups with view permissions: EMPTY; users with modify permissions: sparkuser; groups with modify permissions: EMPTY
+26/10/25 03:23:24 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:45747 after 176 ms (0 ms spent in bootstraps)
+26/10/25 03:23:25 INFO SecurityManager: Changing view acls to: sparkuser
+26/10/25 03:23:25 INFO SecurityManager: Changing modify acls to: sparkuser
+26/10/25 03:23:25 INFO SecurityManager: Changing view acls groups to: 
+26/10/25 03:23:25 INFO SecurityManager: Changing modify acls groups to: 
+26/10/25 03:23:25 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: sparkuser; groups with view permissions: EMPTY; users with modify permissions: sparkuser; groups with modify permissions: EMPTY
+26/10/25 03:23:25 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:45747 after 19 ms (0 ms spent in bootstraps)
+26/10/25 03:23:26 INFO DiskBlockManager: Created local directory at /tmp/spark-9ddbfa07-6d3e-4af3-98f8-66d410a9dc4d/executor-574f7ae6-9fc2-4640-9fe4-32f81173fe53/blockmgr-9f55ad3d-e96d-4926-bab0-43c9b202f48b
+26/10/25 03:23:26 INFO MemoryStore: MemoryStore started with capacity 434.4 MiB
+26/10/25 03:23:27 INFO CoarseGrainedExecutorBackend: Connecting to driver: spark://CoarseGrainedScheduler@localhost:45747
+26/10/25 03:23:27 INFO WorkerWatcher: Connecting to worker spark://Worker@localhost:41579
+26/10/25 03:23:27 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:41579 after 11 ms (0 ms spent in bootstraps)
+26/10/25 03:23:27 INFO WorkerWatcher: Successfully connected to spark://Worker@localhost:41579
+26/10/25 03:23:27 INFO ResourceUtils: ==============================================================
+26/10/25 03:23:27 INFO ResourceUtils: No custom resources configured for spark.executor.
+26/10/25 03:23:27 INFO ResourceUtils: ==============================================================
+26/10/25 03:23:27 INFO CoarseGrainedExecutorBackend: Successfully registered with driver
+26/10/25 03:23:27 INFO Executor: Starting executor ID 1 on host localhost
+26/10/25 03:23:27 INFO Executor: OS info Linux, 6.18.44-fc-v153, amd64
+26/10/25 03:23:27 INFO Executor: Java version 21.0.10
+26/10/25 03:23:27 INFO Utils: Successfully started service 'org.apache.spark.network.netty.NettyBlockTransferService' on port 39325.
+26/10/25 03:23:27 INFO NettyBlockTransferService: Server created on localhost:39325
+26/10/25 03:23:27 INFO BlockManager: Using org.apache.spark.storage.RandomBlockReplicationPolicy for block replication policy
+26/10/25 03:23:27 INFO BlockManagerMaster: Registering BlockManager BlockManagerId(1, localhost, 39325, None)
+26/10/25 03:23:27 INFO BlockManagerMaster: Registered BlockManager BlockManagerId(1, localhost, 39325, None)
+26/10/25 03:23:27 INFO BlockManager: Initialized BlockManager: BlockManagerId(1, localhost, 39325, None)
+26/10/25 03:23:27 INFO Executor: Starting executor with user classpath (userClassPathFirst = false): ''
+26/10/25 03:23:27 INFO Executor: Created or updated repl class loader org.apache.spark.util.MutableURLClassLoader@7b6b9c69 for default.
+26/10/25 03:23:31 INFO CoarseGrainedExecutorBackend: Got assigned task 1
+26/10/25 03:23:31 INFO Executor: Running task 1.0 in stage 0.0 (TID 1)
+26/10/25 03:23:31 INFO TorrentBroadcast: Started reading broadcast variable 0 with 1 pieces (estimated total size 4.0 MiB)
+26/10/25 03:23:31 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:39105 after 11 ms (0 ms spent in bootstraps)
+26/10/25 03:23:31 INFO MemoryStore: Block broadcast_0_piece0 stored as bytes in memory (estimated size 17.4 KiB, free 434.4 MiB)
+26/10/25 03:23:31 INFO TorrentBroadcast: Reading broadcast variable 0 took 190 ms
+26/10/25 03:23:31 INFO MemoryStore: Block broadcast_0 stored as values in memory (estimated size 37.6 KiB, free 434.3 MiB)
+26/10/25 03:23:32 INFO CodeGenerator: Code generated in 462.048674 ms
+26/10/25 03:23:33 INFO CodeGenerator: Code generated in 25.957476 ms
+26/10/25 03:23:33 INFO CodeGenerator: Code generated in 22.361692 ms
+26/10/25 03:23:33 INFO CodeGenerator: Code generated in 19.524677 ms
+26/10/25 03:23:33 INFO CodeGenerator: Code generated in 15.424823 ms
+26/10/25 03:23:33 INFO Executor: Finished task 1.0 in stage 0.0 (TID 1). 2331 bytes result sent to driver
+26/10/25 03:23:36 INFO CoarseGrainedExecutorBackend: Got assigned task 4
+26/10/25 03:23:36 INFO Executor: Running task 1.0 in stage 3.0 (TID 4)
+26/10/25 03:23:36 INFO MapOutputTrackerWorker: Updating epoch to 1 and clearing cache
+26/10/25 03:23:36 INFO TorrentBroadcast: Started reading broadcast variable 2 with 1 pieces (estimated total size 4.0 MiB)
+26/10/25 03:23:36 INFO MemoryStore: Block broadcast_2_piece0 stored as bytes in memory (estimated size 6.9 KiB, free 434.4 MiB)
+26/10/25 03:23:37 INFO TorrentBroadcast: Reading broadcast variable 2 took 47 ms
+26/10/25 03:23:37 INFO MemoryStore: Block broadcast_2 stored as values in memory (estimated size 15.0 KiB, free 434.4 MiB)
+26/10/25 03:23:37 INFO CodeGenerator: Code generated in 41.332131 ms
+26/10/25 03:23:37 INFO MemoryStore: Block rdd_11_1 stored as values in memory (estimated size 3.4 MiB, free 430.9 MiB)
+26/10/25 03:23:37 INFO Executor: 1 block locks were not released by task 1.0 in stage 3.0 (TID 4)
+[rdd_11_1]
+26/10/25 03:23:37 INFO Executor: Finished task 1.0 in stage 3.0 (TID 4). 1445 bytes result sent to driver
+26/10/25 03:23:38 WARN GarbageCollectionMetrics: To enable non-built-in garbage collector(s) List(G1 Concurrent GC), users should configure it(them) to spark.eventLog.gcMetrics.youngGenerationGarbageCollectors or spark.eventLog.gcMetrics.oldGenerationGarbageCollectors
+26/10/25 03:23:38 INFO CoarseGrainedExecutorBackend: Got assigned task 5
+26/10/25 03:23:38 INFO Executor: Running task 1.0 in stage 4.0 (TID 5)
+26/10/25 03:23:38 INFO TorrentBroadcast: Started reading broadcast variable 3 with 1 pieces (estimated total size 4.0 MiB)
+26/10/25 03:23:38 INFO MemoryStore: Block broadcast_3_piece0 stored as bytes in memory (estimated size 9.3 KiB, free 430.9 MiB)
+26/10/25 03:23:38 INFO TorrentBroadcast: Reading broadcast variable 3 took 26 ms
+26/10/25 03:23:38 INFO MemoryStore: Block broadcast_3 stored as values in memory (estimated size 21.7 KiB, free 430.9 MiB)
+26/10/25 03:23:38 INFO BlockManager: Found block rdd_11_1 locally
+26/10/25 03:23:38 INFO CodeGenerator: Code generated in 10.294082 ms
+26/10/25 03:23:38 INFO CodeGenerator: Code generated in 21.733739 ms
+26/10/25 03:23:38 INFO CodeGenerator: Code generated in 9.44324 ms
+26/10/25 03:23:38 INFO Executor: Finished task 1.0 in stage 4.0 (TID 5). 2204 bytes result sent to driver
+26/10/25 03:23:38 INFO CoarseGrainedExecutorBackend: Got assigned task 9
+26/10/25 03:23:38 INFO Executor: Running task 1.0 in stage 7.0 (TID 9)
+26/10/25 03:23:38 INFO MapOutputTrackerWorker: Updating epoch to 2 and clearing cache
+26/10/25 03:23:38 INFO TorrentBroadcast: Started reading broadcast variable 5 with 1 pieces (estimated total size 4.0 MiB)
+26/10/25 03:23:38 INFO MemoryStore: Block broadcast_5_piece0 stored as bytes in memory (estimated size 10.0 KiB, free 430.9 MiB)
+26/10/25 03:23:39 INFO TorrentBroadcast: Reading broadcast variable 5 took 35 ms
+26/10/25 03:23:39 INFO MemoryStore: Block broadcast_5 stored as values in memory (estimated size 23.5 KiB, free 430.9 MiB)
+26/10/25 03:23:39 INFO BlockManager: Found block rdd_11_1 locally
+26/10/25 03:23:39 INFO CodeGenerator: Code generated in 26.213925 ms
+26/10/25 03:23:39 INFO CodeGenerator: Code generated in 38.1295 ms
+26/10/25 03:23:39 INFO CodeGenerator: Code generated in 24.722234 ms
+26/10/25 03:23:39 INFO Executor: Finished task 1.0 in stage 7.0 (TID 9). 2260 bytes result sent to driver
+26/10/25 03:23:39 INFO CoarseGrainedExecutorBackend: Got assigned task 10
+26/10/25 03:23:39 INFO Executor: Running task 0.0 in stage 9.0 (TID 10)
+26/10/25 03:23:39 INFO MapOutputTrackerWorker: Updating epoch to 3 and clearing cache
+26/10/25 03:23:39 INFO TorrentBroadcast: Started reading broadcast variable 6 with 1 pieces (estimated total size 4.0 MiB)
+26/10/25 03:23:39 INFO MemoryStore: Block broadcast_6_piece0 stored as bytes in memory (estimated size 6.0 KiB, free 430.9 MiB)
+26/10/25 03:23:39 INFO TorrentBroadcast: Reading broadcast variable 6 took 14 ms
+26/10/25 03:23:39 INFO MemoryStore: Block broadcast_6 stored as values in memory (estimated size 12.5 KiB, free 430.9 MiB)
+26/10/25 03:23:39 INFO MapOutputTrackerWorker: Don't have map outputs for shuffle 2, fetching them
+26/10/25 03:23:39 INFO MapOutputTrackerWorker: Doing the fetch; tracker endpoint = NettyRpcEndpointRef(spark://MapOutputTracker@localhost:45747)
+26/10/25 03:23:39 INFO MapOutputTrackerWorker: Got the map output locations
+26/10/25 03:23:39 INFO ShuffleBlockFetcherIterator: Getting 2 (120.0 B) non-empty blocks including 1 (60.0 B) local and 1 (60.0 B) host-local and 0 (0.0 B) push-merged-local and 0 (0.0 B) remote blocks
+26/10/25 03:23:39 INFO ShuffleBlockFetcherIterator: Started 0 remote fetches in 20 ms
+26/10/25 03:23:39 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:45891 after 1 ms (0 ms spent in bootstraps)
+26/10/25 03:23:39 INFO CodeGenerator: Code generated in 11.746017 ms
+26/10/25 03:23:39 INFO Executor: Finished task 0.0 in stage 9.0 (TID 10). 4038 bytes result sent to driver
+26/10/25 03:23:40 INFO CoarseGrainedExecutorBackend: Got assigned task 12
+26/10/25 03:23:40 INFO Executor: Running task 1.0 in stage 10.0 (TID 12)
+26/10/25 03:23:40 INFO TorrentBroadcast: Started reading broadcast variable 7 with 1 pieces (estimated total size 4.0 MiB)
+26/10/25 03:23:40 INFO MemoryStore: Block broadcast_7_piece0 stored as bytes in memory (estimated size 5.5 KiB, free 430.9 MiB)
+26/10/25 03:23:40 INFO TorrentBroadcast: Reading broadcast variable 7 took 84 ms
+26/10/25 03:23:40 INFO MemoryStore: Block broadcast_7 stored as values in memory (estimated size 11.9 KiB, free 430.9 MiB)
+26/10/25 03:23:40 INFO CodeGenerator: Code generated in 38.019599 ms
+26/10/25 03:23:40 INFO Executor: Finished task 1.0 in stage 10.0 (TID 12). 1677 bytes result sent to driver
+26/10/25 03:23:42 INFO CoarseGrainedExecutorBackend: Got assigned task 16
+26/10/25 03:23:42 INFO Executor: Running task 1.0 in stage 11.0 (TID 16)
+26/10/25 03:23:42 INFO TorrentBroadcast: Started reading broadcast variable 9 with 1 pieces (estimated total size 4.0 MiB)
+26/10/25 03:23:42 INFO MemoryStore: Block broadcast_9_piece0 stored as bytes in memory (estimated size 21.3 KiB, free 430.9 MiB)
+26/10/25 03:23:42 INFO TorrentBroadcast: Reading broadcast variable 9 took 30 ms
+26/10/25 03:23:42 INFO MemoryStore: Block broadcast_9 stored as values in memory (estimated size 46.6 KiB, free 430.9 MiB)
+26/10/25 03:23:42 INFO CodeGenerator: Code generated in 92.688652 ms
+26/10/25 03:23:42 INFO TorrentBroadcast: Started reading broadcast variable 8 with 1 pieces (estimated total size 4.0 MiB)
+26/10/25 03:23:42 INFO MemoryStore: Block broadcast_8_piece0 stored as bytes in memory (estimated size 1083.0 B, free 430.9 MiB)
+26/10/25 03:23:42 INFO TorrentBroadcast: Reading broadcast variable 8 took 58 ms
+26/10/25 03:23:42 INFO MemoryStore: Block broadcast_8 stored as values in memory (estimated size 2.4 KiB, free 430.9 MiB)
+26/10/25 03:23:42 INFO CodeGenerator: Code generated in 50.621809 ms
+26/10/25 03:23:42 INFO CodeGenerator: Code generated in 20.130762 ms
+26/10/25 03:23:42 INFO CodeGenerator: Code generated in 27.497962 ms
+26/10/25 03:23:43 INFO Executor: Finished task 1.0 in stage 11.0 (TID 16). 2849 bytes result sent to driver
+26/10/25 03:23:44 INFO CoarseGrainedExecutorBackend: Got assigned task 23
+26/10/25 03:23:44 INFO Executor: Running task 3.0 in stage 14.0 (TID 23)
+26/10/25 03:23:44 INFO MapOutputTrackerWorker: Updating epoch to 4 and clearing cache
+26/10/25 03:23:44 INFO TorrentBroadcast: Started reading broadcast variable 11 with 1 pieces (estimated total size 4.0 MiB)
+26/10/25 03:23:44 INFO MemoryStore: Block broadcast_11_piece0 stored as bytes in memory (estimated size 7.8 KiB, free 430.9 MiB)
+26/10/25 03:23:44 INFO TorrentBroadcast: Reading broadcast variable 11 took 36 ms
+26/10/25 03:23:44 INFO MemoryStore: Block broadcast_11 stored as values in memory (estimated size 12.8 KiB, free 430.8 MiB)
+26/10/25 03:23:46 INFO PythonRunner: Times: total = 1387, boot = 981, init = 376, finish = 30
+26/10/25 03:23:46 INFO Executor: Finished task 3.0 in stage 14.0 (TID 23). 1493 bytes result sent to driver
+26/10/25 03:23:46 INFO CoarseGrainedExecutorBackend: Got assigned task 25
+26/10/25 03:23:46 INFO Executor: Running task 5.0 in stage 14.0 (TID 25)
+26/10/25 03:23:47 INFO PythonRunner: Times: total = 306, boot = -839, init = 1091, finish = 54
+26/10/25 03:23:47 INFO Executor: Finished task 5.0 in stage 14.0 (TID 25). 1493 bytes result sent to driver
+26/10/25 03:23:47 INFO CoarseGrainedExecutorBackend: Got assigned task 29
+26/10/25 03:23:47 INFO Executor: Running task 1.0 in stage 15.0 (TID 29)
+26/10/25 03:23:47 INFO MapOutputTrackerWorker: Updating epoch to 5 and clearing cache
+26/10/25 03:23:47 INFO TorrentBroadcast: Started reading broadcast variable 12 with 1 pieces (estimated total size 4.0 MiB)
+26/10/25 03:23:47 INFO MemoryStore: Block broadcast_12_piece0 stored as bytes in memory (estimated size 7.4 KiB, free 430.8 MiB)
+26/10/25 03:23:47 INFO TorrentBroadcast: Reading broadcast variable 12 took 44 ms
+26/10/25 03:23:47 INFO MemoryStore: Block broadcast_12 stored as values in memory (estimated size 13.4 KiB, free 430.8 MiB)
+26/10/25 03:23:47 INFO MapOutputTrackerWorker: Don't have map outputs for shuffle 4, fetching them
+26/10/25 03:23:47 INFO MapOutputTrackerWorker: Doing the fetch; tracker endpoint = NettyRpcEndpointRef(spark://MapOutputTracker@localhost:45747)
+26/10/25 03:23:47 INFO MapOutputTrackerWorker: Got the map output locations
+26/10/25 03:23:47 INFO ShuffleBlockFetcherIterator: Getting 8 (98.6 KiB) non-empty blocks including 2 (26.9 KiB) local and 6 (71.7 KiB) host-local and 0 (0.0 B) push-merged-local and 0 (0.0 B) remote blocks
+26/10/25 03:23:47 INFO ShuffleBlockFetcherIterator: Started 0 remote fetches in 7 ms
+26/10/25 03:23:47 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:39237 after 8 ms (0 ms spent in bootstraps)
+26/10/25 03:23:47 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:39805 after 3 ms (0 ms spent in bootstraps)
+26/10/25 03:23:48 INFO PythonRunner: Times: total = 210, boot = -606, init = 807, finish = 9
+26/10/25 03:23:48 INFO Executor: Finished task 1.0 in stage 15.0 (TID 29). 2054 bytes result sent to driver
+26/10/25 03:23:48 INFO CoarseGrainedExecutorBackend: Got assigned task 32
+26/10/25 03:23:48 INFO Executor: Running task 4.0 in stage 15.0 (TID 32)
+26/10/25 03:23:48 INFO ShuffleBlockFetcherIterator: Getting 8 (98.6 KiB) non-empty blocks including 2 (26.9 KiB) local and 6 (71.7 KiB) host-local and 0 (0.0 B) push-merged-local and 0 (0.0 B) remote blocks
+26/10/25 03:23:48 INFO ShuffleBlockFetcherIterator: Started 0 remote fetches in 18 ms
+26/10/25 03:23:48 INFO PythonRunner: Times: total = 149, boot = -50, init = 195, finish = 4
+26/10/25 03:23:48 INFO Executor: Finished task 4.0 in stage 15.0 (TID 32). 2054 bytes result sent to driver
+26/10/25 03:23:48 INFO CoarseGrainedExecutorBackend: Got assigned task 35
+26/10/25 03:23:48 INFO Executor: Running task 7.0 in stage 15.0 (TID 35)
+26/10/25 03:23:48 INFO ShuffleBlockFetcherIterator: Getting 8 (98.6 KiB) non-empty blocks including 2 (26.9 KiB) local and 6 (71.7 KiB) host-local and 0 (0.0 B) push-merged-local and 0 (0.0 B) remote blocks
+26/10/25 03:23:48 INFO ShuffleBlockFetcherIterator: Started 0 remote fetches in 1 ms
+26/10/25 03:23:48 INFO PythonRunner: Times: total = 106, boot = -10, init = 113, finish = 3
+26/10/25 03:23:48 INFO Executor: Finished task 7.0 in stage 15.0 (TID 35). 2054 bytes result sent to driver
+26/10/25 03:23:49 INFO CoarseGrainedExecutorBackend: Got assigned task 37
+26/10/25 03:23:49 INFO Executor: Running task 1.0 in stage 16.0 (TID 37)
+26/10/25 03:23:49 INFO TorrentBroadcast: Started reading broadcast variable 13 with 1 pieces (estimated total size 4.0 MiB)
+26/10/25 03:23:49 INFO MemoryStore: Block broadcast_13_piece0 stored as bytes in memory (estimated size 6.6 KiB, free 430.9 MiB)
+26/10/25 03:23:49 INFO TorrentBroadcast: Reading broadcast variable 13 took 54 ms
+26/10/25 03:23:49 INFO MemoryStore: Block broadcast_13 stored as values in memory (estimated size 14.2 KiB, free 430.9 MiB)
+26/10/25 03:23:49 INFO CodeGenerator: Code generated in 64.167521 ms
+26/10/25 03:23:49 INFO CodeGenerator: Code generated in 38.041477 ms
+26/10/25 03:23:49 INFO Executor: Finished task 1.0 in stage 16.0 (TID 37). 21596 bytes result sent to driver
+26/10/25 03:23:49 INFO CoarseGrainedExecutorBackend: Got assigned task 40
+26/10/25 03:23:49 INFO Executor: Running task 0.0 in stage 17.0 (TID 40)
+26/10/25 03:23:49 INFO TorrentBroadcast: Started reading broadcast variable 14 with 1 pieces (estimated total size 4.0 MiB)
+26/10/25 03:23:49 INFO MemoryStore: Block broadcast_14_piece0 stored as bytes in memory (estimated size 7.6 KiB, free 430.9 MiB)
+26/10/25 03:23:49 INFO TorrentBroadcast: Reading broadcast variable 14 took 68 ms
+26/10/25 03:23:49 INFO MemoryStore: Block broadcast_14 stored as values in memory (estimated size 16.0 KiB, free 430.9 MiB)
+26/10/25 03:23:49 INFO CodeGenerator: Code generated in 82.269364 ms
+26/10/25 03:23:50 INFO Executor: Finished task 0.0 in stage 17.0 (TID 40). 1743 bytes result sent to driver
+26/10/25 03:23:50 INFO CoarseGrainedExecutorBackend: Got assigned task 45
+26/10/25 03:23:50 INFO Executor: Running task 1.0 in stage 19.0 (TID 45)
+26/10/25 03:23:50 INFO MapOutputTrackerWorker: Updating epoch to 6 and clearing cache
+26/10/25 03:23:50 INFO TorrentBroadcast: Started reading broadcast variable 15 with 1 pieces (estimated total size 4.0 MiB)
+26/10/25 03:23:50 INFO MemoryStore: Block broadcast_15_piece0 stored as bytes in memory (estimated size 15.9 KiB, free 430.9 MiB)
+26/10/25 03:23:50 INFO TorrentBroadcast: Reading broadcast variable 15 took 19 ms
+26/10/25 03:23:50 INFO MemoryStore: Block broadcast_15 stored as values in memory (estimated size 33.1 KiB, free 430.9 MiB)
+26/10/25 03:23:50 INFO MapOutputTrackerWorker: Don't have map outputs for shuffle 5, fetching them
+26/10/25 03:23:50 INFO MapOutputTrackerWorker: Doing the fetch; tracker endpoint = NettyRpcEndpointRef(spark://MapOutputTracker@localhost:45747)
+26/10/25 03:23:50 INFO MapOutputTrackerWorker: Got the map output locations
+26/10/25 03:23:50 INFO ShuffleBlockFetcherIterator: Getting 4 (1333.3 KiB) non-empty blocks including 1 (337.5 KiB) local and 3 (995.9 KiB) host-local and 0 (0.0 B) push-merged-local and 0 (0.0 B) remote blocks
+26/10/25 03:23:50 INFO ShuffleBlockFetcherIterator: Started 0 remote fetches in 2 ms
+26/10/25 03:23:50 INFO CodeGenerator: Code generated in 49.090853 ms
+26/10/25 03:23:50 INFO CodeGenerator: Code generated in 12.109731 ms
+26/10/25 03:23:50 INFO UnsafeExternalSorter: Spilling data because number of spilledRecords crossed the threshold 20000
+26/10/25 03:23:50 INFO UnsafeExternalSorter: Thread 46 spilling sort data of 17.0 MiB to disk (0  time so far)
+26/10/25 03:23:50 INFO UnsafeExternalSorter: Spilling data because number of spilledRecords crossed the threshold 20000
+26/10/25 03:23:50 INFO UnsafeExternalSorter: Thread 46 spilling sort data of 17.0 MiB to disk (1  time so far)
+26/10/25 03:23:50 INFO UnsafeExternalSorter: Spilling data because number of spilledRecords crossed the threshold 20000
+26/10/25 03:23:50 INFO UnsafeExternalSorter: Thread 46 spilling sort data of 17.0 MiB to disk (2  times so far)
+26/10/25 03:23:51 INFO UnsafeExternalSorter: Spilling data because number of spilledRecords crossed the threshold 20000
+26/10/25 03:23:51 INFO UnsafeExternalSorter: Thread 46 spilling sort data of 17.0 MiB to disk (3  times so far)
+26/10/25 03:23:51 INFO UnsafeExternalSorter: Spilling data because number of spilledRecords crossed the threshold 20000
+26/10/25 03:23:51 INFO UnsafeExternalSorter: Thread 46 spilling sort data of 17.0 MiB to disk (4  times so far)
+26/10/25 03:23:51 INFO UnsafeExternalSorter: Spilling data because number of spilledRecords crossed the threshold 20000
+26/10/25 03:23:51 INFO UnsafeExternalSorter: Thread 46 spilling sort data of 17.0 MiB to disk (5  times so far)
+26/10/25 03:23:51 INFO UnsafeExternalSorter: Spilling data because number of spilledRecords crossed the threshold 20000
+26/10/25 03:23:51 INFO UnsafeExternalSorter: Thread 46 spilling sort data of 17.0 MiB to disk (6  times so far)
+26/10/25 03:23:51 INFO Executor: Finished task 1.0 in stage 19.0 (TID 45). 4994 bytes result sent to driver
+26/10/25 03:23:51 INFO CoarseGrainedExecutorBackend: Got assigned task 46
+26/10/25 03:23:51 INFO Executor: Running task 0.0 in stage 22.0 (TID 46)
+26/10/25 03:23:51 INFO MapOutputTrackerWorker: Updating epoch to 7 and clearing cache
+26/10/25 03:23:51 INFO TorrentBroadcast: Started reading broadcast variable 16 with 1 pieces (estimated total size 4.0 MiB)
+26/10/25 03:23:51 INFO MemoryStore: Block broadcast_16_piece0 stored as bytes in memory (estimated size 6.4 KiB, free 430.9 MiB)
+26/10/25 03:23:51 INFO TorrentBroadcast: Reading broadcast variable 16 took 17 ms
+26/10/25 03:23:51 INFO MemoryStore: Block broadcast_16 stored as values in memory (estimated size 13.8 KiB, free 430.8 MiB)
+26/10/25 03:23:51 INFO MapOutputTrackerWorker: Don't have map outputs for shuffle 6, fetching them
+26/10/25 03:23:51 INFO MapOutputTrackerWorker: Doing the fetch; tracker endpoint = NettyRpcEndpointRef(spark://MapOutputTracker@localhost:45747)
+26/10/25 03:23:51 INFO MapOutputTrackerWorker: Got the map output locations
+26/10/25 03:23:51 INFO ShuffleBlockFetcherIterator: Getting 2 (120.0 B) non-empty blocks including 1 (60.0 B) local and 1 (60.0 B) host-local and 0 (0.0 B) push-merged-local and 0 (0.0 B) remote blocks
+26/10/25 03:23:51 INFO ShuffleBlockFetcherIterator: Started 0 remote fetches in 1 ms
+26/10/25 03:23:51 INFO CodeGenerator: Code generated in 13.115563 ms
+26/10/25 03:23:51 INFO Executor: Finished task 0.0 in stage 22.0 (TID 46). 3995 bytes result sent to driver
+26/10/25 03:23:51 INFO CoarseGrainedExecutorBackend: Got assigned task 48
+26/10/25 03:23:51 INFO Executor: Running task 1.0 in stage 23.0 (TID 48)
+26/10/25 03:23:51 INFO TorrentBroadcast: Started reading broadcast variable 17 with 1 pieces (estimated total size 4.0 MiB)
+26/10/25 03:23:51 INFO MemoryStore: Block broadcast_17_piece0 stored as bytes in memory (estimated size 5.8 KiB, free 430.8 MiB)
+26/10/25 03:23:51 INFO TorrentBroadcast: Reading broadcast variable 17 took 36 ms
+26/10/25 03:23:51 INFO MemoryStore: Block broadcast_17 stored as values in memory (estimated size 9.5 KiB, free 430.8 MiB)
+26/10/25 03:23:51 ERROR Executor: Exception in task 1.0 in stage 23.0 (TID 48)
+org.apache.spark.api.python.PythonException: Traceback (most recent call last):
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/worker.py", line 1247, in main
+    process()
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/worker.py", line 1237, in process
+    out_iter = func(split_index, iterator)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 5434, in pipeline_func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 5434, in pipeline_func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 5434, in pipeline_func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 840, in func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 2316, in <lambda>
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 2316, in <genexpr>
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/util.py", line 83, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/home/sparkuser/job.py", line 32, in bad
+    raise ValueError("deliberate failure for the sparkplain fixture: bad value 4242")
+ValueError: deliberate failure for the sparkplain fixture: bad value 4242
+
+	at org.apache.spark.api.python.BasePythonRunner$ReaderIterator.handlePythonException(PythonRunner.scala:572)
+	at org.apache.spark.api.python.PythonRunner$$anon$3.read(PythonRunner.scala:784)
+	at org.apache.spark.api.python.PythonRunner$$anon$3.read(PythonRunner.scala:766)
+	at org.apache.spark.api.python.BasePythonRunner$ReaderIterator.hasNext(PythonRunner.scala:525)
+	at org.apache.spark.InterruptibleIterator.hasNext(InterruptibleIterator.scala:37)
+	at scala.collection.Iterator.foreach(Iterator.scala:943)
+	at scala.collection.Iterator.foreach$(Iterator.scala:943)
+	at org.apache.spark.InterruptibleIterator.foreach(InterruptibleIterator.scala:28)
+	at scala.collection.generic.Growable.$plus$plus$eq(Growable.scala:62)
+	at scala.collection.generic.Growable.$plus$plus$eq$(Growable.scala:53)
+	at scala.collection.mutable.ArrayBuffer.$plus$plus$eq(ArrayBuffer.scala:105)
+	at scala.collection.mutable.ArrayBuffer.$plus$plus$eq(ArrayBuffer.scala:49)
+	at scala.collection.TraversableOnce.to(TraversableOnce.scala:366)
+	at scala.collection.TraversableOnce.to$(TraversableOnce.scala:364)
+	at org.apache.spark.InterruptibleIterator.to(InterruptibleIterator.scala:28)
+	at scala.collection.TraversableOnce.toBuffer(TraversableOnce.scala:358)
+	at scala.collection.TraversableOnce.toBuffer$(TraversableOnce.scala:358)
+	at org.apache.spark.InterruptibleIterator.toBuffer(InterruptibleIterator.scala:28)
+	at scala.collection.TraversableOnce.toArray(TraversableOnce.scala:345)
+	at scala.collection.TraversableOnce.toArray$(TraversableOnce.scala:339)
+	at org.apache.spark.InterruptibleIterator.toArray(InterruptibleIterator.scala:28)
+	at org.apache.spark.rdd.RDD.$anonfun$collect$2(RDD.scala:1049)
+	at org.apache.spark.SparkContext.$anonfun$runJob$5(SparkContext.scala:2433)
+	at org.apache.spark.scheduler.ResultTask.runTask(ResultTask.scala:93)
+	at org.apache.spark.TaskContext.runTaskWithListeners(TaskContext.scala:166)
+	at org.apache.spark.scheduler.Task.run(Task.scala:141)
+	at org.apache.spark.executor.Executor$TaskRunner.$anonfun$run$4(Executor.scala:620)
+	at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally(SparkErrorUtils.scala:64)
+	at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally$(SparkErrorUtils.scala:61)
+	at org.apache.spark.util.Utils$.tryWithSafeFinally(Utils.scala:94)
+	at org.apache.spark.executor.Executor$TaskRunner.run(Executor.scala:623)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+26/10/25 03:23:52 INFO CoarseGrainedExecutorBackend: Got assigned task 51
+26/10/25 03:23:52 INFO Executor: Running task 1.1 in stage 23.0 (TID 51)
+26/10/25 03:23:52 ERROR Executor: Exception in task 1.1 in stage 23.0 (TID 51)
+org.apache.spark.api.python.PythonException: Traceback (most recent call last):
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/worker.py", line 1247, in main
+    process()
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/worker.py", line 1237, in process
+    out_iter = func(split_index, iterator)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 5434, in pipeline_func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 5434, in pipeline_func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 5434, in pipeline_func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 840, in func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 2316, in <lambda>
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 2316, in <genexpr>
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/util.py", line 83, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/home/sparkuser/job.py", line 32, in bad
+    raise ValueError("deliberate failure for the sparkplain fixture: bad value 4242")
+ValueError: deliberate failure for the sparkplain fixture: bad value 4242
+
+	at org.apache.spark.api.python.BasePythonRunner$ReaderIterator.handlePythonException(PythonRunner.scala:572)
+	at org.apache.spark.api.python.PythonRunner$$anon$3.read(PythonRunner.scala:784)
+	at org.apache.spark.api.python.PythonRunner$$anon$3.read(PythonRunner.scala:766)
+	at org.apache.spark.api.python.BasePythonRunner$ReaderIterator.hasNext(PythonRunner.scala:525)
+	at org.apache.spark.InterruptibleIterator.hasNext(InterruptibleIterator.scala:37)
+	at scala.collection.Iterator.foreach(Iterator.scala:943)
+	at scala.collection.Iterator.foreach$(Iterator.scala:943)
+	at org.apache.spark.InterruptibleIterator.foreach(InterruptibleIterator.scala:28)
+	at scala.collection.generic.Growable.$plus$plus$eq(Growable.scala:62)
+	at scala.collection.generic.Growable.$plus$plus$eq$(Growable.scala:53)
+	at scala.collection.mutable.ArrayBuffer.$plus$plus$eq(ArrayBuffer.scala:105)
+	at scala.collection.mutable.ArrayBuffer.$plus$plus$eq(ArrayBuffer.scala:49)
+	at scala.collection.TraversableOnce.to(TraversableOnce.scala:366)
+	at scala.collection.TraversableOnce.to$(TraversableOnce.scala:364)
+	at org.apache.spark.InterruptibleIterator.to(InterruptibleIterator.scala:28)
+	at scala.collection.TraversableOnce.toBuffer(TraversableOnce.scala:358)
+	at scala.collection.TraversableOnce.toBuffer$(TraversableOnce.scala:358)
+	at org.apache.spark.InterruptibleIterator.toBuffer(InterruptibleIterator.scala:28)
+	at scala.collection.TraversableOnce.toArray(TraversableOnce.scala:345)
+	at scala.collection.TraversableOnce.toArray$(TraversableOnce.scala:339)
+	at org.apache.spark.InterruptibleIterator.toArray(InterruptibleIterator.scala:28)
+	at org.apache.spark.rdd.RDD.$anonfun$collect$2(RDD.scala:1049)
+	at org.apache.spark.SparkContext.$anonfun$runJob$5(SparkContext.scala:2433)
+	at org.apache.spark.scheduler.ResultTask.runTask(ResultTask.scala:93)
+	at org.apache.spark.TaskContext.runTaskWithListeners(TaskContext.scala:166)
+	at org.apache.spark.scheduler.Task.run(Task.scala:141)
+	at org.apache.spark.executor.Executor$TaskRunner.$anonfun$run$4(Executor.scala:620)
+	at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally(SparkErrorUtils.scala:64)
+	at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally$(SparkErrorUtils.scala:61)
+	at org.apache.spark.util.Utils$.tryWithSafeFinally(Utils.scala:94)
+	at org.apache.spark.executor.Executor$TaskRunner.run(Executor.scala:623)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+26/10/25 03:23:52 INFO CoarseGrainedExecutorBackend: Driver commanded a shutdown
+26/10/25 03:23:52 INFO MemoryStore: MemoryStore cleared
+26/10/25 03:23:52 INFO BlockManager: BlockManager stopped
+26/10/25 03:23:52 INFO ShutdownHookManager: Shutdown hook called
+26/10/25 03:23:52 ERROR CoarseGrainedExecutorBackend: RECEIVED SI

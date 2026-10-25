@@ -1,0 +1,956 @@
+26/10/25 03:24:08 INFO SparkContext: Running Spark version 3.5.3
+26/10/25 03:24:08 INFO SparkContext: OS info Linux, 6.18.44-fc-v153, amd64
+26/10/25 03:24:08 INFO SparkContext: Java version 21.0.10
+26/10/25 03:24:09 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+26/10/25 03:24:09 INFO ResourceUtils: ==============================================================
+26/10/25 03:24:09 INFO ResourceUtils: No custom resources configured for spark.driver.
+26/10/25 03:24:09 INFO ResourceUtils: ==============================================================
+26/10/25 03:24:09 INFO SparkContext: Submitted application: sparkplain_standalone_test
+26/10/25 03:24:09 INFO ResourceProfile: Default ResourceProfile created, executor resources: Map(memory -> name: memory, amount: 512, script: , vendor: , offHeap -> name: offHeap, amount: 0, script: , vendor: ), task resources: Map(cpus -> name: cpus, amount: 1.0)
+26/10/25 03:24:09 INFO ResourceProfile: Limiting resource is cpu
+26/10/25 03:24:09 INFO ResourceProfileManager: Added ResourceProfile id: 0
+26/10/25 03:24:09 INFO SecurityManager: Changing view acls to: sparkuser
+26/10/25 03:24:09 INFO SecurityManager: Changing modify acls to: sparkuser
+26/10/25 03:24:09 INFO SecurityManager: Changing view acls groups to: 
+26/10/25 03:24:09 INFO SecurityManager: Changing modify acls groups to: 
+26/10/25 03:24:09 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: sparkuser; groups with view permissions: EMPTY; users with modify permissions: sparkuser; groups with modify permissions: EMPTY
+26/10/25 03:24:09 INFO Utils: Successfully started service 'sparkDriver' on port 45305.
+26/10/25 03:24:09 INFO SparkEnv: Registering MapOutputTracker
+26/10/25 03:24:09 INFO SparkEnv: Registering BlockManagerMaster
+26/10/25 03:24:09 INFO BlockManagerMasterEndpoint: Using org.apache.spark.storage.DefaultTopologyMapper for getting topology information
+26/10/25 03:24:09 INFO BlockManagerMasterEndpoint: BlockManagerMasterEndpoint up
+26/10/25 03:24:09 INFO SparkEnv: Registering BlockManagerMasterHeartbeat
+26/10/25 03:24:09 INFO DiskBlockManager: Created local directory at /tmp/blockmgr-b518de72-0b10-4b47-83c7-cb2a29dcaae1
+26/10/25 03:24:09 INFO MemoryStore: MemoryStore started with capacity 434.4 MiB
+26/10/25 03:24:09 INFO SparkEnv: Registering OutputCommitCoordinator
+26/10/25 03:24:10 INFO JettyUtils: Start Jetty 127.0.0.1:4040 for SparkUI
+26/10/25 03:24:10 INFO Utils: Successfully started service 'SparkUI' on port 4040.
+26/10/25 03:24:10 INFO LocalSparkCluster: Starting a local Spark cluster with 4 workers.
+26/10/25 03:24:10 INFO SecurityManager: Changing view acls to: sparkuser
+26/10/25 03:24:10 INFO SecurityManager: Changing modify acls to: sparkuser
+26/10/25 03:24:10 INFO SecurityManager: Changing view acls groups to: 
+26/10/25 03:24:10 INFO SecurityManager: Changing modify acls groups to: 
+26/10/25 03:24:10 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: sparkuser; groups with view permissions: EMPTY; users with modify permissions: sparkuser; groups with modify permissions: EMPTY
+26/10/25 03:24:10 INFO Utils: Successfully started service 'sparkMaster' on port 34755.
+26/10/25 03:24:10 INFO Master: Starting Spark master at spark://localhost:34755
+26/10/25 03:24:10 INFO Master: Running Spark version 3.5.3
+26/10/25 03:24:10 INFO JettyUtils: Start Jetty 127.0.0.1:0 for MasterUI
+26/10/25 03:24:10 INFO Utils: Successfully started service 'MasterUI' on port 45647.
+26/10/25 03:24:10 INFO MasterWebUI: Bound MasterWebUI to 127.0.0.1, and started at http://localhost:45647
+26/10/25 03:24:10 INFO SecurityManager: Changing view acls to: sparkuser
+26/10/25 03:24:10 INFO SecurityManager: Changing modify acls to: sparkuser
+26/10/25 03:24:10 INFO SecurityManager: Changing view acls groups to: 
+26/10/25 03:24:10 INFO SecurityManager: Changing modify acls groups to: 
+26/10/25 03:24:10 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: sparkuser; groups with view permissions: EMPTY; users with modify permissions: sparkuser; groups with modify permissions: EMPTY
+26/10/25 03:24:10 INFO Master: I have been elected leader! New state: ALIVE
+26/10/25 03:24:10 INFO Utils: Successfully started service 'sparkWorker1' on port 45015.
+26/10/25 03:24:10 INFO Worker: Worker decommissioning not enabled.
+26/10/25 03:24:10 INFO SecurityManager: Changing view acls to: sparkuser
+26/10/25 03:24:10 INFO SecurityManager: Changing modify acls to: sparkuser
+26/10/25 03:24:10 INFO Worker: Starting Spark worker localhost:45015 with 1 cores, 1024.0 MiB RAM
+26/10/25 03:24:10 INFO SecurityManager: Changing view acls groups to: 
+26/10/25 03:24:10 INFO SecurityManager: Changing modify acls groups to: 
+26/10/25 03:24:10 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: sparkuser; groups with view permissions: EMPTY; users with modify permissions: sparkuser; groups with modify permissions: EMPTY
+26/10/25 03:24:10 INFO Worker: Running Spark version 3.5.3
+26/10/25 03:24:10 INFO Worker: Spark home: /opt/spark
+26/10/25 03:24:10 INFO ResourceUtils: ==============================================================
+26/10/25 03:24:10 INFO ResourceUtils: No custom resources configured for spark.worker.
+26/10/25 03:24:10 INFO ResourceUtils: ==============================================================
+26/10/25 03:24:10 INFO JettyUtils: Start Jetty 127.0.0.1:0 for WorkerUI
+26/10/25 03:24:10 INFO Utils: Successfully started service 'sparkWorker2' on port 38691.
+26/10/25 03:24:10 INFO Worker: Worker decommissioning not enabled.
+26/10/25 03:24:10 INFO Utils: Successfully started service 'WorkerUI' on port 33019.
+26/10/25 03:24:10 INFO Worker: Starting Spark worker localhost:38691 with 1 cores, 1024.0 MiB RAM
+26/10/25 03:24:10 INFO SecurityManager: Changing view acls to: sparkuser
+26/10/25 03:24:10 INFO Worker: Running Spark version 3.5.3
+26/10/25 03:24:10 INFO Worker: Spark home: /opt/spark
+26/10/25 03:24:10 INFO SecurityManager: Changing modify acls to: sparkuser
+26/10/25 03:24:10 INFO SecurityManager: Changing view acls groups to: 
+26/10/25 03:24:10 INFO SecurityManager: Changing modify acls groups to: 
+26/10/25 03:24:10 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: sparkuser; groups with view permissions: EMPTY; users with modify permissions: sparkuser; groups with modify permissions: EMPTY
+26/10/25 03:24:10 INFO ResourceUtils: ==============================================================
+26/10/25 03:24:10 INFO ResourceUtils: No custom resources configured for spark.worker.
+26/10/25 03:24:10 INFO ResourceUtils: ==============================================================
+26/10/25 03:24:10 INFO WorkerWebUI: Bound WorkerWebUI to 127.0.0.1, and started at http://localhost:33019
+26/10/25 03:24:10 INFO Worker: Connecting to master localhost:34755...
+26/10/25 03:24:10 INFO JettyUtils: Start Jetty 127.0.0.1:0 for WorkerUI
+26/10/25 03:24:10 INFO Utils: Successfully started service 'sparkWorker3' on port 39297.
+26/10/25 03:24:10 INFO Utils: Successfully started service 'WorkerUI' on port 33025.
+26/10/25 03:24:10 INFO Worker: Worker decommissioning not enabled.
+26/10/25 03:24:10 INFO SecurityManager: Changing view acls to: sparkuser
+26/10/25 03:24:10 INFO SecurityManager: Changing modify acls to: sparkuser
+26/10/25 03:24:10 INFO SecurityManager: Changing view acls groups to: 
+26/10/25 03:24:10 INFO SecurityManager: Changing modify acls groups to: 
+26/10/25 03:24:10 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: sparkuser; groups with view permissions: EMPTY; users with modify permissions: sparkuser; groups with modify permissions: EMPTY
+26/10/25 03:24:10 INFO Worker: Starting Spark worker localhost:39297 with 1 cores, 1024.0 MiB RAM
+26/10/25 03:24:10 INFO Worker: Running Spark version 3.5.3
+26/10/25 03:24:10 INFO Worker: Spark home: /opt/spark
+26/10/25 03:24:10 INFO ResourceUtils: ==============================================================
+26/10/25 03:24:10 INFO ResourceUtils: No custom resources configured for spark.worker.
+26/10/25 03:24:10 INFO ResourceUtils: ==============================================================
+26/10/25 03:24:10 INFO JettyUtils: Start Jetty 127.0.0.1:0 for WorkerUI
+26/10/25 03:24:10 INFO WorkerWebUI: Bound WorkerWebUI to 127.0.0.1, and started at http://localhost:33025
+26/10/25 03:24:10 INFO Worker: Connecting to master localhost:34755...
+26/10/25 03:24:10 INFO Utils: Successfully started service 'sparkWorker4' on port 39097.
+26/10/25 03:24:10 INFO Worker: Worker decommissioning not enabled.
+26/10/25 03:24:10 INFO Utils: Successfully started service 'WorkerUI' on port 41613.
+26/10/25 03:24:10 INFO Worker: Starting Spark worker localhost:39097 with 1 cores, 1024.0 MiB RAM
+26/10/25 03:24:10 INFO Worker: Running Spark version 3.5.3
+26/10/25 03:24:10 INFO Worker: Spark home: /opt/spark
+26/10/25 03:24:10 INFO ResourceUtils: ==============================================================
+26/10/25 03:24:10 INFO ResourceUtils: No custom resources configured for spark.worker.
+26/10/25 03:24:10 INFO ResourceUtils: ==============================================================
+26/10/25 03:24:10 INFO WorkerWebUI: Bound WorkerWebUI to 127.0.0.1, and started at http://localhost:41613
+26/10/25 03:24:10 INFO JettyUtils: Start Jetty 127.0.0.1:0 for WorkerUI
+26/10/25 03:24:10 INFO Worker: Connecting to master localhost:34755...
+26/10/25 03:24:10 INFO Utils: Successfully started service 'WorkerUI' on port 44557.
+26/10/25 03:24:10 INFO WorkerWebUI: Bound WorkerWebUI to 127.0.0.1, and started at http://localhost:44557
+26/10/25 03:24:10 INFO Worker: Connecting to master localhost:34755...
+26/10/25 03:24:10 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:34755 after 79 ms (0 ms spent in bootstraps)
+26/10/25 03:24:10 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:34755 after 82 ms (0 ms spent in bootstraps)
+26/10/25 03:24:10 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:34755 after 21 ms (0 ms spent in bootstraps)
+26/10/25 03:24:10 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:34755 after 43 ms (0 ms spent in bootstraps)
+26/10/25 03:24:10 INFO StandaloneAppClient$ClientEndpoint: Connecting to master spark://localhost:34755...
+26/10/25 03:24:10 INFO Master: Registering worker localhost:38691 with 1 cores, 1024.0 MiB RAM
+26/10/25 03:24:10 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:34755 after 7 ms (0 ms spent in bootstraps)
+26/10/25 03:24:10 INFO Master: Registering worker localhost:39097 with 1 cores, 1024.0 MiB RAM
+26/10/25 03:24:10 INFO Master: Registering worker localhost:39297 with 1 cores, 1024.0 MiB RAM
+26/10/25 03:24:10 INFO Master: Registering worker localhost:45015 with 1 cores, 1024.0 MiB RAM
+26/10/25 03:24:10 INFO Worker: Successfully registered with master spark://localhost:34755
+26/10/25 03:24:10 INFO Worker: Successfully registered with master spark://localhost:34755
+26/10/25 03:24:10 INFO Worker: Successfully registered with master spark://localhost:34755
+26/10/25 03:24:10 INFO Worker: Successfully registered with master spark://localhost:34755
+26/10/25 03:24:11 INFO Master: Registering app sparkplain_standalone_test
+26/10/25 03:24:11 INFO Master: Registered app sparkplain_standalone_test with ID app-20261025032411-0000
+26/10/25 03:24:11 INFO Master: Start scheduling for app app-20261025032411-0000 with rpId: 0
+26/10/25 03:24:11 INFO StandaloneSchedulerBackend: Connected to Spark cluster with app ID app-20261025032411-0000
+26/10/25 03:24:11 INFO Master: Launching executor app-20261025032411-0000/0 on worker worker-20261025032410-localhost-39297
+26/10/25 03:24:11 INFO Utils: Successfully started service 'org.apache.spark.network.netty.NettyBlockTransferService' on port 42567.
+26/10/25 03:24:11 INFO NettyBlockTransferService: Server created on localhost:42567
+26/10/25 03:24:11 INFO BlockManager: Using org.apache.spark.storage.RandomBlockReplicationPolicy for block replication policy
+26/10/25 03:24:11 INFO Master: Launching executor app-20261025032411-0000/1 on worker worker-20261025032410-localhost-39097
+26/10/25 03:24:11 INFO Master: Launching executor app-20261025032411-0000/2 on worker worker-20261025032410-localhost-45015
+26/10/25 03:24:11 INFO StandaloneAppClient$ClientEndpoint: Executor added: app-20261025032411-0000/0 on worker-20261025032410-localhost-39297 (localhost:39297) with 1 core(s)
+26/10/25 03:24:11 INFO Master: Launching executor app-20261025032411-0000/3 on worker worker-20261025032410-localhost-38691
+26/10/25 03:24:11 INFO Worker: Asked to launch executor app-20261025032411-0000/0 for sparkplain_standalone_test
+26/10/25 03:24:11 INFO StandaloneSchedulerBackend: Granted executor ID app-20261025032411-0000/0 on hostPort localhost:39297 with 1 core(s), 512.0 MiB RAM
+26/10/25 03:24:11 INFO StandaloneAppClient$ClientEndpoint: Executor added: app-20261025032411-0000/1 on worker-20261025032410-localhost-39097 (localhost:39097) with 1 core(s)
+26/10/25 03:24:11 INFO StandaloneSchedulerBackend: Granted executor ID app-20261025032411-0000/1 on hostPort localhost:39097 with 1 core(s), 512.0 MiB RAM
+26/10/25 03:24:11 INFO StandaloneAppClient$ClientEndpoint: Executor added: app-20261025032411-0000/2 on worker-20261025032410-localhost-45015 (localhost:45015) with 1 core(s)
+26/10/25 03:24:11 INFO StandaloneSchedulerBackend: Granted executor ID app-20261025032411-0000/2 on hostPort localhost:45015 with 1 core(s), 512.0 MiB RAM
+26/10/25 03:24:11 INFO Worker: Asked to launch executor app-20261025032411-0000/3 for sparkplain_standalone_test
+26/10/25 03:24:11 INFO BlockManagerMaster: Registering BlockManager BlockManagerId(driver, localhost, 42567, None)
+26/10/25 03:24:11 INFO Worker: Asked to launch executor app-20261025032411-0000/1 for sparkplain_standalone_test
+26/10/25 03:24:11 INFO Worker: Asked to launch executor app-20261025032411-0000/2 for sparkplain_standalone_test
+26/10/25 03:24:11 INFO StandaloneAppClient$ClientEndpoint: Executor added: app-20261025032411-0000/3 on worker-20261025032410-localhost-38691 (localhost:38691) with 1 core(s)
+26/10/25 03:24:11 INFO StandaloneSchedulerBackend: Granted executor ID app-20261025032411-0000/3 on hostPort localhost:38691 with 1 core(s), 512.0 MiB RAM
+26/10/25 03:24:11 INFO SecurityManager: Changing view acls to: sparkuser
+26/10/25 03:24:11 INFO SecurityManager: Changing view acls to: sparkuser
+26/10/25 03:24:11 INFO SecurityManager: Changing modify acls to: sparkuser
+26/10/25 03:24:11 INFO SecurityManager: Changing view acls groups to: 
+26/10/25 03:24:11 INFO SecurityManager: Changing modify acls groups to: 
+26/10/25 03:24:11 INFO BlockManagerMasterEndpoint: Registering block manager localhost:42567 with 434.4 MiB RAM, BlockManagerId(driver, localhost, 42567, None)
+26/10/25 03:24:11 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: sparkuser; groups with view permissions: EMPTY; users with modify permissions: sparkuser; groups with modify permissions: EMPTY
+26/10/25 03:24:11 INFO SecurityManager: Changing view acls to: sparkuser
+26/10/25 03:24:11 INFO SecurityManager: Changing modify acls to: sparkuser
+26/10/25 03:24:11 INFO SecurityManager: Changing modify acls to: sparkuser
+26/10/25 03:24:11 INFO SecurityManager: Changing view acls groups to: 
+26/10/25 03:24:11 INFO SecurityManager: Changing modify acls groups to: 
+26/10/25 03:24:11 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: sparkuser; groups with view permissions: EMPTY; users with modify permissions: sparkuser; groups with modify permissions: EMPTY
+26/10/25 03:24:11 INFO SecurityManager: Changing view acls to: sparkuser
+26/10/25 03:24:11 INFO SecurityManager: Changing view acls groups to: 
+26/10/25 03:24:11 INFO SecurityManager: Changing modify acls to: sparkuser
+26/10/25 03:24:11 INFO SecurityManager: Changing modify acls groups to: 
+26/10/25 03:24:11 INFO SecurityManager: Changing view acls groups to: 
+26/10/25 03:24:11 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: sparkuser; groups with view permissions: EMPTY; users with modify permissions: sparkuser; groups with modify permissions: EMPTY
+26/10/25 03:24:11 INFO SecurityManager: Changing modify acls groups to: 
+26/10/25 03:24:11 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: sparkuser; groups with view permissions: EMPTY; users with modify permissions: sparkuser; groups with modify permissions: EMPTY
+26/10/25 03:24:11 INFO BlockManagerMaster: Registered BlockManager BlockManagerId(driver, localhost, 42567, None)
+26/10/25 03:24:11 INFO BlockManager: Initialized BlockManager: BlockManagerId(driver, localhost, 42567, None)
+26/10/25 03:24:11 INFO ExecutorRunner: Launch command: "/usr/lib/jvm/java-21-openjdk-amd64/bin/java" "-cp" "/opt/spark/conf/:/opt/spark/jars/*" "-Xmx512M" "-Dspark.driver.port=45305" "-Djava.net.preferIPv6Addresses=false" "-XX:+IgnoreUnrecognizedVMOptions" "--add-opens=java.base/java.lang=ALL-UNNAMED" "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED" "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED" "--add-opens=java.base/java.io=ALL-UNNAMED" "--add-opens=java.base/java.net=ALL-UNNAMED" "--add-opens=java.base/java.nio=ALL-UNNAMED" "--add-opens=java.base/java.util=ALL-UNNAMED" "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED" "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED" "--add-opens=java.base/jdk.internal.ref=ALL-UNNAMED" "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED" "--add-opens=java.base/sun.nio.cs=ALL-UNNAMED" "--add-opens=java.base/sun.security.action=ALL-UNNAMED" "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED" "--add-opens=java.security.jgss/sun.security.krb5=ALL-UNNAMED" "-Djdk.reflect.useDirectMethodHandle=false" "org.apache.spark.executor.CoarseGrainedExecutorBackend" "--driver-url" "spark://CoarseGrainedScheduler@localhost:45305" "--executor-id" "1" "--hostname" "localhost" "--cores" "1" "--app-id" "app-20261025032411-0000" "--worker-url" "spark://Worker@localhost:39097" "--resourceProfileId" "0"
+26/10/25 03:24:11 INFO ExecutorRunner: Launch command: "/usr/lib/jvm/java-21-openjdk-amd64/bin/java" "-cp" "/opt/spark/conf/:/opt/spark/jars/*" "-Xmx512M" "-Dspark.driver.port=45305" "-Djava.net.preferIPv6Addresses=false" "-XX:+IgnoreUnrecognizedVMOptions" "--add-opens=java.base/java.lang=ALL-UNNAMED" "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED" "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED" "--add-opens=java.base/java.io=ALL-UNNAMED" "--add-opens=java.base/java.net=ALL-UNNAMED" "--add-opens=java.base/java.nio=ALL-UNNAMED" "--add-opens=java.base/java.util=ALL-UNNAMED" "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED" "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED" "--add-opens=java.base/jdk.internal.ref=ALL-UNNAMED" "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED" "--add-opens=java.base/sun.nio.cs=ALL-UNNAMED" "--add-opens=java.base/sun.security.action=ALL-UNNAMED" "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED" "--add-opens=java.security.jgss/sun.security.krb5=ALL-UNNAMED" "-Djdk.reflect.useDirectMethodHandle=false" "org.apache.spark.executor.CoarseGrainedExecutorBackend" "--driver-url" "spark://CoarseGrainedScheduler@localhost:45305" "--executor-id" "2" "--hostname" "localhost" "--cores" "1" "--app-id" "app-20261025032411-0000" "--worker-url" "spark://Worker@localhost:45015" "--resourceProfileId" "0"
+26/10/25 03:24:11 INFO ExecutorRunner: Launch command: "/usr/lib/jvm/java-21-openjdk-amd64/bin/java" "-cp" "/opt/spark/conf/:/opt/spark/jars/*" "-Xmx512M" "-Dspark.driver.port=45305" "-Djava.net.preferIPv6Addresses=false" "-XX:+IgnoreUnrecognizedVMOptions" "--add-opens=java.base/java.lang=ALL-UNNAMED" "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED" "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED" "--add-opens=java.base/java.io=ALL-UNNAMED" "--add-opens=java.base/java.net=ALL-UNNAMED" "--add-opens=java.base/java.nio=ALL-UNNAMED" "--add-opens=java.base/java.util=ALL-UNNAMED" "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED" "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED" "--add-opens=java.base/jdk.internal.ref=ALL-UNNAMED" "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED" "--add-opens=java.base/sun.nio.cs=ALL-UNNAMED" "--add-opens=java.base/sun.security.action=ALL-UNNAMED" "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED" "--add-opens=java.security.jgss/sun.security.krb5=ALL-UNNAMED" "-Djdk.reflect.useDirectMethodHandle=false" "org.apache.spark.executor.CoarseGrainedExecutorBackend" "--driver-url" "spark://CoarseGrainedScheduler@localhost:45305" "--executor-id" "0" "--hostname" "localhost" "--cores" "1" "--app-id" "app-20261025032411-0000" "--worker-url" "spark://Worker@localhost:39297" "--resourceProfileId" "0"
+26/10/25 03:24:11 INFO ExecutorRunner: Launch command: "/usr/lib/jvm/java-21-openjdk-amd64/bin/java" "-cp" "/opt/spark/conf/:/opt/spark/jars/*" "-Xmx512M" "-Dspark.driver.port=45305" "-Djava.net.preferIPv6Addresses=false" "-XX:+IgnoreUnrecognizedVMOptions" "--add-opens=java.base/java.lang=ALL-UNNAMED" "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED" "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED" "--add-opens=java.base/java.io=ALL-UNNAMED" "--add-opens=java.base/java.net=ALL-UNNAMED" "--add-opens=java.base/java.nio=ALL-UNNAMED" "--add-opens=java.base/java.util=ALL-UNNAMED" "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED" "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED" "--add-opens=java.base/jdk.internal.ref=ALL-UNNAMED" "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED" "--add-opens=java.base/sun.nio.cs=ALL-UNNAMED" "--add-opens=java.base/sun.security.action=ALL-UNNAMED" "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED" "--add-opens=java.security.jgss/sun.security.krb5=ALL-UNNAMED" "-Djdk.reflect.useDirectMethodHandle=false" "org.apache.spark.executor.CoarseGrainedExecutorBackend" "--driver-url" "spark://CoarseGrainedScheduler@localhost:45305" "--executor-id" "3" "--hostname" "localhost" "--cores" "1" "--app-id" "app-20261025032411-0000" "--worker-url" "spark://Worker@localhost:38691" "--resourceProfileId" "0"
+26/10/25 03:24:11 INFO Master: Start scheduling for app app-20261025032411-0000 with rpId: 0
+26/10/25 03:24:11 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20261025032411-0000/1 is now RUNNING
+26/10/25 03:24:11 INFO Master: Start scheduling for app app-20261025032411-0000 with rpId: 0
+26/10/25 03:24:11 INFO Master: Start scheduling for app app-20261025032411-0000 with rpId: 0
+26/10/25 03:24:11 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20261025032411-0000/2 is now RUNNING
+26/10/25 03:24:11 INFO Master: Start scheduling for app app-20261025032411-0000 with rpId: 0
+26/10/25 03:24:11 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20261025032411-0000/0 is now RUNNING
+26/10/25 03:24:11 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20261025032411-0000/3 is now RUNNING
+26/10/25 03:24:11 INFO SingleEventLogFileWriter: Logging events to file:/tmp/spark-events/app-20261025032411-0000.inprogress
+26/10/25 03:24:12 INFO StandaloneSchedulerBackend: SchedulerBackend is ready for scheduling beginning after reached minRegisteredResourcesRatio: 0.0
+26/10/25 03:24:17 INFO SharedState: Setting hive.metastore.warehouse.dir ('null') to the value of spark.sql.warehouse.dir.
+26/10/25 03:24:17 INFO SharedState: Warehouse path is 'file:/home/sparkuser/spark-warehouse'.
+26/10/25 03:24:19 INFO StandaloneSchedulerBackend$StandaloneDriverEndpoint: Registered executor NettyRpcEndpointRef(spark-client://Executor) (127.0.0.1:47876) with ID 0,  ResourceProfileId 0
+26/10/25 03:24:19 INFO StandaloneSchedulerBackend$StandaloneDriverEndpoint: Registered executor NettyRpcEndpointRef(spark-client://Executor) (127.0.0.1:47892) with ID 3,  ResourceProfileId 0
+26/10/25 03:24:19 INFO StandaloneSchedulerBackend$StandaloneDriverEndpoint: Registered executor NettyRpcEndpointRef(spark-client://Executor) (127.0.0.1:47894) with ID 1,  ResourceProfileId 0
+26/10/25 03:24:19 INFO BlockManagerMasterEndpoint: Registering block manager localhost:35719 with 127.2 MiB RAM, BlockManagerId(0, localhost, 35719, None)
+26/10/25 03:24:19 INFO BlockManagerMasterEndpoint: Registering block manager localhost:39349 with 127.2 MiB RAM, BlockManagerId(1, localhost, 39349, None)
+26/10/25 03:24:19 INFO BlockManagerMasterEndpoint: Registering block manager localhost:42549 with 127.2 MiB RAM, BlockManagerId(3, localhost, 42549, None)
+26/10/25 03:24:19 INFO StandaloneSchedulerBackend$StandaloneDriverEndpoint: Registered executor NettyRpcEndpointRef(spark-client://Executor) (127.0.0.1:47910) with ID 2,  ResourceProfileId 0
+26/10/25 03:24:20 INFO BlockManagerMasterEndpoint: Registering block manager localhost:40123 with 127.2 MiB RAM, BlockManagerId(2, localhost, 40123, None)
+26/10/25 03:24:22 INFO CodeGenerator: Code generated in 398.277065 ms
+26/10/25 03:24:22 INFO DAGScheduler: Registering RDD 3 (collect at /home/sparkuser/job.py:11) as input to shuffle 0
+26/10/25 03:24:22 INFO DAGScheduler: Got map stage job 0 (collect at /home/sparkuser/job.py:11) with 2 output partitions
+26/10/25 03:24:22 INFO DAGScheduler: Final stage: ShuffleMapStage 0 (collect at /home/sparkuser/job.py:11)
+26/10/25 03:24:22 INFO DAGScheduler: Parents of final stage: List()
+26/10/25 03:24:22 INFO DAGScheduler: Missing parents: List()
+26/10/25 03:24:22 INFO DAGScheduler: Submitting ShuffleMapStage 0 (MapPartitionsRDD[3] at collect at /home/sparkuser/job.py:11), which has no missing parents
+26/10/25 03:24:22 INFO MemoryStore: Block broadcast_0 stored as values in memory (estimated size 37.6 KiB, free 434.4 MiB)
+26/10/25 03:24:22 INFO MemoryStore: Block broadcast_0_piece0 stored as bytes in memory (estimated size 17.4 KiB, free 434.3 MiB)
+26/10/25 03:24:22 INFO BlockManagerInfo: Added broadcast_0_piece0 in memory on localhost:42567 (size: 17.4 KiB, free: 434.4 MiB)
+26/10/25 03:24:22 INFO SparkContext: Created broadcast 0 from broadcast at DAGScheduler.scala:1585
+26/10/25 03:24:22 INFO DAGScheduler: Submitting 2 missing tasks from ShuffleMapStage 0 (MapPartitionsRDD[3] at collect at /home/sparkuser/job.py:11) (first 15 tasks are for partitions Vector(0, 1))
+26/10/25 03:24:22 INFO TaskSchedulerImpl: Adding task set 0.0 with 2 tasks resource profile 0
+26/10/25 03:24:22 INFO TaskSetManager: Starting task 0.0 in stage 0.0 (TID 0) (localhost, executor 1, partition 0, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 03:24:22 INFO TaskSetManager: Starting task 1.0 in stage 0.0 (TID 1) (localhost, executor 3, partition 1, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 03:24:22 INFO BlockManagerInfo: Added broadcast_0_piece0 in memory on localhost:42549 (size: 17.4 KiB, free: 127.2 MiB)
+26/10/25 03:24:22 INFO BlockManagerInfo: Added broadcast_0_piece0 in memory on localhost:39349 (size: 17.4 KiB, free: 127.2 MiB)
+26/10/25 03:24:24 INFO TaskSetManager: Finished task 1.0 in stage 0.0 (TID 1) in 2226 ms on localhost (executor 3) (1/2)
+26/10/25 03:24:24 INFO TaskSetManager: Finished task 0.0 in stage 0.0 (TID 0) in 2261 ms on localhost (executor 1) (2/2)
+26/10/25 03:24:24 INFO TaskSchedulerImpl: Removed TaskSet 0.0, whose tasks have all completed, from pool 
+26/10/25 03:24:24 INFO DAGScheduler: ShuffleMapStage 0 (collect at /home/sparkuser/job.py:11) finished in 2.471 s
+26/10/25 03:24:24 INFO DAGScheduler: looking for newly runnable stages
+26/10/25 03:24:24 INFO DAGScheduler: running: Set()
+26/10/25 03:24:24 INFO DAGScheduler: waiting: Set()
+26/10/25 03:24:24 INFO DAGScheduler: failed: Set()
+26/10/25 03:24:24 INFO ShufflePartitionsUtil: For shuffle(0), advisory target size: 67108864, actual target size 1048576, minimum partition size: 1048576
+26/10/25 03:24:24 INFO HashAggregateExec: spark.sql.codegen.aggregate.map.twolevel.enabled is set to true, but current version of codegened fast hashmap does not support this aggregate.
+26/10/25 03:24:24 INFO CodeGenerator: Code generated in 26.985921 ms
+26/10/25 03:24:24 INFO SparkContext: Starting job: collect at /home/sparkuser/job.py:11
+26/10/25 03:24:25 INFO BlockManagerInfo: Removed broadcast_0_piece0 on localhost:42567 in memory (size: 17.4 KiB, free: 434.4 MiB)
+26/10/25 03:24:25 INFO DAGScheduler: Got job 1 (collect at /home/sparkuser/job.py:11) with 1 output partitions
+26/10/25 03:24:25 INFO DAGScheduler: Final stage: ResultStage 2 (collect at /home/sparkuser/job.py:11)
+26/10/25 03:24:25 INFO DAGScheduler: Parents of final stage: List(ShuffleMapStage 1)
+26/10/25 03:24:25 INFO DAGScheduler: Missing parents: List()
+26/10/25 03:24:25 INFO DAGScheduler: Submitting ResultStage 2 (MapPartitionsRDD[6] at collect at /home/sparkuser/job.py:11), which has no missing parents
+26/10/25 03:24:25 INFO BlockManagerInfo: Removed broadcast_0_piece0 on localhost:42549 in memory (size: 17.4 KiB, free: 127.2 MiB)
+26/10/25 03:24:25 INFO BlockManagerInfo: Removed broadcast_0_piece0 on localhost:39349 in memory (size: 17.4 KiB, free: 127.2 MiB)
+26/10/25 03:24:25 INFO MemoryStore: Block broadcast_1 stored as values in memory (estimated size 37.8 KiB, free 434.4 MiB)
+26/10/25 03:24:25 INFO MemoryStore: Block broadcast_1_piece0 stored as bytes in memory (estimated size 17.5 KiB, free 434.3 MiB)
+26/10/25 03:24:25 INFO BlockManagerInfo: Added broadcast_1_piece0 in memory on localhost:42567 (size: 17.5 KiB, free: 434.4 MiB)
+26/10/25 03:24:25 INFO SparkContext: Created broadcast 1 from broadcast at DAGScheduler.scala:1585
+26/10/25 03:24:25 INFO DAGScheduler: Submitting 1 missing tasks from ResultStage 2 (MapPartitionsRDD[6] at collect at /home/sparkuser/job.py:11) (first 15 tasks are for partitions Vector(0))
+26/10/25 03:24:25 INFO TaskSchedulerImpl: Adding task set 2.0 with 1 tasks resource profile 0
+26/10/25 03:24:25 INFO TaskSetManager: Starting task 0.0 in stage 2.0 (TID 2) (localhost, executor 1, partition 0, NODE_LOCAL, 9003 bytes) 
+26/10/25 03:24:25 INFO BlockManagerInfo: Added broadcast_1_piece0 in memory on localhost:39349 (size: 17.5 KiB, free: 127.2 MiB)
+26/10/25 03:24:25 INFO MapOutputTrackerMasterEndpoint: Asked to send map output locations for shuffle 0 to 127.0.0.1:47894
+26/10/25 03:24:25 INFO TaskSetManager: Finished task 0.0 in stage 2.0 (TID 2) in 530 ms on localhost (executor 1) (1/1)
+26/10/25 03:24:25 INFO TaskSchedulerImpl: Removed TaskSet 2.0, whose tasks have all completed, from pool 
+26/10/25 03:24:25 INFO DAGScheduler: ResultStage 2 (collect at /home/sparkuser/job.py:11) finished in 0.571 s
+26/10/25 03:24:25 INFO DAGScheduler: Job 1 is finished. Cancelling potential speculative or zombie tasks for this job
+26/10/25 03:24:25 INFO TaskSchedulerImpl: Killing all running tasks in stage 2: Stage finished
+26/10/25 03:24:25 INFO DAGScheduler: Job 1 finished: collect at /home/sparkuser/job.py:11, took 0.645860 s
+26/10/25 03:24:25 INFO CodeGenerator: Code generated in 25.08009 ms
+26/10/25 03:24:25 INFO DAGScheduler: Got job 2 (count at NativeMethodAccessorImpl.java:0) with 2 output partitions
+26/10/25 03:24:25 INFO DAGScheduler: Final stage: ResultStage 3 (count at NativeMethodAccessorImpl.java:0)
+26/10/25 03:24:25 INFO DAGScheduler: Parents of final stage: List()
+26/10/25 03:24:25 INFO DAGScheduler: Missing parents: List()
+26/10/25 03:24:25 INFO DAGScheduler: Submitting ResultStage 3 (*(1) Project [id#0L, k#2L, v#5, (v#5 * 2.0) AS w#19]
++- *(1) Project [id#0L, (id#0L % 97) AS k#2L, rand(7) AS v#5]
+   +- *(1) Range (0, 400000, step=1, splits=2)
+ MapPartitionsRDD[11] at count at NativeMethodAccessorImpl.java:0), which has no missing parents
+26/10/25 03:24:25 INFO MemoryStore: Block broadcast_2 stored as values in memory (estimated size 15.0 KiB, free 434.3 MiB)
+26/10/25 03:24:25 INFO MemoryStore: Block broadcast_2_piece0 stored as bytes in memory (estimated size 6.9 KiB, free 434.3 MiB)
+26/10/25 03:24:25 INFO BlockManagerInfo: Added broadcast_2_piece0 in memory on localhost:42567 (size: 6.9 KiB, free: 434.4 MiB)
+26/10/25 03:24:25 INFO SparkContext: Created broadcast 2 from broadcast at DAGScheduler.scala:1585
+26/10/25 03:24:25 INFO DAGScheduler: Submitting 2 missing tasks from ResultStage 3 (*(1) Project [id#0L, k#2L, v#5, (v#5 * 2.0) AS w#19]
++- *(1) Project [id#0L, (id#0L % 97) AS k#2L, rand(7) AS v#5]
+   +- *(1) Range (0, 400000, step=1, splits=2)
+ MapPartitionsRDD[11] at count at NativeMethodAccessorImpl.java:0) (first 15 tasks are for partitions Vector(0, 1))
+26/10/25 03:24:25 INFO TaskSchedulerImpl: Adding task set 3.0 with 2 tasks resource profile 0
+26/10/25 03:24:25 INFO TaskSetManager: Starting task 0.0 in stage 3.0 (TID 3) (localhost, executor 2, partition 0, PROCESS_LOCAL, 9128 bytes) 
+26/10/25 03:24:25 INFO TaskSetManager: Starting task 1.0 in stage 3.0 (TID 4) (localhost, executor 0, partition 1, PROCESS_LOCAL, 9128 bytes) 
+26/10/25 03:24:26 INFO BlockManagerInfo: Added broadcast_2_piece0 in memory on localhost:40123 (size: 6.9 KiB, free: 127.2 MiB)
+26/10/25 03:24:26 INFO BlockManagerInfo: Added broadcast_2_piece0 in memory on localhost:35719 (size: 6.9 KiB, free: 127.2 MiB)
+26/10/25 03:24:28 INFO BlockManagerInfo: Added rdd_11_1 in memory on localhost:35719 (size: 3.4 MiB, free: 123.7 MiB)
+26/10/25 03:24:28 INFO TaskSetManager: Finished task 1.0 in stage 3.0 (TID 4) in 2137 ms on localhost (executor 0) (1/2)
+26/10/25 03:24:28 INFO BlockManagerInfo: Added rdd_11_0 in memory on localhost:40123 (size: 3.4 MiB, free: 123.7 MiB)
+26/10/25 03:24:28 INFO TaskSetManager: Finished task 0.0 in stage 3.0 (TID 3) in 2226 ms on localhost (executor 2) (2/2)
+26/10/25 03:24:28 INFO TaskSchedulerImpl: Removed TaskSet 3.0, whose tasks have all completed, from pool 
+26/10/25 03:24:28 INFO DAGScheduler: ResultStage 3 (count at NativeMethodAccessorImpl.java:0) finished in 2.249 s
+26/10/25 03:24:28 INFO DAGScheduler: Job 2 is finished. Cancelling potential speculative or zombie tasks for this job
+26/10/25 03:24:28 INFO TaskSchedulerImpl: Killing all running tasks in stage 3: Stage finished
+26/10/25 03:24:28 INFO CodeGenerator: Code generated in 18.474977 ms
+26/10/25 03:24:28 INFO DAGScheduler: Registering RDD 16 (count at NativeMethodAccessorImpl.java:0) as input to shuffle 1
+26/10/25 03:24:28 INFO DAGScheduler: Got map stage job 3 (count at NativeMethodAccessorImpl.java:0) with 2 output partitions
+26/10/25 03:24:28 INFO DAGScheduler: Final stage: ShuffleMapStage 4 (count at NativeMethodAccessorImpl.java:0)
+26/10/25 03:24:28 INFO DAGScheduler: Parents of final stage: List()
+26/10/25 03:24:28 INFO DAGScheduler: Missing parents: List()
+26/10/25 03:24:28 INFO DAGScheduler: Submitting ShuffleMapStage 4 (MapPartitionsRDD[16] at count at NativeMethodAccessorImpl.java:0), which has no missing parents
+26/10/25 03:24:28 INFO MemoryStore: Block broadcast_3 stored as values in memory (estimated size 21.7 KiB, free 434.3 MiB)
+26/10/25 03:24:28 INFO MemoryStore: Block broadcast_3_piece0 stored as bytes in memory (estimated size 9.3 KiB, free 434.3 MiB)
+26/10/25 03:24:28 INFO BlockManagerInfo: Added broadcast_3_piece0 in memory on localhost:42567 (size: 9.3 KiB, free: 434.4 MiB)
+26/10/25 03:24:28 INFO SparkContext: Created broadcast 3 from broadcast at DAGScheduler.scala:1585
+26/10/25 03:24:28 INFO DAGScheduler: Submitting 2 missing tasks from ShuffleMapStage 4 (MapPartitionsRDD[16] at count at NativeMethodAccessorImpl.java:0) (first 15 tasks are for partitions Vector(0, 1))
+26/10/25 03:24:28 INFO TaskSchedulerImpl: Adding task set 4.0 with 2 tasks resource profile 0
+26/10/25 03:24:28 INFO TaskSetManager: Starting task 1.0 in stage 4.0 (TID 5) (localhost, executor 0, partition 1, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 03:24:28 INFO TaskSetManager: Starting task 0.0 in stage 4.0 (TID 6) (localhost, executor 2, partition 0, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 03:24:28 INFO BlockManagerInfo: Added broadcast_3_piece0 in memory on localhost:35719 (size: 9.3 KiB, free: 123.7 MiB)
+26/10/25 03:24:28 INFO BlockManagerInfo: Added broadcast_3_piece0 in memory on localhost:40123 (size: 9.3 KiB, free: 123.7 MiB)
+26/10/25 03:24:28 INFO TaskSetManager: Finished task 0.0 in stage 4.0 (TID 6) in 428 ms on localhost (executor 2) (1/2)
+26/10/25 03:24:28 INFO TaskSetManager: Finished task 1.0 in stage 4.0 (TID 5) in 456 ms on localhost (executor 0) (2/2)
+26/10/25 03:24:28 INFO TaskSchedulerImpl: Removed TaskSet 4.0, whose tasks have all completed, from pool 
+26/10/25 03:24:28 INFO DAGScheduler: ShuffleMapStage 4 (count at NativeMethodAccessorImpl.java:0) finished in 0.474 s
+26/10/25 03:24:28 INFO DAGScheduler: looking for newly runnable stages
+26/10/25 03:24:28 INFO DAGScheduler: running: Set()
+26/10/25 03:24:28 INFO DAGScheduler: waiting: Set()
+26/10/25 03:24:28 INFO DAGScheduler: failed: Set()
+26/10/25 03:24:28 INFO CodeGenerator: Code generated in 10.182305 ms
+26/10/25 03:24:28 INFO SparkContext: Starting job: count at NativeMethodAccessorImpl.java:0
+26/10/25 03:24:28 INFO DAGScheduler: Got job 4 (count at NativeMethodAccessorImpl.java:0) with 1 output partitions
+26/10/25 03:24:28 INFO DAGScheduler: Final stage: ResultStage 6 (count at NativeMethodAccessorImpl.java:0)
+26/10/25 03:24:28 INFO DAGScheduler: Parents of final stage: List(ShuffleMapStage 5)
+26/10/25 03:24:28 INFO DAGScheduler: Missing parents: List()
+26/10/25 03:24:28 INFO DAGScheduler: Submitting ResultStage 6 (MapPartitionsRDD[19] at count at NativeMethodAccessorImpl.java:0), which has no missing parents
+26/10/25 03:24:28 INFO MemoryStore: Block broadcast_4 stored as values in memory (estimated size 12.5 KiB, free 434.3 MiB)
+26/10/25 03:24:28 INFO MemoryStore: Block broadcast_4_piece0 stored as bytes in memory (estimated size 6.0 KiB, free 434.3 MiB)
+26/10/25 03:24:28 INFO BlockManagerInfo: Added broadcast_4_piece0 in memory on localhost:42567 (size: 6.0 KiB, free: 434.4 MiB)
+26/10/25 03:24:28 INFO SparkContext: Created broadcast 4 from broadcast at DAGScheduler.scala:1585
+26/10/25 03:24:28 INFO DAGScheduler: Submitting 1 missing tasks from ResultStage 6 (MapPartitionsRDD[19] at count at NativeMethodAccessorImpl.java:0) (first 15 tasks are for partitions Vector(0))
+26/10/25 03:24:28 INFO TaskSchedulerImpl: Adding task set 6.0 with 1 tasks resource profile 0
+26/10/25 03:24:28 INFO TaskSetManager: Starting task 0.0 in stage 6.0 (TID 7) (localhost, executor 2, partition 0, NODE_LOCAL, 9003 bytes) 
+26/10/25 03:24:28 INFO BlockManagerInfo: Added broadcast_4_piece0 in memory on localhost:40123 (size: 6.0 KiB, free: 123.7 MiB)
+26/10/25 03:24:28 INFO MapOutputTrackerMasterEndpoint: Asked to send map output locations for shuffle 1 to 127.0.0.1:47910
+26/10/25 03:24:29 INFO TaskSetManager: Finished task 0.0 in stage 6.0 (TID 7) in 292 ms on localhost (executor 2) (1/1)
+26/10/25 03:24:29 INFO TaskSchedulerImpl: Removed TaskSet 6.0, whose tasks have all completed, from pool 
+26/10/25 03:24:29 INFO DAGScheduler: ResultStage 6 (count at NativeMethodAccessorImpl.java:0) finished in 0.318 s
+26/10/25 03:24:29 INFO DAGScheduler: Job 4 is finished. Cancelling potential speculative or zombie tasks for this job
+26/10/25 03:24:29 INFO TaskSchedulerImpl: Killing all running tasks in stage 6: Stage finished
+26/10/25 03:24:29 INFO DAGScheduler: Job 4 finished: count at NativeMethodAccessorImpl.java:0, took 0.326206 s
+26/10/25 03:24:29 INFO CodeGenerator: Code generated in 14.071132 ms
+26/10/25 03:24:29 INFO DefaultCachedBatchSerializer: Predicate (w#19 > 1.0) generates partition filter: (1.0 < w.upperBound#257)
+26/10/25 03:24:29 INFO DAGScheduler: Registering RDD 24 (count at NativeMethodAccessorImpl.java:0) as input to shuffle 2
+26/10/25 03:24:29 INFO DAGScheduler: Got map stage job 5 (count at NativeMethodAccessorImpl.java:0) with 2 output partitions
+26/10/25 03:24:29 INFO DAGScheduler: Final stage: ShuffleMapStage 7 (count at NativeMethodAccessorImpl.java:0)
+26/10/25 03:24:29 INFO DAGScheduler: Parents of final stage: List()
+26/10/25 03:24:29 INFO DAGScheduler: Missing parents: List()
+26/10/25 03:24:29 INFO DAGScheduler: Submitting ShuffleMapStage 7 (MapPartitionsRDD[24] at count at NativeMethodAccessorImpl.java:0), which has no missing parents
+26/10/25 03:24:29 INFO MemoryStore: Block broadcast_5 stored as values in memory (estimated size 23.5 KiB, free 434.3 MiB)
+26/10/25 03:24:29 INFO BlockManagerInfo: Removed broadcast_1_piece0 on localhost:42567 in memory (size: 17.5 KiB, free: 434.4 MiB)
+26/10/25 03:24:29 INFO MemoryStore: Block broadcast_5_piece0 stored as bytes in memory (estimated size 10.0 KiB, free 434.3 MiB)
+26/10/25 03:24:29 INFO BlockManagerInfo: Removed broadcast_1_piece0 on localhost:39349 in memory (size: 17.5 KiB, free: 127.2 MiB)
+26/10/25 03:24:29 INFO BlockManagerInfo: Added broadcast_5_piece0 in memory on localhost:42567 (size: 10.0 KiB, free: 434.4 MiB)
+26/10/25 03:24:29 INFO SparkContext: Created broadcast 5 from broadcast at DAGScheduler.scala:1585
+26/10/25 03:24:29 INFO DAGScheduler: Submitting 2 missing tasks from ShuffleMapStage 7 (MapPartitionsRDD[24] at count at NativeMethodAccessorImpl.java:0) (first 15 tasks are for partitions Vector(0, 1))
+26/10/25 03:24:29 INFO TaskSchedulerImpl: Adding task set 7.0 with 2 tasks resource profile 0
+26/10/25 03:24:29 INFO TaskSetManager: Starting task 0.0 in stage 7.0 (TID 8) (localhost, executor 2, partition 0, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 03:24:29 INFO TaskSetManager: Starting task 1.0 in stage 7.0 (TID 9) (localhost, executor 0, partition 1, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 03:24:29 INFO BlockManagerInfo: Removed broadcast_3_piece0 on localhost:42567 in memory (size: 9.3 KiB, free: 434.4 MiB)
+26/10/25 03:24:29 INFO BlockManagerInfo: Added broadcast_5_piece0 in memory on localhost:40123 (size: 10.0 KiB, free: 123.7 MiB)
+26/10/25 03:24:29 INFO BlockManagerInfo: Removed broadcast_3_piece0 on localhost:40123 in memory (size: 9.3 KiB, free: 123.7 MiB)
+26/10/25 03:24:29 INFO BlockManagerInfo: Removed broadcast_3_piece0 on localhost:35719 in memory (size: 9.3 KiB, free: 123.7 MiB)
+26/10/25 03:24:29 INFO BlockManagerInfo: Added broadcast_5_piece0 in memory on localhost:35719 (size: 10.0 KiB, free: 123.7 MiB)
+26/10/25 03:24:29 INFO BlockManagerInfo: Removed broadcast_4_piece0 on localhost:42567 in memory (size: 6.0 KiB, free: 434.4 MiB)
+26/10/25 03:24:29 INFO BlockManagerInfo: Removed broadcast_4_piece0 on localhost:40123 in memory (size: 6.0 KiB, free: 123.7 MiB)
+26/10/25 03:24:29 INFO BlockManagerInfo: Removed broadcast_2_piece0 on localhost:42567 in memory (size: 6.9 KiB, free: 434.4 MiB)
+26/10/25 03:24:29 INFO BlockManagerInfo: Removed broadcast_2_piece0 on localhost:40123 in memory (size: 6.9 KiB, free: 123.7 MiB)
+26/10/25 03:24:29 INFO BlockManagerInfo: Removed broadcast_2_piece0 on localhost:35719 in memory (size: 6.9 KiB, free: 123.7 MiB)
+26/10/25 03:24:29 INFO TaskSetManager: Finished task 0.0 in stage 7.0 (TID 8) in 376 ms on localhost (executor 2) (1/2)
+26/10/25 03:24:29 INFO TaskSetManager: Finished task 1.0 in stage 7.0 (TID 9) in 533 ms on localhost (executor 0) (2/2)
+26/10/25 03:24:29 INFO TaskSchedulerImpl: Removed TaskSet 7.0, whose tasks have all completed, from pool 
+26/10/25 03:24:29 INFO DAGScheduler: ShuffleMapStage 7 (count at NativeMethodAccessorImpl.java:0) finished in 0.632 s
+26/10/25 03:24:29 INFO DAGScheduler: looking for newly runnable stages
+26/10/25 03:24:29 INFO DAGScheduler: running: Set()
+26/10/25 03:24:29 INFO DAGScheduler: waiting: Set()
+26/10/25 03:24:29 INFO DAGScheduler: failed: Set()
+26/10/25 03:24:30 INFO SparkContext: Starting job: count at NativeMethodAccessorImpl.java:0
+26/10/25 03:24:30 INFO DAGScheduler: Got job 6 (count at NativeMethodAccessorImpl.java:0) with 1 output partitions
+26/10/25 03:24:30 INFO DAGScheduler: Final stage: ResultStage 9 (count at NativeMethodAccessorImpl.java:0)
+26/10/25 03:24:30 INFO DAGScheduler: Parents of final stage: List(ShuffleMapStage 8)
+26/10/25 03:24:30 INFO DAGScheduler: Missing parents: List()
+26/10/25 03:24:30 INFO DAGScheduler: Submitting ResultStage 9 (MapPartitionsRDD[27] at count at NativeMethodAccessorImpl.java:0), which has no missing parents
+26/10/25 03:24:30 INFO MemoryStore: Block broadcast_6 stored as values in memory (estimated size 12.5 KiB, free 434.4 MiB)
+26/10/25 03:24:30 INFO MemoryStore: Block broadcast_6_piece0 stored as bytes in memory (estimated size 6.0 KiB, free 434.3 MiB)
+26/10/25 03:24:30 INFO BlockManagerInfo: Added broadcast_6_piece0 in memory on localhost:42567 (size: 6.0 KiB, free: 434.4 MiB)
+26/10/25 03:24:30 INFO SparkContext: Created broadcast 6 from broadcast at DAGScheduler.scala:1585
+26/10/25 03:24:30 INFO DAGScheduler: Submitting 1 missing tasks from ResultStage 9 (MapPartitionsRDD[27] at count at NativeMethodAccessorImpl.java:0) (first 15 tasks are for partitions Vector(0))
+26/10/25 03:24:30 INFO TaskSchedulerImpl: Adding task set 9.0 with 1 tasks resource profile 0
+26/10/25 03:24:30 INFO TaskSetManager: Starting task 0.0 in stage 9.0 (TID 10) (localhost, executor 3, partition 0, NODE_LOCAL, 9003 bytes) 
+26/10/25 03:24:30 INFO BlockManagerInfo: Added broadcast_6_piece0 in memory on localhost:42549 (size: 6.0 KiB, free: 127.2 MiB)
+26/10/25 03:24:30 INFO MapOutputTrackerMasterEndpoint: Asked to send map output locations for shuffle 2 to 127.0.0.1:47892
+26/10/25 03:24:30 INFO TaskSetManager: Finished task 0.0 in stage 9.0 (TID 10) in 270 ms on localhost (executor 3) (1/1)
+26/10/25 03:24:30 INFO TaskSchedulerImpl: Removed TaskSet 9.0, whose tasks have all completed, from pool 
+26/10/25 03:24:30 INFO DAGScheduler: ResultStage 9 (count at NativeMethodAccessorImpl.java:0) finished in 0.282 s
+26/10/25 03:24:30 INFO DAGScheduler: Job 6 is finished. Cancelling potential speculative or zombie tasks for this job
+26/10/25 03:24:30 INFO TaskSchedulerImpl: Killing all running tasks in stage 9: Stage finished
+26/10/25 03:24:30 INFO DAGScheduler: Job 6 finished: count at NativeMethodAccessorImpl.java:0, took 0.287271 s
+26/10/25 03:24:30 INFO CodeGenerator: Code generated in 27.090526 ms
+26/10/25 03:24:30 INFO SparkContext: Starting job: collect at /home/sparkuser/job.py:21
+26/10/25 03:24:30 INFO DAGScheduler: Got job 7 (collect at /home/sparkuser/job.py:21) with 4 output partitions
+26/10/25 03:24:30 INFO DAGScheduler: Final stage: ResultStage 10 (collect at /home/sparkuser/job.py:21)
+26/10/25 03:24:30 INFO DAGScheduler: Parents of final stage: List()
+26/10/25 03:24:30 INFO DAGScheduler: Missing parents: List()
+26/10/25 03:24:30 INFO DAGScheduler: Submitting ResultStage 10 (MapPartitionsRDD[31] at collect at /home/sparkuser/job.py:21), which has no missing parents
+26/10/25 03:24:30 INFO MemoryStore: Block broadcast_7 stored as values in memory (estimated size 11.9 KiB, free 434.3 MiB)
+26/10/25 03:24:30 INFO MemoryStore: Block broadcast_7_piece0 stored as bytes in memory (estimated size 5.5 KiB, free 434.3 MiB)
+26/10/25 03:24:30 INFO BlockManagerInfo: Added broadcast_7_piece0 in memory on localhost:42567 (size: 5.5 KiB, free: 434.4 MiB)
+26/10/25 03:24:30 INFO SparkContext: Created broadcast 7 from broadcast at DAGScheduler.scala:1585
+26/10/25 03:24:30 INFO DAGScheduler: Submitting 4 missing tasks from ResultStage 10 (MapPartitionsRDD[31] at collect at /home/sparkuser/job.py:21) (first 15 tasks are for partitions Vector(0, 1, 2, 3))
+26/10/25 03:24:30 INFO TaskSchedulerImpl: Adding task set 10.0 with 4 tasks resource profile 0
+26/10/25 03:24:30 INFO TaskSetManager: Starting task 0.0 in stage 10.0 (TID 11) (localhost, executor 2, partition 0, PROCESS_LOCAL, 9128 bytes) 
+26/10/25 03:24:30 INFO TaskSetManager: Starting task 1.0 in stage 10.0 (TID 12) (localhost, executor 1, partition 1, PROCESS_LOCAL, 9128 bytes) 
+26/10/25 03:24:30 INFO TaskSetManager: Starting task 2.0 in stage 10.0 (TID 13) (localhost, executor 3, partition 2, PROCESS_LOCAL, 9128 bytes) 
+26/10/25 03:24:30 INFO TaskSetManager: Starting task 3.0 in stage 10.0 (TID 14) (localhost, executor 0, partition 3, PROCESS_LOCAL, 9128 bytes) 
+26/10/25 03:24:30 INFO BlockManagerInfo: Added broadcast_7_piece0 in memory on localhost:40123 (size: 5.5 KiB, free: 123.7 MiB)
+26/10/25 03:24:30 INFO BlockManagerInfo: Added broadcast_7_piece0 in memory on localhost:42549 (size: 5.5 KiB, free: 127.2 MiB)
+26/10/25 03:24:30 INFO BlockManagerInfo: Added broadcast_7_piece0 in memory on localhost:35719 (size: 5.5 KiB, free: 123.7 MiB)
+26/10/25 03:24:30 INFO BlockManagerInfo: Added broadcast_7_piece0 in memory on localhost:39349 (size: 5.5 KiB, free: 127.2 MiB)
+26/10/25 03:24:30 WARN GarbageCollectionMetrics: To enable non-built-in garbage collector(s) List(G1 Concurrent GC), users should configure it(them) to spark.eventLog.gcMetrics.youngGenerationGarbageCollectors or spark.eventLog.gcMetrics.oldGenerationGarbageCollectors
+26/10/25 03:24:30 INFO TaskSetManager: Finished task 2.0 in stage 10.0 (TID 13) in 227 ms on localhost (executor 3) (1/4)
+26/10/25 03:24:30 INFO TaskSetManager: Finished task 1.0 in stage 10.0 (TID 12) in 242 ms on localhost (executor 1) (2/4)
+26/10/25 03:24:30 INFO TaskSetManager: Finished task 0.0 in stage 10.0 (TID 11) in 244 ms on localhost (executor 2) (3/4)
+26/10/25 03:24:31 INFO TaskSetManager: Finished task 3.0 in stage 10.0 (TID 14) in 292 ms on localhost (executor 0) (4/4)
+26/10/25 03:24:31 INFO DAGScheduler: ResultStage 10 (collect at /home/sparkuser/job.py:21) finished in 0.319 s
+26/10/25 03:24:31 INFO DAGScheduler: Job 7 is finished. Cancelling potential speculative or zombie tasks for this job
+26/10/25 03:24:31 INFO TaskSchedulerImpl: Removed TaskSet 10.0, whose tasks have all completed, from pool 
+26/10/25 03:24:31 INFO TaskSchedulerImpl: Killing all running tasks in stage 10: Stage finished
+26/10/25 03:24:31 INFO DAGScheduler: Job 7 finished: collect at /home/sparkuser/job.py:21, took 0.327993 s
+26/10/25 03:24:31 INFO CodeGenerator: Code generated in 24.180617 ms
+26/10/25 03:24:31 INFO MemoryStore: Block broadcast_8_piece0 stored as bytes in memory (estimated size 1083.0 B, free 434.3 MiB)
+26/10/25 03:24:31 INFO BlockManagerInfo: Added broadcast_8_piece0 in memory on localhost:42567 (size: 1083.0 B, free: 434.4 MiB)
+26/10/25 03:24:31 INFO SparkContext: Created broadcast 8 from collect at /home/sparkuser/job.py:21
+26/10/25 03:24:31 INFO CodeGenerator: Code generated in 105.74036 ms
+26/10/25 03:24:31 INFO DAGScheduler: Registering RDD 35 (collect at /home/sparkuser/job.py:21) as input to shuffle 3
+26/10/25 03:24:31 INFO DAGScheduler: Got map stage job 8 (collect at /home/sparkuser/job.py:21) with 4 output partitions
+26/10/25 03:24:31 INFO DAGScheduler: Final stage: ShuffleMapStage 11 (collect at /home/sparkuser/job.py:21)
+26/10/25 03:24:31 INFO DAGScheduler: Parents of final stage: List()
+26/10/25 03:24:31 INFO DAGScheduler: Missing parents: List()
+26/10/25 03:24:31 INFO DAGScheduler: Submitting ShuffleMapStage 11 (MapPartitionsRDD[35] at collect at /home/sparkuser/job.py:21), which has no missing parents
+26/10/25 03:24:31 INFO MemoryStore: Block broadcast_9 stored as values in memory (estimated size 46.6 KiB, free 434.3 MiB)
+26/10/25 03:24:31 INFO MemoryStore: Block broadcast_9_piece0 stored as bytes in memory (estimated size 21.3 KiB, free 434.3 MiB)
+26/10/25 03:24:31 INFO BlockManagerInfo: Added broadcast_9_piece0 in memory on localhost:42567 (size: 21.3 KiB, free: 434.4 MiB)
+26/10/25 03:24:31 INFO SparkContext: Created broadcast 9 from broadcast at DAGScheduler.scala:1585
+26/10/25 03:24:31 INFO DAGScheduler: Submitting 4 missing tasks from ShuffleMapStage 11 (MapPartitionsRDD[35] at collect at /home/sparkuser/job.py:21) (first 15 tasks are for partitions Vector(0, 1, 2, 3))
+26/10/25 03:24:31 INFO TaskSchedulerImpl: Adding task set 11.0 with 4 tasks resource profile 0
+26/10/25 03:24:31 INFO TaskSetManager: Starting task 0.0 in stage 11.0 (TID 15) (localhost, executor 1, partition 0, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 03:24:31 INFO TaskSetManager: Starting task 1.0 in stage 11.0 (TID 16) (localhost, executor 2, partition 1, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 03:24:31 INFO TaskSetManager: Starting task 2.0 in stage 11.0 (TID 17) (localhost, executor 0, partition 2, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 03:24:31 INFO TaskSetManager: Starting task 3.0 in stage 11.0 (TID 18) (localhost, executor 3, partition 3, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 03:24:31 INFO BlockManagerInfo: Added broadcast_9_piece0 in memory on localhost:39349 (size: 21.3 KiB, free: 127.2 MiB)
+26/10/25 03:24:31 INFO BlockManagerInfo: Added broadcast_9_piece0 in memory on localhost:35719 (size: 21.3 KiB, free: 123.7 MiB)
+26/10/25 03:24:31 INFO BlockManagerInfo: Added broadcast_9_piece0 in memory on localhost:42549 (size: 21.3 KiB, free: 127.2 MiB)
+26/10/25 03:24:31 INFO BlockManagerInfo: Added broadcast_9_piece0 in memory on localhost:40123 (size: 21.3 KiB, free: 123.7 MiB)
+26/10/25 03:24:31 INFO BlockManagerInfo: Added broadcast_8_piece0 in memory on localhost:39349 (size: 1083.0 B, free: 127.2 MiB)
+26/10/25 03:24:31 INFO BlockManagerInfo: Added broadcast_8_piece0 in memory on localhost:42549 (size: 1083.0 B, free: 127.2 MiB)
+26/10/25 03:24:32 INFO BlockManagerInfo: Added broadcast_8_piece0 in memory on localhost:35719 (size: 1083.0 B, free: 123.7 MiB)
+26/10/25 03:24:32 INFO TaskSetManager: Finished task 0.0 in stage 11.0 (TID 15) in 774 ms on localhost (executor 1) (1/4)
+26/10/25 03:24:32 INFO BlockManagerInfo: Added broadcast_8_piece0 in memory on localhost:40123 (size: 1083.0 B, free: 123.7 MiB)
+26/10/25 03:24:32 INFO TaskSetManager: Finished task 3.0 in stage 11.0 (TID 18) in 995 ms on localhost (executor 3) (2/4)
+26/10/25 03:24:32 INFO TaskSetManager: Finished task 2.0 in stage 11.0 (TID 17) in 1314 ms on localhost (executor 0) (3/4)
+26/10/25 03:24:32 INFO TaskSetManager: Finished task 1.0 in stage 11.0 (TID 16) in 1372 ms on localhost (executor 2) (4/4)
+26/10/25 03:24:32 INFO TaskSchedulerImpl: Removed TaskSet 11.0, whose tasks have all completed, from pool 
+26/10/25 03:24:32 INFO DAGScheduler: ShuffleMapStage 11 (collect at /home/sparkuser/job.py:21) finished in 1.411 s
+26/10/25 03:24:32 INFO DAGScheduler: looking for newly runnable stages
+26/10/25 03:24:32 INFO DAGScheduler: running: Set()
+26/10/25 03:24:32 INFO DAGScheduler: waiting: Set()
+26/10/25 03:24:32 INFO DAGScheduler: failed: Set()
+26/10/25 03:24:32 INFO ShufflePartitionsUtil: For shuffle(3), advisory target size: 67108864, actual target size 1048576, minimum partition size: 1048576
+26/10/25 03:24:32 INFO HashAggregateExec: spark.sql.codegen.aggregate.map.twolevel.enabled is set to true, but current version of codegened fast hashmap does not support this aggregate.
+26/10/25 03:24:32 INFO BlockManagerInfo: Removed broadcast_5_piece0 on localhost:42567 in memory (size: 10.0 KiB, free: 434.4 MiB)
+26/10/25 03:24:32 INFO BlockManagerInfo: Removed broadcast_5_piece0 on localhost:35719 in memory (size: 10.0 KiB, free: 123.7 MiB)
+26/10/25 03:24:32 INFO BlockManagerInfo: Removed broadcast_5_piece0 on localhost:40123 in memory (size: 10.0 KiB, free: 123.7 MiB)
+26/10/25 03:24:32 INFO CodeGenerator: Code generated in 25.81273 ms
+26/10/25 03:24:32 INFO SparkContext: Starting job: collect at /home/sparkuser/job.py:21
+26/10/25 03:24:32 INFO DAGScheduler: Got job 9 (collect at /home/sparkuser/job.py:21) with 1 output partitions
+26/10/25 03:24:32 INFO DAGScheduler: Final stage: ResultStage 13 (collect at /home/sparkuser/job.py:21)
+26/10/25 03:24:32 INFO DAGScheduler: Parents of final stage: List(ShuffleMapStage 12)
+26/10/25 03:24:32 INFO DAGScheduler: Missing parents: List()
+26/10/25 03:24:32 INFO DAGScheduler: Submitting ResultStage 13 (MapPartitionsRDD[38] at collect at /home/sparkuser/job.py:21), which has no missing parents
+26/10/25 03:24:32 INFO BlockManagerInfo: Removed broadcast_9_piece0 on localhost:42567 in memory (size: 21.3 KiB, free: 434.4 MiB)
+26/10/25 03:24:32 INFO BlockManagerInfo: Removed broadcast_9_piece0 on localhost:35719 in memory (size: 21.3 KiB, free: 123.7 MiB)
+26/10/25 03:24:32 INFO MemoryStore: Block broadcast_10 stored as values in memory (estimated size 41.8 KiB, free 434.3 MiB)
+26/10/25 03:24:32 INFO BlockManagerInfo: Removed broadcast_9_piece0 on localhost:40123 in memory (size: 21.3 KiB, free: 123.7 MiB)
+26/10/25 03:24:32 INFO BlockManagerInfo: Removed broadcast_9_piece0 on localhost:39349 in memory (size: 21.3 KiB, free: 127.2 MiB)
+26/10/25 03:24:32 INFO BlockManagerInfo: Removed broadcast_9_piece0 on localhost:42549 in memory (size: 21.3 KiB, free: 127.2 MiB)
+26/10/25 03:24:32 INFO MemoryStore: Block broadcast_10_piece0 stored as bytes in memory (estimated size 19.4 KiB, free 434.3 MiB)
+26/10/25 03:24:32 INFO BlockManagerInfo: Added broadcast_10_piece0 in memory on localhost:42567 (size: 19.4 KiB, free: 434.4 MiB)
+26/10/25 03:24:32 INFO SparkContext: Created broadcast 10 from broadcast at DAGScheduler.scala:1585
+26/10/25 03:24:32 INFO DAGScheduler: Submitting 1 missing tasks from ResultStage 13 (MapPartitionsRDD[38] at collect at /home/sparkuser/job.py:21) (first 15 tasks are for partitions Vector(0))
+26/10/25 03:24:32 INFO TaskSchedulerImpl: Adding task set 13.0 with 1 tasks resource profile 0
+26/10/25 03:24:32 INFO TaskSetManager: Starting task 0.0 in stage 13.0 (TID 19) (localhost, executor 0, partition 0, NODE_LOCAL, 9003 bytes) 
+26/10/25 03:24:32 INFO BlockManagerInfo: Removed broadcast_6_piece0 on localhost:42567 in memory (size: 6.0 KiB, free: 434.4 MiB)
+26/10/25 03:24:32 INFO BlockManagerInfo: Removed broadcast_6_piece0 on localhost:42549 in memory (size: 6.0 KiB, free: 127.2 MiB)
+26/10/25 03:24:32 INFO BlockManagerInfo: Added broadcast_10_piece0 in memory on localhost:35719 (size: 19.4 KiB, free: 123.7 MiB)
+26/10/25 03:24:33 INFO BlockManagerInfo: Removed broadcast_7_piece0 on localhost:42567 in memory (size: 5.5 KiB, free: 434.4 MiB)
+26/10/25 03:24:33 INFO BlockManagerInfo: Removed broadcast_7_piece0 on localhost:39349 in memory (size: 5.5 KiB, free: 127.2 MiB)
+26/10/25 03:24:33 INFO BlockManagerInfo: Removed broadcast_7_piece0 on localhost:40123 in memory (size: 5.5 KiB, free: 123.8 MiB)
+26/10/25 03:24:33 INFO BlockManagerInfo: Removed broadcast_7_piece0 on localhost:42549 in memory (size: 5.5 KiB, free: 127.2 MiB)
+26/10/25 03:24:33 INFO BlockManagerInfo: Removed broadcast_7_piece0 on localhost:35719 in memory (size: 5.5 KiB, free: 123.7 MiB)
+26/10/25 03:24:33 INFO MapOutputTrackerMasterEndpoint: Asked to send map output locations for shuffle 3 to 127.0.0.1:47876
+26/10/25 03:24:33 INFO TaskSetManager: Finished task 0.0 in stage 13.0 (TID 19) in 434 ms on localhost (executor 0) (1/1)
+26/10/25 03:24:33 INFO TaskSchedulerImpl: Removed TaskSet 13.0, whose tasks have all completed, from pool 
+26/10/25 03:24:33 INFO DAGScheduler: ResultStage 13 (collect at /home/sparkuser/job.py:21) finished in 0.471 s
+26/10/25 03:24:33 INFO DAGScheduler: Job 9 is finished. Cancelling potential speculative or zombie tasks for this job
+26/10/25 03:24:33 INFO TaskSchedulerImpl: Killing all running tasks in stage 13: Stage finished
+26/10/25 03:24:33 INFO DAGScheduler: Job 9 finished: collect at /home/sparkuser/job.py:21, took 0.478403 s
+26/10/25 03:24:33 INFO SparkContext: Starting job: count at /home/sparkuser/job.py:24
+26/10/25 03:24:33 INFO DAGScheduler: Registering RDD 41 (groupByKey at /home/sparkuser/job.py:24) as input to shuffle 4
+26/10/25 03:24:33 INFO DAGScheduler: Got job 10 (count at /home/sparkuser/job.py:24) with 8 output partitions
+26/10/25 03:24:33 INFO DAGScheduler: Final stage: ResultStage 15 (count at /home/sparkuser/job.py:24)
+26/10/25 03:24:33 INFO DAGScheduler: Parents of final stage: List(ShuffleMapStage 14)
+26/10/25 03:24:33 INFO DAGScheduler: Missing parents: List(ShuffleMapStage 14)
+26/10/25 03:24:33 INFO DAGScheduler: Submitting ShuffleMapStage 14 (PairwiseRDD[41] at groupByKey at /home/sparkuser/job.py:24), which has no missing parents
+26/10/25 03:24:33 INFO MemoryStore: Block broadcast_11 stored as values in memory (estimated size 12.8 KiB, free 434.3 MiB)
+26/10/25 03:24:33 INFO MemoryStore: Block broadcast_11_piece0 stored as bytes in memory (estimated size 7.8 KiB, free 434.3 MiB)
+26/10/25 03:24:33 INFO BlockManagerInfo: Added broadcast_11_piece0 in memory on localhost:42567 (size: 7.8 KiB, free: 434.4 MiB)
+26/10/25 03:24:33 INFO SparkContext: Created broadcast 11 from broadcast at DAGScheduler.scala:1585
+26/10/25 03:24:33 INFO DAGScheduler: Submitting 8 missing tasks from ShuffleMapStage 14 (PairwiseRDD[41] at groupByKey at /home/sparkuser/job.py:24) (first 15 tasks are for partitions Vector(0, 1, 2, 3, 4, 5, 6, 7))
+26/10/25 03:24:33 INFO TaskSchedulerImpl: Adding task set 14.0 with 8 tasks resource profile 0
+26/10/25 03:24:33 INFO TaskSetManager: Starting task 0.0 in stage 14.0 (TID 20) (localhost, executor 0, partition 0, PROCESS_LOCAL, 8972 bytes) 
+26/10/25 03:24:33 INFO TaskSetManager: Starting task 1.0 in stage 14.0 (TID 21) (localhost, executor 3, partition 1, PROCESS_LOCAL, 8972 bytes) 
+26/10/25 03:24:33 INFO TaskSetManager: Starting task 2.0 in stage 14.0 (TID 22) (localhost, executor 1, partition 2, PROCESS_LOCAL, 8972 bytes) 
+26/10/25 03:24:33 INFO TaskSetManager: Starting task 3.0 in stage 14.0 (TID 23) (localhost, executor 2, partition 3, PROCESS_LOCAL, 8972 bytes) 
+26/10/25 03:24:33 INFO BlockManagerInfo: Added broadcast_11_piece0 in memory on localhost:35719 (size: 7.8 KiB, free: 123.7 MiB)
+26/10/25 03:24:33 INFO BlockManagerInfo: Added broadcast_11_piece0 in memory on localhost:39349 (size: 7.8 KiB, free: 127.2 MiB)
+26/10/25 03:24:33 INFO BlockManagerInfo: Added broadcast_11_piece0 in memory on localhost:40123 (size: 7.8 KiB, free: 123.7 MiB)
+26/10/25 03:24:33 INFO BlockManagerInfo: Added broadcast_11_piece0 in memory on localhost:42549 (size: 7.8 KiB, free: 127.2 MiB)
+26/10/25 03:24:36 INFO TaskSetManager: Starting task 4.0 in stage 14.0 (TID 24) (localhost, executor 1, partition 4, PROCESS_LOCAL, 8972 bytes) 
+26/10/25 03:24:36 INFO TaskSetManager: Finished task 2.0 in stage 14.0 (TID 22) in 2701 ms on localhost (executor 1) (1/8)
+26/10/25 03:24:36 INFO PythonAccumulatorV2: Connected to AccumulatorServer at host: 127.0.0.1 port: 52457
+26/10/25 03:24:36 INFO TaskSetManager: Starting task 5.0 in stage 14.0 (TID 25) (localhost, executor 2, partition 5, PROCESS_LOCAL, 8972 bytes) 
+26/10/25 03:24:36 INFO TaskSetManager: Finished task 3.0 in stage 14.0 (TID 23) in 2845 ms on localhost (executor 2) (2/8)
+26/10/25 03:24:36 INFO TaskSetManager: Starting task 6.0 in stage 14.0 (TID 26) (localhost, executor 0, partition 6, PROCESS_LOCAL, 8972 bytes) 
+26/10/25 03:24:36 INFO TaskSetManager: Finished task 0.0 in stage 14.0 (TID 20) in 3046 ms on localhost (executor 0) (3/8)
+26/10/25 03:24:36 INFO TaskSetManager: Starting task 7.0 in stage 14.0 (TID 27) (localhost, executor 3, partition 7, PROCESS_LOCAL, 8972 bytes) 
+26/10/25 03:24:36 INFO TaskSetManager: Finished task 1.0 in stage 14.0 (TID 21) in 3076 ms on localhost (executor 3) (4/8)
+26/10/25 03:24:36 INFO TaskSetManager: Finished task 4.0 in stage 14.0 (TID 24) in 524 ms on localhost (executor 1) (5/8)
+26/10/25 03:24:36 INFO TaskSetManager: Finished task 5.0 in stage 14.0 (TID 25) in 435 ms on localhost (executor 2) (6/8)
+26/10/25 03:24:36 INFO TaskSetManager: Finished task 6.0 in stage 14.0 (TID 26) in 389 ms on localhost (executor 0) (7/8)
+26/10/25 03:24:36 INFO TaskSetManager: Finished task 7.0 in stage 14.0 (TID 27) in 377 ms on localhost (executor 3) (8/8)
+26/10/25 03:24:36 INFO TaskSchedulerImpl: Removed TaskSet 14.0, whose tasks have all completed, from pool 
+26/10/25 03:24:36 INFO DAGScheduler: ShuffleMapStage 14 (groupByKey at /home/sparkuser/job.py:24) finished in 3.473 s
+26/10/25 03:24:36 INFO DAGScheduler: looking for newly runnable stages
+26/10/25 03:24:36 INFO DAGScheduler: running: Set()
+26/10/25 03:24:36 INFO DAGScheduler: waiting: Set(ResultStage 15)
+26/10/25 03:24:36 INFO DAGScheduler: failed: Set()
+26/10/25 03:24:36 INFO DAGScheduler: Submitting ResultStage 15 (PythonRDD[44] at count at /home/sparkuser/job.py:24), which has no missing parents
+26/10/25 03:24:36 INFO MemoryStore: Block broadcast_12 stored as values in memory (estimated size 13.4 KiB, free 434.3 MiB)
+26/10/25 03:24:36 INFO MemoryStore: Block broadcast_12_piece0 stored as bytes in memory (estimated size 7.4 KiB, free 434.3 MiB)
+26/10/25 03:24:37 INFO BlockManagerInfo: Added broadcast_12_piece0 in memory on localhost:42567 (size: 7.4 KiB, free: 434.4 MiB)
+26/10/25 03:24:37 INFO SparkContext: Created broadcast 12 from broadcast at DAGScheduler.scala:1585
+26/10/25 03:24:37 INFO DAGScheduler: Submitting 8 missing tasks from ResultStage 15 (PythonRDD[44] at count at /home/sparkuser/job.py:24) (first 15 tasks are for partitions Vector(0, 1, 2, 3, 4, 5, 6, 7))
+26/10/25 03:24:37 INFO TaskSchedulerImpl: Adding task set 15.0 with 8 tasks resource profile 0
+26/10/25 03:24:37 INFO TaskSetManager: Starting task 0.0 in stage 15.0 (TID 28) (localhost, executor 0, partition 0, NODE_LOCAL, 8821 bytes) 
+26/10/25 03:24:37 INFO TaskSetManager: Starting task 1.0 in stage 15.0 (TID 29) (localhost, executor 1, partition 1, NODE_LOCAL, 8821 bytes) 
+26/10/25 03:24:37 INFO TaskSetManager: Starting task 2.0 in stage 15.0 (TID 30) (localhost, executor 3, partition 2, NODE_LOCAL, 8821 bytes) 
+26/10/25 03:24:37 INFO TaskSetManager: Starting task 3.0 in stage 15.0 (TID 31) (localhost, executor 2, partition 3, NODE_LOCAL, 8821 bytes) 
+26/10/25 03:24:37 INFO BlockManagerInfo: Added broadcast_12_piece0 in memory on localhost:42549 (size: 7.4 KiB, free: 127.2 MiB)
+26/10/25 03:24:37 INFO BlockManagerInfo: Added broadcast_12_piece0 in memory on localhost:35719 (size: 7.4 KiB, free: 123.7 MiB)
+26/10/25 03:24:37 INFO BlockManagerInfo: Added broadcast_12_piece0 in memory on localhost:40123 (size: 7.4 KiB, free: 123.7 MiB)
+26/10/25 03:24:37 INFO BlockManagerInfo: Added broadcast_12_piece0 in memory on localhost:39349 (size: 7.4 KiB, free: 127.2 MiB)
+26/10/25 03:24:37 INFO MapOutputTrackerMasterEndpoint: Asked to send map output locations for shuffle 4 to 127.0.0.1:47892
+26/10/25 03:24:37 INFO MapOutputTrackerMasterEndpoint: Asked to send map output locations for shuffle 4 to 127.0.0.1:47910
+26/10/25 03:24:37 INFO MapOutputTrackerMasterEndpoint: Asked to send map output locations for shuffle 4 to 127.0.0.1:47894
+26/10/25 03:24:37 INFO MapOutputTrackerMasterEndpoint: Asked to send map output locations for shuffle 4 to 127.0.0.1:47876
+26/10/25 03:24:37 INFO TaskSetManager: Starting task 4.0 in stage 15.0 (TID 32) (localhost, executor 0, partition 4, NODE_LOCAL, 8821 bytes) 
+26/10/25 03:24:37 INFO TaskSetManager: Starting task 5.0 in stage 15.0 (TID 33) (localhost, executor 1, partition 5, NODE_LOCAL, 8821 bytes) 
+26/10/25 03:24:37 INFO TaskSetManager: Finished task 0.0 in stage 15.0 (TID 28) in 400 ms on localhost (executor 0) (1/8)
+26/10/25 03:24:37 INFO TaskSetManager: Finished task 1.0 in stage 15.0 (TID 29) in 403 ms on localhost (executor 1) (2/8)
+26/10/25 03:24:37 INFO TaskSetManager: Starting task 6.0 in stage 15.0 (TID 34) (localhost, executor 3, partition 6, NODE_LOCAL, 8821 bytes) 
+26/10/25 03:24:37 INFO TaskSetManager: Starting task 7.0 in stage 15.0 (TID 35) (localhost, executor 2, partition 7, NODE_LOCAL, 8821 bytes) 
+26/10/25 03:24:37 INFO TaskSetManager: Finished task 2.0 in stage 15.0 (TID 30) in 428 ms on localhost (executor 3) (3/8)
+26/10/25 03:24:37 INFO TaskSetManager: Finished task 3.0 in stage 15.0 (TID 31) in 434 ms on localhost (executor 2) (4/8)
+26/10/25 03:24:37 INFO TaskSetManager: Finished task 4.0 in stage 15.0 (TID 32) in 259 ms on localhost (executor 0) (5/8)
+26/10/25 03:24:37 INFO TaskSetManager: Finished task 5.0 in stage 15.0 (TID 33) in 325 ms on localhost (executor 1) (6/8)
+26/10/25 03:24:37 INFO TaskSetManager: Finished task 7.0 in stage 15.0 (TID 35) in 344 ms on localhost (executor 2) (7/8)
+26/10/25 03:24:37 INFO TaskSetManager: Finished task 6.0 in stage 15.0 (TID 34) in 378 ms on localhost (executor 3) (8/8)
+26/10/25 03:24:37 INFO TaskSchedulerImpl: Removed TaskSet 15.0, whose tasks have all completed, from pool 
+26/10/25 03:24:37 INFO DAGScheduler: ResultStage 15 (count at /home/sparkuser/job.py:24) finished in 0.811 s
+26/10/25 03:24:37 INFO DAGScheduler: Job 10 is finished. Cancelling potential speculative or zombie tasks for this job
+26/10/25 03:24:37 INFO TaskSchedulerImpl: Killing all running tasks in stage 15: Stage finished
+26/10/25 03:24:37 INFO DAGScheduler: Job 10 finished: count at /home/sparkuser/job.py:24, took 4.306352 s
+26/10/25 03:24:37 INFO CodeGenerator: Code generated in 16.434556 ms
+26/10/25 03:24:37 INFO CodeGenerator: Code generated in 18.928544 ms
+26/10/25 03:24:38 INFO SparkContext: Starting job: collect at /home/sparkuser/job.py:27
+26/10/25 03:24:38 INFO DAGScheduler: Got job 11 (collect at /home/sparkuser/job.py:27) with 4 output partitions
+26/10/25 03:24:38 INFO DAGScheduler: Final stage: ResultStage 16 (collect at /home/sparkuser/job.py:27)
+26/10/25 03:24:38 INFO DAGScheduler: Parents of final stage: List()
+26/10/25 03:24:38 INFO DAGScheduler: Missing parents: List()
+26/10/25 03:24:38 INFO DAGScheduler: Submitting ResultStage 16 (MapPartitionsRDD[50] at collect at /home/sparkuser/job.py:27), which has no missing parents
+26/10/25 03:24:38 INFO MemoryStore: Block broadcast_13 stored as values in memory (estimated size 14.2 KiB, free 434.3 MiB)
+26/10/25 03:24:38 INFO MemoryStore: Block broadcast_13_piece0 stored as bytes in memory (estimated size 6.6 KiB, free 434.3 MiB)
+26/10/25 03:24:38 INFO BlockManagerInfo: Added broadcast_13_piece0 in memory on localhost:42567 (size: 6.6 KiB, free: 434.4 MiB)
+26/10/25 03:24:38 INFO SparkContext: Created broadcast 13 from broadcast at DAGScheduler.scala:1585
+26/10/25 03:24:38 INFO DAGScheduler: Submitting 4 missing tasks from ResultStage 16 (MapPartitionsRDD[50] at collect at /home/sparkuser/job.py:27) (first 15 tasks are for partitions Vector(0, 1, 2, 3))
+26/10/25 03:24:38 INFO TaskSchedulerImpl: Adding task set 16.0 with 4 tasks resource profile 0
+26/10/25 03:24:38 INFO TaskSetManager: Starting task 0.0 in stage 16.0 (TID 36) (localhost, executor 1, partition 0, PROCESS_LOCAL, 9128 bytes) 
+26/10/25 03:24:38 INFO TaskSetManager: Starting task 1.0 in stage 16.0 (TID 37) (localhost, executor 0, partition 1, PROCESS_LOCAL, 9128 bytes) 
+26/10/25 03:24:38 INFO TaskSetManager: Starting task 2.0 in stage 16.0 (TID 38) (localhost, executor 3, partition 2, PROCESS_LOCAL, 9128 bytes) 
+26/10/25 03:24:38 INFO TaskSetManager: Starting task 3.0 in stage 16.0 (TID 39) (localhost, executor 2, partition 3, PROCESS_LOCAL, 9128 bytes) 
+26/10/25 03:24:38 INFO BlockManagerInfo: Added broadcast_13_piece0 in memory on localhost:42549 (size: 6.6 KiB, free: 127.2 MiB)
+26/10/25 03:24:38 INFO BlockManagerInfo: Added broadcast_13_piece0 in memory on localhost:35719 (size: 6.6 KiB, free: 123.7 MiB)
+26/10/25 03:24:38 INFO BlockManagerInfo: Added broadcast_13_piece0 in memory on localhost:40123 (size: 6.6 KiB, free: 123.7 MiB)
+26/10/25 03:24:38 INFO BlockManagerInfo: Added broadcast_13_piece0 in memory on localhost:39349 (size: 6.6 KiB, free: 127.2 MiB)
+26/10/25 03:24:38 INFO TaskSetManager: Finished task 2.0 in stage 16.0 (TID 38) in 450 ms on localhost (executor 3) (1/4)
+26/10/25 03:24:38 INFO TaskSetManager: Finished task 3.0 in stage 16.0 (TID 39) in 464 ms on localhost (executor 2) (2/4)
+26/10/25 03:24:38 INFO TaskSetManager: Finished task 0.0 in stage 16.0 (TID 36) in 543 ms on localhost (executor 1) (3/4)
+26/10/25 03:24:38 INFO TaskSetManager: Finished task 1.0 in stage 16.0 (TID 37) in 742 ms on localhost (executor 0) (4/4)
+26/10/25 03:24:38 INFO TaskSchedulerImpl: Removed TaskSet 16.0, whose tasks have all completed, from pool 
+26/10/25 03:24:38 INFO DAGScheduler: ResultStage 16 (collect at /home/sparkuser/job.py:27) finished in 0.759 s
+26/10/25 03:24:38 INFO DAGScheduler: Job 11 is finished. Cancelling potential speculative or zombie tasks for this job
+26/10/25 03:24:38 INFO TaskSchedulerImpl: Killing all running tasks in stage 16: Stage finished
+26/10/25 03:24:38 INFO DAGScheduler: Job 11 finished: collect at /home/sparkuser/job.py:27, took 0.764416 s
+26/10/25 03:24:38 INFO DAGScheduler: Registering RDD 51 (collect at /home/sparkuser/job.py:27) as input to shuffle 5
+26/10/25 03:24:38 INFO DAGScheduler: Got map stage job 12 (collect at /home/sparkuser/job.py:27) with 4 output partitions
+26/10/25 03:24:38 INFO DAGScheduler: Final stage: ShuffleMapStage 17 (collect at /home/sparkuser/job.py:27)
+26/10/25 03:24:38 INFO DAGScheduler: Parents of final stage: List()
+26/10/25 03:24:38 INFO DAGScheduler: Missing parents: List()
+26/10/25 03:24:38 INFO DAGScheduler: Submitting ShuffleMapStage 17 (MapPartitionsRDD[51] at collect at /home/sparkuser/job.py:27), which has no missing parents
+26/10/25 03:24:38 INFO MemoryStore: Block broadcast_14 stored as values in memory (estimated size 16.0 KiB, free 434.3 MiB)
+26/10/25 03:24:38 INFO MemoryStore: Block broadcast_14_piece0 stored as bytes in memory (estimated size 7.6 KiB, free 434.3 MiB)
+26/10/25 03:24:38 INFO BlockManagerInfo: Added broadcast_14_piece0 in memory on localhost:42567 (size: 7.6 KiB, free: 434.4 MiB)
+26/10/25 03:24:38 INFO SparkContext: Created broadcast 14 from broadcast at DAGScheduler.scala:1585
+26/10/25 03:24:38 INFO DAGScheduler: Submitting 4 missing tasks from ShuffleMapStage 17 (MapPartitionsRDD[51] at collect at /home/sparkuser/job.py:27) (first 15 tasks are for partitions Vector(0, 1, 2, 3))
+26/10/25 03:24:38 INFO TaskSchedulerImpl: Adding task set 17.0 with 4 tasks resource profile 0
+26/10/25 03:24:38 INFO TaskSetManager: Starting task 0.0 in stage 17.0 (TID 40) (localhost, executor 2, partition 0, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 03:24:38 INFO TaskSetManager: Starting task 1.0 in stage 17.0 (TID 41) (localhost, executor 0, partition 1, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 03:24:38 INFO TaskSetManager: Starting task 2.0 in stage 17.0 (TID 42) (localhost, executor 3, partition 2, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 03:24:38 INFO TaskSetManager: Starting task 3.0 in stage 17.0 (TID 43) (localhost, executor 1, partition 3, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 03:24:38 INFO BlockManagerInfo: Added broadcast_14_piece0 in memory on localhost:35719 (size: 7.6 KiB, free: 123.7 MiB)
+26/10/25 03:24:38 INFO BlockManagerInfo: Added broadcast_14_piece0 in memory on localhost:40123 (size: 7.6 KiB, free: 123.7 MiB)
+26/10/25 03:24:38 INFO BlockManagerInfo: Added broadcast_14_piece0 in memory on localhost:39349 (size: 7.6 KiB, free: 127.2 MiB)
+26/10/25 03:24:38 INFO BlockManagerInfo: Added broadcast_14_piece0 in memory on localhost:42549 (size: 7.6 KiB, free: 127.2 MiB)
+26/10/25 03:24:39 INFO TaskSetManager: Finished task 1.0 in stage 17.0 (TID 41) in 474 ms on localhost (executor 0) (1/4)
+26/10/25 03:24:39 INFO TaskSetManager: Finished task 0.0 in stage 17.0 (TID 40) in 534 ms on localhost (executor 2) (2/4)
+26/10/25 03:24:39 INFO TaskSetManager: Finished task 2.0 in stage 17.0 (TID 42) in 556 ms on localhost (executor 3) (3/4)
+26/10/25 03:24:39 INFO TaskSetManager: Finished task 3.0 in stage 17.0 (TID 43) in 556 ms on localhost (executor 1) (4/4)
+26/10/25 03:24:39 INFO TaskSchedulerImpl: Removed TaskSet 17.0, whose tasks have all completed, from pool 
+26/10/25 03:24:39 INFO DAGScheduler: ShuffleMapStage 17 (collect at /home/sparkuser/job.py:27) finished in 0.580 s
+26/10/25 03:24:39 INFO DAGScheduler: looking for newly runnable stages
+26/10/25 03:24:39 INFO DAGScheduler: running: Set()
+26/10/25 03:24:39 INFO DAGScheduler: waiting: Set()
+26/10/25 03:24:39 INFO DAGScheduler: failed: Set()
+26/10/25 03:24:39 INFO ShufflePartitionsUtil: For shuffle(5), advisory target size: 67108864, actual target size 1048576, minimum partition size: 1048576
+26/10/25 03:24:39 INFO CodeGenerator: Code generated in 16.17201 ms
+26/10/25 03:24:39 INFO DAGScheduler: Registering RDD 54 (collect at /home/sparkuser/job.py:27) as input to shuffle 6
+26/10/25 03:24:39 INFO DAGScheduler: Got map stage job 13 (collect at /home/sparkuser/job.py:27) with 2 output partitions
+26/10/25 03:24:39 INFO DAGScheduler: Final stage: ShuffleMapStage 19 (collect at /home/sparkuser/job.py:27)
+26/10/25 03:24:39 INFO DAGScheduler: Parents of final stage: List(ShuffleMapStage 18)
+26/10/25 03:24:39 INFO DAGScheduler: Missing parents: List()
+26/10/25 03:24:39 INFO DAGScheduler: Submitting ShuffleMapStage 19 (MapPartitionsRDD[54] at collect at /home/sparkuser/job.py:27), which has no missing parents
+26/10/25 03:24:39 INFO MemoryStore: Block broadcast_15 stored as values in memory (estimated size 33.1 KiB, free 434.2 MiB)
+26/10/25 03:24:39 INFO MemoryStore: Block broadcast_15_piece0 stored as bytes in memory (estimated size 15.9 KiB, free 434.2 MiB)
+26/10/25 03:24:39 INFO BlockManagerInfo: Added broadcast_15_piece0 in memory on localhost:42567 (size: 15.9 KiB, free: 434.3 MiB)
+26/10/25 03:24:39 INFO SparkContext: Created broadcast 15 from broadcast at DAGScheduler.scala:1585
+26/10/25 03:24:39 INFO DAGScheduler: Submitting 2 missing tasks from ShuffleMapStage 19 (MapPartitionsRDD[54] at collect at /home/sparkuser/job.py:27) (first 15 tasks are for partitions Vector(0, 1))
+26/10/25 03:24:39 INFO TaskSchedulerImpl: Adding task set 19.0 with 2 tasks resource profile 0
+26/10/25 03:24:39 INFO TaskSetManager: Starting task 0.0 in stage 19.0 (TID 44) (localhost, executor 2, partition 0, NODE_LOCAL, 8992 bytes) 
+26/10/25 03:24:39 INFO TaskSetManager: Starting task 1.0 in stage 19.0 (TID 45) (localhost, executor 0, partition 1, NODE_LOCAL, 8992 bytes) 
+26/10/25 03:24:39 INFO BlockManagerInfo: Added broadcast_15_piece0 in memory on localhost:40123 (size: 15.9 KiB, free: 123.7 MiB)
+26/10/25 03:24:39 INFO BlockManagerInfo: Added broadcast_15_piece0 in memory on localhost:35719 (size: 15.9 KiB, free: 123.7 MiB)
+26/10/25 03:24:39 INFO MapOutputTrackerMasterEndpoint: Asked to send map output locations for shuffle 5 to 127.0.0.1:47876
+26/10/25 03:24:39 INFO MapOutputTrackerMasterEndpoint: Asked to send map output locations for shuffle 5 to 127.0.0.1:47910
+26/10/25 03:24:40 INFO TaskSetManager: Finished task 1.0 in stage 19.0 (TID 45) in 1192 ms on localhost (executor 0) (1/2)
+26/10/25 03:24:40 INFO BlockManagerInfo: Removed broadcast_11_piece0 on localhost:42567 in memory (size: 7.8 KiB, free: 434.3 MiB)
+26/10/25 03:24:40 INFO BlockManagerInfo: Removed broadcast_11_piece0 on localhost:39349 in memory (size: 7.8 KiB, free: 127.2 MiB)
+26/10/25 03:24:40 INFO BlockManagerInfo: Removed broadcast_11_piece0 on localhost:35719 in memory (size: 7.8 KiB, free: 123.7 MiB)
+26/10/25 03:24:40 INFO TaskSetManager: Finished task 0.0 in stage 19.0 (TID 44) in 1299 ms on localhost (executor 2) (2/2)
+26/10/25 03:24:40 INFO TaskSchedulerImpl: Removed TaskSet 19.0, whose tasks have all completed, from pool 
+26/10/25 03:24:40 INFO BlockManagerInfo: Removed broadcast_11_piece0 on localhost:40123 in memory (size: 7.8 KiB, free: 123.7 MiB)
+26/10/25 03:24:40 INFO DAGScheduler: ShuffleMapStage 19 (collect at /home/sparkuser/job.py:27) finished in 1.356 s
+26/10/25 03:24:40 INFO DAGScheduler: looking for newly runnable stages
+26/10/25 03:24:40 INFO DAGScheduler: running: Set()
+26/10/25 03:24:40 INFO DAGScheduler: waiting: Set()
+26/10/25 03:24:40 INFO DAGScheduler: failed: Set()
+26/10/25 03:24:40 INFO BlockManagerInfo: Removed broadcast_11_piece0 on localhost:42549 in memory (size: 7.8 KiB, free: 127.2 MiB)
+26/10/25 03:24:40 INFO BlockManagerInfo: Removed broadcast_10_piece0 on localhost:42567 in memory (size: 19.4 KiB, free: 434.4 MiB)
+26/10/25 03:24:40 INFO BlockManagerInfo: Removed broadcast_10_piece0 on localhost:35719 in memory (size: 19.4 KiB, free: 123.7 MiB)
+26/10/25 03:24:40 INFO CodeGenerator: Code generated in 20.901791 ms
+26/10/25 03:24:40 INFO BlockManagerInfo: Removed broadcast_13_piece0 on localhost:42567 in memory (size: 6.6 KiB, free: 434.4 MiB)
+26/10/25 03:24:40 INFO BlockManagerInfo: Removed broadcast_13_piece0 on localhost:39349 in memory (size: 6.6 KiB, free: 127.2 MiB)
+26/10/25 03:24:40 INFO BlockManagerInfo: Removed broadcast_13_piece0 on localhost:40123 in memory (size: 6.6 KiB, free: 123.7 MiB)
+26/10/25 03:24:40 INFO BlockManagerInfo: Removed broadcast_13_piece0 on localhost:42549 in memory (size: 6.6 KiB, free: 127.2 MiB)
+26/10/25 03:24:40 INFO BlockManagerInfo: Removed broadcast_13_piece0 on localhost:35719 in memory (size: 6.6 KiB, free: 123.7 MiB)
+26/10/25 03:24:40 INFO SparkContext: Starting job: collect at /home/sparkuser/job.py:27
+26/10/25 03:24:40 INFO DAGScheduler: Got job 14 (collect at /home/sparkuser/job.py:27) with 1 output partitions
+26/10/25 03:24:40 INFO DAGScheduler: Final stage: ResultStage 22 (collect at /home/sparkuser/job.py:27)
+26/10/25 03:24:40 INFO DAGScheduler: Parents of final stage: List(ShuffleMapStage 21)
+26/10/25 03:24:40 INFO DAGScheduler: Missing parents: List()
+26/10/25 03:24:40 INFO DAGScheduler: Submitting ResultStage 22 (MapPartitionsRDD[57] at collect at /home/sparkuser/job.py:27), which has no missing parents
+26/10/25 03:24:40 INFO MemoryStore: Block broadcast_16 stored as values in memory (estimated size 13.8 KiB, free 434.3 MiB)
+26/10/25 03:24:41 INFO BlockManagerInfo: Removed broadcast_12_piece0 on localhost:35719 in memory (size: 7.4 KiB, free: 123.7 MiB)
+26/10/25 03:24:41 INFO MemoryStore: Block broadcast_16_piece0 stored as bytes in memory (estimated size 6.4 KiB, free 434.3 MiB)
+26/10/25 03:24:41 INFO BlockManagerInfo: Removed broadcast_12_piece0 on localhost:42549 in memory (size: 7.4 KiB, free: 127.2 MiB)
+26/10/25 03:24:41 INFO BlockManagerInfo: Removed broadcast_12_piece0 on localhost:42567 in memory (size: 7.4 KiB, free: 434.4 MiB)
+26/10/25 03:24:41 INFO BlockManagerInfo: Removed broadcast_12_piece0 on localhost:39349 in memory (size: 7.4 KiB, free: 127.2 MiB)
+26/10/25 03:24:41 INFO BlockManagerInfo: Added broadcast_16_piece0 in memory on localhost:42567 (size: 6.4 KiB, free: 434.4 MiB)
+26/10/25 03:24:41 INFO SparkContext: Created broadcast 16 from broadcast at DAGScheduler.scala:1585
+26/10/25 03:24:41 INFO BlockManagerInfo: Removed broadcast_12_piece0 on localhost:40123 in memory (size: 7.4 KiB, free: 123.7 MiB)
+26/10/25 03:24:41 INFO DAGScheduler: Submitting 1 missing tasks from ResultStage 22 (MapPartitionsRDD[57] at collect at /home/sparkuser/job.py:27) (first 15 tasks are for partitions Vector(0))
+26/10/25 03:24:41 INFO TaskSchedulerImpl: Adding task set 22.0 with 1 tasks resource profile 0
+26/10/25 03:24:41 INFO TaskSetManager: Starting task 0.0 in stage 22.0 (TID 46) (localhost, executor 3, partition 0, NODE_LOCAL, 9003 bytes) 
+26/10/25 03:24:41 INFO BlockManagerInfo: Added broadcast_16_piece0 in memory on localhost:42549 (size: 6.4 KiB, free: 127.2 MiB)
+26/10/25 03:24:41 INFO MapOutputTrackerMasterEndpoint: Asked to send map output locations for shuffle 6 to 127.0.0.1:47892
+26/10/25 03:24:41 INFO BlockManagerInfo: Removed broadcast_15_piece0 on localhost:42567 in memory (size: 15.9 KiB, free: 434.4 MiB)
+26/10/25 03:24:41 INFO BlockManagerInfo: Removed broadcast_15_piece0 on localhost:35719 in memory (size: 15.9 KiB, free: 123.7 MiB)
+26/10/25 03:24:41 INFO BlockManagerInfo: Removed broadcast_15_piece0 on localhost:40123 in memory (size: 15.9 KiB, free: 123.7 MiB)
+26/10/25 03:24:41 INFO BlockManagerInfo: Removed broadcast_14_piece0 on localhost:39349 in memory (size: 7.6 KiB, free: 127.2 MiB)
+26/10/25 03:24:41 INFO BlockManagerInfo: Removed broadcast_14_piece0 on localhost:42567 in memory (size: 7.6 KiB, free: 434.4 MiB)
+26/10/25 03:24:41 INFO BlockManagerInfo: Removed broadcast_14_piece0 on localhost:42549 in memory (size: 7.6 KiB, free: 127.2 MiB)
+26/10/25 03:24:41 INFO BlockManagerInfo: Removed broadcast_14_piece0 on localhost:40123 in memory (size: 7.6 KiB, free: 123.8 MiB)
+26/10/25 03:24:41 INFO BlockManagerInfo: Removed broadcast_14_piece0 on localhost:35719 in memory (size: 7.6 KiB, free: 123.8 MiB)
+26/10/25 03:24:41 INFO TaskSetManager: Finished task 0.0 in stage 22.0 (TID 46) in 155 ms on localhost (executor 3) (1/1)
+26/10/25 03:24:41 INFO TaskSchedulerImpl: Removed TaskSet 22.0, whose tasks have all completed, from pool 
+26/10/25 03:24:41 INFO DAGScheduler: ResultStage 22 (collect at /home/sparkuser/job.py:27) finished in 0.238 s
+26/10/25 03:24:41 INFO DAGScheduler: Job 14 is finished. Cancelling potential speculative or zombie tasks for this job
+26/10/25 03:24:41 INFO TaskSchedulerImpl: Killing all running tasks in stage 22: Stage finished
+26/10/25 03:24:41 INFO DAGScheduler: Job 14 finished: collect at /home/sparkuser/job.py:27, took 0.255767 s
+26/10/25 03:24:41 INFO SparkContext: Starting job: count at /home/sparkuser/job.py:35
+26/10/25 03:24:41 INFO DAGScheduler: Got job 15 (count at /home/sparkuser/job.py:35) with 4 output partitions
+26/10/25 03:24:41 INFO DAGScheduler: Final stage: ResultStage 23 (count at /home/sparkuser/job.py:35)
+26/10/25 03:24:41 INFO DAGScheduler: Parents of final stage: List()
+26/10/25 03:24:41 INFO DAGScheduler: Missing parents: List()
+26/10/25 03:24:41 INFO DAGScheduler: Submitting ResultStage 23 (PythonRDD[59] at count at /home/sparkuser/job.py:35), which has no missing parents
+26/10/25 03:24:41 INFO MemoryStore: Block broadcast_17 stored as values in memory (estimated size 9.5 KiB, free 434.4 MiB)
+26/10/25 03:24:41 INFO MemoryStore: Block broadcast_17_piece0 stored as bytes in memory (estimated size 5.8 KiB, free 434.4 MiB)
+26/10/25 03:24:41 INFO BlockManagerInfo: Added broadcast_17_piece0 in memory on localhost:42567 (size: 5.8 KiB, free: 434.4 MiB)
+26/10/25 03:24:41 INFO SparkContext: Created broadcast 17 from broadcast at DAGScheduler.scala:1585
+26/10/25 03:24:41 INFO DAGScheduler: Submitting 4 missing tasks from ResultStage 23 (PythonRDD[59] at count at /home/sparkuser/job.py:35) (first 15 tasks are for partitions Vector(0, 1, 2, 3))
+26/10/25 03:24:41 INFO TaskSchedulerImpl: Adding task set 23.0 with 4 tasks resource profile 0
+26/10/25 03:24:41 INFO TaskSetManager: Starting task 0.0 in stage 23.0 (TID 47) (localhost, executor 0, partition 0, PROCESS_LOCAL, 8983 bytes) 
+26/10/25 03:24:41 INFO TaskSetManager: Starting task 1.0 in stage 23.0 (TID 48) (localhost, executor 2, partition 1, PROCESS_LOCAL, 8983 bytes) 
+26/10/25 03:24:41 INFO TaskSetManager: Starting task 2.0 in stage 23.0 (TID 49) (localhost, executor 1, partition 2, PROCESS_LOCAL, 8983 bytes) 
+26/10/25 03:24:41 INFO TaskSetManager: Starting task 3.0 in stage 23.0 (TID 50) (localhost, executor 3, partition 3, PROCESS_LOCAL, 8983 bytes) 
+26/10/25 03:24:41 INFO BlockManagerInfo: Added broadcast_17_piece0 in memory on localhost:35719 (size: 5.8 KiB, free: 123.7 MiB)
+26/10/25 03:24:41 INFO BlockManagerInfo: Added broadcast_17_piece0 in memory on localhost:42549 (size: 5.8 KiB, free: 127.2 MiB)
+26/10/25 03:24:41 INFO BlockManagerInfo: Added broadcast_17_piece0 in memory on localhost:40123 (size: 5.8 KiB, free: 123.7 MiB)
+26/10/25 03:24:41 INFO BlockManagerInfo: Added broadcast_17_piece0 in memory on localhost:39349 (size: 5.8 KiB, free: 127.2 MiB)
+26/10/25 03:24:41 INFO TaskSetManager: Finished task 2.0 in stage 23.0 (TID 49) in 212 ms on localhost (executor 1) (1/4)
+26/10/25 03:24:41 INFO TaskSetManager: Finished task 3.0 in stage 23.0 (TID 50) in 297 ms on localhost (executor 3) (2/4)
+26/10/25 03:24:41 WARN TaskSetManager: Lost task 1.0 in stage 23.0 (TID 48) (localhost executor 2): org.apache.spark.api.python.PythonException: Traceback (most recent call last):
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/worker.py", line 1247, in main
+    process()
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/worker.py", line 1237, in process
+    out_iter = func(split_index, iterator)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 5434, in pipeline_func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 5434, in pipeline_func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 5434, in pipeline_func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 840, in func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 2316, in <lambda>
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 2316, in <genexpr>
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/util.py", line 83, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/home/sparkuser/job.py", line 32, in bad
+    raise ValueError("deliberate failure for the sparkplain fixture: bad value 4242")
+ValueError: deliberate failure for the sparkplain fixture: bad value 4242
+
+	at org.apache.spark.api.python.BasePythonRunner$ReaderIterator.handlePythonException(PythonRunner.scala:572)
+	at org.apache.spark.api.python.PythonRunner$$anon$3.read(PythonRunner.scala:784)
+	at org.apache.spark.api.python.PythonRunner$$anon$3.read(PythonRunner.scala:766)
+	at org.apache.spark.api.python.BasePythonRunner$ReaderIterator.hasNext(PythonRunner.scala:525)
+	at org.apache.spark.InterruptibleIterator.hasNext(InterruptibleIterator.scala:37)
+	at scala.collection.Iterator.foreach(Iterator.scala:943)
+	at scala.collection.Iterator.foreach$(Iterator.scala:943)
+	at org.apache.spark.InterruptibleIterator.foreach(InterruptibleIterator.scala:28)
+	at scala.collection.generic.Growable.$plus$plus$eq(Growable.scala:62)
+	at scala.collection.generic.Growable.$plus$plus$eq$(Growable.scala:53)
+	at scala.collection.mutable.ArrayBuffer.$plus$plus$eq(ArrayBuffer.scala:105)
+	at scala.collection.mutable.ArrayBuffer.$plus$plus$eq(ArrayBuffer.scala:49)
+	at scala.collection.TraversableOnce.to(TraversableOnce.scala:366)
+	at scala.collection.TraversableOnce.to$(TraversableOnce.scala:364)
+	at org.apache.spark.InterruptibleIterator.to(InterruptibleIterator.scala:28)
+	at scala.collection.TraversableOnce.toBuffer(TraversableOnce.scala:358)
+	at scala.collection.TraversableOnce.toBuffer$(TraversableOnce.scala:358)
+	at org.apache.spark.InterruptibleIterator.toBuffer(InterruptibleIterator.scala:28)
+	at scala.collection.TraversableOnce.toArray(TraversableOnce.scala:345)
+	at scala.collection.TraversableOnce.toArray$(TraversableOnce.scala:339)
+	at org.apache.spark.InterruptibleIterator.toArray(InterruptibleIterator.scala:28)
+	at org.apache.spark.rdd.RDD.$anonfun$collect$2(RDD.scala:1049)
+	at org.apache.spark.SparkContext.$anonfun$runJob$5(SparkContext.scala:2433)
+	at org.apache.spark.scheduler.ResultTask.runTask(ResultTask.scala:93)
+	at org.apache.spark.TaskContext.runTaskWithListeners(TaskContext.scala:166)
+	at org.apache.spark.scheduler.Task.run(Task.scala:141)
+	at org.apache.spark.executor.Executor$TaskRunner.$anonfun$run$4(Executor.scala:620)
+	at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally(SparkErrorUtils.scala:64)
+	at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally$(SparkErrorUtils.scala:61)
+	at org.apache.spark.util.Utils$.tryWithSafeFinally(Utils.scala:94)
+	at org.apache.spark.executor.Executor$TaskRunner.run(Executor.scala:623)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+26/10/25 03:24:41 INFO TaskSetManager: Starting task 1.1 in stage 23.0 (TID 51) (localhost, executor 1, partition 1, PROCESS_LOCAL, 8983 bytes) 
+26/10/25 03:24:41 INFO TaskSetManager: Finished task 0.0 in stage 23.0 (TID 47) in 336 ms on localhost (executor 0) (3/4)
+26/10/25 03:24:41 INFO TaskSetManager: Lost task 1.1 in stage 23.0 (TID 51) on localhost, executor 1: org.apache.spark.api.python.PythonException (Traceback (most recent call last):
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/worker.py", line 1247, in main
+    process()
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/worker.py", line 1237, in process
+    out_iter = func(split_index, iterator)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 5434, in pipeline_func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 5434, in pipeline_func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 5434, in pipeline_func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 840, in func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 2316, in <lambda>
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 2316, in <genexpr>
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/util.py", line 83, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/home/sparkuser/job.py", line 32, in bad
+    raise ValueError("deliberate failure for the sparkplain fixture: bad value 4242")
+ValueError: deliberate failure for the sparkplain fixture: bad value 4242
+) [duplicate 1]
+26/10/25 03:24:41 ERROR TaskSetManager: Task 1 in stage 23.0 failed 2 times; aborting job
+26/10/25 03:24:41 INFO TaskSchedulerImpl: Removed TaskSet 23.0, whose tasks have all completed, from pool 
+26/10/25 03:24:41 INFO TaskSchedulerImpl: Cancelling stage 23
+26/10/25 03:24:41 INFO TaskSchedulerImpl: Killing all running tasks in stage 23: Stage cancelled: Job aborted due to stage failure: Task 1 in stage 23.0 failed 2 times, most recent failure: Lost task 1.1 in stage 23.0 (TID 51) (localhost executor 1): org.apache.spark.api.python.PythonException: Traceback (most recent call last):
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/worker.py", line 1247, in main
+    process()
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/worker.py", line 1237, in process
+    out_iter = func(split_index, iterator)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 5434, in pipeline_func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 5434, in pipeline_func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 5434, in pipeline_func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 840, in func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 2316, in <lambda>
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 2316, in <genexpr>
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/util.py", line 83, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/home/sparkuser/job.py", line 32, in bad
+    raise ValueError("deliberate failure for the sparkplain fixture: bad value 4242")
+ValueError: deliberate failure for the sparkplain fixture: bad value 4242
+
+	at org.apache.spark.api.python.BasePythonRunner$ReaderIterator.handlePythonException(PythonRunner.scala:572)
+	at org.apache.spark.api.python.PythonRunner$$anon$3.read(PythonRunner.scala:784)
+	at org.apache.spark.api.python.PythonRunner$$anon$3.read(PythonRunner.scala:766)
+	at org.apache.spark.api.python.BasePythonRunner$ReaderIterator.hasNext(PythonRunner.scala:525)
+	at org.apache.spark.InterruptibleIterator.hasNext(InterruptibleIterator.scala:37)
+	at scala.collection.Iterator.foreach(Iterator.scala:943)
+	at scala.collection.Iterator.foreach$(Iterator.scala:943)
+	at org.apache.spark.InterruptibleIterator.foreach(InterruptibleIterator.scala:28)
+	at scala.collection.generic.Growable.$plus$plus$eq(Growable.scala:62)
+	at scala.collection.generic.Growable.$plus$plus$eq$(Growable.scala:53)
+	at scala.collection.mutable.ArrayBuffer.$plus$plus$eq(ArrayBuffer.scala:105)
+	at scala.collection.mutable.ArrayBuffer.$plus$plus$eq(ArrayBuffer.scala:49)
+	at scala.collection.TraversableOnce.to(TraversableOnce.scala:366)
+	at scala.collection.TraversableOnce.to$(TraversableOnce.scala:364)
+	at org.apache.spark.InterruptibleIterator.to(InterruptibleIterator.scala:28)
+	at scala.collection.TraversableOnce.toBuffer(TraversableOnce.scala:358)
+	at scala.collection.TraversableOnce.toBuffer$(TraversableOnce.scala:358)
+	at org.apache.spark.InterruptibleIterator.toBuffer(InterruptibleIterator.scala:28)
+	at scala.collection.TraversableOnce.toArray(TraversableOnce.scala:345)
+	at scala.collection.TraversableOnce.toArray$(TraversableOnce.scala:339)
+	at org.apache.spark.InterruptibleIterator.toArray(InterruptibleIterator.scala:28)
+	at org.apache.spark.rdd.RDD.$anonfun$collect$2(RDD.scala:1049)
+	at org.apache.spark.SparkContext.$anonfun$runJob$5(SparkContext.scala:2433)
+	at org.apache.spark.scheduler.ResultTask.runTask(ResultTask.scala:93)
+	at org.apache.spark.TaskContext.runTaskWithListeners(TaskContext.scala:166)
+	at org.apache.spark.scheduler.Task.run(Task.scala:141)
+	at org.apache.spark.executor.Executor$TaskRunner.$anonfun$run$4(Executor.scala:620)
+	at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally(SparkErrorUtils.scala:64)
+	at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally$(SparkErrorUtils.scala:61)
+	at org.apache.spark.util.Utils$.tryWithSafeFinally(Utils.scala:94)
+	at org.apache.spark.executor.Executor$TaskRunner.run(Executor.scala:623)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+Driver stacktrace:
+26/10/25 03:24:41 INFO DAGScheduler: ResultStage 23 (count at /home/sparkuser/job.py:35) failed in 0.502 s due to Job aborted due to stage failure: Task 1 in stage 23.0 failed 2 times, most recent failure: Lost task 1.1 in stage 23.0 (TID 51) (localhost executor 1): org.apache.spark.api.python.PythonException: Traceback (most recent call last):
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/worker.py", line 1247, in main
+    process()
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/worker.py", line 1237, in process
+    out_iter = func(split_index, iterator)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 5434, in pipeline_func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 5434, in pipeline_func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 5434, in pipeline_func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 840, in func
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 2316, in <lambda>
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/rdd.py", line 2316, in <genexpr>
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/util.py", line 83, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/home/sparkuser/job.py", line 32, in bad
+    raise ValueError("deliberate failure for the sparkplain fixture: bad value 4242")
+ValueError: deliberate failure for the sparkplain fixture: bad value 4242
+
+	at org.apache.spark.api.python.BasePythonRunner$ReaderIterator.handlePythonException(PythonRunner.scala:572)
+	at org.apache.spark.api.python.PythonRunner$$anon$3.read(PythonRunner.scala:784)
+	at org.apache.spark.api.python.PythonRunner$$anon$3.read(PythonRunner.scala:766)
+	at org.apache.spark.api.python.BasePythonRunner$ReaderIterator.hasNext(PythonRunner.scala:525)
+	at org.apache.spark.InterruptibleIterator.hasNext(InterruptibleIterator.scala:37)
+	at scala.collection.Iterator.foreach(Iterator.scala:943)
+	at scala.collection.Iterator.foreach$(Iterator.scala:943)
+	at org.apache.spark.InterruptibleIterator.foreach(InterruptibleIterator.scala:28)
+	at scala.collection.generic.Growable.$plus$plus$eq(Growable.scala:62)
+	at scala.collection.generic.Growable.$plus$plus$eq$(Growable.scala:53)
+	at scala.collection.mutable.ArrayBuffer.$plus$plus$eq(ArrayBuffer.scala:105)
+	at scala.collection.mutable.ArrayBuffer.$plus$plus$eq(ArrayBuffer.scala:49)
+	at scala.collection.TraversableOnce.to(TraversableOnce.scala:366)
+	at scala.collection.TraversableOnce.to$(TraversableOnce.scala:364)
+	at org.apache.spark.InterruptibleIterator.to(InterruptibleIterator.scala:28)
+	at scala.collection.TraversableOnce.toBuffer(TraversableOnce.scala:358)
+	at scala.collection.TraversableOnce.toBuffer$(TraversableOnce.scala:358)
+	at org.apache.spark.InterruptibleIterator.toBuffer(InterruptibleIterator.scala:28)
+	at scala.collection.TraversableOnce.toArray(TraversableOnce.scala:345)
+	at scala.collection.TraversableOnce.toArray$(TraversableOnce.scala:339)
+	at org.apache.spark.InterruptibleIterator.toArray(InterruptibleIterator.scala:28)
+	at org.apache.spark.rdd.RDD.$anonfun$collect$2(RDD.scala:1049)
+	at org.apache.spark.SparkContext.$anonfun$runJob$5(SparkContext.scala:2433)
+	at org.apache.spark.scheduler.ResultTask.runTask(ResultTask.scala:93)
+	at org.apache.spark.TaskContext.runTaskWithListeners(TaskContext.scala:166)
+	at org.apache.spark.scheduler.Task.run(Task.scala:141)
+	at org.apache.spark.executor.Executor$TaskRunner.$anonfun$run$4(Executor.scala:620)
+	at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally(SparkErrorUtils.scala:64)
+	at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally$(SparkErrorUtils.scala:61)
+	at org.apache.spark.util.Utils$.tryWithSafeFinally(Utils.scala:94)
+	at org.apache.spark.executor.Executor$TaskRunner.run(Executor.scala:623)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+Driver stacktrace:
+26/10/25 03:24:41 INFO DAGScheduler: Job 15 failed: count at /home/sparkuser/job.py:35, took 0.511527 s
+caught the deliberate failure: Py4JJavaError
+26/10/25 03:24:41 INFO SparkContext: SparkContext is stopping with exitCode 0.
+26/10/25 03:24:41 INFO SparkUI: Stopped Spark web UI at http://localhost:4040
+26/10/25 03:24:41 INFO StandaloneSchedulerBackend: Shutting down all executors
+26/10/25 03:24:41 INFO StandaloneSchedulerBackend$StandaloneDriverEndpoint: Asking each executor to shut down
+26/10/25 03:24:41 INFO LocalSparkCluster: Shutting down local Spark cluster.
+26/10/25 03:24:41 INFO Master: Received unregister request from application app-20261025032411-0000
+26/10/25 03:24:41 INFO Master: Removing app app-20261025032411-0000
+26/10/25 03:24:41 INFO ExecutorRunner: Runner thread for executor app-20261025032411-0000/2 interrupted
+26/10/25 03:24:41 INFO ExecutorRunner: Killing process!
+26/10/25 03:24:41 INFO Worker: Asked to kill executor app-20261025032411-0000/0
+26/10/25 03:24:41 INFO ExecutorRunner: Runner thread for executor app-20261025032411-0000/0 interrupted
+26/10/25 03:24:41 INFO ExecutorRunner: Killing process!
+26/10/25 03:24:41 INFO Worker: Asked to kill executor app-20261025032411-0000/1
+26/10/25 03:24:41 INFO ExecutorRunner: Runner thread for executor app-20261025032411-0000/1 interrupted
+26/10/25 03:24:41 INFO ExecutorRunner: Killing process!
+26/10/25 03:24:41 INFO Worker: Asked to kill executor app-20261025032411-0000/3
+26/10/25 03:24:41 INFO ExecutorRunner: Runner thread for executor app-20261025032411-0000/3 interrupted
+26/10/25 03:24:41 INFO ExecutorRunner: Killing process!
+26/10/25 03:24:42 INFO Master: 127.0.0.1:51840 got disassociated, removing it.
+26/10/25 03:24:42 INFO Master: localhost:45015 got disassociated, removing it.
+26/10/25 03:24:42 INFO Master: Removing worker worker-20261025032410-localhost-45015 on localhost:45015
+26/10/25 03:24:42 INFO Master: Telling app of lost worker: worker-20261025032410-localhost-45015
+26/10/25 03:24:42 INFO Master: 127.0.0.1:51826 got disassociated, removing it.
+26/10/25 03:24:42 INFO Master: localhost:38691 got disassociated, removing it.
+26/10/25 03:24:42 INFO Master: Removing worker worker-20261025032410-localhost-38691 on localhost:38691
+26/10/25 03:24:42 INFO Master: Telling app of lost worker: worker-20261025032410-localhost-38691
+26/10/25 03:24:42 INFO Master: 127.0.0.1:51848 got disassociated, removing it.
+26/10/25 03:24:42 INFO Master: localhost:39297 got disassociated, removing it.
+26/10/25 03:24:42 INFO Master: Removing worker worker-20261025032410-localhost-39297 on localhost:39297
+26/10/25 03:24:42 INFO Master: Telling app of lost worker: worker-20261025032410-localhost-39297
+26/10/25 03:24:42 INFO Master: 127.0.0.1:51850 got disassociated, removing it.
+26/10/25 03:24:42 INFO Master: localhost:39097 got disassociated, removing it.
+26/10/25 03:24:42 INFO Master: Removing worker worker-20261025032410-localhost-39097 on localhost:39097
+26/10/25 03:24:42 INFO Master: Telling app of lost worker: worker-20261025032410-localhost-39097
+26/10/25 03:24:42 INFO MapOutputTrackerMasterEndpoint: MapOutputTrackerMasterEndpoint stopped!
+26/10/25 03:24:42 INFO MemoryStore: MemoryStore cleared
+26/10/25 03:24:42 INFO BlockManager: BlockManager stopped
+26/10/25 03:24:42 INFO BlockManagerMaster: BlockManagerMaster stopped
+26/10/25 03:24:42 INFO OutputCommitCoordinator$OutputCommitCoordinatorEndpoint: OutputCommitCoordinator stopped!
+26/10/25 03:24:42 INFO SparkContext: Successfully stopped SparkContext
+26/10/25 03:24:42 INFO ShutdownHookManager: Shutdown hook called
+26/10/25 03:24:42 INFO ShutdownHookManager: Deleting directory /tmp/spark-677f92f7-70dd-4e2c-b5cd-340a1b0a09e2/pyspark-dcbcfb7a-d09b-479a-a166-df746b65fd5a
+26/10/25 03:24:42 INFO ShutdownHookManager: Deleting directory /tmp/spark-677f92f7-70dd-4e2c-b5cd-340a1b0a09e2
+26/10/25 03:24:42 INFO ShutdownHookManager: Deleting directory /tmp/spark-c1069b3a-3041-4a10-8861-5dedea0075f5
