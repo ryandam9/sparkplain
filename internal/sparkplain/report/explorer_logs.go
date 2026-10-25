@@ -133,7 +133,7 @@ func logData(r *model.Report) ([]xLogFile, []xLogSource, *xCluster) {
 	}
 	for _, s := range r.Sources {
 		switch s.Name {
-		case "EMR API", "EC2 API", "Container logs", "Executor logs", "Step logs", "Node logs", "Application code", "CloudWatch", "CloudTrail":
+		case "EMR API", "EC2 API", "Container logs", "Executor logs", "Driver log", "Worker and master logs", "Step logs", "Node logs", "Application code", "CloudWatch", "CloudTrail":
 		default:
 			continue
 		}

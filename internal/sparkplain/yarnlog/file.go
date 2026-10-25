@@ -11,18 +11,20 @@ import (
 type FileKind string
 
 const (
-	ContainerStderr FileKind = "container-stderr"   // a driver's or executor's stderr (also prelaunch.err)
-	ContainerStdout FileKind = "container-stdout"   // a driver's or executor's stdout: Python tracebacks, prints
-	StepController  FileKind = "step-controller"    // EMR's step runner: the command and the step's exit code
-	StepStderr      FileKind = "step-stderr"        // spark-submit's own output: submission and YARN's final report
-	StepStdout      FileKind = "step-stdout"        // the step's stdout: in client mode, what the driver printed
-	NodeManager     FileKind = "nodemanager"        // a node's YARN NodeManager: container exits and memory kills
-	ResourceManager FileKind = "resourcemanager"    // the primary node's YARN ResourceManager: attempts and the app summary
-	Bootstrap       FileKind = "bootstrap"          // a node's bootstrap-actions/master.log
-	BootstrapOutput FileKind = "bootstrap-output"   // one bootstrap action's stderr or stdout
-	HBaseMaster     FileKind = "hbase-master"       // the HBase Master's log: region moves, splits, lost region servers
-	HBaseRegion     FileKind = "hbase-regionserver" // a region server's log: busy regions, scanner leases, slow calls, stops
-	Unread          FileKind = ""                   // a file sparkplain does not classify
+	ContainerStderr  FileKind = "container-stderr"   // a driver's or executor's stderr (also prelaunch.err)
+	ContainerStdout  FileKind = "container-stdout"   // a driver's or executor's stdout: Python tracebacks, prints
+	StepController   FileKind = "step-controller"    // EMR's step runner: the command and the step's exit code
+	StepStderr       FileKind = "step-stderr"        // spark-submit's own output: submission and YARN's final report
+	StepStdout       FileKind = "step-stdout"        // the step's stdout: in client mode, what the driver printed
+	NodeManager      FileKind = "nodemanager"        // a node's YARN NodeManager: container exits and memory kills
+	ResourceManager  FileKind = "resourcemanager"    // the primary node's YARN ResourceManager: attempts and the app summary
+	Bootstrap        FileKind = "bootstrap"          // a node's bootstrap-actions/master.log
+	BootstrapOutput  FileKind = "bootstrap-output"   // one bootstrap action's stderr or stdout
+	HBaseMaster      FileKind = "hbase-master"       // the HBase Master's log: region moves, splits, lost region servers
+	HBaseRegion      FileKind = "hbase-regionserver" // a region server's log: busy regions, scanner leases, slow calls, stops
+	StandaloneWorker FileKind = "standalone-worker"  // a Spark Standalone worker's daemon log: executors launched and how they ended
+	StandaloneMaster FileKind = "standalone-master"  // a Spark Standalone master's daemon log: applications and executors placed
+	Unread           FileKind = ""                   // a file sparkplain does not classify
 )
 
 // File is what a log's path says about it, under the cluster's log root
@@ -109,6 +111,26 @@ func DescribeStandaloneDriver(key string) File {
 	}
 	if i >= 0 {
 		f.Host = parts[i]
+	}
+	return f
+}
+
+// standaloneDaemonRE reads a Standalone daemon log's name, as
+// spark-daemon.sh writes it: spark-<user>-org.apache.spark.deploy.worker.
+// Worker-<n>-<host>.out, rolled at each start to .out.1 to .out.5.
+var standaloneDaemonRE = regexp.MustCompile(`^spark-.*-org\.apache\.spark\.deploy\.(worker\.Worker|master\.Master)-\d+-(.+)\.out(?:\.\d+)?$`)
+
+// DescribeStandaloneDaemon reads the key of a Spark Standalone worker's or
+// master's daemon log, anywhere in a copy (usually $SPARK_HOME/logs/); the
+// host is the one in its name.
+func DescribeStandaloneDaemon(key string) File {
+	m := standaloneDaemonRE.FindStringSubmatch(path.Base(key))
+	if m == nil {
+		return File{}
+	}
+	f := File{Host: m[2], Kind: StandaloneMaster}
+	if m[1] == "worker.Worker" {
+		f.Kind = StandaloneWorker
 	}
 	return f
 }

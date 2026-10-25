@@ -556,7 +556,12 @@ func (c *Collection) standalone(ctx context.Context, st source.Store, p Plan) {
 		return
 	}
 	var drivers []source.Object
+	daemons := group{st: st, plan: p}
 	for _, o := range objs {
+		if f := DescribeStandaloneDaemon(o.Key); f.Kind != Unread {
+			daemons.offer(o, f, true, "")
+			continue
+		}
 		if f := DescribeStandaloneDriver(o.Key); f.Kind != Unread && strings.Count(strings.TrimPrefix(o.Key, p.Root), "/") <= 3 {
 			drivers = append(drivers, o)
 			continue
@@ -596,6 +601,27 @@ func (c *Collection) standalone(ctx context.Context, st source.Store, p Plan) {
 		src.Detail = fmt.Sprintf("%s from %s, in the Spark Standalone work folders.%s", g.summary(), who, g.problems())
 		src.Brief = fmt.Sprintf("%s from %s", model.Plural(len(g.files), "file", "files"), who)
 	}
+	src.Files = g.sourceFiles
+	c.Files = append(c.Files, g.files...)
+	c.Sources = append(c.Sources, src)
+	c.standaloneDaemons(ctx, st, p, &daemons)
+}
+
+// standaloneDaemons reads the Standalone workers' and master's daemon
+// logs found in the copy: how each executor ended, and where it ran. A
+// local-cluster run has none, as its workers run in the driver's process.
+func (c *Collection) standaloneDaemons(ctx context.Context, st source.Store, p Plan, g *group) {
+	src := model.SourceStatus{Name: "Worker and master logs", Location: st.Location(p.Root)}
+	g.read(ctx)
+	if len(g.picked) == 0 {
+		src.Status = "none"
+		src.Detail = "No Spark Standalone worker or master logs in the -from folder. A worker and the master write them to $SPARK_HOME/logs (or SPARK_LOG_DIR) on their machines. A local-cluster run has none."
+		c.Sources = append(c.Sources, src)
+		return
+	}
+	src.Status, src.Class = g.status()
+	src.Detail = fmt.Sprintf("%s: how each executor ended, and where it ran.%s", g.summary(), g.problems())
+	src.Brief = model.Plural(len(g.files), "daemon log", "daemon logs")
 	src.Files = g.sourceFiles
 	c.Files = append(c.Files, g.files...)
 	c.Sources = append(c.Sources, src)

@@ -334,6 +334,16 @@ var (
 // YARN's own negative codes (ContainerExitStatus), Spark's executor codes
 // (SparkExitCode, ExecutorExitCode), Spark's application master codes, and
 // signals (128 + n).
+// StandaloneExitMeaning is what a Spark Standalone executor's exit status
+// means. As on YARN, but no memory limit kills it: SIGKILL comes from the
+// machine's out-of-memory killer, a person or a script.
+func StandaloneExitMeaning(code int) string {
+	if code == 137 {
+		return "killed with signal 9 (SIGKILL): without YARN, usually the machine's out-of-memory killer, or a person or script that stopped it"
+	}
+	return ContainerExitMeaning(code, false)
+}
+
 func ContainerExitMeaning(code int, driver bool) string {
 	if driver {
 		switch code {
