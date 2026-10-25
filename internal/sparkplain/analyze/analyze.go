@@ -101,6 +101,26 @@ type ctx struct {
 
 func (c *ctx) add(f model.Finding) { c.findings = append(c.findings, f) }
 
+// localMode says the run used local mode (local, local[4], local[*],
+// local[4,2]): one process, the driver, runs every task, and no executor
+// is started. slots are its task slots, from the driver's cores.
+func (c *ctx) localMode() (slots int, ok bool) {
+	if c.log == nil {
+		return 0, false
+	}
+	m := c.log.Application.Master
+	if m != "local" && !strings.HasPrefix(m, "local[") {
+		return 0, false
+	}
+	if d := c.log.Driver; d != nil {
+		slots = d.Cores
+	}
+	if slots == 0 {
+		slots = 1
+	}
+	return slots, true
+}
+
 // onYARN says the run used YARN, as on EMR: the event log's master, or,
 // without one, a Spark Standalone layout in the logs (executor logs named
 // by their folder, or a worker's or master's daemon log) says it did not.

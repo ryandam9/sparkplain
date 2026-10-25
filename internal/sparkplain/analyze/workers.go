@@ -24,6 +24,18 @@ func workerCapacity(c *ctx, r *model.Report) {
 		return
 	}
 	r.Nodes.Manager = "standalone"
+	if _, local := c.localMode(); local {
+		// One process: the driver's host ran every task, in the driver.
+		r.Nodes.Manager = "local"
+		if d := c.log.Driver; d != nil {
+			for i := range r.Nodes.Hosts {
+				if h := &r.Nodes.Hosts[i]; h.Driver {
+					h.Cores, h.Tasks = d.Cores, d.Tasks
+				}
+			}
+		}
+		return
+	}
 	// The most executors alive at once on each host, as the YARN path has
 	// it from the containers: Standalone starts new ones for lost ones, so
 	// how many it started is not how many ran together.

@@ -142,6 +142,9 @@ func analyzeMemory(c *ctx, r *model.Report) {
 }
 
 func memoryLede(c *ctx, m model.MemoryConfig) string {
+	if _, local := c.localMode(); local {
+		return fmt.Sprintf("In local mode the driver ran every task, so the tasks shared its %s Java heap, which spark.driver.memory sets. spark.executor.memory has no effect.", model.Bytes(m.DriverHeapBytes))
+	}
 	if !c.onYARN() {
 		// Spark Standalone and local-cluster size an executor by its heap
 		// only: spark.executor.memoryOverhead is for YARN and Kubernetes.
