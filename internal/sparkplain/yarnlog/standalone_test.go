@@ -53,8 +53,8 @@ func TestDescribeStandaloneDriver(t *testing.T) {
 func TestDescribeStandaloneDaemon(t *testing.T) {
 	t.Parallel()
 	for key, want := range map[string]File{
-		"logs/spark-sparkuser-org.apache.spark.deploy.worker.Worker-1-vm.out":              {Kind: StandaloneWorker, Host: "vm"},
-		"w2/logs/spark-ec2-user-org.apache.spark.deploy.master.Master-1-ip-10-0-0-5.out.2": {Kind: StandaloneMaster, Host: "ip-10-0-0-5"},
+		"logs/spark-sparkuser-org.apache.spark.deploy.worker.Worker-1-vm.out":              {Kind: StandaloneWorker, Host: "vm", Daemon: "worker-1"},
+		"w2/logs/spark-ec2-user-org.apache.spark.deploy.master.Master-1-ip-10-0-0-5.out.2": {Kind: StandaloneMaster, Host: "ip-10-0-0-5", Daemon: "master-1"},
 		"logs/spark-sparkuser-org.apache.spark.deploy.history.HistoryServer-1-vm.out":      {},
 		"logs/worker.log": {},
 	} {
@@ -93,6 +93,12 @@ func TestStandaloneDaemonLines(t *testing.T) {
 	}
 	if want := []string{"container-exit 1 137 vm", "container-exit 3 52 vm"}; !slices.Equal(got, want) {
 		t.Errorf("worker lines: %q, want %q", got, want)
+	}
+	// What the worker offered Spark, at each of its starts.
+	start := "26/10/25 05:42:35 INFO Worker: Starting Spark worker localhost:41579 with 4 cores, 4.0 GiB RAM\n"
+	res, _ = Classify(strings.NewReader(start), "worker.out", File{Kind: StandaloneWorker, Host: "vm", Daemon: "worker-1"}, Options{AppID: app})
+	if len(res.Lines) != 1 || res.Lines[0].Kind != model.LogWorkerCapacity || res.Lines[0].Fields["cores"] != "4" || res.Lines[0].Fields["memory"] != "4.0 GiB" || res.Lines[0].Fields["worker"] != "worker-1" || res.Lines[0].Fields["host"] != "localhost" {
+		t.Errorf("worker start: %+v", res.Lines)
 	}
 	master := "26/10/25 05:42:47 INFO Master: Launching executor " + app + "/2 on worker worker-20261025054235-ip-10-0-0-7-41579\n"
 	res, _ = Classify(strings.NewReader(master), "master.out", File{Kind: StandaloneMaster, Host: "vm"}, Options{AppID: app})

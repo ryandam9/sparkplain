@@ -159,6 +159,14 @@ type Host struct {
 	// offered YARN, from the ResourceManager or NodeManager log.
 	YARNMemoryBytes int64 `json:"yarnMemoryBytes,omitempty"`
 	YARNVCores      int   `json:"yarnVCores,omitempty"`
+	// Workers, WorkerCores and WorkerMemoryBytes are what the Spark
+	// Standalone workers on the host offered Spark (a run not on YARN):
+	// from each worker's log ("Starting Spark worker … with 4 cores, 4.0
+	// GiB RAM"), or from the master URL of a local-cluster run.
+	Workers           int    `json:"workers,omitempty"`
+	WorkerCores       int    `json:"workerCores,omitempty"`
+	WorkerMemoryBytes int64  `json:"workerMemoryBytes,omitempty"`
+	WorkerSource      Source `json:"workerSource,omitzero"`
 	// DriverContainerBytes is the driver's (application master's) YARN
 	// container when it ran here, and ExecutorContainerBytes the size of
 	// each executor container, from the logs.
