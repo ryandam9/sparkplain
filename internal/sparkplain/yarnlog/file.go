@@ -38,6 +38,9 @@ type File struct {
 	// Executor is a Spark Standalone executor's ID, from its log's folder
 	// (work/<app-id>/<executor-id>/stderr); its logs have no container.
 	Executor string
+	// Daemon is a Spark Standalone daemon log's process ("worker-1"), so a
+	// worker restarted into rolled logs (.out.1, …) is one worker.
+	Daemon string
 	// Host and Hour are an HBase log's host and, for a log rolled each
 	// hour, the hour (UTC) it holds; zero for the current log.
 	Host string
@@ -118,7 +121,7 @@ func DescribeStandaloneDriver(key string) File {
 // standaloneDaemonRE reads a Standalone daemon log's name, as
 // spark-daemon.sh writes it: spark-<user>-org.apache.spark.deploy.worker.
 // Worker-<n>-<host>.out, rolled at each start to .out.1 to .out.5.
-var standaloneDaemonRE = regexp.MustCompile(`^spark-.*-org\.apache\.spark\.deploy\.(worker\.Worker|master\.Master)-\d+-(.+)\.out(?:\.\d+)?$`)
+var standaloneDaemonRE = regexp.MustCompile(`^spark-.*-org\.apache\.spark\.deploy\.(worker\.Worker|master\.Master)-(\d+)-(.+)\.out(?:\.\d+)?$`)
 
 // DescribeStandaloneDaemon reads the key of a Spark Standalone worker's or
 // master's daemon log, anywhere in a copy (usually $SPARK_HOME/logs/); the
@@ -128,9 +131,9 @@ func DescribeStandaloneDaemon(key string) File {
 	if m == nil {
 		return File{}
 	}
-	f := File{Host: m[2], Kind: StandaloneMaster}
+	f := File{Host: m[3], Kind: StandaloneMaster, Daemon: "master-" + m[2]}
 	if m[1] == "worker.Worker" {
-		f.Kind = StandaloneWorker
+		f.Kind, f.Daemon = StandaloneWorker, "worker-"+m[2]
 	}
 	return f
 }

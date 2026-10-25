@@ -325,6 +325,14 @@ func (c *classifier) header(h header, line string) {
 		}
 		return
 	case StandaloneWorker, StandaloneMaster:
+		if m := saWorkerStartRE.FindStringSubmatch(msg); m != nil && c.res.File.Kind == StandaloneWorker {
+			// What the worker offered Spark: kept for every start, as the
+			// analysis picks the one in force when the application ran.
+			l := c.entry(model.LogWorkerCapacity, model.Info, h.time, msg)
+			l.Fields["host"], l.Fields["cores"], l.Fields["memory"], l.Fields["worker"] = m[1], m[2], m[3], c.res.File.Daemon
+			c.add(l)
+			return
+		}
 		// A daemon's log holds every application's executors: only lines
 		// that name this one's are read.
 		if c.opt.AppID != "" && strings.Contains(msg, c.opt.AppID+"/") {
@@ -1033,8 +1041,9 @@ func (c *classifier) nodeManager(h header) {
 // A Standalone worker logs how each executor ended; "Unknown Executor …"
 // lines repeat ones already gone when the worker shuts down.
 var (
-	saExecEndRE    = regexp.MustCompile(`^Executor (app-[\w-]+)/(\d+) finished with state (\w+)(?: message (.*?))? exitStatus (-?\d+)$`)
-	saExecLaunchRE = regexp.MustCompile(`^Launching executor (app-[\w-]+)/(\d+) on worker worker-\d+-(.+)-\d+$`)
+	saExecEndRE     = regexp.MustCompile(`^Executor (app-[\w-]+)/(\d+) finished with state (\w+)(?: message (.*?))? exitStatus (-?\d+)$`)
+	saWorkerStartRE = regexp.MustCompile(`^Starting Spark worker (\S+?):\d+ with (\d+) cores, ([\d.]+ [KMGT]i?B) RAM$`)
+	saExecLaunchRE  = regexp.MustCompile(`^Launching executor (app-[\w-]+)/(\d+) on worker worker-\d+-(.+)-\d+$`)
 )
 
 // standaloneDaemon reads a Standalone worker's or master's line about one

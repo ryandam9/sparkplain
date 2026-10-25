@@ -319,3 +319,46 @@ func TestStandaloneWording(t *testing.T) {
 		}
 	}
 }
+
+// What the workers offered Spark: from the worker's log on a Standalone
+// run, from the master URL on a local-cluster run (4 workers of 1 core and
+// 1 GiB). Without the worker's log the nodes section says where it is; an
+// EMR run has no workers.
+func TestWorkerCapacity(t *testing.T) {
+	for _, c := range []struct{ app, from string }{
+		{"app-20261025032316-0000", "cluster"},
+		{"app-20261025032411-0000", "local-cluster"},
+		{"app-20261025054247-0000", "lost-executors"},
+	} {
+		out := t.TempDir()
+		if code, _, errs := runCLI(t, "-app-id", c.app, "-eventlog", filepath.Join(fx, c.app), "-from", filepath.Join(standalone, c.from), "-out", out, "-format", "json"); code != exitOK {
+			t.Fatalf("%s: exit %d: %s", c.from, code, errs)
+		}
+		h := readReport(t, out).Nodes.Hosts
+		workers := 1
+		if c.from == "local-cluster" {
+			workers = 4
+		}
+		if len(h) != 1 || h[0].Workers != workers || h[0].WorkerCores != 4 || h[0].WorkerMemoryBytes != 4<<30 || h[0].WorkerSource.File == "" {
+			t.Errorf("%s: hosts %+v", c.from, h)
+		}
+	}
+	out := t.TempDir()
+	const app = "app-20261025032316-0000"
+	if code, _, errs := runCLI(t, "-app-id", app, "-eventlog", filepath.Join(fx, app), "-out", out, "-format", "json"); code != exitOK && code != exitPartial {
+		t.Fatalf("event log only: exit %d: %s", code, errs)
+	}
+	r := readReport(t, out)
+	if r.Nodes.Hosts[0].Workers != 0 || !slices.ContainsFunc(r.Nodes.Missing, func(m string) bool { return strings.Contains(m, "worker's log") }) {
+		t.Errorf("without the worker's log: hosts %+v, missing %q", r.Nodes.Hosts, r.Nodes.Missing)
+	}
+	emr := t.TempDir()
+	if code, _, errs := runCLI(t, "-app-id", "application_1790380000000_0049", "-eventlog", filepath.Join(fx, "application_1790380000000_0049"), "-from", filepath.Join(emrlogs, "j-FIXTURE0049CLUSTER"), "-out", emr, "-format", "json"); code != exitOK && code != exitPartial {
+		t.Fatalf("EMR run: exit %d: %s", code, errs)
+	}
+	for _, h := range readReport(t, emr).Nodes.Hosts {
+		if h.Workers != 0 || h.WorkerCores != 0 {
+			t.Errorf("EMR host %s has Standalone workers: %+v", h.Name, h)
+		}
+	}
+}

@@ -35,6 +35,7 @@ const (
 	LogError        LogKind = "error"          // any other ERROR or FATAL line
 	// What YARN had and what Spark asked for (phase 3, step 2).
 	LogNodeCapacity      LogKind = "node-capacity"      // a node's YARN memory and vCores
+	LogWorkerCapacity    LogKind = "worker-capacity"    // the cores and memory a Spark Standalone worker offered Spark
 	LogContainerAssigned LogKind = "container-assigned" // YARN placed one of the application's containers
 	LogYarnRequest       LogKind = "yarn-request"       // Spark asked YARN for (or cancelled) containers of a size
 	// Where each attempt ran, and nodes YARN said were leaving.
