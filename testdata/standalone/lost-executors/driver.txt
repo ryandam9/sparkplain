@@ -1,0 +1,344 @@
+26/10/25 05:42:46 INFO SparkContext: Running Spark version 3.5.3
+26/10/25 05:42:46 INFO SparkContext: OS info Linux, 6.18.44-fc-v153, amd64
+26/10/25 05:42:46 INFO SparkContext: Java version 21.0.10
+26/10/25 05:42:46 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+26/10/25 05:42:46 INFO ResourceUtils: ==============================================================
+26/10/25 05:42:46 INFO ResourceUtils: No custom resources configured for spark.driver.
+26/10/25 05:42:46 INFO ResourceUtils: ==============================================================
+26/10/25 05:42:46 INFO SparkContext: Submitted application: sparkplain_lost_executors
+26/10/25 05:42:46 INFO ResourceProfile: Default ResourceProfile created, executor resources: Map(cores -> name: cores, amount: 1, script: , vendor: , memory -> name: memory, amount: 512, script: , vendor: , offHeap -> name: offHeap, amount: 0, script: , vendor: ), task resources: Map(cpus -> name: cpus, amount: 1.0)
+26/10/25 05:42:46 INFO ResourceProfile: Limiting resource is cpus at 1 tasks per executor
+26/10/25 05:42:46 INFO ResourceProfileManager: Added ResourceProfile id: 0
+26/10/25 05:42:46 INFO SecurityManager: Changing view acls to: sparkuser
+26/10/25 05:42:46 INFO SecurityManager: Changing modify acls to: sparkuser
+26/10/25 05:42:46 INFO SecurityManager: Changing view acls groups to: 
+26/10/25 05:42:46 INFO SecurityManager: Changing modify acls groups to: 
+26/10/25 05:42:46 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: sparkuser; groups with view permissions: EMPTY; users with modify permissions: sparkuser; groups with modify permissions: EMPTY
+26/10/25 05:42:47 INFO Utils: Successfully started service 'sparkDriver' on port 45213.
+26/10/25 05:42:47 INFO SparkEnv: Registering MapOutputTracker
+26/10/25 05:42:47 INFO SparkEnv: Registering BlockManagerMaster
+26/10/25 05:42:47 INFO BlockManagerMasterEndpoint: Using org.apache.spark.storage.DefaultTopologyMapper for getting topology information
+26/10/25 05:42:47 INFO BlockManagerMasterEndpoint: BlockManagerMasterEndpoint up
+26/10/25 05:42:47 INFO SparkEnv: Registering BlockManagerMasterHeartbeat
+26/10/25 05:42:47 INFO DiskBlockManager: Created local directory at /tmp/blockmgr-492b3229-5caf-489c-be74-46fc1a598660
+26/10/25 05:42:47 INFO MemoryStore: MemoryStore started with capacity 434.4 MiB
+26/10/25 05:42:47 INFO SparkEnv: Registering OutputCommitCoordinator
+26/10/25 05:42:47 INFO JettyUtils: Start Jetty 127.0.0.1:4040 for SparkUI
+26/10/25 05:42:47 INFO Utils: Successfully started service 'SparkUI' on port 4040.
+26/10/25 05:42:47 INFO StandaloneAppClient$ClientEndpoint: Connecting to master spark://localhost:7077...
+26/10/25 05:42:47 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:7077 after 35 ms (0 ms spent in bootstraps)
+26/10/25 05:42:47 INFO StandaloneSchedulerBackend: Connected to Spark cluster with app ID app-20261025054247-0000
+26/10/25 05:42:48 INFO Utils: Successfully started service 'org.apache.spark.network.netty.NettyBlockTransferService' on port 37715.
+26/10/25 05:42:48 INFO NettyBlockTransferService: Server created on localhost:37715
+26/10/25 05:42:48 INFO BlockManager: Using org.apache.spark.storage.RandomBlockReplicationPolicy for block replication policy
+26/10/25 05:42:48 INFO BlockManagerMaster: Registering BlockManager BlockManagerId(driver, localhost, 37715, None)
+26/10/25 05:42:48 INFO BlockManagerMasterEndpoint: Registering block manager localhost:37715 with 434.4 MiB RAM, BlockManagerId(driver, localhost, 37715, None)
+26/10/25 05:42:48 INFO StandaloneAppClient$ClientEndpoint: Executor added: app-20261025054247-0000/0 on worker-20261025054235-localhost-43677 (localhost:43677) with 1 core(s)
+26/10/25 05:42:48 INFO BlockManagerMaster: Registered BlockManager BlockManagerId(driver, localhost, 37715, None)
+26/10/25 05:42:48 INFO StandaloneSchedulerBackend: Granted executor ID app-20261025054247-0000/0 on hostPort localhost:43677 with 1 core(s), 512.0 MiB RAM
+26/10/25 05:42:48 INFO StandaloneAppClient$ClientEndpoint: Executor added: app-20261025054247-0000/1 on worker-20261025054235-localhost-43677 (localhost:43677) with 1 core(s)
+26/10/25 05:42:48 INFO StandaloneSchedulerBackend: Granted executor ID app-20261025054247-0000/1 on hostPort localhost:43677 with 1 core(s), 512.0 MiB RAM
+26/10/25 05:42:48 INFO StandaloneAppClient$ClientEndpoint: Executor added: app-20261025054247-0000/2 on worker-20261025054235-localhost-43677 (localhost:43677) with 1 core(s)
+26/10/25 05:42:48 INFO StandaloneSchedulerBackend: Granted executor ID app-20261025054247-0000/2 on hostPort localhost:43677 with 1 core(s), 512.0 MiB RAM
+26/10/25 05:42:48 INFO BlockManager: Initialized BlockManager: BlockManagerId(driver, localhost, 37715, None)
+26/10/25 05:42:48 INFO StandaloneAppClient$ClientEndpoint: Executor added: app-20261025054247-0000/3 on worker-20261025054235-localhost-43677 (localhost:43677) with 1 core(s)
+26/10/25 05:42:48 INFO StandaloneSchedulerBackend: Granted executor ID app-20261025054247-0000/3 on hostPort localhost:43677 with 1 core(s), 512.0 MiB RAM
+26/10/25 05:42:48 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20261025054247-0000/3 is now RUNNING
+26/10/25 05:42:48 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20261025054247-0000/2 is now RUNNING
+26/10/25 05:42:48 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20261025054247-0000/1 is now RUNNING
+26/10/25 05:42:48 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20261025054247-0000/0 is now RUNNING
+26/10/25 05:42:48 INFO SingleEventLogFileWriter: Logging events to file:/tmp/spark-events/app-20261025054247-0000.inprogress
+26/10/25 05:42:48 INFO StandaloneSchedulerBackend: SchedulerBackend is ready for scheduling beginning after reached minRegisteredResourcesRatio: 0.0
+26/10/25 05:42:54 INFO SharedState: Setting hive.metastore.warehouse.dir ('null') to the value of spark.sql.warehouse.dir.
+26/10/25 05:42:54 INFO SharedState: Warehouse path is 'file:/home/sparkuser/spark-warehouse'.
+26/10/25 05:42:56 INFO StandaloneSchedulerBackend$StandaloneDriverEndpoint: Registered executor NettyRpcEndpointRef(spark-client://Executor) (127.0.0.1:56456) with ID 0,  ResourceProfileId 0
+26/10/25 05:42:56 INFO StandaloneSchedulerBackend$StandaloneDriverEndpoint: Registered executor NettyRpcEndpointRef(spark-client://Executor) (127.0.0.1:56450) with ID 2,  ResourceProfileId 0
+26/10/25 05:42:56 INFO BlockManagerMasterEndpoint: Registering block manager localhost:35281 with 127.2 MiB RAM, BlockManagerId(0, localhost, 35281, None)
+26/10/25 05:42:57 INFO StandaloneSchedulerBackend$StandaloneDriverEndpoint: Registered executor NettyRpcEndpointRef(spark-client://Executor) (127.0.0.1:56470) with ID 3,  ResourceProfileId 0
+26/10/25 05:42:57 INFO StandaloneSchedulerBackend$StandaloneDriverEndpoint: Registered executor NettyRpcEndpointRef(spark-client://Executor) (127.0.0.1:56484) with ID 1,  ResourceProfileId 0
+26/10/25 05:42:57 INFO BlockManagerMasterEndpoint: Registering block manager localhost:46821 with 127.2 MiB RAM, BlockManagerId(2, localhost, 46821, None)
+26/10/25 05:42:57 INFO BlockManagerMasterEndpoint: Registering block manager localhost:36137 with 127.2 MiB RAM, BlockManagerId(3, localhost, 36137, None)
+26/10/25 05:42:57 INFO BlockManagerMasterEndpoint: Registering block manager localhost:44989 with 127.2 MiB RAM, BlockManagerId(1, localhost, 44989, None)
+26/10/25 05:42:59 INFO CodeGenerator: Code generated in 495.466191 ms
+26/10/25 05:42:59 INFO DAGScheduler: Registering RDD 3 (collect at /home/sparkuser/lost.py:11) as input to shuffle 0
+26/10/25 05:42:59 INFO DAGScheduler: Got map stage job 0 (collect at /home/sparkuser/lost.py:11) with 2 output partitions
+26/10/25 05:42:59 INFO DAGScheduler: Final stage: ShuffleMapStage 0 (collect at /home/sparkuser/lost.py:11)
+26/10/25 05:42:59 INFO DAGScheduler: Parents of final stage: List()
+26/10/25 05:42:59 INFO DAGScheduler: Missing parents: List()
+26/10/25 05:42:59 INFO DAGScheduler: Submitting ShuffleMapStage 0 (MapPartitionsRDD[3] at collect at /home/sparkuser/lost.py:11), which has no missing parents
+26/10/25 05:42:59 INFO MemoryStore: Block broadcast_0 stored as values in memory (estimated size 36.3 KiB, free 434.4 MiB)
+26/10/25 05:43:00 INFO MemoryStore: Block broadcast_0_piece0 stored as bytes in memory (estimated size 16.7 KiB, free 434.3 MiB)
+26/10/25 05:43:00 INFO BlockManagerInfo: Added broadcast_0_piece0 in memory on localhost:37715 (size: 16.7 KiB, free: 434.4 MiB)
+26/10/25 05:43:00 INFO SparkContext: Created broadcast 0 from broadcast at DAGScheduler.scala:1585
+26/10/25 05:43:00 INFO DAGScheduler: Submitting 2 missing tasks from ShuffleMapStage 0 (MapPartitionsRDD[3] at collect at /home/sparkuser/lost.py:11) (first 15 tasks are for partitions Vector(0, 1))
+26/10/25 05:43:00 INFO TaskSchedulerImpl: Adding task set 0.0 with 2 tasks resource profile 0
+26/10/25 05:43:00 INFO TaskSetManager: Starting task 0.0 in stage 0.0 (TID 0) (localhost, executor 3, partition 0, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 05:43:00 INFO TaskSetManager: Starting task 1.0 in stage 0.0 (TID 1) (localhost, executor 0, partition 1, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 05:43:00 WARN GarbageCollectionMetrics: To enable non-built-in garbage collector(s) List(G1 Concurrent GC), users should configure it(them) to spark.eventLog.gcMetrics.youngGenerationGarbageCollectors or spark.eventLog.gcMetrics.oldGenerationGarbageCollectors
+26/10/25 05:43:00 INFO BlockManagerInfo: Added broadcast_0_piece0 in memory on localhost:36137 (size: 16.7 KiB, free: 127.2 MiB)
+26/10/25 05:43:00 INFO BlockManagerInfo: Added broadcast_0_piece0 in memory on localhost:35281 (size: 16.7 KiB, free: 127.2 MiB)
+26/10/25 05:43:02 INFO TaskSetManager: Finished task 1.0 in stage 0.0 (TID 1) in 2389 ms on localhost (executor 0) (1/2)
+26/10/25 05:43:02 INFO TaskSetManager: Finished task 0.0 in stage 0.0 (TID 0) in 2614 ms on localhost (executor 3) (2/2)
+26/10/25 05:43:02 INFO TaskSchedulerImpl: Removed TaskSet 0.0, whose tasks have all completed, from pool 
+26/10/25 05:43:02 INFO DAGScheduler: ShuffleMapStage 0 (collect at /home/sparkuser/lost.py:11) finished in 2.837 s
+26/10/25 05:43:02 INFO DAGScheduler: looking for newly runnable stages
+26/10/25 05:43:02 INFO DAGScheduler: running: Set()
+26/10/25 05:43:02 INFO DAGScheduler: waiting: Set()
+26/10/25 05:43:02 INFO DAGScheduler: failed: Set()
+26/10/25 05:43:02 INFO ShufflePartitionsUtil: For shuffle(0), advisory target size: 67108864, actual target size 1048576, minimum partition size: 1048576
+26/10/25 05:43:02 INFO HashAggregateExec: spark.sql.codegen.aggregate.map.twolevel.enabled is set to true, but current version of codegened fast hashmap does not support this aggregate.
+26/10/25 05:43:03 INFO CodeGenerator: Code generated in 45.533684 ms
+26/10/25 05:43:03 INFO SparkContext: Starting job: collect at /home/sparkuser/lost.py:11
+26/10/25 05:43:03 INFO DAGScheduler: Got job 1 (collect at /home/sparkuser/lost.py:11) with 1 output partitions
+26/10/25 05:43:03 INFO DAGScheduler: Final stage: ResultStage 2 (collect at /home/sparkuser/lost.py:11)
+26/10/25 05:43:03 INFO DAGScheduler: Parents of final stage: List(ShuffleMapStage 1)
+26/10/25 05:43:03 INFO DAGScheduler: Missing parents: List()
+26/10/25 05:43:03 INFO DAGScheduler: Submitting ResultStage 2 (MapPartitionsRDD[6] at collect at /home/sparkuser/lost.py:11), which has no missing parents
+26/10/25 05:43:03 INFO MemoryStore: Block broadcast_1 stored as values in memory (estimated size 35.6 KiB, free 434.3 MiB)
+26/10/25 05:43:03 INFO MemoryStore: Block broadcast_1_piece0 stored as bytes in memory (estimated size 16.5 KiB, free 434.3 MiB)
+26/10/25 05:43:03 INFO BlockManagerInfo: Added broadcast_1_piece0 in memory on localhost:37715 (size: 16.5 KiB, free: 434.4 MiB)
+26/10/25 05:43:03 INFO SparkContext: Created broadcast 1 from broadcast at DAGScheduler.scala:1585
+26/10/25 05:43:03 INFO DAGScheduler: Submitting 1 missing tasks from ResultStage 2 (MapPartitionsRDD[6] at collect at /home/sparkuser/lost.py:11) (first 15 tasks are for partitions Vector(0))
+26/10/25 05:43:03 INFO TaskSchedulerImpl: Adding task set 2.0 with 1 tasks resource profile 0
+26/10/25 05:43:03 INFO TaskSetManager: Starting task 0.0 in stage 2.0 (TID 2) (localhost, executor 3, partition 0, NODE_LOCAL, 9003 bytes) 
+26/10/25 05:43:03 INFO BlockManagerInfo: Added broadcast_1_piece0 in memory on localhost:36137 (size: 16.5 KiB, free: 127.2 MiB)
+26/10/25 05:43:03 INFO MapOutputTrackerMasterEndpoint: Asked to send map output locations for shuffle 0 to 127.0.0.1:56470
+26/10/25 05:43:03 INFO TaskSetManager: Finished task 0.0 in stage 2.0 (TID 2) in 435 ms on localhost (executor 3) (1/1)
+26/10/25 05:43:03 INFO DAGScheduler: ResultStage 2 (collect at /home/sparkuser/lost.py:11) finished in 0.459 s
+26/10/25 05:43:03 INFO TaskSchedulerImpl: Removed TaskSet 2.0, whose tasks have all completed, from pool 
+26/10/25 05:43:03 INFO DAGScheduler: Job 1 is finished. Cancelling potential speculative or zombie tasks for this job
+26/10/25 05:43:03 INFO TaskSchedulerImpl: Killing all running tasks in stage 2: Stage finished
+26/10/25 05:43:03 INFO DAGScheduler: Job 1 finished: collect at /home/sparkuser/lost.py:11, took 0.493736 s
+long tasks start
+26/10/25 05:43:03 INFO BlockManagerInfo: Removed broadcast_0_piece0 on localhost:37715 in memory (size: 16.7 KiB, free: 434.4 MiB)
+26/10/25 05:43:03 INFO SparkContext: Starting job: collect at /home/sparkuser/lost.py:15
+26/10/25 05:43:03 INFO DAGScheduler: Got job 2 (collect at /home/sparkuser/lost.py:15) with 4 output partitions
+26/10/25 05:43:03 INFO DAGScheduler: Final stage: ResultStage 3 (collect at /home/sparkuser/lost.py:15)
+26/10/25 05:43:03 INFO DAGScheduler: Parents of final stage: List()
+26/10/25 05:43:03 INFO DAGScheduler: Missing parents: List()
+26/10/25 05:43:03 INFO DAGScheduler: Submitting ResultStage 3 (PythonRDD[8] at collect at /home/sparkuser/lost.py:15), which has no missing parents
+26/10/25 05:43:03 INFO MemoryStore: Block broadcast_2 stored as values in memory (estimated size 7.1 KiB, free 434.3 MiB)
+26/10/25 05:43:03 INFO MemoryStore: Block broadcast_2_piece0 stored as bytes in memory (estimated size 4.5 KiB, free 434.3 MiB)
+26/10/25 05:43:03 INFO BlockManagerInfo: Added broadcast_2_piece0 in memory on localhost:37715 (size: 4.5 KiB, free: 434.4 MiB)
+26/10/25 05:43:03 INFO SparkContext: Created broadcast 2 from broadcast at DAGScheduler.scala:1585
+26/10/25 05:43:03 INFO DAGScheduler: Submitting 4 missing tasks from ResultStage 3 (PythonRDD[8] at collect at /home/sparkuser/lost.py:15) (first 15 tasks are for partitions Vector(0, 1, 2, 3))
+26/10/25 05:43:03 INFO TaskSchedulerImpl: Adding task set 3.0 with 4 tasks resource profile 0
+26/10/25 05:43:03 INFO TaskSetManager: Starting task 0.0 in stage 3.0 (TID 3) (localhost, executor 0, partition 0, PROCESS_LOCAL, 8983 bytes) 
+26/10/25 05:43:03 INFO TaskSetManager: Starting task 1.0 in stage 3.0 (TID 4) (localhost, executor 3, partition 1, PROCESS_LOCAL, 8983 bytes) 
+26/10/25 05:43:03 INFO TaskSetManager: Starting task 2.0 in stage 3.0 (TID 5) (localhost, executor 2, partition 2, PROCESS_LOCAL, 8983 bytes) 
+26/10/25 05:43:03 INFO TaskSetManager: Starting task 3.0 in stage 3.0 (TID 6) (localhost, executor 1, partition 3, PROCESS_LOCAL, 8983 bytes) 
+26/10/25 05:43:03 INFO BlockManagerInfo: Removed broadcast_0_piece0 on localhost:35281 in memory (size: 16.7 KiB, free: 127.2 MiB)
+26/10/25 05:43:03 INFO BlockManagerInfo: Removed broadcast_0_piece0 on localhost:36137 in memory (size: 16.7 KiB, free: 127.2 MiB)
+26/10/25 05:43:03 INFO BlockManagerInfo: Added broadcast_2_piece0 in memory on localhost:36137 (size: 4.5 KiB, free: 127.2 MiB)
+26/10/25 05:43:04 INFO BlockManagerInfo: Added broadcast_2_piece0 in memory on localhost:35281 (size: 4.5 KiB, free: 127.2 MiB)
+26/10/25 05:43:04 INFO BlockManagerInfo: Removed broadcast_1_piece0 on localhost:37715 in memory (size: 16.5 KiB, free: 434.4 MiB)
+26/10/25 05:43:04 INFO BlockManagerInfo: Removed broadcast_1_piece0 on localhost:36137 in memory (size: 16.5 KiB, free: 127.2 MiB)
+26/10/25 05:43:04 INFO BlockManagerInfo: Added broadcast_2_piece0 in memory on localhost:44989 (size: 4.5 KiB, free: 127.2 MiB)
+26/10/25 05:43:04 INFO BlockManagerInfo: Added broadcast_2_piece0 in memory on localhost:46821 (size: 4.5 KiB, free: 127.2 MiB)
+26/10/25 05:43:15 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20261025054247-0000/1 is now EXITED (Command exited with code 137)
+26/10/25 05:43:15 INFO StandaloneSchedulerBackend: Executor app-20261025054247-0000/1 removed: Command exited with code 137
+26/10/25 05:43:15 ERROR TaskSchedulerImpl: Lost executor 1 on localhost: Command exited with code 137
+26/10/25 05:43:15 WARN TaskSetManager: Lost task 3.0 in stage 3.0 (TID 6) (localhost executor 1): ExecutorLostFailure (executor 1 exited caused by one of the running tasks) Reason: Command exited with code 137
+26/10/25 05:43:15 INFO StandaloneAppClient$ClientEndpoint: Executor added: app-20261025054247-0000/4 on worker-20261025054235-localhost-43677 (localhost:43677) with 1 core(s)
+26/10/25 05:43:15 INFO StandaloneSchedulerBackend: Granted executor ID app-20261025054247-0000/4 on hostPort localhost:43677 with 1 core(s), 512.0 MiB RAM
+26/10/25 05:43:15 INFO DAGScheduler: Executor lost: 1 (epoch 1)
+26/10/25 05:43:15 INFO BlockManagerMasterEndpoint: Trying to remove executor 1 from BlockManagerMaster.
+26/10/25 05:43:15 INFO BlockManagerMasterEndpoint: Removing block manager BlockManagerId(1, localhost, 44989, None)
+26/10/25 05:43:15 INFO BlockManagerMaster: Removed 1 successfully in removeExecutor
+26/10/25 05:43:15 INFO DAGScheduler: Shuffle files lost for executor: 1 (epoch 1)
+26/10/25 05:43:15 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20261025054247-0000/4 is now RUNNING
+26/10/25 05:43:18 INFO StandaloneSchedulerBackend$StandaloneDriverEndpoint: Registered executor NettyRpcEndpointRef(spark-client://Executor) (127.0.0.1:49572) with ID 4,  ResourceProfileId 0
+26/10/25 05:43:18 INFO BlockManagerMasterEndpoint: Registering block manager localhost:45279 with 127.2 MiB RAM, BlockManagerId(4, localhost, 45279, None)
+26/10/25 05:43:19 INFO TaskSetManager: Starting task 3.1 in stage 3.0 (TID 7) (localhost, executor 4, partition 3, PROCESS_LOCAL, 8983 bytes) 
+26/10/25 05:43:19 INFO BlockManagerInfo: Added broadcast_2_piece0 in memory on localhost:45279 (size: 4.5 KiB, free: 127.2 MiB)
+26/10/25 05:43:45 INFO TaskSetManager: Finished task 1.0 in stage 3.0 (TID 4) in 41728 ms on localhost (executor 3) (1/4)
+26/10/25 05:43:45 INFO PythonAccumulatorV2: Connected to AccumulatorServer at host: 127.0.0.1 port: 46615
+26/10/25 05:43:45 INFO TaskSetManager: Finished task 0.0 in stage 3.0 (TID 3) in 41919 ms on localhost (executor 0) (2/4)
+26/10/25 05:43:46 INFO TaskSetManager: Finished task 2.0 in stage 3.0 (TID 5) in 42775 ms on localhost (executor 2) (3/4)
+26/10/25 05:44:00 INFO TaskSetManager: Finished task 3.1 in stage 3.0 (TID 7) in 41315 ms on localhost (executor 4) (4/4)
+26/10/25 05:44:00 INFO TaskSchedulerImpl: Removed TaskSet 3.0, whose tasks have all completed, from pool 
+26/10/25 05:44:00 INFO DAGScheduler: ResultStage 3 (collect at /home/sparkuser/lost.py:15) finished in 56.464 s
+26/10/25 05:44:00 INFO DAGScheduler: Job 2 is finished. Cancelling potential speculative or zombie tasks for this job
+26/10/25 05:44:00 INFO TaskSchedulerImpl: Killing all running tasks in stage 3: Stage finished
+26/10/25 05:44:00 INFO DAGScheduler: Job 2 finished: collect at /home/sparkuser/lost.py:15, took 56.479340 s
+26/10/25 05:44:00 INFO CodeGenerator: Code generated in 19.406229 ms
+26/10/25 05:44:00 INFO DAGScheduler: Registering RDD 13 (collect at /home/sparkuser/lost.py:20) as input to shuffle 1
+26/10/25 05:44:00 INFO DAGScheduler: Got map stage job 3 (collect at /home/sparkuser/lost.py:20) with 4 output partitions
+26/10/25 05:44:00 INFO DAGScheduler: Final stage: ShuffleMapStage 4 (collect at /home/sparkuser/lost.py:20)
+26/10/25 05:44:00 INFO DAGScheduler: Parents of final stage: List()
+26/10/25 05:44:00 INFO DAGScheduler: Missing parents: List()
+26/10/25 05:44:00 INFO DAGScheduler: Submitting ShuffleMapStage 4 (MapPartitionsRDD[13] at collect at /home/sparkuser/lost.py:20), which has no missing parents
+26/10/25 05:44:00 INFO MemoryStore: Block broadcast_3 stored as values in memory (estimated size 24.8 KiB, free 434.4 MiB)
+26/10/25 05:44:00 INFO MemoryStore: Block broadcast_3_piece0 stored as bytes in memory (estimated size 11.6 KiB, free 434.4 MiB)
+26/10/25 05:44:00 INFO BlockManagerInfo: Added broadcast_3_piece0 in memory on localhost:37715 (size: 11.6 KiB, free: 434.4 MiB)
+26/10/25 05:44:00 INFO SparkContext: Created broadcast 3 from broadcast at DAGScheduler.scala:1585
+26/10/25 05:44:00 INFO DAGScheduler: Submitting 4 missing tasks from ShuffleMapStage 4 (MapPartitionsRDD[13] at collect at /home/sparkuser/lost.py:20) (first 15 tasks are for partitions Vector(0, 1, 2, 3))
+26/10/25 05:44:00 INFO TaskSchedulerImpl: Adding task set 4.0 with 4 tasks resource profile 0
+26/10/25 05:44:00 INFO TaskSetManager: Starting task 0.0 in stage 4.0 (TID 8) (localhost, executor 4, partition 0, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 05:44:00 INFO TaskSetManager: Starting task 1.0 in stage 4.0 (TID 9) (localhost, executor 3, partition 1, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 05:44:00 INFO TaskSetManager: Starting task 2.0 in stage 4.0 (TID 10) (localhost, executor 0, partition 2, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 05:44:00 INFO TaskSetManager: Starting task 3.0 in stage 4.0 (TID 11) (localhost, executor 2, partition 3, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 05:44:00 INFO BlockManagerInfo: Added broadcast_3_piece0 in memory on localhost:35281 (size: 11.6 KiB, free: 127.2 MiB)
+26/10/25 05:44:00 INFO BlockManagerInfo: Added broadcast_3_piece0 in memory on localhost:36137 (size: 11.6 KiB, free: 127.2 MiB)
+26/10/25 05:44:00 INFO BlockManagerInfo: Added broadcast_3_piece0 in memory on localhost:45279 (size: 11.6 KiB, free: 127.2 MiB)
+26/10/25 05:44:01 INFO BlockManagerInfo: Added broadcast_3_piece0 in memory on localhost:46821 (size: 11.6 KiB, free: 127.2 MiB)
+26/10/25 05:44:10 WARN TaskSetManager: Lost task 1.0 in stage 4.0 (TID 9) (localhost executor 3): java.lang.OutOfMemoryError: Java heap space
+	at org.apache.spark.sql.catalyst.expressions.codegen.BufferHolder.grow(BufferHolder.java:80)
+	at org.apache.spark.sql.catalyst.expressions.codegen.UnsafeArrayWriter.initialize(UnsafeArrayWriter.java:71)
+	at org.apache.spark.sql.catalyst.expressions.GeneratedClass$SpecificUnsafeProjection.apply(Unknown Source)
+	at org.apache.spark.sql.catalyst.expressions.aggregate.Collect.serialize(collect.scala:75)
+	at org.apache.spark.sql.catalyst.expressions.aggregate.Collect.serialize(collect.scala:39)
+	at org.apache.spark.sql.catalyst.expressions.aggregate.TypedImperativeAggregate.serializeAggregateBufferInPlace(interfaces.scala:621)
+	at org.apache.spark.sql.execution.aggregate.AggregationIterator.$anonfun$generateResultProjection$6(AggregationIterator.scala:280)
+	at org.apache.spark.sql.execution.aggregate.AggregationIterator$$Lambda/0x00007f27b8746000.apply(Unknown Source)
+	at org.apache.spark.sql.execution.aggregate.ObjectAggregationIterator.next(ObjectAggregationIterator.scala:97)
+	at org.apache.spark.sql.execution.aggregate.ObjectAggregationIterator.next(ObjectAggregationIterator.scala:33)
+	at scala.collection.Iterator$$anon$10.next(Iterator.scala:461)
+	at org.apache.spark.shuffle.sort.BypassMergeSortShuffleWriter.write(BypassMergeSortShuffleWriter.java:169)
+	at org.apache.spark.shuffle.ShuffleWriteProcessor.write(ShuffleWriteProcessor.scala:59)
+	at org.apache.spark.scheduler.ShuffleMapTask.runTask(ShuffleMapTask.scala:104)
+	at org.apache.spark.scheduler.ShuffleMapTask.runTask(ShuffleMapTask.scala:54)
+	at org.apache.spark.TaskContext.runTaskWithListeners(TaskContext.scala:166)
+	at org.apache.spark.scheduler.Task.run(Task.scala:141)
+	at org.apache.spark.executor.Executor$TaskRunner.$anonfun$run$4(Executor.scala:620)
+	at org.apache.spark.executor.Executor$TaskRunner$$Lambda/0x00007f27b84ab2d0.apply(Unknown Source)
+	at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally(SparkErrorUtils.scala:64)
+	at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally$(SparkErrorUtils.scala:61)
+	at org.apache.spark.util.Utils$.tryWithSafeFinally(Utils.scala:94)
+	at org.apache.spark.executor.Executor$TaskRunner.run(Executor.scala:623)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.runWith(Thread.java:1596)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+26/10/25 05:44:10 INFO TaskSetManager: Starting task 1.1 in stage 4.0 (TID 12) (localhost, executor 3, partition 1, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 05:44:10 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20261025054247-0000/3 is now EXITED (Command exited with code 52)
+26/10/25 05:44:10 INFO StandaloneSchedulerBackend: Executor app-20261025054247-0000/3 removed: Command exited with code 52
+26/10/25 05:44:10 INFO StandaloneAppClient$ClientEndpoint: Executor added: app-20261025054247-0000/5 on worker-20261025054235-localhost-43677 (localhost:43677) with 1 core(s)
+26/10/25 05:44:10 INFO StandaloneSchedulerBackend: Granted executor ID app-20261025054247-0000/5 on hostPort localhost:43677 with 1 core(s), 512.0 MiB RAM
+26/10/25 05:44:10 ERROR TaskSchedulerImpl: Lost executor 3 on localhost: Command exited with code 52
+26/10/25 05:44:10 INFO TaskSetManager: task 1.1 in stage 4.0 (TID 12) failed because while it was being computed, its executor exited for a reason unrelated to the task. Not counting this failure towards the maximum number of failures for the task.
+26/10/25 05:44:10 INFO DAGScheduler: Executor lost: 3 (epoch 2)
+26/10/25 05:44:10 INFO BlockManagerMasterEndpoint: Trying to remove executor 3 from BlockManagerMaster.
+26/10/25 05:44:10 INFO BlockManagerMasterEndpoint: Removing block manager BlockManagerId(3, localhost, 36137, None)
+26/10/25 05:44:10 INFO BlockManagerMaster: Removed 3 successfully in removeExecutor
+26/10/25 05:44:10 INFO DAGScheduler: Shuffle files lost for executor: 3 (epoch 2)
+26/10/25 05:44:10 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20261025054247-0000/5 is now RUNNING
+26/10/25 05:44:11 INFO TaskSetManager: Starting task 1.2 in stage 4.0 (TID 13) (localhost, executor 0, partition 1, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 05:44:11 INFO TaskSetManager: Lost task 2.0 in stage 4.0 (TID 10) on localhost, executor 0: java.lang.OutOfMemoryError (Java heap space) [duplicate 1]
+26/10/25 05:44:12 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20261025054247-0000/0 is now EXITED (Command exited with code 52)
+26/10/25 05:44:12 INFO StandaloneSchedulerBackend: Executor app-20261025054247-0000/0 removed: Command exited with code 52
+26/10/25 05:44:12 ERROR TaskSchedulerImpl: Lost executor 0 on localhost: Command exited with code 52
+26/10/25 05:44:12 WARN TaskSetManager: Lost task 1.2 in stage 4.0 (TID 13) (localhost executor 0): ExecutorLostFailure (executor 0 exited caused by one of the running tasks) Reason: Command exited with code 52
+26/10/25 05:44:12 ERROR TaskSetManager: Task 1 in stage 4.0 failed 2 times; aborting job
+26/10/25 05:44:12 INFO TaskSchedulerImpl: Cancelling stage 4
+26/10/25 05:44:12 INFO TaskSchedulerImpl: Killing all running tasks in stage 4: Stage cancelled: Job aborted due to stage failure: Task 1 in stage 4.0 failed 2 times, most recent failure: Lost task 1.2 in stage 4.0 (TID 13) (localhost executor 0): ExecutorLostFailure (executor 0 exited caused by one of the running tasks) Reason: Command exited with code 52
+Driver stacktrace:
+26/10/25 05:44:12 INFO StandaloneAppClient$ClientEndpoint: Executor added: app-20261025054247-0000/6 on worker-20261025054235-localhost-43677 (localhost:43677) with 1 core(s)
+26/10/25 05:44:12 INFO StandaloneSchedulerBackend: Granted executor ID app-20261025054247-0000/6 on hostPort localhost:43677 with 1 core(s), 512.0 MiB RAM
+26/10/25 05:44:12 INFO TaskSchedulerImpl: Stage 4 was cancelled
+26/10/25 05:44:12 INFO DAGScheduler: ShuffleMapStage 4 (collect at /home/sparkuser/lost.py:20) failed in 11.673 s due to Job aborted due to stage failure: Task 1 in stage 4.0 failed 2 times, most recent failure: Lost task 1.2 in stage 4.0 (TID 13) (localhost executor 0): ExecutorLostFailure (executor 0 exited caused by one of the running tasks) Reason: Command exited with code 52
+Driver stacktrace:
+26/10/25 05:44:12 INFO DAGScheduler: Executor lost: 0 (epoch 3)
+26/10/25 05:44:12 INFO BlockManagerMasterEndpoint: Trying to remove executor 0 from BlockManagerMaster.
+26/10/25 05:44:12 INFO BlockManagerMasterEndpoint: Removing block manager BlockManagerId(0, localhost, 35281, None)
+26/10/25 05:44:12 INFO BlockManagerMaster: Removed 0 successfully in removeExecutor
+26/10/25 05:44:12 INFO DAGScheduler: Shuffle files lost for executor: 0 (epoch 3)
+26/10/25 05:44:12 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20261025054247-0000/6 is now RUNNING
+26/10/25 05:44:12 INFO TaskSetManager: Lost task 0.0 in stage 4.0 (TID 8) on localhost, executor 4: java.lang.OutOfMemoryError (Java heap space) [duplicate 2]
+caught the out-of-memory failure: Py4JJavaError
+26/10/25 05:44:13 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20261025054247-0000/4 is now EXITED (Command exited with code 52)
+26/10/25 05:44:13 INFO StandaloneSchedulerBackend: Executor app-20261025054247-0000/4 removed: Command exited with code 52
+26/10/25 05:44:13 ERROR TaskSchedulerImpl: Lost executor 4 on localhost: Command exited with code 52
+26/10/25 05:44:13 INFO DAGScheduler: Executor lost: 4 (epoch 4)
+26/10/25 05:44:13 INFO BlockManagerMasterEndpoint: Trying to remove executor 4 from BlockManagerMaster.
+26/10/25 05:44:13 INFO BlockManagerMasterEndpoint: Removing block manager BlockManagerId(4, localhost, 45279, None)
+26/10/25 05:44:13 INFO BlockManagerMaster: Removed 4 successfully in removeExecutor
+26/10/25 05:44:13 INFO DAGScheduler: Shuffle files lost for executor: 4 (epoch 4)
+26/10/25 05:44:13 INFO StandaloneAppClient$ClientEndpoint: Executor added: app-20261025054247-0000/7 on worker-20261025054235-localhost-43677 (localhost:43677) with 1 core(s)
+26/10/25 05:44:13 INFO StandaloneSchedulerBackend: Granted executor ID app-20261025054247-0000/7 on hostPort localhost:43677 with 1 core(s), 512.0 MiB RAM
+26/10/25 05:44:13 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20261025054247-0000/7 is now RUNNING
+26/10/25 05:44:13 INFO CodeGenerator: Code generated in 62.02219 ms
+26/10/25 05:44:13 INFO DAGScheduler: Registering RDD 17 (count at NativeMethodAccessorImpl.java:0) as input to shuffle 2
+26/10/25 05:44:13 INFO DAGScheduler: Got map stage job 4 (count at NativeMethodAccessorImpl.java:0) with 2 output partitions
+26/10/25 05:44:13 INFO DAGScheduler: Final stage: ShuffleMapStage 5 (count at NativeMethodAccessorImpl.java:0)
+26/10/25 05:44:13 INFO DAGScheduler: Parents of final stage: List()
+26/10/25 05:44:13 INFO DAGScheduler: Missing parents: List()
+26/10/25 05:44:13 INFO DAGScheduler: Submitting ShuffleMapStage 5 (MapPartitionsRDD[17] at count at NativeMethodAccessorImpl.java:0), which has no missing parents
+26/10/25 05:44:13 INFO MemoryStore: Block broadcast_4 stored as values in memory (estimated size 14.5 KiB, free 434.3 MiB)
+26/10/25 05:44:13 INFO MemoryStore: Block broadcast_4_piece0 stored as bytes in memory (estimated size 7.0 KiB, free 434.3 MiB)
+26/10/25 05:44:13 INFO BlockManagerInfo: Added broadcast_4_piece0 in memory on localhost:37715 (size: 7.0 KiB, free: 434.4 MiB)
+26/10/25 05:44:13 INFO SparkContext: Created broadcast 4 from broadcast at DAGScheduler.scala:1585
+26/10/25 05:44:13 INFO DAGScheduler: Submitting 2 missing tasks from ShuffleMapStage 5 (MapPartitionsRDD[17] at count at NativeMethodAccessorImpl.java:0) (first 15 tasks are for partitions Vector(0, 1))
+26/10/25 05:44:13 INFO TaskSchedulerImpl: Adding task set 5.0 with 2 tasks resource profile 0
+26/10/25 05:44:13 INFO TaskSetManager: Starting task 0.0 in stage 5.0 (TID 14) (localhost, executor 2, partition 0, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 05:44:13 INFO TaskSetManager: Lost task 3.0 in stage 4.0 (TID 11) on localhost, executor 2: java.lang.OutOfMemoryError (Java heap space) [duplicate 3]
+26/10/25 05:44:13 INFO TaskSchedulerImpl: Removed TaskSet 4.0, whose tasks have all completed, from pool 
+26/10/25 05:44:13 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20261025054247-0000/2 is now EXITED (Command exited with code 52)
+26/10/25 05:44:13 INFO StandaloneSchedulerBackend: Executor app-20261025054247-0000/2 removed: Command exited with code 52
+26/10/25 05:44:13 INFO StandaloneAppClient$ClientEndpoint: Executor added: app-20261025054247-0000/8 on worker-20261025054235-localhost-43677 (localhost:43677) with 1 core(s)
+26/10/25 05:44:13 INFO StandaloneSchedulerBackend: Granted executor ID app-20261025054247-0000/8 on hostPort localhost:43677 with 1 core(s), 512.0 MiB RAM
+26/10/25 05:44:13 ERROR TaskSchedulerImpl: Lost executor 2 on localhost: Command exited with code 52
+26/10/25 05:44:13 WARN TaskSetManager: Lost task 0.0 in stage 5.0 (TID 14) (localhost executor 2): ExecutorLostFailure (executor 2 exited caused by one of the running tasks) Reason: Command exited with code 52
+26/10/25 05:44:13 INFO DAGScheduler: Executor lost: 2 (epoch 5)
+26/10/25 05:44:13 INFO BlockManagerMasterEndpoint: Trying to remove executor 2 from BlockManagerMaster.
+26/10/25 05:44:13 INFO BlockManagerMasterEndpoint: Removing block manager BlockManagerId(2, localhost, 46821, None)
+26/10/25 05:44:13 INFO BlockManagerMaster: Removed 2 successfully in removeExecutor
+26/10/25 05:44:13 INFO DAGScheduler: Shuffle files lost for executor: 2 (epoch 5)
+26/10/25 05:44:13 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20261025054247-0000/8 is now RUNNING
+26/10/25 05:44:17 INFO StandaloneSchedulerBackend$StandaloneDriverEndpoint: Registered executor NettyRpcEndpointRef(spark-client://Executor) (127.0.0.1:37518) with ID 5,  ResourceProfileId 0
+26/10/25 05:44:17 INFO BlockManagerMasterEndpoint: Registering block manager localhost:32813 with 127.2 MiB RAM, BlockManagerId(5, localhost, 32813, None)
+26/10/25 05:44:17 INFO TaskSetManager: Starting task 0.1 in stage 5.0 (TID 15) (localhost, executor 5, partition 0, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 05:44:18 INFO BlockManagerInfo: Added broadcast_4_piece0 in memory on localhost:32813 (size: 7.0 KiB, free: 127.2 MiB)
+26/10/25 05:44:18 INFO StandaloneSchedulerBackend$StandaloneDriverEndpoint: Registered executor NettyRpcEndpointRef(spark-client://Executor) (127.0.0.1:37540) with ID 6,  ResourceProfileId 0
+26/10/25 05:44:19 INFO BlockManagerMasterEndpoint: Registering block manager localhost:36301 with 127.2 MiB RAM, BlockManagerId(6, localhost, 36301, None)
+26/10/25 05:44:19 INFO TaskSetManager: Starting task 1.0 in stage 5.0 (TID 16) (localhost, executor 6, partition 1, PROCESS_LOCAL, 9117 bytes) 
+26/10/25 05:44:19 INFO StandaloneSchedulerBackend$StandaloneDriverEndpoint: Registered executor NettyRpcEndpointRef(spark-client://Executor) (127.0.0.1:37560) with ID 7,  ResourceProfileId 0
+26/10/25 05:44:19 INFO BlockManagerMasterEndpoint: Registering block manager localhost:39417 with 127.2 MiB RAM, BlockManagerId(7, localhost, 39417, None)
+26/10/25 05:44:19 INFO BlockManagerInfo: Added broadcast_4_piece0 in memory on localhost:36301 (size: 7.0 KiB, free: 127.2 MiB)
+26/10/25 05:44:20 INFO TaskSetManager: Finished task 0.1 in stage 5.0 (TID 15) in 2368 ms on localhost (executor 5) (1/2)
+26/10/25 05:44:20 INFO StandaloneSchedulerBackend$StandaloneDriverEndpoint: Registered executor NettyRpcEndpointRef(spark-client://Executor) (127.0.0.1:37572) with ID 8,  ResourceProfileId 0
+26/10/25 05:44:20 INFO BlockManagerMasterEndpoint: Registering block manager localhost:43867 with 127.2 MiB RAM, BlockManagerId(8, localhost, 43867, None)
+26/10/25 05:44:21 INFO TaskSetManager: Finished task 1.0 in stage 5.0 (TID 16) in 1801 ms on localhost (executor 6) (2/2)
+26/10/25 05:44:21 INFO TaskSchedulerImpl: Removed TaskSet 5.0, whose tasks have all completed, from pool 
+26/10/25 05:44:21 INFO DAGScheduler: ShuffleMapStage 5 (count at NativeMethodAccessorImpl.java:0) finished in 7.838 s
+26/10/25 05:44:21 INFO DAGScheduler: looking for newly runnable stages
+26/10/25 05:44:21 INFO DAGScheduler: running: Set()
+26/10/25 05:44:21 INFO DAGScheduler: waiting: Set()
+26/10/25 05:44:21 INFO DAGScheduler: failed: Set()
+26/10/25 05:44:21 INFO CodeGenerator: Code generated in 10.607744 ms
+26/10/25 05:44:21 INFO SparkContext: Starting job: count at NativeMethodAccessorImpl.java:0
+26/10/25 05:44:21 INFO DAGScheduler: Got job 5 (count at NativeMethodAccessorImpl.java:0) with 1 output partitions
+26/10/25 05:44:21 INFO DAGScheduler: Final stage: ResultStage 7 (count at NativeMethodAccessorImpl.java:0)
+26/10/25 05:44:21 INFO DAGScheduler: Parents of final stage: List(ShuffleMapStage 6)
+26/10/25 05:44:21 INFO DAGScheduler: Missing parents: List()
+26/10/25 05:44:21 INFO DAGScheduler: Submitting ResultStage 7 (MapPartitionsRDD[20] at count at NativeMethodAccessorImpl.java:0), which has no missing parents
+26/10/25 05:44:21 INFO MemoryStore: Block broadcast_5 stored as values in memory (estimated size 12.5 KiB, free 434.3 MiB)
+26/10/25 05:44:21 INFO MemoryStore: Block broadcast_5_piece0 stored as bytes in memory (estimated size 6.0 KiB, free 434.3 MiB)
+26/10/25 05:44:21 INFO BlockManagerInfo: Added broadcast_5_piece0 in memory on localhost:37715 (size: 6.0 KiB, free: 434.4 MiB)
+26/10/25 05:44:21 INFO SparkContext: Created broadcast 5 from broadcast at DAGScheduler.scala:1585
+26/10/25 05:44:21 INFO DAGScheduler: Submitting 1 missing tasks from ResultStage 7 (MapPartitionsRDD[20] at count at NativeMethodAccessorImpl.java:0) (first 15 tasks are for partitions Vector(0))
+26/10/25 05:44:21 INFO TaskSchedulerImpl: Adding task set 7.0 with 1 tasks resource profile 0
+26/10/25 05:44:21 INFO TaskSetManager: Starting task 0.0 in stage 7.0 (TID 17) (localhost, executor 6, partition 0, NODE_LOCAL, 9003 bytes) 
+26/10/25 05:44:21 INFO BlockManagerInfo: Added broadcast_5_piece0 in memory on localhost:36301 (size: 6.0 KiB, free: 127.2 MiB)
+26/10/25 05:44:21 INFO MapOutputTrackerMasterEndpoint: Asked to send map output locations for shuffle 2 to 127.0.0.1:37540
+26/10/25 05:44:21 INFO TaskSetManager: Finished task 0.0 in stage 7.0 (TID 17) in 274 ms on localhost (executor 6) (1/1)
+26/10/25 05:44:21 INFO TaskSchedulerImpl: Removed TaskSet 7.0, whose tasks have all completed, from pool 
+26/10/25 05:44:21 INFO DAGScheduler: ResultStage 7 (count at NativeMethodAccessorImpl.java:0) finished in 0.285 s
+26/10/25 05:44:21 INFO DAGScheduler: Job 5 is finished. Cancelling potential speculative or zombie tasks for this job
+26/10/25 05:44:21 INFO TaskSchedulerImpl: Killing all running tasks in stage 7: Stage finished
+26/10/25 05:44:21 INFO DAGScheduler: Job 5 finished: count at NativeMethodAccessorImpl.java:0, took 0.295878 s
+26/10/25 05:44:21 INFO SparkContext: SparkContext is stopping with exitCode 0.
+26/10/25 05:44:21 INFO SparkUI: Stopped Spark web UI at http://localhost:4040
+26/10/25 05:44:21 INFO StandaloneSchedulerBackend: Shutting down all executors
+26/10/25 05:44:21 INFO StandaloneSchedulerBackend$StandaloneDriverEndpoint: Asking each executor to shut down
+26/10/25 05:44:21 INFO MapOutputTrackerMasterEndpoint: MapOutputTrackerMasterEndpoint stopped!
+26/10/25 05:44:21 INFO MemoryStore: MemoryStore cleared
+26/10/25 05:44:21 INFO BlockManager: BlockManager stopped
+26/10/25 05:44:21 INFO BlockManagerMaster: BlockManagerMaster stopped
+26/10/25 05:44:21 INFO OutputCommitCoordinator$OutputCommitCoordinatorEndpoint: OutputCommitCoordinator stopped!
+26/10/25 05:44:21 INFO SparkContext: Successfully stopped SparkContext
+26/10/25 05:44:22 INFO ShutdownHookManager: Shutdown hook called
+26/10/25 05:44:22 INFO ShutdownHookManager: Deleting directory /tmp/spark-3b908228-3955-45ea-8f68-3bd9ca11a257
+26/10/25 05:44:22 INFO ShutdownHookManager: Deleting directory /tmp/spark-3b908228-3955-45ea-8f68-3bd9ca11a257/pyspark-5b1cc440-4c50-4881-90e2-1e1117917dff
+26/10/25 05:44:22 INFO ShutdownHookManager: Deleting directory /tmp/spark-634520b8-9e01-443b-b93e-e86267dc686b
