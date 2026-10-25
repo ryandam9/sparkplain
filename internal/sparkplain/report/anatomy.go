@@ -47,6 +47,13 @@ type anatomy struct {
 	NoCPU          string // why a node's CPU is missing
 
 	detailBadges []int // findings for the executor drawn in full
+
+	// Standalone says the run did not use YARN: Spark Standalone, or
+	// local-cluster mode when LocalCluster. The boxes are its workers, a
+	// master stands for the ResourceManager, and an executor's size is its
+	// heap (Spark adds no overhead there). MasterHost is from its URL.
+	Standalone, LocalCluster bool
+	MasterHost               string
 }
 
 // anatUnused is the worker nodes this application did not use.
@@ -81,6 +88,8 @@ type anatRM struct {
 	Waiting string
 	Apps    string
 	Badges  []int
+	// Standalone and LocalCluster word the card for a run not on YARN.
+	Standalone, LocalCluster bool
 }
 
 // rmWaitRE and rmAppsRE read the CloudWatch summary's facts: "5 at most,
@@ -93,6 +102,9 @@ var (
 // rmLines says in plain words what the cluster had and what this
 // application took of it, one fact per line.
 func rmLines(rm anatRM) []string {
+	if rm.Standalone {
+		return standaloneRMLines(rm)
+	}
 	var out []string
 	if rm.Known {
 		have := fmt.Sprintf("The cluster had %s of memory and %d vCPUs", model.Bytes(rm.OfferedBytes), rm.OfferedCores)
@@ -149,6 +161,12 @@ type anatNode struct {
 	YARNCores    int
 	DriverBytes  int64 // the driver's (application master's) container here
 	ClientDriver bool  // the driver ran here outside YARN
+	Workers      int   // Standalone workers on the host
+	// CoreLimited says cores limit the room as well as memory (a
+	// Standalone worker places by both; EMR's YARN by memory alone), and
+	// DriverCores are a cluster-mode driver's cores here.
+	CoreLimited bool
+	DriverCores int
 	// DriverHere says the driver ran here in a YARN container (cluster
 	// mode, by the event log) whose size the logs read do not give, as
 	// when the node logs were not read.
@@ -186,7 +204,31 @@ func (n *anatNode) free() (int64, bool) {
 		return 0, false
 	}
 	f := n.YARNBytes - n.DriverBytes - int64(n.AtOnce)*n.ExecBytes
-	return max(f, 0), n.ExecBytes > 0 && f >= n.ExecBytes
+	fits := n.ExecBytes > 0 && f >= n.ExecBytes
+	if cf, each := n.coresFree(); cf >= 0 && cf < each {
+		fits = false
+	}
+	return max(f, 0), fits
+}
+
+// coresFree is how many of the cores the Standalone workers here offered
+// were not in use at the busiest time, and each executor's cores; -1 when
+// cores do not limit the room (YARN on EMR places by memory alone).
+func (n *anatNode) coresFree() (free, each int) {
+	if !n.CoreLimited || n.YARNCores == 0 || len(n.Execs) == 0 || n.Execs[0].Cores == 0 {
+		return -1, 0
+	}
+	each = n.Execs[0].Cores
+	return n.YARNCores - n.DriverCores - n.AtOnce*each, each
+}
+
+// room is how many more executors fitted beside the busiest time's.
+func (n *anatNode) room(free int64) int64 {
+	r := free / max(n.ExecBytes, 1)
+	if cf, each := n.coresFree(); cf >= 0 {
+		r = min(r, int64(max(cf, 0)/each))
+	}
+	return r
 }
 
 // anatDriver is the driver drawn as a card like an executor's: its heap's
@@ -194,6 +236,7 @@ func (n *anatNode) free() (int64, bool) {
 type anatDriver struct {
 	Container, Heap, PeakHeap int64
 	Cores                     int
+	HeapOnly                  bool // a Standalone driver: its size is its heap
 }
 
 // slots is how many cards the node draws: its executors, and the driver
@@ -253,12 +296,41 @@ const (
 	anatReservedMiB = 300 // Spark's reserved heap
 )
 
+// standaloneRMLines says what the Standalone workers offered Spark and
+// what this application took of it.
+func standaloneRMLines(rm anatRM) []string {
+	if !rm.Known {
+		return nil
+	}
+	have := fmt.Sprintf("The workers offered Spark %s of memory and %d cores", model.Bytes(rm.OfferedBytes), rm.OfferedCores)
+	if len(rm.Sizes) > 0 {
+		have += ": " + strings.Join(rm.Sizes, ", and ")
+	}
+	set := "Each worker offers what its --memory and --cores (or SPARK_WORKER_MEMORY and SPARK_WORKER_CORES) set. By default, that is all its cores and its memory less 1 GiB."
+	if rm.LocalCluster {
+		set = "The master URL local-cluster[workers, cores, MiB] set what each worker offers."
+	}
+	used := fmt.Sprintf("At its busiest, this application used %s (%.0f%%)", model.Bytes(rm.HeldBytes), 100*float64(rm.HeldBytes)/float64(rm.OfferedBytes))
+	if rm.HeldCores > 0 && rm.OfferedCores > 0 {
+		used += fmt.Sprintf(" and %d of the %d cores", rm.HeldCores, rm.OfferedCores)
+	}
+	if left := rm.OfferedBytes - rm.HeldBytes; left > 0 {
+		used += ". " + model.Bytes(left) + " remained free."
+	} else {
+		used += ". No memory remained free."
+	}
+	return []string{have + ".", set, used}
+}
+
 // noCapacity says why the logs did not give a node's YARN capacity: no
 // cluster to read them from, or a running cluster whose NodeManager and
 // ResourceManager logs had not reached S3 (EMR copies them from time to
 // time while it runs; on the phase 4 test cluster a node's current
 // NodeManager log was still missing half an hour after it started).
 func noCapacity(r *model.Report) (full []string, node string) {
+	if r.Nodes.Manager != "" {
+		return []string{"The capacity of the workers is not known. It is in the log of each worker, under $SPARK_HOME/logs."}, "Worker capacity not known (needs the worker's log)"
+	}
 	if r.Cluster == nil {
 		return []string{"The YARN capacity is not known. It is in the EMR API and the node logs (-cluster-id)."}, "YARN capacity not known (needs -cluster-id)"
 	}
@@ -298,7 +370,13 @@ func buildAnatomy(r *model.Report) *anatomy {
 	if len(r.Nodes.Hosts) == 0 && r.Cluster == nil {
 		return nil
 	}
-	if c := r.Cluster; c != nil {
+	if r.Nodes.Manager != "" {
+		a.Standalone, a.LocalCluster, a.MasterHost = true, r.Nodes.Manager == "local-cluster", r.Nodes.MasterHost
+		a.Cluster = "Spark Standalone cluster"
+		if a.LocalCluster {
+			a.Cluster = "Local cluster (local-cluster mode)"
+		}
+	} else if c := r.Cluster; c != nil {
 		name := c.Name
 		if name == "" {
 			name = c.ID
@@ -314,7 +392,10 @@ func buildAnatomy(r *model.Report) *anatomy {
 	}
 	a.NoCapacity, a.NoNodeCapacity = noCapacity(r)
 	a.NoCPU = "CPU not known (needs CloudWatch)"
-	if r.Metrics != nil && r.Metrics.Coverage != model.NoData {
+	switch {
+	case a.Standalone:
+		a.NoCPU = "CPU not in Spark's logs"
+	case r.Metrics != nil && r.Metrics.Coverage != model.NoData:
 		a.NoCPU = "CPU not recorded while the application ran"
 	}
 
@@ -348,6 +429,12 @@ func buildAnatomy(r *model.Report) *anatomy {
 	for _, h := range r.Nodes.Hosts {
 		n := &anatNode{Name: h.Name, Short: shortHost(h.Name), YARNBytes: h.YARNMemoryBytes, YARNCores: h.YARNVCores,
 			DriverBytes: h.DriverContainerBytes, ExecBytes: h.ExecutorContainerBytes, AtOnce: h.PeakExecutors, Execs: byHost[h.Name]}
+		if a.Standalone {
+			// What the workers here offered Spark, and executors sized by
+			// their heap: Spark Standalone adds no overhead to them.
+			n.YARNBytes, n.YARNCores, n.Workers, n.CoreLimited = h.WorkerMemoryBytes, h.WorkerCores, h.Workers, true
+			n.ExecBytes = r.Memory.Config.HeapBytes
+		}
 		if n.ExecBytes == 0 && len(n.Execs) > 0 {
 			n.ExecBytes = r.Memory.Config.ContainerBytes
 		}
@@ -370,9 +457,17 @@ func buildAnatomy(r *model.Report) *anatomy {
 			// In cluster mode the driver ran in the application master's
 			// container on this node, though the logs read do not give its
 			// size; otherwise it ran here outside YARN.
-			if r.Application.DeployMode == "cluster" {
+			switch {
+			case r.Application.DeployMode == "cluster" && a.Standalone && r.Memory.Config.DriverHeapBytes > 0:
+				// A Standalone worker gives a cluster-mode driver its heap
+				// and its cores (spark.driver.cores, 1 unless set).
+				n.DriverBytes, n.DriverCores = r.Memory.Config.DriverHeapBytes, 1
+				if d := r.Executors.Driver; d != nil && d.Cores > 0 {
+					n.DriverCores = d.Cores
+				}
+			case r.Application.DeployMode == "cluster":
 				n.DriverHere = true
-			} else {
+			default:
 				n.ClientDriver = true
 			}
 		}
@@ -388,7 +483,7 @@ func buildAnatomy(r *model.Report) *anatomy {
 		if n.DriverBytes == 0 && !n.DriverHere {
 			continue
 		}
-		d := &anatDriver{Container: n.DriverBytes, Heap: r.Memory.Config.DriverHeapBytes}
+		d := &anatDriver{Container: n.DriverBytes, Heap: r.Memory.Config.DriverHeapBytes, HeapOnly: a.Standalone}
 		if m := r.Memory.Driver; m != nil {
 			d.PeakHeap = m.PeakHeap
 		}
@@ -402,6 +497,9 @@ func buildAnatomy(r *model.Report) *anatomy {
 	// Every node is judged against the application's executor size, so a
 	// node that ran none still says whether one would have fitted.
 	execSize := r.Memory.Config.ContainerBytes
+	if a.Standalone {
+		execSize = r.Memory.Config.HeapBytes
+	}
 	for _, n := range a.Nodes {
 		execSize = max(execSize, n.ExecBytes)
 	}
@@ -434,21 +532,27 @@ func buildAnatomy(r *model.Report) *anatomy {
 			}
 		}
 		a.RM.HeldBytes += n.DriverBytes + int64(n.AtOnce)*n.ExecBytes
+		a.RM.HeldCores += n.DriverCores
 		if len(n.Execs) > 0 {
 			a.RM.HeldCores += n.AtOnce * n.Execs[0].Cores
 		}
 	}
 	a.RM.Known = a.RM.OfferedBytes > 0
+	a.RM.Standalone, a.RM.LocalCluster = a.Standalone, a.LocalCluster
 	for i, k := range order {
 		what := model.Plural(sizes[k], "node", "nodes")
 		if i == 0 {
 			what = model.Plural(sizes[k], "worker node", "worker nodes")
 		}
+		cpus := "vCPUs"
+		if a.Standalone {
+			what, cpus = model.Plural(sizes[k], "host", "hosts"), "cores"
+		}
 		each := ""
 		if sizes[k] > 1 {
 			each = " each"
 		}
-		a.RM.Sizes = append(a.RM.Sizes, fmt.Sprintf("%s × %s and %d vCPUs%s", what, model.Bytes(k.b), k.c, each))
+		a.RM.Sizes = append(a.RM.Sizes, fmt.Sprintf("%s × %s and %d %s%s", what, model.Bytes(k.b), k.c, cpus, each))
 	}
 	if m := r.Metrics; m != nil {
 		for _, f := range m.Summary {
@@ -551,7 +655,22 @@ func buildAnatomy(r *model.Report) *anatomy {
 		d.Why = "It plans the work and collects the results. It runs no tasks."
 		a.Driver = d
 	}
+	if a.Standalone {
+		heapOnly(a.Detail)
+		heapOnly(a.Driver)
+	}
 	return a
+}
+
+// heapOnly sizes a JVM as Spark Standalone runs it: no container holds it,
+// and Spark adds no overhead or Python memory to it (those settings are
+// YARN's and Kubernetes'), so its size is its heap and its off-heap.
+func heapOnly(j *anatJVM) {
+	if j == nil {
+		return
+	}
+	j.Overhead, j.PySpark = 0, 0
+	j.Container = j.Heap + j.OffHeap
 }
 
 // unusedNodes adds up the worker nodes the application did not use, by
@@ -634,6 +753,9 @@ func detailJVM(r *model.Report, a *anatomy) *anatJVM {
 		switch {
 		case killed[m.ID] && (pick == nil || !killed[pick.ID]):
 			pick, why = m, "the one killed for using too much memory"
+			if r.Nodes.Manager != "" {
+				why = "the one stopped with SIGKILL (exit code 137)"
+			}
 		case pick == nil || (!killed[pick.ID] && m.PeakHeap > pick.PeakHeap):
 			pick, why = m, "the one with the highest heap"
 		}
@@ -718,6 +840,9 @@ func execPanels(r *model.Report, a *anatomy, l anatLinks) map[string]string {
 			continue
 		}
 		j := execJVM(r, x.ID)
+		if r.Nodes.Manager != "" {
+			heapOnly(j)
+		}
 		j.Badges = badges[x.ID]
 		body := &svgw{}
 		h := drawJVM(body, a, j, anPad, l) + anPad
@@ -1110,6 +1235,24 @@ func anatomyDraw(a *anatomy, l anatLinks, apart bool) (string, []anatPanel) {
 			}
 			body.WriteString(`</g>`)
 		})
+	} else if a.Standalone {
+		// No ResourceManager: Spark's own master placed the executors.
+		body.f(`<rect class="nbox" x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="8"/>`, px, y, pw, topH)
+		title := "Master"
+		if a.MasterHost != "" {
+			title += " · " + fitText(a.MasterHost, 150, 12)
+		}
+		body.text(px+12, y+20, "h", "", title)
+		body.f(`<rect class="rm" x="%.1f" y="%.1f" width="%.1f" height="30" rx="6"/>`, px+12, y+32, pw-24)
+		if a.LocalCluster {
+			body.text(px+22, y+52, "b", "", "Master and workers, in the driver")
+			body.text(px+12, y+84, "m", "", "local-cluster mode starts them inside the")
+			body.text(px+12, y+100, "m", "", "driver's process. Each executor is its own.")
+		} else {
+			body.text(px+22, y+52, "b", "", "Spark Standalone master")
+			body.text(px+12, y+84, "m", "", "It places the executors on the workers.")
+			body.text(px+12, y+100, "m", "", "The driver asks it for them.")
+		}
 	} else {
 		body.f(`<rect class="nbox unknown" x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="8"/>`, px, y, pw, topH)
 		body.text(px+12, y+20, "h", "", "Primary node")
@@ -1352,14 +1495,18 @@ func drawKey(b *svgw, a *anatomy, y float64) float64 {
 			b.f(`<rect class="%s" x="%.1f" y="%.1f" width="18" height="12" rx="2"/>`, cls, x, y-10)
 		}
 	}
+	drvKey, exeKey, freeKey := "Driver's container", "Executor container", "Free YARN memory"
+	if a.Standalone {
+		drvKey, exeKey, freeKey = "Driver's heap", "Executor's heap", "Free worker memory"
+	}
 	if drv {
-		items = append(items, item{swatch("drv"), "Driver's container"})
+		items = append(items, item{swatch("drv"), drvKey})
 	}
 	if exe {
-		items = append(items, item{swatch("exc"), "Executor container"})
+		items = append(items, item{swatch("exc"), exeKey})
 	}
 	if free {
-		unused := "Free YARN memory"
+		unused := freeKey
 		if a.Shared {
 			unused = "Not used by this application"
 		}
@@ -1440,7 +1587,13 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 	b.link(l.Ref("node:"+n.Name), func() {
 		b.f(`<rect class="nbox" x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="8"/>`, x, y, w, h)
 		role := map[string]string{"CORE": "Core", "TASK": "Task", "MASTER": "Primary"}[n.Role]
-		if role == "" {
+		switch {
+		case a.Standalone:
+			role = "Worker"
+			if n.Workers > 1 {
+				role = fmt.Sprintf("%d workers", n.Workers)
+			}
+		case role == "":
 			role = "Node"
 		}
 		name := n.Short
@@ -1454,7 +1607,11 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 		b.f(`<path class="stack" d="M%.1f %.1f h%.1f v%.1f M%.1f %.1f h%.1f v%.1f"/>`, x+4, y-4, w, h, x+8, y-8, w, h)
 		b.text(x+w-12, y+20, "h stackn", "end", fmt.Sprintf("× %d", n.Alike+1))
 	}
-	b.text(x+12, y+37, "m", "", instanceLine(n))
+	if a.Standalone {
+		b.text(x+12, y+37, "m", "", workerLine(n))
+	} else {
+		b.text(x+12, y+37, "m", "", instanceLine(n))
+	}
 	b.badges(a, n.Badges, x+w-18, y+18, l)
 
 	// CPU: its icon, a bar filled to the average with a tick at the peak,
@@ -1486,14 +1643,21 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 	b.icon("mem", x+12, by+2)
 	if n.YARNBytes > 0 {
 		held := n.DriverBytes + int64(n.AtOnce)*n.ExecBytes
-		b.text(x+28, by+2, "", "", fitText(fmt.Sprintf("Memory %s of %s held by this application · YARN offered %d vcores", model.Bytes(held), model.Bytes(n.YARNBytes), n.YARNCores), w-40, 11))
+		offer := fmt.Sprintf("YARN offered %d vcores", n.YARNCores)
+		if a.Standalone {
+			offer = fmt.Sprintf("the worker offered %d cores", n.YARNCores)
+			if n.Workers > 1 {
+				offer = fmt.Sprintf("the workers offered %d cores", n.YARNCores)
+			}
+		}
+		b.text(x+28, by+2, "", "", fitText(fmt.Sprintf("Memory %s of %s held by this application · %s", model.Bytes(held), model.Bytes(n.YARNBytes), offer), w-40, 11))
 		by += 8
 		scale := bw / float64(max(maxYARN, 1))
 		cx := x + 12
 		b.f(`<rect class="yarn" x="%.1f" y="%.1f" width="%.1f" height="22" rx="4"/>`, cx, by, float64(n.YARNBytes)*scale)
 		if n.DriverBytes > 0 {
 			dw := float64(n.DriverBytes) * scale
-			b.f(`<rect class="drv" x="%.1f" y="%.1f" width="%.1f" height="22" rx="3"><title>Driver's container: %s</title></rect>`, cx, by, dw, model.Bytes(n.DriverBytes))
+			b.f(`<rect class="drv" x="%.1f" y="%.1f" width="%.1f" height="22" rx="3"><title>Driver's %s: %s</title></rect>`, cx, by, dw, sizeWord(a.Standalone), model.Bytes(n.DriverBytes))
 			if dw > 44 {
 				b.text(cx+6, by+15, "cl", "", fitText("Driver "+model.Bytes(n.DriverBytes), dw-8, 11))
 			}
@@ -1501,7 +1665,7 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 		}
 		for i := 0; i < n.AtOnce; i++ {
 			ew := float64(n.ExecBytes) * scale
-			b.f(`<rect class="exc" x="%.1f" y="%.1f" width="%.1f" height="22" rx="3"><title>Executor container: %s</title></rect>`, cx+1, by, math.Max(ew-2, 1), model.Bytes(n.ExecBytes))
+			b.f(`<rect class="exc" x="%.1f" y="%.1f" width="%.1f" height="22" rx="3"><title>%s: %s</title></rect>`, cx+1, by, math.Max(ew-2, 1), map[bool]string{false: "Executor container", true: "Executor's heap"}[a.Standalone], model.Bytes(n.ExecBytes))
 			switch label := "Executor " + model.Bytes(n.ExecBytes); {
 			case ew-10 >= textW(label, 11, false):
 				b.text(cx+6, by+15, "cl", "", label)
@@ -1525,13 +1689,16 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 		switch {
 		case n.Away != "" && free > 0:
 			note += ", but the node " + n.Away
+		case n.ExecBytes > 0 && free >= n.ExecBytes && !fits:
+			// Memory enough, cores not: a Standalone worker needs both.
+			note += ": all cores in use, so no room for another executor"
 		case n.ExecBytes > 0 && free > 0 && !fits:
 			note += fmt.Sprintf(": too small for another %s executor", model.Bytes(n.ExecBytes))
 			cls = "warnt"
 		case fits && free > 0 && a.Shared:
 			note += " (other applications' containers are not shown)"
 		case fits && free > 0:
-			note += fmt.Sprintf(": room for %d more executor(s)", free/max(n.ExecBytes, 1))
+			note += fmt.Sprintf(": room for %d more executor(s)", n.room(free))
 		}
 		b.text(x+12, by+38, cls, "", note)
 	} else {
@@ -1565,7 +1732,7 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 			each = " (on each)"
 		}
 		size := ""
-		if s := execSize(sameCores(n.Execs), n.ExecBytes); s != "" {
+		if s := execSize(sameCores(n.Execs), n.ExecBytes, a.Standalone); s != "" {
 			size = ", each " + s
 		}
 		b.text(x+12, ey+12, "m", "", fitText(fmt.Sprintf("%s%s, %d at once%s", ran, each, n.AtOnce, size), w-24, 12))
@@ -1595,15 +1762,33 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 
 // execSize is what an executor was given, as its chip shows it: "2 cores ·
 // 1.5 GiB container", or whichever half is known.
-func execSize(cores int, container int64) string {
+func execSize(cores int, container int64, heapOnly bool) string {
 	var parts []string
 	if cores > 0 {
 		parts = append(parts, model.Plural(cores, "core", "cores"))
 	}
 	if container > 0 {
-		parts = append(parts, model.Bytes(container)+" container")
+		parts = append(parts, model.Bytes(container)+" "+sizeWord(heapOnly))
 	}
 	return strings.Join(parts, " · ")
+}
+
+// sizeWord names what an executor's or driver's size is: the YARN
+// container, or for a run not on YARN its heap.
+func sizeWord(heapOnly bool) string {
+	if heapOnly {
+		return "heap"
+	}
+	return "container"
+}
+
+// workerLine is a Standalone worker box's second line: what it offered
+// Spark, or that its log was not read.
+func workerLine(n *anatNode) string {
+	if n.YARNBytes == 0 {
+		return "Capacity not known (needs the worker's log)"
+	}
+	return fmt.Sprintf("Offered Spark %d cores and %s", n.YARNCores, model.Bytes(n.YARNBytes))
 }
 
 func execTip(e anatExec) string {
@@ -1657,6 +1842,9 @@ func drawTile(b *svgw, e anatExec, x, y float64, l anatLinks) {
 // driverTip is the driver card's tooltip.
 func driverTip(d *anatDriver) string {
 	s := "Driver, in the application master's YARN container"
+	if d.HeapOnly {
+		s = "Driver, which the worker ran (cluster deploy mode)"
+	}
 	if d.Container > 0 {
 		s += " (" + model.Bytes(d.Container) + ")"
 	}
@@ -1691,7 +1879,11 @@ func drawDriverChip(b *svgw, d *anatDriver, x, y float64, l anatLinks) {
 		b.f(`<rect class="cbox" x="%.1f" y="%.1f" width="%.0f" height="%.0f" rx="6"/>`, x, y, anChipW, anChipH)
 		b.text(x+8, y+15, "b", "", "Driver")
 	})
-	b.text(x+anChipW-8, y+15, "m", "end", "application master")
+	tag := "application master"
+	if d.HeapOnly {
+		tag = "cluster deploy mode"
+	}
+	b.text(x+anChipW-8, y+15, "m", "end", tag)
 	heapBar(b, d.Heap, d.PeakHeap, x+8, y+22, anChipW-16, 9)
 	switch {
 	case d.Heap > 0 && d.PeakHeap > 0:
@@ -1701,11 +1893,11 @@ func drawDriverChip(b *svgw, d *anatDriver, x, y float64, l anatLinks) {
 	default:
 		b.text(x+8, y+43, "s", "", "heap peak not logged")
 	}
-	switch size := execSize(d.Cores, d.Container); {
+	switch size := execSize(d.Cores, d.Container, d.HeapOnly); {
 	case d.Container == 0 && size != "":
 		b.text(x+8, y+57, "s", "", size+" · size not logged")
 	case d.Container == 0:
-		b.text(x+8, y+57, "s", "", "container size not logged")
+		b.text(x+8, y+57, "s", "", sizeWord(d.HeapOnly)+" size not logged")
 	default:
 		b.text(x+8, y+57, "s", "", size)
 	}
@@ -1733,6 +1925,9 @@ func drawChip(b *svgw, a *anatomy, e anatExec, container int64, x, y float64, l 
 	case e.bad():
 		cls += " bad"
 		status = map[string]string{model.RemovalMemoryKill: "killed: memory", model.RemovalLost: "lost", model.RemovalDecommissioned: "node removed"}[e.Kind]
+		if a.Standalone && e.Kind == model.RemovalMemoryKill {
+			status = "killed (137)" // no memory limit sends SIGKILL there
+		}
 	case e.Kind == model.RemovalIdle:
 		cls += " gone"
 		status = "released when idle"
@@ -1776,7 +1971,7 @@ func drawChip(b *svgw, a *anatomy, e anatExec, container int64, x, y float64, l 
 		b.text(x+8, y+43, "s", "", "heap peak not logged")
 	}
 	// What it was given: cores and the container YARN placed.
-	if size := execSize(e.Cores, container); size != "" {
+	if size := execSize(e.Cores, container, a.Standalone); size != "" {
 		b.text(x+8, y+57, "s", "", size)
 	}
 	// Cores, outlined, filled by CPU share.
@@ -1904,7 +2099,10 @@ func drawJVM(b *svgw, a *anatomy, j *anatJVM, y float64, l anatLinks) float64 {
 
 	// Key lines under the bar: what the colours mean, then cores and GC.
 	ky := ty + bh + 44
-	keys := []struct{ cls, label string }{{"p-exec", "execution peak (shuffles, joins, sorts)"}, {"p-stor", "storage peak (cache)"}, {"r-ovh", "overhead, outside the heap"}}
+	keys := []struct{ cls, label string }{{"p-exec", "execution peak (shuffles, joins, sorts)"}, {"p-stor", "storage peak (cache)"}}
+	if j.Overhead > 0 {
+		keys = append(keys, struct{ cls, label string }{"r-ovh", "overhead, outside the heap"})
+	}
 	kx := bx
 	for _, k := range keys {
 		b.f(`<rect class="%s" x="%.1f" y="%.1f" width="12" height="10"/>`, k.cls, kx, ky-9)
@@ -1913,7 +2111,7 @@ func drawJVM(b *svgw, a *anatomy, j *anatJVM, y float64, l anatLinks) float64 {
 	}
 	cy := ky + 22
 	if j.Cores > 0 {
-		b.text(bx, cy, "", "", fmt.Sprintf("%d cores: each runs one task at a time, so each task has about %s of heap", j.Cores, model.Bytes(j.Heap/int64(j.Cores))))
+		b.text(bx, cy, "", "", fmt.Sprintf("%s: each runs one task at a time, so each task has about %s of heap", model.Plural(j.Cores, "core", "cores"), model.Bytes(j.Heap/int64(j.Cores))))
 		for i := 0; i < min(j.Cores, 32); i++ {
 			b.f(`<rect class="core" x="%.1f" y="%.1f" width="12" height="12" rx="2" style="fill-opacity:%.2f"/>`, bx+float64(i)*16, cy+8, coreFill(j.CPUShare))
 		}
@@ -2018,6 +2216,49 @@ var anatPanelGuide = chartGuide{
 	Note: "Hover over a part to see the exact values.",
 }
 
+// The same guides for a run not on YARN (Spark Standalone or
+// local-cluster): workers, what each offered Spark, and executors sized by
+// their heap.
+var (
+	saBoxes = [2]string{"Boxes", "The master, and the workers that ran this application. The master places the executors on the workers. The driver asks it for them."}
+	saBar   = [2]string{"Bar in each worker", "The memory that the worker offered Spark, to scale. It shows the heap of each executor of this application at its busiest time, and of the driver if the worker ran it."}
+	saCards = [2]string{"Cards", "One card for each executor on the worker. It shows the peak heap and the heap size, the cores and how busy the cores were."}
+	saBadge = [2]string{"Badges", "Numbered findings, on the part that they are about."}
+	saFree  = "Hatched space on a worker is memory that no executor used. A worker needs both a free core and enough free memory to start another executor."
+	saLost  = "Red outlines are executors that Spark lost or that the machine stopped."
+
+	anatGuideSA = chartGuide{
+		Axes: [][2]string{saBoxes, saBar, saCards,
+			{"Bottom panels", "One executor (the one with the highest heap) and the driver. Each panel shows the regions of the Java heap, to scale, and the peak of each region."}, saBadge},
+		Read: []string{"Read it from top to bottom: the workers, then the inside of one executor.", saFree, saLost,
+			"In an executor, a peak line near the end of the heap means that the heap was almost full.",
+			"A short execution bar, with spill in other places, means that each task had too little memory."},
+		Note: anatGuide.Note,
+	}
+	anatClusterGuideSA = chartGuide{
+		Axes: [][2]string{saBoxes, saBar, saCards, saBadge},
+		Read: []string{"Read it from top to bottom: the master, then each worker.", saFree, saLost},
+		Note: anatClusterGuide.Note,
+	}
+	anatPanelGuideSA = chartGuide{
+		Axes: [][2]string{
+			{"Bar", "The memory of the executor, to scale. This run did not use YARN, so its size is its Java heap, with no container and no overhead. The heap has three regions: reserved memory, user memory and the working memory of Spark."},
+			anatPanelGuide.Axes[1],
+		},
+		Read: anatPanelGuide.Read,
+		Note: anatPanelGuide.Note,
+	}
+)
+
+// anatGuides are the guides for this run's diagram: the report's, the
+// explorer's (without the panels) and the panels'.
+func anatGuides(r *model.Report) (report, cluster, panel *chartGuide) {
+	if r.Nodes.Manager != "" {
+		return &anatGuideSA, &anatClusterGuideSA, &anatPanelGuideSA
+	}
+	return &anatGuide, &anatClusterGuide, &anatPanelGuide
+}
+
 func anatomyHTML(r *model.Report, explorer string) template.HTML {
 	a := buildAnatomy(r)
 	svg := anatomySVG(a, anatLinks{
@@ -2041,7 +2282,8 @@ func anatomyHTML(r *model.Report, explorer string) template.HTML {
 	if svg == "" {
 		return ""
 	}
-	return template.HTML(`<div class="chart anatbox">` + svg + string(anatGuide.html()) + `</div>`)
+	g, _, _ := anatGuides(r)
+	return template.HTML(`<div class="chart anatbox">` + svg + string(g.html()) + `</div>`)
 }
 
 // coreFill is how solid a core's square is filled: from .35 for an idle

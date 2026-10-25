@@ -1,6 +1,7 @@
 package analyze
 
 import (
+	"net/url"
 	"regexp"
 	"strconv"
 	"time"
@@ -22,8 +23,21 @@ func workerCapacity(c *ctx, r *model.Report) {
 	if c.onYARN() {
 		return
 	}
+	r.Nodes.Manager = "standalone"
+	// The most executors alive at once on each host, as the YARN path has
+	// it from the containers: Standalone starts new ones for lost ones, so
+	// how many it started is not how many ran together.
+	for i := range r.Nodes.Hosts {
+		if h := &r.Nodes.Hosts[i]; len(h.Executors) > 0 && h.PeakExecutors == 0 {
+			h.PeakExecutors = peakAlive(c, h.Name)
+		}
+	}
 	if c.log != nil {
+		if u, err := url.Parse(c.log.Application.Master); err == nil && u.Scheme == "spark" {
+			r.Nodes.MasterHost = u.Hostname()
+		}
 		if m := localClusterRE.FindStringSubmatch(c.log.Application.Master); m != nil {
+			r.Nodes.Manager = "local-cluster"
 			n, _ := strconv.Atoi(m[1])
 			cores, _ := strconv.Atoi(m[2])
 			mib, _ := strconv.ParseInt(m[3], 10, 64)
