@@ -143,7 +143,7 @@ func analyzeLogs(c *ctx, r *model.Report) {
 	r.Logs.Coverage = model.Complete
 	for _, s := range r.Sources {
 		switch s.Name {
-		case "Container logs", "Step logs", "Node logs":
+		case "Container logs", "Executor logs", "Step logs", "Node logs":
 			if s.Status == "partial" || s.Status == "error" || s.Status == "not-supplied" {
 				r.Logs.Coverage = model.Partial
 				r.Logs.Missing = append(r.Logs.Missing, s.Name+": "+s.Detail)
@@ -157,11 +157,13 @@ func analyzeLogs(c *ctx, r *model.Report) {
 func joinContainers(c *ctx, r *model.Report) {
 	exec := map[string]string{}
 	host := map[string]string{}
+	execHost := map[string]string{} // by executor ID, for Standalone logs
 	if c.has() {
 		for _, x := range c.log.Executors {
 			if id := x.Attributes["CONTAINER_ID"]; id != "" {
 				exec[id], host[id] = x.ID, x.Host
 			}
+			execHost[x.ID] = x.Host
 		}
 		if id := c.log.Application.DriverAttributes["CONTAINER_ID"]; id != "" {
 			exec[id], host[id] = "driver", c.log.Application.DriverAttributes["NM_HOST"]
@@ -195,6 +197,12 @@ func joinContainers(c *ctx, r *model.Report) {
 	for i := range r.Logs.Files {
 		f := &r.Logs.Files[i]
 		switch {
+		case f.Container == "" && f.Executor != "":
+			// A Spark Standalone executor's log: its folder named the
+			// executor; the event log names its host.
+			if h := execHost[f.Executor]; h != "" {
+				f.Host = h
+			}
 		case f.Container != "" && exec[f.Container] != "":
 			f.Executor, f.Host = exec[f.Container], host[f.Container]
 		case f.Container != "" && strings.HasSuffix(f.Container, "_000001"):

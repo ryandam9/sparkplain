@@ -660,6 +660,25 @@ func offlineCheck(o options, prefix string) checked {
 			Detail: "Container, step, node and HBase logs: not asked for. Pass -from with a copy of the cluster's logs, or -cluster-id."})
 		return c
 	}
+	if lay, lerr := fromLayout(o.from, o.appID); lerr == nil && len(lay.standalone) > 0 {
+		// A Spark Standalone run: its executors' work folders, and no
+		// containers, steps or YARN nodes to look for.
+		r := model.AccessCheck{Name: "Executor logs", Location: path.Join(o.from, lay.standalone[0]) + "/", Status: "empty", Detail: "No executor's stderr or stdout in this copy."}
+		for _, prefix := range lay.standalone {
+			objs, err := source.NewLocalStore(o.from).List(context.Background(), prefix)
+			if err != nil {
+				r.Status, r.Class, r.Detail = "error", source.ClassOf(err), err.Error()
+				break
+			}
+			for _, x := range objs {
+				if yarnlog.DescribeStandalone(x.Key, o.appID).Kind != yarnlog.Unread {
+					r.Status, r.Detail = "ok", "Found: a Spark Standalone run's work folder."
+				}
+			}
+		}
+		c.rows = append(c.rows, r)
+		return c
+	}
 	objs, err := source.NewLocalStore(o.from).List(context.Background(), "")
 	for _, lr := range []struct{ name, glob string }{
 		{"Container logs", "containers/" + o.appID + "/"},
