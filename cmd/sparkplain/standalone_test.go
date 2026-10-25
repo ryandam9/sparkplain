@@ -259,3 +259,63 @@ func TestStandaloneLostExecutors(t *testing.T) {
 		}
 	}
 }
+
+// A run not on YARN is not asked for what only an EMR cluster gives: no
+// coverage line wants -cluster-id, the EMR API, CloudWatch or CloudTrail,
+// those sources say why they were not read, and the memory section does
+// not say an executor asked YARN for a container. An EMR run keeps all
+// of that. Either way, read logs are not asked for again (the memory
+// section used to look before the logs were analyzed).
+func TestStandaloneWording(t *testing.T) {
+	const app = "app-20261025054247-0000"
+	out := t.TempDir()
+	if code, _, errs := runCLI(t, "-app-id", app, "-eventlog", filepath.Join(fx, app), "-from", filepath.Join(standalone, "lost-executors"), "-out", out, "-format", "json"); code != exitOK {
+		t.Fatalf("exit %d (want 0: nothing a Standalone run can have is missing): %s", code, errs)
+	}
+	r := readReport(t, out)
+	for _, row := range r.Coverage {
+		for _, m := range row.Missing {
+			for _, w := range []string{"-cluster-id", "EMR", "CloudWatch", "CloudTrail"} {
+				if strings.Contains(m, w) {
+					t.Errorf("coverage %s asks for %s: %q", row.ID, w, m)
+				}
+			}
+		}
+	}
+	for _, s := range r.Sources {
+		if (s.Name == "EMR API" || s.Name == "CloudWatch" || s.Name == "CloudTrail") && (s.Status != "none" || !strings.Contains(s.Detail, "did not use YARN")) {
+			t.Errorf("source %s: %s %q", s.Name, s.Status, s.Detail)
+		}
+	}
+	if strings.Contains(r.Memory.Lede, "YARN for") || !strings.Contains(r.Memory.Lede, "did not add overhead") {
+		t.Errorf("memory lede: %q", r.Memory.Lede)
+	}
+	for _, m := range r.Memory.Missing {
+		if strings.Contains(m, "needs the") && strings.Contains(m, "logs") {
+			t.Errorf("the logs were read, but memory still asks for them: %q", m)
+		}
+	}
+
+	emr := t.TempDir()
+	if code, _, errs := runCLI(t, "-app-id", "application_1790380000000_0049", "-eventlog", filepath.Join(fx, "application_1790380000000_0049"), "-from", filepath.Join(emrlogs, "j-FIXTURE0049CLUSTER"), "-out", emr, "-format", "json"); code != exitOK && code != exitPartial {
+		t.Fatalf("EMR run: exit %d: %s", code, errs)
+	}
+	e := readReport(t, emr)
+	if !strings.Contains(e.Memory.Lede, "asked YARN for") {
+		t.Errorf("EMR memory lede lost YARN: %q", e.Memory.Lede)
+	}
+	asks := false
+	for _, row := range e.Coverage {
+		for _, m := range row.Missing {
+			asks = asks || strings.Contains(m, "-cluster-id")
+		}
+	}
+	if !asks {
+		t.Error("an EMR run read offline no longer says what -cluster-id adds")
+	}
+	for _, m := range e.Memory.Missing {
+		if strings.Contains(m, "needs the container logs") {
+			t.Errorf("the EMR run read its container logs, but memory asks for them: %q", m)
+		}
+	}
+}

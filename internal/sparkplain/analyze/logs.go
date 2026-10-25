@@ -621,7 +621,7 @@ func memoryKillFindings(c *ctx, r *model.Report) {
 		fix = "Metaspace holds the classes that the JVM loaded. Do one of these:\n- Increase -XX:MaxMetaspaceSize in spark.executor.extraJavaOptions.\n- Load fewer jars."
 	}
 	c.add(model.Finding{Rule: "out-of-memory", Severity: model.Critical, Section: "memory", Title: title,
-		Explanation: "The Java process asked for more memory than it had, and it stopped with an OutOfMemoryError. The task failed, and often the executor failed too. The container logs show this, also when the event log shows only a lost executor or a failed task.",
+		Explanation: "The Java process asked for more memory than it had, and it stopped with an OutOfMemoryError. The task failed, and often the executor failed too. The logs of the driver and the executors show this, also when the event log shows only a lost executor or a failed task.",
 		Evidence:    ev, Fix: fix})
 }
 
