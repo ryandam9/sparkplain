@@ -207,6 +207,12 @@ type NodesSection struct {
 	Lede     string   `json:"lede"`
 	Hosts    []Host   `json:"hosts"`
 	Missing  []string `json:"missing,omitempty"`
+	// Manager is the cluster manager when it was not YARN: "standalone"
+	// (Spark Standalone) or "local-cluster", so the pages draw and word the
+	// run as it ran; "" for YARN.
+	Manager string `json:"manager,omitempty"`
+	// MasterHost is a Standalone master's host, from its URL.
+	MasterHost string `json:"masterHost,omitempty"`
 }
 
 // Count is a labelled number, used for small breakdowns.
