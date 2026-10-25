@@ -28,7 +28,12 @@ type Plan struct {
 	// AppFolder says Root holds one application's container folders
 	// directly (container_*/stderr.gz), as -from may give.
 	AppFolder bool
-	AppID     string
+	// Standalone are the folders that hold a Spark Standalone run's
+	// executor logs, each <app-id>/ under a worker's work folder (one per
+	// machine for copies from several); a run read from them has no
+	// containers, steps or YARN nodes.
+	Standalone []string
+	AppID      string
 	// Steps are the step IDs to look through for the one that submitted
 	// AppID (from ListSteps); nil looks through every step folder.
 	Steps []string
@@ -104,6 +109,10 @@ func Collect(ctx context.Context, st source.Store, p Plan) Collection {
 		p.MaxFiles = 5000
 	}
 	var c Collection
+	if len(p.Standalone) > 0 {
+		c.standalone(ctx, st, p)
+		return c
+	}
 	c.containers(ctx, st, p)
 	if p.AppFolder {
 		for _, name := range []string{"Step logs", "Node logs"} {
@@ -220,7 +229,7 @@ func Window(files []model.LogFile, appID string) (since, until time.Time, from s
 		}
 	}
 	for _, f := range files {
-		if f.Container == "" {
+		if f.Container == "" && f.Executor == "" { // not a driver's or an executor's log
 			continue
 		}
 		widen(f.FirstTime)
@@ -461,6 +470,42 @@ func (c *Collection) containers(ctx context.Context, st source.Store, p Plan) {
 	c.Sources = append(c.Sources, src)
 }
 
+// standalone reads a Spark Standalone run's executor logs, from each
+// worker's work/<app-id>/<executor-id>/ folder; the folder names the
+// executor, so no container needs joining.
+func (c *Collection) standalone(ctx context.Context, st source.Store, p Plan) {
+	src := model.SourceStatus{Name: "Executor logs", Location: st.Location(p.Standalone[0])}
+	g := group{st: st, plan: p}
+	for _, prefix := range p.Standalone {
+		objs, err := st.List(ctx, prefix)
+		if err != nil {
+			c.Sources = append(c.Sources, listFailed(src, err))
+			return
+		}
+		for _, o := range objs {
+			f := DescribeStandalone(o.Key, p.AppID)
+			g.offer(o, f, f.Kind == ContainerStderr || f.Kind == ContainerStdout, "not a log sparkplain reads")
+		}
+	}
+	g.read(ctx)
+	execs := map[string]bool{}
+	for _, f := range g.files {
+		execs[f.Host+"/"+f.Executor] = true
+	}
+	switch {
+	case len(g.picked) == 0:
+		src.Status = "not-supplied"
+		src.Detail = "No executor logs for this application. A Spark Standalone worker keeps them in $SPARK_HOME/work/<app-id>/ on its machine."
+	default:
+		src.Status, src.Class = g.status()
+		src.Detail = fmt.Sprintf("%s from %s, in the Spark Standalone work folders.%s", g.summary(), model.Plural(len(execs), "executor", "executors"), g.problems())
+		src.Brief = fmt.Sprintf("%s from %s", model.Plural(len(g.files), "file", "files"), model.Plural(len(execs), "executor", "executors"))
+	}
+	src.Files = g.sourceFiles
+	c.Files = append(c.Files, g.files...)
+	c.Sources = append(c.Sources, src)
+}
+
 func (c *Collection) steps(ctx context.Context, st source.Store, p Plan) {
 	prefix := p.Root + "steps/"
 	src := model.SourceStatus{Name: "Step logs", Location: st.Location(prefix)}
@@ -695,7 +740,7 @@ func (g *group) read(ctx context.Context) {
 			if res.Read == 0 && rd.Err != nil {
 				continue
 			}
-			g.files = append(g.files, model.LogFile{Location: res.Name, Kind: string(f.Kind), Container: f.Container, Step: f.Step,
+			g.files = append(g.files, model.LogFile{Location: res.Name, Kind: string(f.Kind), Container: f.Container, Executor: f.Executor, Step: f.Step,
 				Instance: f.Instance, Host: f.Host, Bytes: er.bytes, Lines: res.Read, Dropped: res.Dropped, Found: res.Lines, HBaseSplits: res.Splits, HBaseScans: res.Scans, HBaseRegionEvents: res.RegionEvents, DriverEvents: res.DriverEvents, ExecTargets: res.ExecTargets,
 				TaskLogs: res.TaskLogs, TaskLogsCut: res.TaskLogsCut, Untied: res.Untied, StageData: res.StageData, DataUntied: res.DataUntied,
 				FirstTime: res.FirstTime, LastTime: res.LastTime})

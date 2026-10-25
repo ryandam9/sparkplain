@@ -33,6 +33,9 @@ type File struct {
 	Container string // container_…, for container logs
 	Step      string // s-…, for step logs
 	Instance  string // i-…, for node logs
+	// Executor is a Spark Standalone executor's ID, from its log's folder
+	// (work/<app-id>/<executor-id>/stderr); its logs have no container.
+	Executor string
 	// Host and Hour are an HBase log's host and, for a log rolled each
 	// hour, the hour (UTC) it holds; zero for the current log.
 	Host string
@@ -48,6 +51,49 @@ var hbaseLogRE = regexp.MustCompile(`^hbase-[\w-]+?-(master|regionserver)-(.+?)\
 // in cluster mode is the driver: the first container of each attempt.
 func (f File) Driver() bool {
 	return f.Container != "" && strings.HasSuffix(f.Container, "_000001")
+}
+
+// DescribeStandalone reads the key of a Spark Standalone executor's log:
+// <app-id>/<executor-id>/stderr (or stdout) under a worker's work folder,
+// with anything in front, such as work/ or <host>/work/ for copies from
+// several machines. The executor ID is the folder's name. The folder above
+// the application's, when it is neither work nor missing, is taken as the
+// machine's name. Anything else is Unread.
+func DescribeStandalone(key, appID string) File {
+	parts := strings.Split(key, "/")
+	n := len(parts)
+	if n < 3 || parts[n-3] != appID || !allDigits(parts[n-2]) {
+		return File{}
+	}
+	f := File{App: appID, Executor: parts[n-2]}
+	switch parts[n-1] {
+	case "stderr":
+		f.Kind = ContainerStderr
+	case "stdout":
+		f.Kind = ContainerStdout
+	default:
+		return File{}
+	}
+	i := n - 4
+	if i >= 0 && parts[i] == "work" {
+		i--
+	}
+	if i >= 0 {
+		f.Host = parts[i]
+	}
+	return f
+}
+
+func allDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 var containerRE = regexp.MustCompile(`^container_(?:e\d+_)?\d+_\d+_\d+_\d+$`)
