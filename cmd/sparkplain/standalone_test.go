@@ -107,3 +107,106 @@ func TestStandaloneExecutorLogs(t *testing.T) {
 		}
 	}
 }
+
+// The event log names a Standalone cluster-mode driver's folder in its
+// driver log links; YARN's and client mode's do not.
+func TestStandaloneDriverID(t *testing.T) {
+	t.Parallel()
+	for links, want := range map[[2]string]string{
+		{"http://localhost:8081/logPage/?driverId=driver-20261025043052-0000&logType=stderr", ""}:                "driver-20261025043052-0000",
+		{"http://ip-10-0-2-10:8042/node/containerlogs/container_1_0001_01_000001/hadoop/stderr?start=-4096", ""}: "",
+		{"http://w:8081/logPage/?driverId=../../etc&logType=stderr", ""}:                                         "",
+		{"", ""}: "",
+	} {
+		if got := standaloneDriverID(map[string]string{"stderr": links[0]}); got != want {
+			t.Errorf("%q: %q, want %q", links[0], got, want)
+		}
+	}
+}
+
+// In cluster deploy mode the driver runs in a worker's work/driver-…/
+// folder. With the event log its ID picks the folder; without, the
+// driver's own "Connected to Spark cluster with app ID" line does, and
+// the run is rebuilt from it. Another application's driver is never read.
+func TestStandaloneClusterModeDriver(t *testing.T) {
+	const app = "app-20261025043058-0000"
+	from := filepath.Join(t.TempDir(), "cluster-mode")
+	copyTree(t, filepath.Join(standalone, "cluster-mode"), from)
+	decoy := filepath.Join(from, "work", "driver-20261025040000-0000")
+	if err := os.MkdirAll(decoy, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(decoy, "stderr"), []byte("26/10/25 04:00:01 INFO StandaloneSchedulerBackend: Connected to Spark cluster with app ID app-20261025040000-0000\n26/10/25 04:00:02 INFO DAGScheduler: Job 0 finished: decoy at Decoy.scala:1, took 1.0 s\n"), 0o644)
+	for _, withLog := range []bool{true, false} {
+		out := t.TempDir()
+		args := []string{"-app-id", app, "-from", from, "-out", out, "-format", "json"}
+		if withLog {
+			args = append(args, "-eventlog", filepath.Join(fx, app))
+		}
+		if code, _, errs := runCLI(t, args...); code != exitOK && code != exitPartial {
+			t.Fatalf("event log %v: exit %d: %s", withLog, code, errs)
+		}
+		r := readReport(t, out)
+		var drivers []string
+		for _, f := range r.Logs.Files {
+			if f.Executor == "driver" {
+				drivers = append(drivers, filepath.Base(filepath.Dir(f.Location))+"/"+filepath.Base(f.Location))
+			}
+		}
+		slices.Sort(drivers)
+		if !slices.Equal(drivers, []string{"driver-20261025043052-0000/stderr", "driver-20261025043052-0000/stdout"}) {
+			t.Errorf("event log %v: driver files %q", withLog, drivers)
+		}
+		if len(r.Jobs.Jobs) != 1 || r.TaskStories == nil || len(r.TaskStories.Tasks) != 20 {
+			t.Errorf("event log %v: %d jobs, task stories %+v", withLog, len(r.Jobs.Jobs), r.TaskStories)
+		}
+	}
+}
+
+// -driver-log reads a client-mode driver's console saved to a file as the
+// driver's log: with the executors' logs and no event log, the run is
+// rebuilt from it. A secret planted in it is redacted, and a missing file
+// is a source in error.
+func TestDriverLogFlag(t *testing.T) {
+	const app = "app-20261025032316-0000"
+	dir := t.TempDir()
+	console := filepath.Join(dir, "driver.txt")
+	b, err := os.ReadFile(filepath.Join(standalone, "cluster", "driver.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b = append(b, "26/10/25 03:23:53 ERROR SparkContext: connect failed with spark.hadoop.fs.s3a.secret.key=FAKESECRETdriver9\n"...)
+	os.WriteFile(console, b, 0o644)
+	out := t.TempDir()
+	if code, _, errs := runCLI(t, "-app-id", app, "-from", filepath.Join(standalone, "cluster"), "-driver-log", console, "-out", out); code != exitPartial {
+		t.Fatalf("exit %d (want 3, no event log): %s", code, errs)
+	}
+	r := readReport(t, out)
+	if len(r.Jobs.Jobs) != 16 || r.TaskStories == nil || len(r.TaskStories.Tasks) != 52 || r.Application.Status != "failed" {
+		t.Errorf("rebuilt: %d jobs, status %q, stories %v", len(r.Jobs.Jobs), r.Application.Status, r.TaskStories != nil)
+	}
+	read := false
+	for _, s := range r.Sources {
+		read = read || s.Name == "Driver log" && s.Status == "read"
+	}
+	if !read {
+		t.Errorf("no Driver log source read: %+v", r.Sources)
+	}
+	for _, name := range []string{app + "-report.json", app + "-report.html", app + "-explorer.html"} {
+		if b, _ := os.ReadFile(filepath.Join(out, name)); len(b) == 0 || strings.Contains(string(b), "FAKESECRETdriver9") {
+			t.Errorf("%s is empty or holds the planted secret", name)
+		}
+	}
+	if b, _ := os.ReadFile(filepath.Join(out, app+"-report.json")); !strings.Contains(string(b), "connect failed with spark.hadoop.fs.s3a.secret.key=[redacted]") {
+		t.Error("the planted line was not read, so the secret check proves nothing")
+	}
+	out = t.TempDir()
+	if code, _, errs := runCLI(t, "-app-id", app, "-eventlog", filepath.Join(fx, app), "-driver-log", filepath.Join(dir, "missing.txt"), "-out", out, "-format", "json"); code != exitPartial {
+		t.Fatalf("missing driver log: exit %d: %s", code, errs)
+	}
+	for _, s := range readReport(t, out).Sources {
+		if s.Name == "Driver log" && s.Status != "error" {
+			t.Errorf("missing driver log: %+v", s)
+		}
+	}
+}

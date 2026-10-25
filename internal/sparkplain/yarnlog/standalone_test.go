@@ -24,3 +24,20 @@ func TestDescribeStandalone(t *testing.T) {
 		}
 	}
 }
+
+// A cluster-mode driver's log is driver-<id>/stderr or stdout at the top
+// of a worker's work folder; which application it ran is not in the path.
+func TestDescribeStandaloneDriver(t *testing.T) {
+	t.Parallel()
+	for key, want := range map[string]File{
+		"work/driver-20261025043052-0000/stderr":    {Kind: ContainerStderr, Executor: "driver"},
+		"driver-20261025043052-0000/stdout":         {Kind: ContainerStdout, Executor: "driver"},
+		"w1/work/driver-20261025043052-0000/stderr": {Kind: ContainerStderr, Executor: "driver", Host: "w1"},
+		"work/driver-20261025043052-0000/app.jar":   {},
+		"work/app-20261025043058-0000/0/stderr":     {},
+	} {
+		if got := DescribeStandaloneDriver(key); got != want {
+			t.Errorf("%s: got %+v, want %+v", key, got, want)
+		}
+	}
+}

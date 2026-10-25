@@ -84,6 +84,35 @@ func DescribeStandalone(key, appID string) File {
 	return f
 }
 
+// DescribeStandaloneDriver reads the key of a Spark Standalone driver's
+// log in cluster deploy mode: driver-<id>/stderr (or stdout) under a
+// worker's work folder. Which application the driver ran is not in the
+// path; the caller ties it (StandaloneDriverID, or the log's own line).
+func DescribeStandaloneDriver(key string) File {
+	parts := strings.Split(key, "/")
+	n := len(parts)
+	if n < 2 || !strings.HasPrefix(parts[n-2], "driver-") {
+		return File{}
+	}
+	f := File{Executor: "driver"}
+	switch parts[n-1] {
+	case "stderr":
+		f.Kind = ContainerStderr
+	case "stdout":
+		f.Kind = ContainerStdout
+	default:
+		return File{}
+	}
+	i := n - 3
+	if i >= 0 && parts[i] == "work" {
+		i--
+	}
+	if i >= 0 {
+		f.Host = parts[i]
+	}
+	return f
+}
+
 func allDigits(s string) bool {
 	if s == "" {
 		return false
