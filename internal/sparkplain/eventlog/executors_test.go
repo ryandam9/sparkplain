@@ -537,3 +537,18 @@ func TestParseCountsProgress(t *testing.T) {
 		}
 	}
 }
+
+// Every loopback name is one host, so a local-cluster driver that says
+// localhost and executors that say 127.0.0.1 are one machine.
+func TestLoopbackHostName(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]string{
+		"localhost": "localhost", "LOCALHOST": "localhost", "127.0.0.1": "localhost", "127.0.1.1": "localhost",
+		"::1": "localhost", "[::1]": "localhost", "localhost.localdomain": "localhost",
+		"10.0.0.5": "10.0.0.5", "ip-10-0-0-5.ec2.internal": "ip-10-0-0-5.ec2.internal", "": "",
+	} {
+		if got := hostName(in); got != want {
+			t.Errorf("hostName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

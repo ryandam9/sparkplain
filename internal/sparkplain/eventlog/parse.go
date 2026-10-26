@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"path"
 	"sort"
 	"strconv"
@@ -276,7 +277,7 @@ func (p *parser) line(line []byte, src model.Source) error {
 			k.Updates++
 			k.MaxMemory, k.MaxDisk = max(k.MaxMemory, bi.MemorySize), max(k.MaxDisk, bi.DiskSize)
 			if kind == "rdd" {
-				p.blocks[bi.BlockManager.ExecutorID+"/"+bi.BlockID] = blockSize{bi.MemorySize, bi.DiskSize, levelName(bi.Level), redact.Text(bi.BlockManager.Host)}
+				p.blocks[bi.BlockManager.ExecutorID+"/"+bi.BlockID] = blockSize{bi.MemorySize, bi.DiskSize, levelName(bi.Level), hostName(bi.BlockManager.Host)}
 			}
 		})
 	case evUnpersist:
@@ -338,7 +339,7 @@ func (p *parser) line(line []byte, src model.Source) error {
 			if len(p.running) < maxRunningTasks || p.running[i.TaskID] != nil {
 				p.running[i.TaskID] = &model.RunningTask{TaskID: i.TaskID, StageID: e.StageID, StageAttempt: e.StageAttempt,
 					Index: i.Index, Partition: i.PartitionID, Attempt: i.Attempt, ExecutorID: redact.Text(i.ExecutorID),
-					Host: redact.Text(i.Host), Launched: ms(i.LaunchTime), Locality: i.Locality, Speculative: i.Speculative, Source: src}
+					Host: hostName(i.Host), Launched: ms(i.LaunchTime), Locality: i.Locality, Speculative: i.Speculative, Source: src}
 			} else {
 				p.log.RunningCapped = true
 			}
@@ -380,6 +381,23 @@ func (p *parser) seen(v int64) {
 	}
 }
 
+// hostName is a host as the event log names it, with every loopback name
+// (localhost, 127.0.0.1, ::1) as "localhost". A process names its own
+// machine so only when everything runs on that one machine, and Spark's
+// processes do not agree on which name to use: without
+// SPARK_LOCAL_HOSTNAME, a local-cluster driver says localhost while its
+// executors say 127.0.0.1, which would show one machine as two hosts.
+func hostName(h string) string {
+	h = redact.Text(h)
+	if l := strings.ToLower(h); l == "localhost" || strings.HasSuffix(l, ".localhost") || l == "localhost.localdomain" {
+		return "localhost"
+	}
+	if ip := net.ParseIP(strings.Trim(h, "[]")); ip != nil && ip.IsLoopback() {
+		return "localhost"
+	}
+	return h
+}
+
 func (p *parser) executor(id, host string) *model.Executor {
 	x := p.execs[id]
 	if x == nil {
@@ -387,7 +405,7 @@ func (p *parser) executor(id, host string) *model.Executor {
 		p.execs[id] = x
 	}
 	if host != "" && x.Host == "" {
-		x.Host = redact.Text(host)
+		x.Host = hostName(host)
 	}
 	return x
 }
@@ -531,7 +549,7 @@ func (p *parser) taskEnd(e *taskEndEvent, src model.Source) {
 					launch = time.UnixMilli(e.Info.LaunchTime).UTC()
 				}
 				st.ScanTasks = append(st.ScanTasks, model.ScanTask{Index: e.Info.Index, TaskID: e.Info.TaskID, Attempt: e.Info.Attempt,
-					ExecutorID: redact.Text(e.Info.ExecutorID), Host: redact.Text(e.Info.Host), Launch: launch, DurationMs: dur, RunTimeMs: t.RunTimeMs,
+					ExecutorID: redact.Text(e.Info.ExecutorID), Host: hostName(e.Info.Host), Launch: launch, DurationMs: dur, RunTimeMs: t.RunTimeMs,
 					Rows: t.InputRecords, Source: src})
 			} else {
 				st.ScanTasksCapped = true
@@ -544,7 +562,7 @@ func (p *parser) taskEnd(e *taskEndEvent, src model.Source) {
 		if st.Slowest == nil || dur > st.Slowest.DurationMs {
 			st.Slowest = &model.TaskRef{
 				TaskID: e.Info.TaskID, Index: e.Info.Index, Attempt: e.Info.Attempt,
-				ExecutorID: redact.Text(e.Info.ExecutorID), Host: redact.Text(e.Info.Host),
+				ExecutorID: redact.Text(e.Info.ExecutorID), Host: hostName(e.Info.Host),
 				DurationMs: dur, InputBytes: input, ShuffleReadBytes: shuffle, RecordsRead: records, Source: src,
 			}
 		}

@@ -27,7 +27,7 @@ mkdir -p /tmp/spark-events
 ```
 
 - `PYSPARK_PYTHON` is the Python that the executors run.
-- `SPARK_LOCAL_IP` and `SPARK_LOCAL_HOSTNAME` make every process use one name for your machine, so the report shows one host. Without them, some processes use your host name and others an IP address.
+- `SPARK_LOCAL_IP` and `SPARK_LOCAL_HOSTNAME` keep every process on your machine's loopback address, so that the cluster does not listen on your network. They are optional on one machine. Spark's processes then name the machine `localhost` or `127.0.0.1`, and sparkplain shows both names as one host, `localhost`.
 
 ## 2. Start the master and a worker
 

@@ -26,7 +26,7 @@ mkdir -p /tmp/spark-events
 export SPARK_LOCAL_IP=127.0.0.1 SPARK_LOCAL_HOSTNAME=localhost
 ```
 
-The two variables make Spark use one name for your machine. Without them, the driver can use your host name while the executors use an IP address, and the report then shows two hosts for one machine. They also stop Spark's warning that your host name resolves to a loopback address.
+The two variables are optional. They keep Spark on your machine's loopback address, so that it does not listen on your network, and they stop Spark's warning that your host name resolves to a loopback address.
 
 ## 3. Run the job with spark-submit
 
@@ -104,7 +104,7 @@ spark-submit --master "local-cluster[2,2,2048]" --executor-memory 1g \
   examples/jobs/orders.py > /tmp/driver-lc.txt 2>&1
 ```
 
-Keep `SPARK_LOCAL_IP` and `SPARK_LOCAL_HOSTNAME` set from step 2. The application ID now starts with `app-`. The executors write their logs to `work/<app-id>/` under the PySpark package folder. Give that folder to `-from`:
+The application ID now starts with `app-`. The executors write their logs to `work/<app-id>/` under the PySpark package folder. Give that folder to `-from`:
 
 ```sh
 PYSPARK_HOME=$(python -c "import pyspark, os; print(os.path.dirname(pyspark.__file__))")
@@ -168,5 +168,4 @@ When the console is only WARN, leave out `-driver-log`. The report is the same w
 - **`spark-submit: command not found`**, or `find_spark_home.py` fails: the virtual environment is not active. Run `source ~/venvs/spark/bin/activate`.
 - **`/tmp/spark-events` is empty:** the event log was not turned on, or the folder did not exist when the job started. Spark does not make the folder.
 - **A file ends in `.inprogress`:** the application is still running, or it stopped without calling `spark.stop()`. sparkplain reads it, and the report marks the work that was still running when the log ended.
-- **The report shows two hosts for one machine:** set `SPARK_LOCAL_IP` and `SPARK_LOCAL_HOSTNAME` as in step 2, then run the job again.
 - **Exit code 3:** a source is missing or unreadable. The Sources panel in the report and the console's Read list say which one.
