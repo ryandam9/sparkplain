@@ -11,7 +11,7 @@ Both pages use the same job, [`jobs/orders.py`](jobs/orders.py). It makes 1 mill
 
 ## What you need
 
-- **Java 17.** Spark 3.5 supports Java 8, 11 and 17. Check with `java -version`.
+- **Java 17.** Spark 3.5 supports Java 8, 11 and 17 (21 also works), and does not start on Java 23 or later. Check with `java -version`. To install Java 17 and make Spark use it, see [step 2 of the Standalone page](standalone-cluster.md#2-install-java-17-and-point-spark-at-it). For PySpark from PyPI, set `JAVA_HOME` to that folder before you run `spark-submit`.
 - **Python 3.9 or later**, for PySpark.
 - **sparkplain**, built or installed as the [main README](../README.md#install) says. On this page, `sparkplain` means that binary (for example `./bin/sparkplain` after `make build`).
 
