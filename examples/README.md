@@ -5,7 +5,7 @@ These pages show, step by step, how to run a small PySpark job on a laptop or a 
 | Page | How Spark runs | What you install | What the report shows |
 |---|---|---|---|
 | [PySpark from PyPI](pyspark-pypi.md) | `local[N]`: one process; the driver runs every task. Also `local-cluster`, which starts real executors. | `pip install pyspark` | Jobs, stages, tasks, shuffles, memory, findings. With `local-cluster`, also the executors and their logs. |
-| [A full Standalone cluster](standalone-cluster.md) | A master and a worker, started with Spark's `sbin` scripts, and executors in their own processes. Client and cluster deploy mode. | The Spark distribution from spark.apache.org | Everything above, plus each worker's cores and memory, how each executor ended, and the At a glance diagram. |
+| [A full Standalone cluster](standalone-cluster.md) | A master and two workers, started with Spark's `sbin` scripts, and executors in their own processes. Client and cluster deploy mode. | The Spark distribution from spark.apache.org | Everything above, plus each worker's cores and memory, how each executor ended, and the At a glance diagram. |
 
 Both pages use the same job, [`jobs/orders.py`](jobs/orders.py). It makes 1 million fake orders, then groups, caches, joins and sorts them, so the report has shuffles, a cached table and a skewed join to show. It reads and writes no files, and it runs in about 15 seconds.
 
