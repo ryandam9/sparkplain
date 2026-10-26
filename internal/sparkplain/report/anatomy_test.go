@@ -556,3 +556,38 @@ func TestAnatomyDriverCardWithoutContainerSize(t *testing.T) {
 		t.Error("a client-mode driver ran outside YARN and has no container card")
 	}
 }
+
+// A Standalone run whose client-mode driver ran on a machine with no
+// worker: that machine is not drawn as a worker with its capacity unknown,
+// and a host named by its IP address keeps the whole address.
+func TestAnatomyStandaloneDriverMachine(t *testing.T) {
+	t.Parallel()
+	r := &model.Report{}
+	r.Nodes.Manager = "standalone"
+	r.Nodes.Hosts = []model.Host{
+		{Name: "edge-1.example.internal", Driver: true},
+		{Name: "10.0.0.5", Executors: []string{"0"}, PeakExecutors: 1, Workers: 1, WorkerCores: 4, WorkerMemoryBytes: 4 * gib},
+	}
+	r.Executors.Driver = &model.Executor{ID: "driver", Host: "edge-1.example.internal"}
+	r.Executors.Executors = []*model.Executor{{ID: "0", Host: "10.0.0.5", Cores: 1}}
+	r.Executors.Peak, r.Executors.Started = 1, 1
+	r.Memory.Config = model.MemoryConfig{HeapBytes: gib, Cores: 1}
+	r.Memory.Executors = []model.ExecMemory{{ID: "0", Host: "10.0.0.5", HeapBytes: gib}}
+	svg := anatomySVG(buildAnatomy(r), anatLinks{Finding: func(int) string { return "" }, Ref: func(string) string { return "" }})
+	for _, want := range []string{"Machine · edge-1", "No worker ran here", "Runs the driver", "Worker · 10.0.0.5", "Offered Spark 4 cores and 4.0 GiB"} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("diagram lacks %q", want)
+		}
+	}
+	for _, bad := range []string{"Worker · edge-1", "Capacity not known", "Worker · 10<", "· 10<"} {
+		if strings.Contains(svg, bad) {
+			t.Errorf("diagram says %q", bad)
+		}
+	}
+	if got := shortHost("127.0.0.1"); got != "127.0.0.1" {
+		t.Errorf("shortHost(127.0.0.1) = %q", got)
+	}
+	if got := shortHost("ip-10-0-0-1.ec2.internal"); got != "ip-10-0-0-1" {
+		t.Errorf("shortHost(ip-10-0-0-1.ec2.internal) = %q", got)
+	}
+}

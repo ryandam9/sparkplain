@@ -2,6 +2,7 @@ package analyze
 
 import (
 	"fmt"
+	"net"
 	"sort"
 	"strings"
 	"time"
@@ -356,6 +357,9 @@ func analyzeNodes(c *ctx, r *model.Report) {
 		driverHost = d.Host
 	} else if v := c.conf["spark.driver.host"]; v != "" {
 		driverHost = v
+		if loopback(v) {
+			driverHost = "localhost"
+		}
 	}
 	if driverHost != "" {
 		h := get(driverHost)
@@ -424,9 +428,14 @@ func orID(dns, id string) string {
 }
 
 // hostKey is a host name without its domain, or an IP address as the name
-// EMR gives it, so the event log's and the EMR API's names match.
+// EMR gives it, so the event log's and the EMR API's names match. Every
+// loopback name is "localhost", as the event log reader has it, so a
+// worker's log that says 127.0.0.1 matches.
 func hostKey(h string) string {
 	h = strings.ToLower(strings.TrimSpace(h))
+	if loopback(h) {
+		return "localhost"
+	}
 	if strings.Count(h, ".") == 3 && strings.Trim(h, "0123456789.") == "" {
 		return "ip-" + strings.ReplaceAll(h, ".", "-")
 	}
@@ -434,6 +443,17 @@ func hostKey(h string) string {
 		return h[:i]
 	}
 	return h
+}
+
+// loopback reports whether h names the machine it is read on: localhost,
+// 127.0.0.0/8 or ::1.
+func loopback(h string) bool {
+	h = strings.ToLower(strings.Trim(strings.TrimSpace(h), "[]"))
+	if h == "localhost" || h == "localhost.localdomain" || strings.HasSuffix(h, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(h)
+	return ip != nil && ip.IsLoopback()
 }
 
 func hasUnjoined(hs []model.Host) bool {
