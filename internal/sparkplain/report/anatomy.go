@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"math"
+	"net"
 	"regexp"
 	"slices"
 	"sort"
@@ -74,6 +75,12 @@ func (n *anatNode) used() bool { return len(n.Execs) > 0 || n.hasDriver() }
 
 // hasDriver reports whether the driver ran on the node, in a YARN container
 // or, in client mode, outside YARN.
+// driverOnly reports whether a run not on YARN used this machine only for
+// a client-mode driver: no worker and no executor ran on it.
+func (n *anatNode) driverOnly(a *anatomy) bool {
+	return a.Standalone && n.Workers == 0 && n.YARNBytes == 0 && len(n.Execs) == 0 && n.Driver == nil && n.ClientDriver
+}
+
 func (n *anatNode) hasDriver() bool { return n.DriverBytes > 0 || n.DriverHere || n.ClientDriver }
 
 type anatRM struct {
@@ -1009,7 +1016,12 @@ func cpuPoints(r *model.Report, instance string) []float64 {
 	return nil
 }
 
+// shortHost is a host name without its domain. An IP address stays whole:
+// its first part ("127", "10") names no machine.
 func shortHost(h string) string {
+	if net.ParseIP(strings.Trim(h, "[]")) != nil {
+		return h
+	}
 	if i := strings.IndexByte(h, '.'); i > 0 {
 		return h[:i]
 	}
@@ -1588,6 +1600,8 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 		b.f(`<rect class="nbox" x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="8"/>`, x, y, w, h)
 		role := map[string]string{"CORE": "Core", "TASK": "Task", "MASTER": "Primary"}[n.Role]
 		switch {
+		case n.driverOnly(a):
+			role = "Machine"
 		case a.Standalone:
 			role = "Worker"
 			if n.Workers > 1 {
@@ -1607,9 +1621,12 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 		b.f(`<path class="stack" d="M%.1f %.1f h%.1f v%.1f M%.1f %.1f h%.1f v%.1f"/>`, x+4, y-4, w, h, x+8, y-8, w, h)
 		b.text(x+w-12, y+20, "h stackn", "end", fmt.Sprintf("× %d", n.Alike+1))
 	}
-	if a.Standalone {
+	switch {
+	case n.driverOnly(a):
+		b.text(x+12, y+37, "m", "", "No worker ran here")
+	case a.Standalone:
 		b.text(x+12, y+37, "m", "", workerLine(n))
-	} else {
+	default:
 		b.text(x+12, y+37, "m", "", instanceLine(n))
 	}
 	b.badges(a, n.Badges, x+w-18, y+18, l)
@@ -1701,6 +1718,9 @@ func drawNode(b *svgw, a *anatomy, n *anatNode, x, y, w, h float64, maxYARN int6
 			note += fmt.Sprintf(": room for %d more executor(s)", n.room(free))
 		}
 		b.text(x+12, by+38, cls, "", note)
+	} else if n.driverOnly(a) {
+		// No worker, so no capacity to know: the driver is all there is.
+		b.text(x+12, by+23, "", "", "Runs the driver")
 	} else {
 		b.f(`<rect class="yarn unknown" x="%.1f" y="%.1f" width="%.1f" height="22" rx="4"/>`, x+12, by+8, bw)
 		b.text(x+20, by+23, "m", "", a.NoNodeCapacity)
